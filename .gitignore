@@ -1,0 +1,45 @@
+node_modules/
+dist/
+out/
+.tsbuildinfo
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.db-journal
+*.db-wal
+
+# Uploads
+uploads/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Tauri
+src-tauri/target/
+
+# Build artifacts
+*.AppImage
+*.msi
+*.dmg
+*.deb
+*.rpm
+latest*.yml
+
+# Logs
+*.log

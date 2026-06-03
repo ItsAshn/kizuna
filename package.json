@@ -1,0 +1,24 @@
+{
+  "name": "kizuna",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kizuna — self-hosted Discord alternative with chat, voice, and screen sharing",
+  "scripts": {
+    "dev": "pnpm --filter @kizuna/server dev",
+    "dev:server": "pnpm --filter @kizuna/server dev",
+    "dev:desktop": "pnpm --filter @kizuna/desktop dev",
+    "build": "pnpm --filter @kizuna/server build && pnpm --filter @kizuna/desktop build",
+    "build:server": "pnpm --filter @kizuna/server build",
+    "build:desktop": "pnpm --filter @kizuna/desktop build",
+    "start": "pnpm --filter @kizuna/server start",
+    "typecheck": "pnpm --filter @kizuna/server typecheck",
+    "typecheck:all": "pnpm --filter @kizuna/server typecheck && pnpm --filter @kizuna/desktop typecheck",
+    "clean": "pnpm --filter @kizuna/server clean && pnpm --filter @kizuna/desktop clean",
+    "release": "node scripts/release.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

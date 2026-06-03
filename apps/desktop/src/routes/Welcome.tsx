@@ -1,0 +1,293 @@
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useServerStore } from '../store/serverStore'
+import { useChatStore } from '../store/chatStore'
+import { fetchServerInfo, login, register, fetchDMChannels } from '@kizuna/shared'
+import type { DMChannelData } from '@kizuna/shared'
+import '../styles/welcome.css'
+
+interface ServerDMs {
+  serverId: string
+  serverName: string
+  channels: DMChannelData[]
+}
+
+export default function Welcome() {
+  const navigate = useNavigate()
+  const { addServer, setActiveSession, servers } = useServerStore()
+  const mentionCounts = useChatStore((s) => s.mentionCounts)
+  const [serverDMs, setServerDMs] = useState<ServerDMs[]>([])
+  const [dmsLoading, setDmsLoading] = useState(false)
+
+  const [showConnect, setShowConnect] = useState(false)
+  const [url, setUrl] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [serverPassword, setServerPassword] = useState('')
+  const [isRegister, setIsRegister] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [serverInfo, setServerInfo] = useState<any>(null)
+  const [connecting, setConnecting] = useState(false)
+
+  useEffect(() => {
+    async function loadDMs() {
+      if (servers.length === 0) { setServerDMs([]); return }
+      setDmsLoading(true)
+      const results: ServerDMs[] = []
+      for (const server of servers) {
+        try {
+          const channels = await fetchDMChannels(server.url, '')
+          if (channels.length > 0) {
+            results.push({ serverId: server.id, serverName: server.name, channels: channels.slice(0, 3) })
+          }
+        } catch { /* ignore */ }
+      }
+      setServerDMs(results)
+      setDmsLoading(false)
+    }
+    loadDMs()
+  }, [servers.length])
+
+  async function handleConnect(urlToUse: string) {
+    if (!urlToUse.trim()) return
+    setConnecting(true)
+    setError('')
+    try {
+      const info = await fetchServerInfo(urlToUse.trim())
+      setServerInfo(info)
+      setUrl(urlToUse.trim())
+      setShowConnect(true)
+    } catch {
+      setError('Could not reach server. Check the URL and try again.')
+    }
+    setConnecting(false)
+  }
+
+  async function handleAuth() {
+    if (!username.trim() || !password.trim()) return
+    setLoading(true)
+    setError('')
+    try {
+      let result
+      if (isRegister) {
+        result = await register(url.trim(), username.trim(), password, displayName || username, serverPassword || undefined)
+      } else {
+        result = await login(url.trim(), username.trim(), password)
+      }
+
+      const serverId = url.trim()
+      addServer({
+        id: serverId,
+        name: serverInfo?.name || url,
+        url: serverId,
+        addedAt: Date.now(),
+      })
+
+      setActiveSession({
+        serverId,
+        url: serverId,
+        token: result.token,
+        user: result.user,
+      })
+
+      navigate('/chat')
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || 'Authentication failed')
+    }
+    setLoading(false)
+  }
+
+  const totalMentions = Object.values(mentionCounts).reduce((sum, n) => sum + n, 0)
+
+  if (showConnect && serverInfo) {
+    return (
+      <div className="welcome">
+        <div className="welcome__container">
+          <div className="welcome__branding">
+            <h1 className="welcome__title">Kizuna</h1>
+            <p className="welcome__subtitle">Self-hosted voice & chat</p>
+          </div>
+
+          <div className="welcome__card">
+            <h2 className="welcome__server-name">{serverInfo.name}</h2>
+            <p className="welcome__server-url">{url}</p>
+
+            <div className="welcome__tabs">
+              <button className={`welcome__tab ${!isRegister ? 'welcome__tab--active' : ''}`} onClick={() => setIsRegister(false)}>Sign In</button>
+              <button className={`welcome__tab ${isRegister ? 'welcome__tab--active' : ''}`} onClick={() => setIsRegister(true)}>Register</button>
+            </div>
+
+            <input className="input-field welcome__input-spacer" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
+            <input className="input-field welcome__input-spacer" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAuth()} />
+            {isRegister && (
+              <>
+                <input className="input-field welcome__input-spacer" placeholder="Display name (optional)" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+                {serverInfo.passwordProtected && (
+                  <input className="input-field welcome__input-spacer" type="password" placeholder="Server password" value={serverPassword} onChange={(e) => setServerPassword(e.target.value)} />
+                )}
+              </>
+            )}
+
+            <button className="btn-primary" style={{ width: '100%' }} onClick={handleAuth} disabled={loading || !username.trim() || !password.trim()}>
+              {loading ? 'Please wait...' : isRegister ? 'Create Account' : 'Sign In'}
+            </button>
+            <button className="welcome__back-btn" onClick={() => { setShowConnect(false); setServerInfo(null); setError('') }}>Back to Dashboard</button>
+
+            {error && <p className="welcome__error">{error}</p>}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (showConnect) {
+    return (
+      <div className="welcome">
+        <div className="welcome__container">
+          <div className="welcome__branding">
+            <h1 className="welcome__title">Kizuna</h1>
+            <p className="welcome__subtitle">Self-hosted voice & chat</p>
+          </div>
+
+          <div className="welcome__card">
+            <h2 className="welcome__card-title">Connect to a Server</h2>
+            <input className="input-field welcome__input-spacer" placeholder="Server URL (e.g. http://localhost:5000)" value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleConnect(url)} />
+            <button className="btn-primary" style={{ width: '100%' }} onClick={() => handleConnect(url)} disabled={connecting || !url.trim()}>
+              {connecting ? 'Connecting...' : 'Connect'}
+            </button>
+
+            {servers.length > 0 && (
+              <div>
+                <h3 className="welcome__saved-header">Saved Servers</h3>
+                {servers.map((server) => (
+                  <button key={server.id} className="welcome__saved-server" onClick={() => handleConnect(server.url)}>
+                    {server.name}
+                    <span className="welcome__saved-server-url">{server.url}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button className="welcome__back-btn" onClick={() => { setShowConnect(false); setError('') }}>Back to Dashboard</button>
+            {error && <p className="welcome__error">{error}</p>}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="welcome welcome--dashboard">
+      <div className="welcome__branding">
+        <h1 className="welcome__title">Kizuna</h1>
+        <p className="welcome__subtitle">Self-hosted voice & chat</p>
+      </div>
+
+      <div className="welcome__dashboard-grid">
+        <div className="welcome__dashboard-panel">
+          <div className="welcome__dashboard-panel-header">
+            <span className="welcome__dashboard-panel-label">Servers</span>
+            <span className="welcome__dashboard-panel-count">{servers.length} saved</span>
+          </div>
+          <div className="welcome__dashboard-panel-body">
+            {servers.length === 0 ? (
+              <div className="welcome__dashboard-empty">
+                <p className="welcome__dashboard-empty-text">No servers yet</p>
+                <p className="welcome__dashboard-empty-sub">Click Connect below to add one</p>
+              </div>
+            ) : (
+              servers.map((server) => {
+                const mentions = mentionCounts[server.id] ?? 0
+                return (
+                  <button key={server.id} className="welcome__server-item" onClick={() => handleConnect(server.url)}>
+                    <div className="welcome__server-icon">
+                      {server.icon ? (
+                        <img src={server.icon} alt="" className="welcome__server-icon-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                      ) : server.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="welcome__server-info">
+                      <p className="welcome__server-name">{server.name}</p>
+                      <p className="welcome__server-url">{server.url}</p>
+                    </div>
+                    {mentions > 0 && <span className="sidebar__unread-badge">{mentions > 99 ? '99+' : mentions}</span>}
+                    <span className="welcome__server-connect-label">connect</span>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="welcome__dashboard-panel">
+          <div className="welcome__dashboard-panel-header">
+            <span className="welcome__dashboard-panel-label">Direct Messages</span>
+          </div>
+          <div className="welcome__dashboard-panel-body">
+            {dmsLoading ? (
+              <p className="welcome__dashboard-empty-text">Loading...</p>
+            ) : serverDMs.length === 0 ? (
+              <div className="welcome__dashboard-empty">
+                <p className="welcome__dashboard-empty-text">No recent conversations</p>
+                <p className="welcome__dashboard-empty-sub">Join a server to start chatting</p>
+              </div>
+            ) : (
+              serverDMs.map((sd) => (
+                <div key={sd.serverId} style={{ marginBottom: sd.channels.length > 0 ? '12px' : '0' }}>
+                  <p className="welcome__dm-group-label">{sd.serverName}</p>
+                  {sd.channels.map((ch) => (
+                    <div key={ch.id} className="welcome__dm-item">
+                      <div className="welcome__dm-avatar">{ch.other_display_name?.[0]?.toUpperCase()}</div>
+                      <div>
+                        <p className="welcome__dm-name">{ch.other_display_name}</p>
+                        <p className="welcome__dm-username">@{ch.other_username}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="welcome__dashboard-panel">
+          <div className="welcome__dashboard-panel-header">
+            <span className="welcome__dashboard-panel-label">Status</span>
+          </div>
+          <div className="welcome__dashboard-panel-body">
+            <div className="welcome__status-row">
+              <span className="welcome__status-label">Servers</span>
+              <span className="welcome__status-value">{servers.length}</span>
+            </div>
+            {totalMentions > 0 && (
+              <div className="welcome__status-row">
+                <span className="welcome__status-label">Mentions</span>
+                <span className="welcome__status-value welcome__status-value--danger">{totalMentions}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="welcome__dashboard-panel">
+          <div className="welcome__dashboard-panel-header">
+            <span className="welcome__dashboard-panel-label">About</span>
+          </div>
+          <div className="welcome__dashboard-panel-body">
+            <p className="welcome__server-name">Kizuna <span className="welcome__dashboard-panel-label">v0.1.0</span></p>
+            <p className="welcome__subtitle" style={{ marginTop: '4px' }}>Self-hosted voice & chat</p>
+            <div className="welcome__tech-tags">
+              <span className="welcome__tech-tag">webrtc</span>
+              <span className="welcome__tech-tag">mediasoup</span>
+              <span className="welcome__tech-tag">react</span>
+              <span className="welcome__tech-tag">sqlite</span>
+              <span className="welcome__tech-tag">tauri</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button className="welcome__dashboard-cta" onClick={() => setShowConnect(true)}>Connect to Server</button>
+    </div>
+  )
+}

@@ -1,0 +1,94 @@
+.login {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  padding: 16px;
+}
+
+.login__card {
+  width: 100%;
+  max-width: 448px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  border: 1px solid var(--border-color);
+}
+
+.login__server-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.login__server-url {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.login__tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.login__tab {
+  flex: 1;
+  padding: 8px 0;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.login__tab--active {
+  background: var(--brand);
+  color: var(--text-primary);
+}
+
+.login__input-spacer {
+  margin-bottom: 12px;
+}
+
+.login__back-btn {
+  width: 100%;
+  text-align: center;
+  padding: 8px 0;
+  margin-top: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: color 0.15s ease;
+}
+
+.login__back-btn:hover {
+  color: var(--text-secondary);
+}
+
+.login__error {
+  margin-top: 16px;
+  color: var(--red);
+  font-size: 13px;
+  text-align: center;
+}
+
+.login__not-found {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login__not-found-text {
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
