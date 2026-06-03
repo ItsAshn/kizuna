@@ -1,12 +1,11 @@
 # Kizuna
 
-Self-hosted Discord alternative with text chat, voice channels, and screen sharing. You host the server, you own the data.
+Self-hosted Discord alternative with text chat and voice channels. You host the server, you own the data.
 
 ## Features
 
 - Real-time text chat with channels and direct messages
 - Voice channels powered by WebRTC (mediasoup SFU)
-- Screen sharing
 - Custom roles and permissions
 - File uploads and attachments
 - Desktop client (Windows + Linux) via Tauri
