@@ -1,52 +1,54 @@
 # Kizuna
 
-A self-hosted Discord alternative. You self-host the server and connect with the desktop client.
+Self-hosted Discord alternative with text chat, voice channels, and screen sharing. You host the server, you own the data.
 
-## Projects
+## Features
 
-| Directory | Description | Tech |
-|-----------|------------|------|
-| `apps/server/` | Backend API + WebSocket + Voice server | Node.js, Hono, Socket.IO, mediasoup, better-sqlite3 |
-| `apps/desktop/` | Desktop client | Tauri v2, React, Vite, Tailwind |
-| `packages/shared/` | Shared TypeScript types and API client | TypeScript |
+- Real-time text chat with channels and direct messages
+- Voice channels powered by WebRTC (mediasoup SFU)
+- Screen sharing
+- Custom roles and permissions
+- File uploads and attachments
+- Desktop client (Windows + Linux) via Tauri
+- Docker one-command deployment
 
-## Prerequisites
+## Hosting a Server
 
-- [Node.js](https://nodejs.org/) v22+
-- [pnpm](https://pnpm.io/) v9+
-- For desktop development: [Rust](https://rustup.rs/) (for Tauri)
-- For Docker hosting: [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) v2+
-
-## Quick Start
+### Docker (recommended)
 
 ```bash
-# Install all dependencies
-pnpm install
+# Create .env file
+cp apps/server/.env.example .env
+# Edit .env — set JWT_SECRET at minimum
 
-# Start server in development mode
-pnpm dev:server
-
-# Start desktop client in development mode
-pnpm dev:desktop
-
-# Run both concurrently
-pnpm dev
-```
-
-## Hosting with Docker
-
-```bash
-# Pull the image
-docker pull ghcr.io/itsashn/kizuna:latest
-
-# Or build locally
 docker compose up -d
 ```
 
-## Environment Variables
+The server will be available on port `5000`. For voice to work, ensure UDP ports `40000-40099` are reachable.
 
-See `apps/server/.env.example` for full configuration reference.
+### Manual
+
+```bash
+# Requires Node.js 22+ and pnpm 9+
+pnpm install
+pnpm build:server
+pnpm start
+```
+
+### Configuration
+
+All settings are in the `.env` file. The only required one is `JWT_SECRET` — generate it with:
+
+```bash
+openssl rand -hex 64
+```
+
+See `apps/server/.env.example` for a full reference of every option (public address, voice ports, TURN, DDNS, UPnP, etc).
+
+## Connecting
+
+Download the latest desktop client from [releases](https://github.com/itsashn/kizuna/releases) and point it at your server's address.
 
 ## License
 
-MIT
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 (CC BY-NC-SA 4.0). You may use, share, and modify this software for non-commercial purposes only. Any derivative works must be shared under the same license.
