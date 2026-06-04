@@ -85,6 +85,8 @@ jobs:
 
       - name: Build Tauri (Windows)
         working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: pnpm tauri build
 
       - name: Upload to release
@@ -127,6 +129,8 @@ jobs:
 
       - name: Build Tauri (Linux)
         working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: pnpm tauri build
 
       - name: Upload to release

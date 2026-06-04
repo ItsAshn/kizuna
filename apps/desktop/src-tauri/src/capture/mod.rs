@@ -69,13 +69,29 @@ pub fn start_capture(
         ));
     }
 
-    let monitor = monitors.into_iter().nth(monitor_index).unwrap();
+    drop(monitors);
+
     let cancel = Arc::new(AtomicBool::new(false));
     let cancel_clone = cancel.clone();
     let interval_ms: u32 = if fps > 0 { 1000 / fps } else { CAPTURE_INTERVAL_MS };
 
     let handle = thread::spawn(move || {
         let period = Duration::from_millis(interval_ms as u64);
+
+        let monitors = match Monitor::all() {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("[ScreenCapture] failed to enumerate monitors: {e}");
+                return;
+            }
+        };
+        let monitor = match monitors.into_iter().nth(monitor_index) {
+            Some(m) => m,
+            None => {
+                eprintln!("[ScreenCapture] monitor {monitor_index} no longer available");
+                return;
+            }
+        };
 
         loop {
             if cancel_clone.load(Ordering::Relaxed) {
