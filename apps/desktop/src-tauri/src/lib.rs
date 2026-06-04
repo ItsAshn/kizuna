@@ -1,7 +1,6 @@
 mod capture;
 
 use std::sync::Mutex;
-use tauri::Manager;
 
 static CAPTURE_SESSION: Mutex<Option<capture::CaptureSession>> = Mutex::new(None);
 
@@ -49,10 +48,11 @@ pub fn run() {
             start_screen_capture,
             stop_screen_capture,
         ])
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(debug_assertions)]
             {
-                let window = app.get_webview_window("main").unwrap();
+                use tauri::Manager;
+                let window = _app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
             Ok(())
