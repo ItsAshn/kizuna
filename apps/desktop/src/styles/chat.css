@@ -5,6 +5,25 @@
   overflow: hidden;
   padding: 8px;
   gap: 8px;
+  position: relative;
+}
+
+.chat-layout--has-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: var(--bg-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(var(--bg-blur, 0px));
+  pointer-events: none;
+}
+
+.chat-layout--has-bg > * {
+  position: relative;
+  z-index: 1;
 }
 
 .chat-main {

@@ -176,3 +176,12 @@ export interface MonitorInfo {
   width: number
   height: number
 }
+
+export interface ServerInfo {
+  name: string
+  description: string
+  passwordProtected: boolean
+  icon: string | null
+  hasBackground: boolean
+  backgroundBlur: number
+}

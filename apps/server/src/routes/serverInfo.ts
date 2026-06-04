@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import jwt from 'jsonwebtoken'
+import path from 'node:path'
+import fs from 'node:fs'
 import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission, getUserInfo } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
@@ -8,12 +10,27 @@ function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const serverInfoRoutes = new Hono()
 
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
+const BACKGROUNDS_DIR = path.join(UPLOADS_DIR, 'backgrounds')
+const MAX_BACKGROUND_SIZE = 10 * 1024 * 1024
+
+if (!fs.existsSync(BACKGROUNDS_DIR)) {
+  fs.mkdirSync(BACKGROUNDS_DIR, { recursive: true })
+}
+
 function getServerInfo() {
   const db = getDb()
   const name = db.prepare("SELECT value FROM server_settings WHERE key = 'server_name'").get() as { value: string } | undefined
   const description = db.prepare("SELECT value FROM server_settings WHERE key = 'server_description'").get() as { value: string } | undefined
   const icon = db.prepare("SELECT value FROM server_settings WHERE key = 'server_icon'").get() as { value: string } | undefined
   const serverUrl = db.prepare("SELECT value FROM server_settings WHERE key = 'server_url'").get() as { value: string } | undefined
+  const backgroundBlur = db.prepare("SELECT value FROM server_settings WHERE key = 'background_blur'").get() as { value: string } | undefined
+
+  let hasBackground = false
+  try {
+    const bgFiles = fs.readdirSync(BACKGROUNDS_DIR)
+    hasBackground = bgFiles.length > 0
+  } catch {}
 
   return {
     name: name?.value || process.env.SERVER_NAME || 'Kizuna Server',
@@ -21,6 +38,8 @@ function getServerInfo() {
     passwordProtected: !!(process.env.SERVER_PASSWORD && process.env.SERVER_PASSWORD.trim()),
     icon: icon?.value || null,
     serverUrl: serverUrl?.value || null,
+    hasBackground,
+    backgroundBlur: backgroundBlur?.value ? parseInt(backgroundBlur.value, 10) : 0,
   }
 }
 
@@ -47,8 +66,8 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
   const user = getAuth(c)
   if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
 
-  const body = await c.req.json() as { name?: string; icon?: string | null }
-  const { name, icon } = body
+  const body = await c.req.json() as { name?: string; icon?: string | null; background_blur?: number }
+  const { name, icon, background_blur } = body
   const db = getDb()
 
   if (name !== undefined) {
@@ -64,6 +83,10 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
     } else {
       db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('server_icon', ?)").run(icon)
     }
+  }
+  if (background_blur !== undefined) {
+    const blur = Math.max(0, Math.min(20, background_blur))
+    db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('background_blur', ?)").run(String(blur))
   }
 
   return c.json(getServerInfo())
@@ -284,6 +307,85 @@ serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, async (c)
   }
 
   db.prepare('UPDATE server_members SET custom_role_id = ? WHERE user_id = ?').run(roleId, targetUserId)
+  return c.json({ ok: true })
+})
+
+// POST /background — upload background image (admin only)
+serverInfoRoutes.post('/background', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+
+  const contentLength = parseInt(c.req.header('content-length') || '0', 10)
+  if (contentLength > MAX_BACKGROUND_SIZE) {
+    return c.json({ error: 'File too large. Maximum size is 10MB' }, 413)
+  }
+
+  const formData = await c.req.formData()
+  const file = formData.get('file') as File | null
+  if (!file) return c.json({ error: 'No file provided' }, 400)
+
+  const ext = path.extname(file.name).toLowerCase()
+  if (!['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+    return c.json({ error: 'Only image files allowed (jpg, jpeg, png, webp)' }, 400)
+  }
+
+  if (file.size > MAX_BACKGROUND_SIZE) {
+    return c.json({ error: 'File too large. Maximum size is 10MB' }, 413)
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer())
+
+  try {
+    const oldFiles = fs.readdirSync(BACKGROUNDS_DIR)
+    for (const f of oldFiles) fs.unlinkSync(path.join(BACKGROUNDS_DIR, f))
+  } catch {}
+
+  const storedFilename = `background${ext}`
+  fs.writeFileSync(path.join(BACKGROUNDS_DIR, storedFilename), buffer)
+
+  return c.json({ ok: true })
+})
+
+// GET /background — serve background image (public, no auth)
+serverInfoRoutes.get('/background', (c) => {
+  let bgFile: string | null = null
+  try {
+    const files = fs.readdirSync(BACKGROUNDS_DIR)
+    if (files.length > 0) bgFile = files[0]
+  } catch {}
+
+  if (!bgFile) return c.json({ error: 'No background image' }, 404)
+
+  const filepath = path.join(BACKGROUNDS_DIR, bgFile)
+  const ext = path.extname(bgFile).toLowerCase()
+  const mimeMap: Record<string, string> = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+  }
+  const contentType = mimeMap[ext] || 'image/jpeg'
+  const content = fs.readFileSync(filepath)
+
+  return new Response(content, {
+    status: 200,
+    headers: {
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=3600',
+    },
+  })
+})
+
+// DELETE /background — remove background image (admin only)
+serverInfoRoutes.delete('/background', authMiddleware, (c) => {
+  const user = getAuth(c)
+  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+
+  try {
+    const files = fs.readdirSync(BACKGROUNDS_DIR)
+    for (const f of files) fs.unlinkSync(path.join(BACKGROUNDS_DIR, f))
+  } catch {}
+
   return c.json({ ok: true })
 })
 

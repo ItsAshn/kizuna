@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { useServerStore } from './store/serverStore'
 import { useUpdater } from './hooks/useUpdater'
 import { useBackgroundNotifications } from './hooks/useBackgroundNotifications'
@@ -12,13 +12,11 @@ import './styles/app.css'
 
 function AppContent() {
   const activeSession = useServerStore((s) => s.activeSession)
-  const [searchParams] = useSearchParams()
-  const isLanding = searchParams.has('use-kizuna')
 
   return (
     <div className="app-shell__content" style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
       <Routes>
-        <Route path="/" element={activeSession ? <Navigate to="/chat" replace /> : <Welcome isLanding={isLanding} />} />
+        <Route path="/" element={activeSession ? <Navigate to="/chat" replace /> : <Welcome isLanding={true} />} />
         <Route path="/login/:serverId" element={<Login />} />
         <Route path="/chat" element={activeSession ? <Chat /> : <Navigate to="/" replace />} />
       </Routes>

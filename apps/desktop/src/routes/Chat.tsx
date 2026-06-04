@@ -4,7 +4,7 @@ import { useChatStore } from '../store/chatStore'
 import { useSocket } from '../hooks/useSocket'
 import { useVoice } from '../hooks/useVoice'
 import { useScreenshare } from '../hooks/useScreenshare'
-import { fetchChannels, fetchMembers, fetchDMChannels } from '@kizuna/shared'
+import { fetchChannels, fetchMembers, fetchDMChannels, fetchServerInfo } from '@kizuna/shared'
 import ServerPanel from '../components/ServerPanel'
 import Sidebar from '../components/Sidebar'
 import ChatArea from '../components/ChatArea'
@@ -18,7 +18,7 @@ export default function Chat() {
   const session = useServerStore((s) => s.activeSession)
   const servers = useServerStore((s) => s.servers)
   const setActiveSession = useServerStore((s) => s.setActiveSession)
-  const { setChannels, setMembers, setDMChannels, activeChannelId, activeDMChannelId, setActiveChannel, setActiveDMChannel } = useChatStore()
+  const { setChannels, setMembers, setDMChannels, activeChannelId, activeDMChannelId, setActiveChannel, setActiveDMChannel, serverBackgroundEnabled } = useChatStore()
   const socketRef = useSocket()
   const {
     joinVoice,
@@ -32,6 +32,7 @@ export default function Chat() {
   const [showMembers, setShowMembers] = useState(false)
   const [chatClosing, setChatClosing] = useState(false)
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [bgInfo, setBgInfo] = useState<{ hasBackground: boolean; backgroundBlur: number } | null>(null)
 
   const closeChat = useCallback(() => {
     setChatClosing(true)
@@ -70,14 +71,16 @@ export default function Chat() {
 
     async function load() {
       try {
-        const [channels, members, dms] = await Promise.all([
+        const [channels, members, dms, info] = await Promise.all([
           fetchChannels(session!.url, session!.token),
           fetchMembers(session!.url, session!.token),
           fetchDMChannels(session!.url, session!.token),
+          fetchServerInfo(session!.url),
         ])
         setChannels(channels)
         setMembers(members)
         setDMChannels(dms)
+        setBgInfo({ hasBackground: info.hasBackground, backgroundBlur: info.backgroundBlur })
       } catch {
         setActiveSession(null)
         navigate('/')
@@ -90,8 +93,16 @@ export default function Chat() {
 
   const shouldShowChat = chatOpen || chatClosing
 
+  const showBg = bgInfo?.hasBackground && serverBackgroundEnabled
+
   return (
-    <div className="chat-layout">
+    <div
+      className={`chat-layout${showBg ? ' chat-layout--has-bg' : ''}`}
+      style={showBg && session ? {
+        '--bg-image': `url(${session.url}/api/server/background)`,
+        '--bg-blur': `${bgInfo?.backgroundBlur ?? 0}px`,
+      } as React.CSSProperties : undefined}
+    >
       {servers.length > 0 && <ServerPanel />}
       <Sidebar
         joinVoice={joinVoice}

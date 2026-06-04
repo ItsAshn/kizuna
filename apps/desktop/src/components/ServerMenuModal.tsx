@@ -16,6 +16,9 @@ import {
   createRole,
   updateRole,
   deleteRole,
+  uploadServerBackground,
+  deleteServerBackground,
+  fetchServerInfo,
 } from '@kizuna/shared'
 import type { Member, CustomRole, Permission } from '@kizuna/shared'
 import '../styles/server-menu.css'
@@ -115,6 +118,23 @@ export default function ServerMenuModal({ onClose }: Props) {
   const [serverMsg, setServerMsg] = useState<string | null>(null)
   const serverIconFileRef = useRef<HTMLInputElement>(null)
   const pendingServerIconFile = useRef<File | null>(null)
+
+  // ─── Background ──────────────────────────────────────
+  const [bgHasImage, setBgHasImage] = useState(false)
+  const [bgBlur, setBgBlur] = useState(0)
+  const [bgPreviewTs, setBgPreviewTs] = useState(Date.now())
+  const [bgUploading, setBgUploading] = useState(false)
+  const pendingBgFile = useRef<File | null>(null)
+
+  const bgPreviewUrl = serverUrl && bgHasImage ? `${serverUrl}/api/server/background?t=${bgPreviewTs}` : null
+
+  useEffect(() => {
+    if (!serverUrl) return
+    fetchServerInfo(serverUrl).then(info => {
+      setBgHasImage(info.hasBackground)
+      setBgBlur(info.backgroundBlur)
+    }).catch(() => {})
+  }, [serverUrl])
 
   // ─── Members ─────────────────────────────────────────
   const [membersLoading, setMembersLoading] = useState(false)
@@ -233,7 +253,7 @@ export default function ServerMenuModal({ onClose }: Props) {
           iconPayload = await fileToDataUrl(pendingServerIconFile.current)
         }
       }
-      const res = await updateServerSettings(serverUrl, token, serverName, iconPayload)
+      const res = await updateServerSettings(serverUrl, token, serverName, iconPayload, bgBlur)
       updateServerInfo(session.serverId, { name: res.name, icon: res.icon ?? undefined })
       setServerIconChanged(false)
       pendingServerIconFile.current = null
@@ -242,6 +262,37 @@ export default function ServerMenuModal({ onClose }: Props) {
       setServerMsg(handleApiErr(err))
     }
     setServerSaving(false)
+  }
+
+  // ─── Background handlers ────────────────────────────
+  const handleBgFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !serverUrl || !token) return
+    setServerMsg(null)
+    setBgUploading(true)
+    try {
+      await uploadServerBackground(serverUrl, token, file)
+      setBgHasImage(true)
+      setBgPreviewTs(Date.now())
+      setServerMsg('background uploaded')
+    } catch (err) {
+      setServerMsg(handleApiErr(err))
+    }
+    setBgUploading(false)
+    e.target.value = ''
+  }
+
+  const handleRemoveBg = async () => {
+    if (!serverUrl || !token) return
+    setServerMsg(null)
+    try {
+      await deleteServerBackground(serverUrl, token)
+      setBgHasImage(false)
+      setBgPreviewTs(Date.now())
+      setServerMsg('background removed')
+    } catch (err) {
+      setServerMsg(handleApiErr(err))
+    }
   }
 
   // ─── Member handlers ────────────────────────────────
@@ -405,6 +456,15 @@ export default function ServerMenuModal({ onClose }: Props) {
               <label className="server-menu__label">display name</label>
               <input className="server-menu__input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="display name" />
             </div>
+            <div className="server-menu__field" style={{ marginTop: '12px' }}>
+              <label className="server-menu__label">show server background</label>
+              <button
+                onClick={() => useChatStore.getState().setServerBackgroundEnabled(!useChatStore.getState().serverBackgroundEnabled)}
+                className={`server-menu__toggle ${useChatStore(s => s.serverBackgroundEnabled) ? 'server-menu__toggle--on' : ''}`}
+              >
+                {useChatStore(s => s.serverBackgroundEnabled) ? 'enabled' : 'disabled'}
+              </button>
+            </div>
             <div className="server-menu__save-row">
               <button onClick={handleSaveProfile} disabled={profileSaving} className="server-menu__save-btn">
                 {profileSaving ? '...' : 'save profile'}
@@ -454,6 +514,27 @@ export default function ServerMenuModal({ onClose }: Props) {
                   <div className="server-menu__field" style={{ marginTop: '12px' }}>
                     <label className="server-menu__label">server name</label>
                     <input className="server-menu__input" value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="server name" />
+                  </div>
+                  <div className="server-menu__field" style={{ marginTop: '16px' }}>
+                    <label className="server-menu__label">background image</label>
+                    <div className="server-menu__bg-row">
+                      {bgPreviewUrl && (
+                        <div className="server-menu__bg-preview" style={{ backgroundImage: `url(${bgPreviewUrl})` }} />
+                      )}
+                      <div className="server-menu__bg-actions">
+                        <button onClick={() => { const input = document.getElementById('bg-file-input') as HTMLInputElement; input?.click() }} disabled={bgUploading} className="server-menu__upload-btn">
+                          {bgUploading ? 'uploading...' : 'upload background'}
+                        </button>
+                        {bgHasImage && (
+                          <button onClick={handleRemoveBg} className="server-menu__remove-btn">remove background</button>
+                        )}
+                      </div>
+                      <input id="bg-file-input" type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgFile} />
+                    </div>
+                  </div>
+                  <div className="server-menu__field" style={{ marginTop: '12px' }}>
+                    <label className="server-menu__label">background blur ({bgBlur}px)</label>
+                    <input type="range" min="0" max="20" value={bgBlur} onChange={(e) => setBgBlur(Number(e.target.value))} className="server-menu__range" />
                   </div>
                   <div className="server-menu__save-row">
                     <button onClick={handleSaveServer} disabled={serverSaving} className="server-menu__save-btn">

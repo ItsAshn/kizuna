@@ -203,130 +203,137 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
   if (showLanding) {
     return (
       <div className="welcome welcome--landing">
-        <div className="landing-split">
-          <div className="landing-left">
-            <h1 className="landing-title">Kizuna</h1>
-            <p className="landing-tagline">Self-hosted voice & chat</p>
-            <div className="landing-links">
-              <a href="https://github.com/ItsAshn/kizuna/releases/latest" target="_blank" rel="noopener noreferrer" className="landing-link landing-link--primary">
-                <FaWindows size={16} />
-                Download for Windows
-              </a>
-              <a href="https://github.com/ItsAshn/kizuna/releases/latest" target="_blank" rel="noopener noreferrer" className="landing-link">
-                <FaLinux size={16} />
-                Download for Linux
-              </a>
-              <a href="https://github.com/ItsAshn/kizuna" target="_blank" rel="noopener noreferrer" className="landing-link">
-                <FaGithub size={16} />
-                GitHub
-              </a>
+        <div className="landing-hero">
+          <h1 className="landing-title">Kizuna</h1>
+          <p className="landing-tagline">Self-hosted voice &amp; chat</p>
+        </div>
+
+        <div className="landing-official">
+          <div className="landing-official__header">
+            <span className="landing-official__label">Official Server</span>
+          </div>
+          <div className="landing-official__body">
+            <p className="landing-official__desc">Join the community and test out the features.</p>
+            <button className="btn-primary" onClick={() => handleConnect('https://server.use-kizuna.com')}>
+              Connect to Official Server
+            </button>
+          </div>
+        </div>
+
+        <div className="landing-links">
+          <a href="https://github.com/ItsAshn/kizuna/releases/latest" target="_blank" rel="noopener noreferrer"             className="landing-link">
+            <FaWindows size={16} />
+            Windows
+          </a>
+          <a href="https://github.com/ItsAshn/kizuna/releases/latest" target="_blank" rel="noopener noreferrer" className="landing-link">
+            <FaLinux size={16} />
+            Linux
+          </a>
+          <a href="https://github.com/ItsAshn/kizuna" target="_blank" rel="noopener noreferrer" className="landing-link">
+            <FaGithub size={16} />
+            GitHub
+          </a>
+        </div>
+
+        <div className="landing-dashboard-grid">
+          <div className="landing-dashboard-panel">
+            <div className="landing-dashboard-panel__header">
+              <span className="landing-dashboard-panel__label">Servers</span>
+              <span className="landing-dashboard-panel__count">{servers.length} saved</span>
+            </div>
+            <div className="landing-dashboard-panel__body">
+              {servers.length === 0 ? (
+                <div className="welcome__dashboard-empty">
+                  <p className="welcome__dashboard-empty-text">No servers yet</p>
+                  <p className="welcome__dashboard-empty-sub">Connect to the official server above</p>
+                </div>
+              ) : (
+                servers.map((server) => {
+                  const mentions = mentionCounts[server.id] ?? 0
+                  return (
+                    <button key={server.id} className="welcome__server-item" onClick={() => handleConnect(server.url)}>
+                      <div className="welcome__server-icon">
+                        {server.icon ? (
+                          <img src={server.icon} alt="" className="welcome__server-icon-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                        ) : server.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="welcome__server-info">
+                        <p className="welcome__server-name">{server.name}</p>
+                        <p className="welcome__server-url">{server.url}</p>
+                      </div>
+                      {mentions > 0 && <span className="sidebar__unread-badge">{mentions > 99 ? '99+' : mentions}</span>}
+                      <span className="welcome__server-connect-label">connect</span>
+                    </button>
+                  )
+                })
+              )}
             </div>
           </div>
 
-          <div className="landing-right">
-            <div className="landing-dashboard-grid">
-              <div className="landing-dashboard-panel">
-                <div className="landing-dashboard-panel__header">
-                  <span className="landing-dashboard-panel__label">Servers</span>
-                  <span className="landing-dashboard-panel__count">{servers.length} saved</span>
+          <div className="landing-dashboard-panel">
+            <div className="landing-dashboard-panel__header">
+              <span className="landing-dashboard-panel__label">Direct Messages</span>
+            </div>
+            <div className="landing-dashboard-panel__body">
+              {dmsLoading ? (
+                <p className="welcome__dashboard-empty-text">Loading...</p>
+              ) : serverDMs.length === 0 ? (
+                <div className="welcome__dashboard-empty">
+                  <p className="welcome__dashboard-empty-text">No recent conversations</p>
+                  <p className="welcome__dashboard-empty-sub">Join a server to start chatting</p>
                 </div>
-                <div className="landing-dashboard-panel__body">
-                  {servers.length === 0 ? (
-                    <div className="welcome__dashboard-empty">
-                      <p className="welcome__dashboard-empty-text">No servers yet</p>
-                      <p className="welcome__dashboard-empty-sub">Click Connect below to add one</p>
-                    </div>
-                  ) : (
-                    servers.map((server) => {
-                      const mentions = mentionCounts[server.id] ?? 0
-                      return (
-                        <button key={server.id} className="welcome__server-item" onClick={() => handleConnect(server.url)}>
-                          <div className="welcome__server-icon">
-                            {server.icon ? (
-                              <img src={server.icon} alt="" className="welcome__server-icon-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                            ) : server.name.slice(0, 2).toUpperCase()}
-                          </div>
-                          <div className="welcome__server-info">
-                            <p className="welcome__server-name">{server.name}</p>
-                            <p className="welcome__server-url">{server.url}</p>
-                          </div>
-                          {mentions > 0 && <span className="sidebar__unread-badge">{mentions > 99 ? '99+' : mentions}</span>}
-                          <span className="welcome__server-connect-label">connect</span>
-                        </button>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div className="landing-dashboard-panel">
-                <div className="landing-dashboard-panel__header">
-                  <span className="landing-dashboard-panel__label">Direct Messages</span>
-                </div>
-                <div className="landing-dashboard-panel__body">
-                  {dmsLoading ? (
-                    <p className="welcome__dashboard-empty-text">Loading...</p>
-                  ) : serverDMs.length === 0 ? (
-                    <div className="welcome__dashboard-empty">
-                      <p className="welcome__dashboard-empty-text">No recent conversations</p>
-                      <p className="welcome__dashboard-empty-sub">Join a server to start chatting</p>
-                    </div>
-                  ) : (
-                    serverDMs.map((sd) => (
-                      <div key={sd.serverId} style={{ marginBottom: sd.channels.length > 0 ? '12px' : '0' }}>
-                        <p className="welcome__dm-group-label">{sd.serverName}</p>
-                        {sd.channels.map((ch) => (
-                          <div key={ch.id} className="welcome__dm-item">
-                            <div className="welcome__dm-avatar">{ch.other_display_name?.[0]?.toUpperCase()}</div>
-                            <div>
-                              <p className="welcome__dm-name">{ch.other_display_name}</p>
-                              <p className="welcome__dm-username">@{ch.other_username}</p>
-                            </div>
-                          </div>
-                        ))}
+              ) : (
+                serverDMs.map((sd) => (
+                  <div key={sd.serverId} style={{ marginBottom: sd.channels.length > 0 ? '12px' : '0' }}>
+                    <p className="welcome__dm-group-label">{sd.serverName}</p>
+                    {sd.channels.map((ch) => (
+                      <div key={ch.id} className="welcome__dm-item">
+                        <div className="welcome__dm-avatar">{ch.other_display_name?.[0]?.toUpperCase()}</div>
+                        <div>
+                          <p className="welcome__dm-name">{ch.other_display_name}</p>
+                          <p className="welcome__dm-username">@{ch.other_username}</p>
+                        </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div className="landing-dashboard-panel">
-                <div className="landing-dashboard-panel__header">
-                  <span className="landing-dashboard-panel__label">Status</span>
-                </div>
-                <div className="landing-dashboard-panel__body">
-                  <div className="welcome__status-row">
-                    <span className="welcome__status-label">Servers</span>
-                    <span className="welcome__status-value">{servers.length}</span>
+                    ))}
                   </div>
-                  {totalMentions > 0 && (
-                    <div className="welcome__status-row">
-                      <span className="welcome__status-label">Mentions</span>
-                      <span className="welcome__status-value welcome__status-value--danger">{totalMentions}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
+                ))
+              )}
+            </div>
+          </div>
 
-              <div className="landing-dashboard-panel">
-                <div className="landing-dashboard-panel__header">
-                  <span className="landing-dashboard-panel__label">About</span>
+          <div className="landing-dashboard-panel">
+            <div className="landing-dashboard-panel__header">
+              <span className="landing-dashboard-panel__label">Status</span>
+            </div>
+            <div className="landing-dashboard-panel__body">
+              <div className="welcome__status-row">
+                <span className="welcome__status-label">Servers</span>
+                <span className="welcome__status-value">{servers.length}</span>
+              </div>
+              {totalMentions > 0 && (
+                <div className="welcome__status-row">
+                  <span className="welcome__status-label">Mentions</span>
+                  <span className="welcome__status-value welcome__status-value--danger">{totalMentions}</span>
                 </div>
-                <div className="landing-dashboard-panel__body">
-                  <p className="welcome__server-name">Kizuna <span className="welcome__dashboard-panel-label">v0.1.0</span></p>
-                  <p className="welcome__subtitle" style={{ marginTop: '4px' }}>Self-hosted voice & chat</p>
-                  <div className="welcome__tech-tags">
-                    <span className="welcome__tech-tag">webrtc</span>
-                    <span className="welcome__tech-tag">mediasoup</span>
-                    <span className="welcome__tech-tag">react</span>
-                    <span className="welcome__tech-tag">sqlite</span>
-                    <span className="welcome__tech-tag">tauri</span>
-                  </div>
-                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="landing-dashboard-panel">
+            <div className="landing-dashboard-panel__header">
+              <span className="landing-dashboard-panel__label">About</span>
+            </div>
+            <div className="landing-dashboard-panel__body">
+              <p className="welcome__server-name">Kizuna <span className="welcome__dashboard-panel-label">v0.1.0</span></p>
+              <p className="welcome__subtitle" style={{ marginTop: '4px' }}>Self-hosted voice &amp; chat</p>
+              <div className="welcome__tech-tags">
+                <span className="welcome__tech-tag">webrtc</span>
+                <span className="welcome__tech-tag">mediasoup</span>
+                <span className="welcome__tech-tag">react</span>
+                <span className="welcome__tech-tag">sqlite</span>
+                <span className="welcome__tech-tag">tauri</span>
               </div>
             </div>
-
-            <button className="landing-dashboard-cta" onClick={() => setShowConnect(true)}>Connect to Server</button>
           </div>
         </div>
 

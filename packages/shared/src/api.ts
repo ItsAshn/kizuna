@@ -9,6 +9,7 @@ import type {
   Permission,
   DMChannelData,
   FileAttachment,
+  ServerInfo,
 } from './types'
 
 function normalizeUrl(url: string): string {
@@ -78,16 +79,11 @@ export async function getUserPublicKey(
   return res.data.public_key ?? null
 }
 
-export async function fetchServerInfo(serverUrl: string) {
+export async function fetchServerInfo(serverUrl: string): Promise<ServerInfo> {
   const res = await axios.get(`${normalizeUrl(serverUrl)}/api/server/info`, {
     timeout: 8000,
   })
-  return res.data as {
-    name: string
-    description: string
-    passwordProtected: boolean
-    icon: string | null
-  }
+  return res.data as ServerInfo
 }
 
 export async function resolveInviteCode(
@@ -211,9 +207,62 @@ export async function updateServerSettings(
   token: string,
   name: string,
   icon?: string | null,
-): Promise<{ name: string; icon: string | null }> {
-  const res = await client(serverUrl, token).patch('/api/server/settings', { name, icon })
-  return res.data
+  background_blur?: number,
+): Promise<ServerInfo> {
+  const res = await client(serverUrl, token).patch('/api/server/settings', { name, icon, background_blur })
+  return res.data as ServerInfo
+}
+
+export async function uploadServerBackground(
+  serverUrl: string,
+  token: string,
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<void> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  if (onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${normalizeUrl(serverUrl)}/api/server/background`)
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100))
+        }
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve()
+        } else {
+          let message = 'Upload failed'
+          try { const err = JSON.parse(xhr.responseText); message = err.error || message } catch { /* ignore */ }
+          reject(new Error(message))
+        }
+      }
+      xhr.onerror = () => reject(new Error('Upload failed'))
+      xhr.send(formData)
+    })
+  }
+
+  const response = await fetch(`${normalizeUrl(serverUrl)}/api/server/background`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Upload failed' }))
+    throw new Error(error.error || 'Upload failed')
+  }
+}
+
+export async function deleteServerBackground(
+  serverUrl: string,
+  token: string,
+): Promise<void> {
+  await client(serverUrl, token).delete('/api/server/background')
 }
 
 // ─── Invites ──────────────────────────────────────────────
