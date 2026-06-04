@@ -14,12 +14,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
+COPY apps/server/package.json apps/server/
+COPY apps/desktop/package.json apps/desktop/
+COPY packages/shared/package.json packages/shared/
+
 RUN pnpm install --frozen-lockfile
 
-COPY src/ ./src/
-COPY tsconfig.json ./
-RUN pnpm build
+COPY apps/server/src/ apps/server/src/
+COPY apps/server/tsconfig.json apps/server/
+COPY packages/shared/src/ packages/shared/src/
+
+RUN pnpm --filter @kizuna/server build
 
 FROM base AS runtime
 
@@ -29,9 +35,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=builder /app/package.json /app/pnpm-lock.yaml ./
+COPY --from=builder /app/pnpm-workspace.yaml /app/pnpm-lock.yaml /app/package.json ./
+COPY --from=builder /app/apps/server/package.json apps/server/
+COPY --from=builder /app/packages/shared/package.json packages/shared/
+COPY --from=builder /app/packages/shared/src/ packages/shared/src/
+
 RUN pnpm install --prod --frozen-lockfile
-COPY --from=builder /app/dist ./dist
+
+COPY --from=builder /app/apps/server/dist apps/server/dist
 
 RUN groupadd --system kizuna && useradd --system --gid kizuna kizuna
 RUN mkdir -p /data && chown kizuna:kizuna /data
@@ -45,4 +56,4 @@ USER kizuna
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://localhost:5000/health').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "apps/server/dist/index.js"]

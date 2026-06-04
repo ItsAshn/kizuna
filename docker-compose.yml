@@ -2,8 +2,8 @@ services:
   kizuna:
     image: ghcr.io/itsashn/kizuna:latest
     build:
-      context: apps/server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/server/Dockerfile
     restart: unless-stopped
     ports:
       - "${RTC_MIN_PORT:-40000}-${RTC_MAX_PORT:-40099}:${RTC_MIN_PORT:-40000}-${RTC_MAX_PORT:-40099}/udp"
