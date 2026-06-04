@@ -6,6 +6,7 @@ export const SCHEMA_SQL = `
     password_hash TEXT NOT NULL,
     avatar TEXT DEFAULT NULL,
     last_seen_at INTEGER DEFAULT NULL,
+    public_key TEXT DEFAULT NULL,
     created_at INTEGER DEFAULT (unixepoch())
   );
 
@@ -48,6 +49,7 @@ export const SCHEMA_SQL = `
     from_username TEXT NOT NULL,
     to_id TEXT NOT NULL,
     content TEXT NOT NULL,
+    encrypted INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER DEFAULT (unixepoch())
   );
 

@@ -14,6 +14,7 @@ export interface User {
   created_at: number
   role?: 'admin' | 'member'
   last_seen_at?: number | null
+  public_key?: string | null
 }
 
 export interface Channel {
@@ -33,6 +34,7 @@ export interface Message {
   display_name?: string
   avatar?: string
   content: string
+  encrypted?: number
   created_at: number
   edited_at?: number | null
   updated_at?: number | null
@@ -129,6 +131,7 @@ export interface DMChannelData {
   other_username: string
   other_display_name: string
   other_avatar: string | null
+  other_public_key: string | null
   created_at: number
   last_message_at: number | null
 }

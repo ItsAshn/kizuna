@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Channel, Message, Member, DMChannelData, VoicePeer, ConnectionQuality, ScreenSharePeer, MonitorInfo } from '@kizuna/shared'
 
+export type VoiceInputMode = 'voice-activity' | 'push-to-talk'
+
 interface ChatState {
   channels: Channel[]
   dmChannels: DMChannelData[]
@@ -22,6 +24,16 @@ interface ChatState {
   audioOutputDeviceId: string | null
   voiceError: string | null
   typingUsers: Record<string, string[]>
+
+  voiceInputMode: VoiceInputMode
+  voiceGateThreshold: number
+  pushToTalkKey: string
+  noiseSuppression: boolean
+  echoCancellation: boolean
+  autoGainControl: boolean
+  inputVolume: number
+  outputVolume: number
+  liveAudioLevel: number
 
   screenSharePeerId: string | null
   screenShareUsername: string | null
@@ -56,6 +68,15 @@ interface ChatState {
   setAudioInputDeviceId: (id: string | null) => void
   setAudioOutputDeviceId: (id: string | null) => void
   setVoiceError: (error: string | null) => void
+  setVoiceInputMode: (mode: VoiceInputMode) => void
+  setVoiceGateThreshold: (threshold: number) => void
+  setPushToTalkKey: (key: string) => void
+  setNoiseSuppression: (enabled: boolean) => void
+  setEchoCancellation: (enabled: boolean) => void
+  setAutoGainControl: (enabled: boolean) => void
+  setInputVolume: (volume: number) => void
+  setOutputVolume: (volume: number) => void
+  setLiveAudioLevel: (level: number) => void
   setTypingUsers: (channelId: string, users: string[]) => void
   setScreenSharePeer: (peerId: string | null, username: string | null) => void
   clearScreenSharePeer: () => void
@@ -89,6 +110,15 @@ export const useChatStore = create<ChatState>()(
       audioOutputDeviceId: null,
       voiceError: null,
       typingUsers: {},
+      voiceInputMode: 'voice-activity' as VoiceInputMode,
+      voiceGateThreshold: 50,
+      pushToTalkKey: 'AltLeft',
+      noiseSuppression: true,
+      echoCancellation: true,
+      autoGainControl: true,
+      inputVolume: 100,
+      outputVolume: 100,
+      liveAudioLevel: 0,
       screenSharePeerId: null,
       screenShareUsername: null,
       isScreenSharing: false,
@@ -104,12 +134,16 @@ export const useChatStore = create<ChatState>()(
       setMessages: (channelId, messages) =>
         set((state) => ({ messages: { ...state.messages, [channelId]: messages } })),
       addMessage: (channelId, message) =>
-        set((state) => ({
-          messages: {
-            ...state.messages,
-            [channelId]: [...(state.messages[channelId] || []), message],
-          },
-        })),
+        set((state) => {
+          const existing = state.messages[channelId] || []
+          if (existing.some((m) => m.id === message.id)) return state
+          return {
+            messages: {
+              ...state.messages,
+              [channelId]: [...existing, message],
+            },
+          }
+        }),
       setMembers: (members) => set({ members }),
       setActiveChannel: (activeChannelId) => set({ activeChannelId, activeDMChannelId: null }),
       setActiveDMChannel: (activeDMChannelId) => set({ activeDMChannelId, activeChannelId: null }),
@@ -140,6 +174,15 @@ export const useChatStore = create<ChatState>()(
       setAudioInputDeviceId: (audioInputDeviceId) => set({ audioInputDeviceId }),
       setAudioOutputDeviceId: (audioOutputDeviceId) => set({ audioOutputDeviceId }),
       setVoiceError: (voiceError) => set({ voiceError }),
+      setVoiceInputMode: (voiceInputMode) => set({ voiceInputMode }),
+      setVoiceGateThreshold: (voiceGateThreshold) => set({ voiceGateThreshold }),
+      setPushToTalkKey: (pushToTalkKey) => set({ pushToTalkKey }),
+      setNoiseSuppression: (noiseSuppression) => set({ noiseSuppression }),
+      setEchoCancellation: (echoCancellation) => set({ echoCancellation }),
+      setAutoGainControl: (autoGainControl) => set({ autoGainControl }),
+      setInputVolume: (inputVolume) => set({ inputVolume }),
+      setOutputVolume: (outputVolume) => set({ outputVolume }),
+      setLiveAudioLevel: (liveAudioLevel) => set({ liveAudioLevel }),
       setTypingUsers: (channelId, users) =>
         set((s) => ({
           typingUsers: { ...s.typingUsers, [channelId]: users },
@@ -162,6 +205,14 @@ export const useChatStore = create<ChatState>()(
         audioInputDeviceId: state.audioInputDeviceId,
         audioOutputDeviceId: state.audioOutputDeviceId,
         audioBitrateKbps: state.audioBitrateKbps,
+        voiceInputMode: state.voiceInputMode,
+        voiceGateThreshold: state.voiceGateThreshold,
+        pushToTalkKey: state.pushToTalkKey,
+        noiseSuppression: state.noiseSuppression,
+        echoCancellation: state.echoCancellation,
+        autoGainControl: state.autoGainControl,
+        inputVolume: state.inputVolume,
+        outputVolume: state.outputVolume,
       }),
     },
   ),

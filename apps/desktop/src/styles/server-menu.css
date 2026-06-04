@@ -56,6 +56,7 @@
   max-height: 85vh;
   overflow-y: auto;
   animation: modalSlideDown 0.25s ease-out;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .server-menu--closing {
@@ -96,7 +97,7 @@
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
 /* Sections */
@@ -108,7 +109,7 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-family: var(--font-mono);
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 /* Avatar upload */

@@ -23,7 +23,7 @@ function getOrCreateDMChannel(db: any, userId: string, otherUserId: string) {
 function formatDMChannel(channel: any, currentUserId: string) {
   const db = getDb()
   const otherUserId = channel.user1_id === currentUserId ? channel.user2_id : channel.user1_id
-  const otherUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(otherUserId) as any
+  const otherUser = db.prepare('SELECT id, username, display_name, avatar, public_key FROM users WHERE id = ?').get(otherUserId) as any
 
   return {
     id: channel.id,
@@ -31,6 +31,7 @@ function formatDMChannel(channel: any, currentUserId: string) {
     other_username: otherUser?.username || 'Unknown',
     other_display_name: otherUser?.display_name || otherUser?.username || 'Unknown',
     other_avatar: otherUser?.avatar || null,
+    other_public_key: otherUser?.public_key || null,
     created_at: channel.created_at * 1000,
     last_message_at: channel.last_message_at ? channel.last_message_at * 1000 : null,
   }
@@ -108,6 +109,7 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
     username: row.from_username,
     display_name: row.display_name || row.from_username,
     content: row.content,
+    encrypted: row.encrypted,
     created_at: row.created_at * 1000,
   }))
 
@@ -118,10 +120,11 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
 dmRoutes.post('/channel/:channelId/messages', authMiddleware, async (c) => {
   const user = getAuth(c)
   const channelId = c.req.param('channelId')
-  const body = await c.req.json() as { content: string }
-  const { content } = body
+  const body = await c.req.json() as { content: string; encrypted?: boolean }
+  const { content, encrypted } = body
   if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)
-  if (content.length > 4000) return c.json({ error: 'Message too long' }, 400)
+  const maxLen = encrypted ? 8000 : 4000
+  if (content.length > maxLen) return c.json({ error: 'Message too long' }, 400)
 
   const db = getDb()
   const channel = db.prepare('SELECT * FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)').get(channelId, user.userId, user.userId) as any
@@ -136,8 +139,8 @@ dmRoutes.post('/channel/:channelId/messages', authMiddleware, async (c) => {
   const now = Math.floor(Date.now() / 1000)
 
   db.prepare(
-    'INSERT INTO direct_messages (id, channel_id, from_id, from_username, to_id, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, channelId, user.userId, user.username, toId, content.trim(), now)
+    'INSERT INTO direct_messages (id, channel_id, from_id, from_username, to_id, content, encrypted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, channelId, user.userId, user.username, toId, content.trim(), encrypted ? 1 : 0, now)
 
   db.prepare('UPDATE dm_channels SET last_message_at = ? WHERE id = ?').run(now, channelId)
 
@@ -148,6 +151,7 @@ dmRoutes.post('/channel/:channelId/messages', authMiddleware, async (c) => {
     username: user.username,
     display_name: user.displayName,
     content: content.trim(),
+    encrypted: encrypted ? 1 : 0,
     created_at: now * 1000,
   }
 

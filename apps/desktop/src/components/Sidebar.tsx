@@ -5,14 +5,20 @@ import { useNavigate } from 'react-router-dom'
 import { createChannel } from '@kizuna/shared'
 import ServerMenuModal from './ServerMenuModal'
 import SettingsModal from './SettingsModal'
+import VoiceOverlay from './VoiceOverlay'
 import '../styles/sidebar.css'
 
 interface SidebarProps {
   joinVoice: (channelId: string) => Promise<string | null>
   leaveVoice: () => void
+  toggleMute: () => void
+  setAudioBitrate: (socket: any, kbps: number) => void
+  socketRef: React.MutableRefObject<any>
+  startScreenshare: (channelId: string, monitorIndex: number, fps: number) => Promise<string | null>
+  stopScreenshare: () => void
 }
 
-export default function Sidebar({ joinVoice, leaveVoice }: SidebarProps) {
+export default function Sidebar({ joinVoice, leaveVoice, toggleMute, setAudioBitrate, socketRef, startScreenshare, stopScreenshare }: SidebarProps) {
   const navigate = useNavigate()
   const session = useServerStore((s) => s.activeSession)
   const setActiveSession = useServerStore((s) => s.setActiveSession)
@@ -118,7 +124,9 @@ export default function Sidebar({ joinVoice, leaveVoice }: SidebarProps) {
         {dmChannels.length > 0 && (
           <div className="sidebar__section">
             <h3 className="sidebar__section-title">Direct Messages</h3>
-            {dmChannels.map((dm) => (
+            {dmChannels.map((dm) => {
+              const badge = unreadCounts[dm.id]
+              return (
               <button
                 key={dm.id}
                 onClick={() => setActiveDMChannel(dm.id)}
@@ -130,8 +138,10 @@ export default function Sidebar({ joinVoice, leaveVoice }: SidebarProps) {
                   ) : dm.other_display_name?.[0]?.toUpperCase() || '?'}
                 </div>
                 <span className="sidebar__channel-name">{dm.other_display_name}</span>
+                {badge ? <span className="sidebar__unread-badge">{badge}</span> : null}
               </button>
-            ))}
+              )
+            })}
           </div>
         )}
 
@@ -168,6 +178,15 @@ export default function Sidebar({ joinVoice, leaveVoice }: SidebarProps) {
           </form>
         )}
       </div>
+
+      <VoiceOverlay
+        leaveVoice={leaveVoice}
+        toggleMute={toggleMute}
+        setAudioBitrate={setAudioBitrate}
+        socketRef={socketRef}
+        startScreenshare={startScreenshare}
+        stopScreenshare={stopScreenshare}
+      />
 
       <div className="sidebar__footer">
         <button onClick={() => setShowSettings(true)} className="sidebar__logout">Settings</button>

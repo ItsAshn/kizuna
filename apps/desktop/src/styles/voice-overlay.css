@@ -1,43 +1,39 @@
-@keyframes voiceSlideUp {
+@keyframes voiceExpandIn {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(16px);
+    max-height: 0;
+    transform: scaleY(0.95);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    max-height: 400px;
+    transform: scaleY(1);
   }
 }
 
-@keyframes voiceSlideDown {
+@keyframes voiceExpandOut {
   from {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    max-height: 400px;
+    transform: scaleY(1);
   }
   to {
     opacity: 0;
-    transform: translateX(-50%) translateY(16px);
+    max-height: 0;
+    transform: scaleY(0.95);
   }
 }
 
 .voice-overlay {
-  position: fixed;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
   background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  min-width: 360px;
-  max-width: 480px;
-  z-index: 50;
+  border-top: 1px solid var(--border-color);
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
-  animation: voiceSlideUp 0.3s ease-out;
+  animation: voiceExpandIn 0.3s ease-out;
+  transform-origin: top;
 }
 
 .voice-overlay--closing {
-  animation: voiceSlideDown 0.25s ease-in forwards;
+  animation: voiceExpandOut 0.25s ease-in forwards;
   pointer-events: none;
 }
 
@@ -45,8 +41,6 @@
   background: var(--red-dim);
   border-bottom: 1px solid var(--red-dim-border);
   padding: 8px 12px;
-  border-top-left-radius: var(--radius-xl);
-  border-top-right-radius: var(--radius-xl);
 }
 
 .voice-error__label {
@@ -99,10 +93,11 @@
 .voice-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 6px 12px;
   background: var(--green-dim);
   border-bottom: 1px solid var(--green-dim-border);
+  flex-wrap: wrap;
 }
 
 .voice-header__icon {
@@ -172,11 +167,11 @@
 }
 
 .voice-body {
-  padding: 8px 12px;
+  padding: 6px 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  max-height: 192px;
+  gap: 3px;
+  max-height: 140px;
   overflow-y: auto;
 }
 
@@ -312,8 +307,8 @@
 .voice-bitrate {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 6px 12px;
   border-top: 1px solid var(--border-color);
 }
 

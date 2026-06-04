@@ -30,12 +30,14 @@ export async function register(
   password: string,
   display_name?: string,
   serverPassword?: string,
+  public_key?: string,
 ): Promise<{ token: string; user: User }> {
   const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/register`, {
     username,
     password,
     display_name: display_name || username,
     ...(serverPassword ? { serverPassword } : {}),
+    ...(public_key ? { public_key } : {}),
   })
   return res.data
 }
@@ -57,6 +59,23 @@ export async function getMe(serverUrl: string, token: string): Promise<User> {
     headers: { Authorization: `Bearer ${token}` },
   })
   return res.data
+}
+
+export async function uploadPublicKey(
+  serverUrl: string,
+  token: string,
+  publicKey: string,
+): Promise<void> {
+  await client(serverUrl, token).put('/api/auth/public-key', { public_key: publicKey })
+}
+
+export async function getUserPublicKey(
+  serverUrl: string,
+  token: string,
+  userId: string,
+): Promise<string | null> {
+  const res = await client(serverUrl, token).get(`/api/auth/users/${userId}/public-key`)
+  return res.data.public_key ?? null
 }
 
 export async function fetchServerInfo(serverUrl: string) {
@@ -357,10 +376,11 @@ export async function sendDMMessage(
   token: string,
   channelId: string,
   content: string,
+  encrypted?: boolean,
 ): Promise<Message> {
   const res = await client(serverUrl, token).post(
     `/api/dms/channel/${channelId}/messages`,
-    { content },
+    { content, encrypted: encrypted || false },
   )
   return res.data.message ?? res.data
 }

@@ -4,6 +4,8 @@ import type { Socket } from 'socket.io-client'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, uploadAttachment } from '@kizuna/shared'
+import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
+import { getSecretKey } from '../store/keyStore'
 import type { Message, Member } from '@kizuna/shared'
 import '../styles/chat-area.css'
 
@@ -131,6 +133,30 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([])
 
+  const tryDecryptDM = useCallback((msg: Message): Message => {
+    if (!msg.encrypted) return msg
+    const parsed = isEncryptedContent(msg.content)
+    if (!parsed) return msg
+    const secKey = getSecretKey()
+    if (!secKey) return { ...msg, content: '[Encrypted - no key available]' }
+    const activeDM = dmChannels.find((d) => d.id === msg.channel_id)
+    const otherPubKey = activeDM?.other_public_key
+    if (!otherPubKey) return { ...msg, content: '[Encrypted - missing recipient key]' }
+    const senderIsMe = msg.user_id === session?.user.id
+    let theirPubKey: string
+    if (senderIsMe) {
+      theirPubKey = otherPubKey
+    } else {
+      theirPubKey = otherPubKey
+    }
+    try {
+      const decrypted = decryptDM(parsed, theirPubKey, secKey)
+      return { ...msg, content: decrypted }
+    } catch {
+      return { ...msg, content: '[Encrypted - unable to decrypt]' }
+    }
+  }, [dmChannels, session?.user.id])
+
   const activeChannel = channels.find((c) => c.id === activeChannelId)
   const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
   const channelMessages = messages[activeChannelId || ''] || []
@@ -154,6 +180,10 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
         .then((msgs) => useChatStore.getState().setMessages(activeChannelId, msgs))
         .finally(() => setLoading(false))
 
+      const store = useChatStore.getState()
+      store.setUnreadCounts({ ...store.unreadCounts, [activeChannelId]: 0 })
+      store.setMentionCounts({ ...store.mentionCounts, [activeChannelId]: 0 })
+
       socketRef.current?.emit('channel:join', activeChannelId)
       socketRef.current?.emit('mentions:read', { userId: session?.user.id, channelId: activeChannelId })
       socketRef.current?.emit('channel:read', { userId: session?.user.id, channelId: activeChannelId })
@@ -166,14 +196,21 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     if (activeDMChannelId) {
       setLoading(true)
       fetchDMMessages(session!.url, session!.token, activeDMChannelId)
-        .then((msgs) => useChatStore.getState().setMessages(activeDMChannelId, msgs))
+        .then((msgs) => {
+          const decrypted = msgs.map((m) => tryDecryptDM(m))
+          useChatStore.getState().setMessages(activeDMChannelId, decrypted)
+        })
         .finally(() => setLoading(false))
+
+      const store = useChatStore.getState()
+      store.setUnreadCounts({ ...store.unreadCounts, [activeDMChannelId]: 0 })
+      store.setMentionCounts({ ...store.mentionCounts, [activeDMChannelId]: 0 })
 
       socketRef.current?.emit('dm:read', { userId: session?.user.id, channelId: activeDMChannelId })
 
       return () => { socketRef.current?.emit('channel:leave', activeDMChannelId) }
     }
-  }, [activeDMChannelId])
+  }, [activeDMChannelId, tryDecryptDM])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -248,7 +285,20 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
       if (activeChannelId) {
         message = await sendMessage(session.url, session.token, activeChannelId, input.trim())
       } else if (activeDMChannelId) {
-        message = await sendDMMessage(session.url, session.token, activeDMChannelId, input.trim())
+        const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
+        const otherPubKey = activeDM?.other_public_key
+        const secKey = getSecretKey()
+        let content: string
+        let encrypted = false
+        if (otherPubKey && secKey) {
+          const enc = encryptDM(input.trim(), otherPubKey, secKey)
+          content = JSON.stringify(enc)
+          encrypted = true
+        } else {
+          content = input.trim()
+        }
+        message = await sendDMMessage(session.url, session.token, activeDMChannelId, content, encrypted)
+        message = tryDecryptDM(message)
       } else {
         return
       }
@@ -319,23 +369,19 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     : typingList.length > 1
       ? `${typingList.length} people are typing...`
       : ''
-
-  if (!activeChannelId && !activeDMChannelId) {
-    return (
-      <div className="chat-area__empty">
-        <div className="chat-area__empty-content">
-          <p className="chat-area__empty-title">Welcome to Kizuna</p>
-          <p className="chat-area__empty-subtitle">Select a channel to start chatting</p>
-        </div>
-      </div>
-    )
-  }
-
+  const dmHasKey = activeDMChannelId ? !!(activeDM?.other_public_key && getSecretKey()) : false
+  const inputMaxLen = activeDMChannelId ? 2700 : 4000
   return (
     <div className="chat-area">
       <div className="chat-area__header">
         <span className="chat-area__header-prefix">{activeDMChannelId ? '@' : '#'}</span>
         <h2 className="chat-area__header-title">{headerTitle}</h2>
+        {activeDMChannelId && dmHasKey && (
+          <span className="chat-area__encrypted-badge" title="End-to-end encrypted">🔒</span>
+        )}
+        {activeDMChannelId && !dmHasKey && activeDM?.other_public_key !== undefined && (
+          <span className="chat-area__encrypted-badge chat-area__encrypted-badge--warn" title="Not encrypted - keys unavailable">{activeDM?.other_public_key === null ? '⚠️' : '⚠️'}</span>
+        )}
         {activeChannel?.topic && (
           <span className="chat-area__header-topic">{activeChannel.topic}</span>
         )}
@@ -436,7 +482,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            maxLength={4000}
+            maxLength={inputMaxLen}
           />
           <button className="chat-area__send-btn" onClick={handleSend} disabled={!input.trim() && !pendingFile}>
             Send

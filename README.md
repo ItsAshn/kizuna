@@ -60,6 +60,25 @@ All settings are in the `.env` file. See `.env.example` for a full reference.
 
 Download the latest desktop client from [releases](https://github.com/ItsAshn/kizuna/releases) and point it at your server's address.
 
+## Development
+
+```bash
+# Install dependencies
+pnpm install
+
+# Start the server (http://localhost:5000)
+pnpm dev:server
+
+# Start the desktop client dev server (http://localhost:1420)
+pnpm dev:desktop
+```
+
+Open `http://localhost:1420` in Chrome or Firefox. Voice channels require WebRTC support.
+
+### Linux Dev Notes
+
+Voice channels in the Tauri desktop window (`pnpm desktop`) require `webkit2gtk-4.1` built with WebRTC support. On Arch Linux, the standard `extra/webkit2gtk-4.1` package does not include it. Use `pnpm dev:desktop` and open Chrome/Firefox for voice features during development. The CI-built AppImage bundles WebKit+GStreamer from Ubuntu, which includes full WebRTC support out of the box.
+
 ## Building from Source
 
 ```bash

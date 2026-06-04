@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useEffect } from 'react'
 import type { Socket } from 'socket.io-client'
 import { Device } from 'mediasoup-client'
 import type { Transport, Producer, Consumer } from 'mediasoup-client/types'
@@ -6,8 +6,12 @@ import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import type { ConnectionQuality } from '@kizuna/shared'
 
-const LOCAL_SPEAKING_THRESHOLD = 8
 const REMOTE_SPEAKING_THRESHOLD = 15
+
+function thresholdToRms(value: number): number {
+  return Math.max(1, Math.round(50 * Math.exp(-value * 0.04)))
+}
+
 const SPEAKING_POLL_MS = 80
 const SPEAKING_HOLD_MS = 600
 const QUALITY_POLL_MS = 3000
@@ -43,6 +47,9 @@ function computeQualityFromStats(report: RTCStatsReport): ConnectionQuality {
 function startSpeakingDetection(
   stream: MediaStream,
   onSpeaking: (speaking: boolean) => void,
+  thresholdRef: { current: number },
+  onLevel?: (level: number) => void,
+  gainNode?: GainNode,
 ): () => void {
   const analyserStream = stream.clone()
   const ctx = new AudioContext()
@@ -50,7 +57,13 @@ function startSpeakingDetection(
   const analyser = ctx.createAnalyser()
   analyser.fftSize = 512
   analyser.smoothingTimeConstant = 0.1
-  source.connect(analyser)
+  if (gainNode) {
+    source.disconnect()
+    source.connect(gainNode)
+    gainNode.connect(analyser)
+  } else {
+    source.connect(analyser)
+  }
   const buf = new Uint8Array(analyser.fftSize)
   let speaking = false
   let stopped = false
@@ -70,7 +83,9 @@ function startSpeakingDetection(
       squareSum += deviation * deviation
     }
     const rms = Math.sqrt(squareSum / buf.length)
-    const nowSpeaking = rms > LOCAL_SPEAKING_THRESHOLD
+    onLevel?.(rms)
+    const threshold = thresholdRef.current
+    const nowSpeaking = rms > threshold
     if (nowSpeaking) {
       if (holdTimer !== null) {
         clearTimeout(holdTimer)
@@ -178,6 +193,12 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const peerQualityIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
   const reconnectAttemptsRef = useRef(0)
   const isReconnectingRef = useRef(false)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const gainNodeRef = useRef<GainNode | null>(null)
+  const micStreamRef = useRef<MediaStream | null>(null)
+  const pttCleanupRef = useRef<(() => void) | null>(null)
+  const thresholdRef = useRef<number>(8)
+  const pttPressedRef = useRef<boolean>(false)
 
   const {
     setActiveVoiceChannel,
@@ -188,9 +209,17 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     audioInputDeviceId, audioOutputDeviceId,
     setVoiceError,
     setScreenSharePeer, clearScreenSharePeer,
+    voiceInputMode, voiceGateThreshold,
+    pushToTalkKey,
+    noiseSuppression, echoCancellation, autoGainControl,
+    inputVolume, outputVolume,
+    setLiveAudioLevel,
   } = useChatStore()
 
   const cleanupVoice = useCallback(() => {
+    pttCleanupRef.current?.()
+    pttCleanupRef.current = null
+    pttPressedRef.current = false
     if (qualityIntervalRef.current != null) {
       clearInterval(qualityIntervalRef.current)
       qualityIntervalRef.current = null
@@ -222,11 +251,17 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     sendTransportRef.current = null
     recvTransportRef.current = null
     deviceRef.current = null
+    gainNodeRef.current = null
+    audioCtxRef.current?.close()
+    audioCtxRef.current = null
+    micStreamRef.current?.getTracks().forEach((t) => t.stop())
+    micStreamRef.current = null
     setVoicePeers([])
     setIsSpeaking(false)
     setLocalConnectionQuality(null)
+    setLiveAudioLevel(0)
     clearScreenSharePeer()
-  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, clearScreenSharePeer])
+  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, setLiveAudioLevel, clearScreenSharePeer])
 
   const consumePeer = useCallback(async (
     socket: Socket,
@@ -253,6 +288,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     const audioEl = new Audio()
     audioEl.autoplay = true
     audioEl.srcObject = new MediaStream([consumer.track])
+    audioEl.volume = outputVolume / 100
     if (audioOutputDeviceId) {
       try {
         await (audioEl as HTMLAudioElement & { setSinkId(id: string): Promise<void> }).setSinkId(audioOutputDeviceId)
@@ -368,6 +404,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     if (!joinResult?.routerRtpCapabilities) {
       console.error('voice:join failed', joinResult)
       return 'Failed to join voice channel'
+    }
+
+    if (typeof RTCPeerConnection === 'undefined') {
+      return 'WebRTC is not supported in this browser. On Linux, ensure webkit2gtk is built with WebRTC support, or use Chromium/Firefox via pnpm dev:desktop.'
     }
 
     const device = new Device()
@@ -489,24 +529,82 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: audioInputDeviceId
-          ? { deviceId: { exact: audioInputDeviceId } }
-          : true,
-      })
+      const micConstraints: MediaTrackConstraints = audioInputDeviceId
+        ? {
+            deviceId: { exact: audioInputDeviceId },
+            noiseSuppression: { ideal: noiseSuppression },
+            echoCancellation: { ideal: echoCancellation },
+            autoGainControl: { ideal: autoGainControl },
+          }
+        : {
+            noiseSuppression: { ideal: noiseSuppression },
+            echoCancellation: { ideal: echoCancellation },
+            autoGainControl: { ideal: autoGainControl },
+          }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints })
+      micStreamRef.current = stream
       const track = stream.getAudioTracks()[0]
+      const audioCtx = new AudioContext()
+      audioCtxRef.current = audioCtx
+      const source = audioCtx.createMediaStreamSource(stream)
+      const gainNode = audioCtx.createGain()
+      gainNode.gain.value = inputVolume / 100
+      gainNodeRef.current = gainNode
+      const destination = audioCtx.createMediaStreamDestination()
+      source.connect(gainNode)
+      gainNode.connect(destination)
+
+      const processedTrack = destination.stream.getAudioTracks()[0]
       const producer = await sendTransport.produce({
-        track,
+        track: processedTrack,
         encodings: [{ maxBitrate: audioBitrateKbps * 1000 }],
         codecOptions: { opusStereo: false, opusDtx: true },
       })
       producerRef.current = producer
 
+      thresholdRef.current = thresholdToRms(voiceGateThreshold)
+
       localSpeakingCleanupRef.current?.()
-      localSpeakingCleanupRef.current = startSpeakingDetection(stream, (speaking) => {
-        setIsSpeaking(speaking)
-        socket.emit('voice:speaking', { channelId, speaking })
-      })
+      localSpeakingCleanupRef.current = startSpeakingDetection(
+        stream,
+        (speaking) => {
+          if (voiceInputMode === 'push-to-talk') return
+          setIsSpeaking(speaking)
+          socket.emit('voice:speaking', { channelId, speaking })
+        },
+        thresholdRef,
+        (level) => setLiveAudioLevel(level),
+        gainNode,
+      )
+
+      if (voiceInputMode === 'push-to-talk') {
+        setIsSpeaking(false)
+        const handleKeyDown = (e: KeyboardEvent) => {
+          if (e.code === pushToTalkKey && !e.repeat && producerRef.current) {
+            e.preventDefault()
+            pttPressedRef.current = true
+            producerRef.current.resume()
+            setIsSpeaking(true)
+            socket.emit('voice:speaking', { channelId, speaking: true })
+          }
+        }
+        const handleKeyUp = (e: KeyboardEvent) => {
+          if (e.code === pushToTalkKey && producerRef.current) {
+            pttPressedRef.current = false
+            producerRef.current.pause()
+            setIsSpeaking(false)
+            socket.emit('voice:speaking', { channelId, speaking: false })
+          }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        window.addEventListener('keyup', handleKeyUp)
+        producer.pause()
+        pttCleanupRef.current = () => {
+          window.removeEventListener('keydown', handleKeyDown)
+          window.removeEventListener('keyup', handleKeyUp)
+        }
+      }
     } catch (err: any) {
       console.error('Microphone access error', err)
       let errorMsg: string
@@ -548,6 +646,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setLocalConnectionQuality, audioBitrateKbps, audioInputDeviceId,
     audioOutputDeviceId, setVoiceError, consumePeer,
     consumeScreenShare, stopScreenConsume, setScreenSharePeer,
+    setLiveAudioLevel, voiceGateThreshold, voiceInputMode,
+    pushToTalkKey, noiseSuppression, echoCancellation, autoGainControl,
+    inputVolume,
   ])
 
   const handleTransportFailure = useCallback((socket: Socket, channelId: string) => {
@@ -600,13 +701,14 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   }, [socketRef, cleanupVoice, setActiveVoiceChannel, setIsMuted, setVoiceError])
 
   const toggleMute = useCallback(() => {
+    if (voiceInputMode === 'push-to-talk') return
     const muted = !isMuted
     setIsMuted(muted)
     if (producerRef.current) {
       if (muted) producerRef.current.pause()
       else producerRef.current.resume()
     }
-  }, [isMuted, setIsMuted])
+  }, [isMuted, setIsMuted, voiceInputMode])
 
   const setAudioBitrate = useCallback((socket: Socket, kbps: number) => {
     setAudioBitrateKbps(kbps)
@@ -624,6 +726,32 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       })
     }
   }, [setAudioBitrateKbps])
+
+  useEffect(() => {
+    let prevInputVolume = inputVolume
+    let prevOutputVolume = outputVolume
+    let prevThreshold = voiceGateThreshold
+
+    const unsub = useChatStore.subscribe((state) => {
+      if (state.inputVolume !== prevInputVolume) {
+        prevInputVolume = state.inputVolume
+        if (gainNodeRef.current) {
+          gainNodeRef.current.gain.value = state.inputVolume / 100
+        }
+      }
+      if (state.outputVolume !== prevOutputVolume) {
+        prevOutputVolume = state.outputVolume
+        audioElemsRef.current.forEach((el) => {
+          el.volume = state.outputVolume / 100
+        })
+      }
+      if (state.voiceGateThreshold !== prevThreshold) {
+        prevThreshold = state.voiceGateThreshold
+        thresholdRef.current = thresholdToRms(state.voiceGateThreshold)
+      }
+    })
+    return unsub
+  }, [])
 
   return { joinVoice, leaveVoice, toggleMute, setAudioBitrate, sendTransportRef, recvTransportRef, videoElRef }
 }

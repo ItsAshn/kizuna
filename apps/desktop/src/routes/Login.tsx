@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
-import { login, register, fetchServerInfo } from '@kizuna/shared'
+import { login, register, fetchServerInfo, uploadPublicKey } from '@kizuna/shared'
+import { generateAndStoreKey, initializeCrypto, userNeedsKeyUpload, getPublicKey } from '../store/keyStore'
 import '../styles/login.css'
 
 export default function Login() {
@@ -45,9 +46,15 @@ export default function Login() {
     try {
       let result
       if (isRegister) {
-        result = await register(server!.url, username.trim(), password, displayName || username, serverPassword || undefined)
+        const pubKey = await generateAndStoreKey(server!.url, password)
+        result = await register(server!.url, username.trim(), password, displayName || username, serverPassword || undefined, pubKey)
       } else {
         result = await login(server!.url, username.trim(), password)
+        await initializeCrypto(server!.url, result.token, password)
+        if (userNeedsKeyUpload(result.user.public_key, server!.url)) {
+          const pk = getPublicKey()
+          if (pk) await uploadPublicKey(server!.url, result.token, pk)
+        }
       }
 
       setActiveSession({

@@ -4,7 +4,9 @@ import { io } from 'socket.io-client'
 import type { Socket } from 'socket.io-client'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import type { Message, Channel } from '@kizuna/shared'
+import { decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
+import { getSecretKey } from '../store/keyStore'
+import type { Message, Channel, DMChannelData } from '@kizuna/shared'
 
 export function useSocket(): MutableRefObject<Socket | null> {
   const socketRef = useRef<Socket | null>(null)
@@ -34,10 +36,12 @@ export function useSocket(): MutableRefObject<Socket | null> {
     socket.on('message:new', (message: Message) => {
       const store = useChatStore.getState()
       store.addMessage(message.channel_id, message)
-      store.setUnreadCounts({
-        ...store.unreadCounts,
-        [message.channel_id]: (store.unreadCounts[message.channel_id] || 0) + 1,
-      })
+      if (message.channel_id !== store.activeChannelId) {
+        store.setUnreadCounts({
+          ...store.unreadCounts,
+          [message.channel_id]: (store.unreadCounts[message.channel_id] || 0) + 1,
+        })
+      }
     })
 
     socket.on('message:edit', (message: Message) => {
@@ -52,7 +56,30 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('dm:received', (message: Message) => {
-      useChatStore.getState().addMessage(message.channel_id, message)
+      const store = useChatStore.getState()
+      let decrypted = message
+      if (message.encrypted) {
+        const parsed = isEncryptedContent(message.content)
+        if (parsed) {
+          const secKey = getSecretKey()
+          if (secKey) {
+            const dm = store.dmChannels.find((d: DMChannelData) => d.id === message.channel_id)
+            const otherPubKey = dm?.other_public_key
+            if (otherPubKey) {
+              try {
+                decrypted = { ...message, content: decryptDM(parsed, otherPubKey, secKey) }
+              } catch { /* leave as-is on failure */ }
+            }
+          }
+        }
+      }
+      store.addMessage(message.channel_id, decrypted)
+      if (message.channel_id !== store.activeDMChannelId) {
+        store.setUnreadCounts({
+          ...store.unreadCounts,
+          [message.channel_id]: (store.unreadCounts[message.channel_id] || 0) + 1,
+        })
+      }
     })
 
     socket.on('message:mention', (mention: any) => {

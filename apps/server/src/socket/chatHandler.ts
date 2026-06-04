@@ -313,11 +313,12 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     socket.to(channelId).emit('typing:stop', { username })
   })
 
-  socket.on('dm:send', ({ toUserId, fromId, fromUsername, content }: {
+  socket.on('dm:send', ({ toUserId, fromId, fromUsername, content, encrypted }: {
     toUserId: string
     fromId: string
     fromUsername: string
     content: string
+    encrypted?: boolean
   }) => {
     if (!toUserId || !content?.trim()) return
 
@@ -334,8 +335,8 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
     const id = uuidv4()
     db.prepare(
-      'INSERT INTO direct_messages (id, channel_id, from_id, from_username, to_id, content) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(id, channel.id, fromId, fromUsername, toUserId, content.trim())
+      'INSERT INTO direct_messages (id, channel_id, from_id, from_username, to_id, content, encrypted) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, channel.id, fromId, fromUsername, toUserId, content.trim(), encrypted ? 1 : 0)
 
     const now = Math.floor(Date.now() / 1000)
     db.prepare('UPDATE dm_channels SET last_message_at = ? WHERE id = ?').run(now, channel.id)
@@ -346,6 +347,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       user_id: fromId,
       username: fromUsername,
       content: content.trim(),
+      encrypted: encrypted ? 1 : 0,
       created_at: Date.now(),
     }
     io.to(`dm:${toUserId}`).emit('dm:received', dm)

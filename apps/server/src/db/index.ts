@@ -96,6 +96,8 @@ function runMigrations(database: Database.Database): void {
     `CREATE INDEX IF NOT EXISTS idx_mentions_user_read ON mentions(mentioned_user_id, read)`,
     `CREATE INDEX IF NOT EXISTS idx_direct_messages_channel ON direct_messages(channel_id)`,
     `CREATE INDEX IF NOT EXISTS idx_message_edits_message ON message_edits(message_id)`,
+    `ALTER TABLE users ADD COLUMN public_key TEXT DEFAULT NULL`,
+    `ALTER TABLE direct_messages ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0`,
   ]
 
   for (const sql of migrations) {

@@ -503,3 +503,16 @@
   border-left: 1px solid var(--border-color);
   padding-left: 8px;
 }
+
+/* ── Encrypted badge ─────────────────────────────────────────── */
+
+.chat-area__encrypted-badge {
+  margin-left: 8px;
+  font-size: 13px;
+  cursor: default;
+  opacity: 0.6;
+}
+
+.chat-area__encrypted-badge--warn {
+  opacity: 0.4;
+}

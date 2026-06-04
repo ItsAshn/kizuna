@@ -6,6 +6,7 @@
   max-width: calc(100vw - 32px);
   max-height: 85vh;
   overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .settings-modal__header {
@@ -41,7 +42,7 @@
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .settings-modal__section-title {
@@ -145,4 +146,266 @@
 
 .settings-modal__done-btn:hover {
   background: var(--brand-hover);
+}
+
+.settings-modal__section-divider {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 0;
+}
+
+.settings-modal__radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-modal__radio-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.settings-modal__radio-option:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.settings-modal__radio-option--active {
+  color: var(--text-primary);
+  border-color: var(--brand);
+  background: var(--brand-dim);
+}
+
+.settings-modal__radio-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease;
+}
+
+.settings-modal__radio-option--active .settings-modal__radio-dot {
+  border-color: var(--brand);
+}
+
+.settings-modal__radio-dot::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand);
+  opacity: 0;
+  transform: scale(0);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.settings-modal__radio-option--active .settings-modal__radio-dot::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.settings-modal__toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-modal__toggle-label {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.settings-modal__toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.settings-modal__toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.settings-modal__toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.settings-modal__toggle input:checked + .settings-modal__toggle-track {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.settings-modal__toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--text-primary);
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.settings-modal__toggle input:checked + .settings-modal__toggle-track .settings-modal__toggle-thumb {
+  transform: translateX(18px);
+}
+
+.settings-modal__slider-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-modal__slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-modal__slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-modal__slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--brand) 0%, var(--brand) var(--slider-pct, 50%), var(--bg-tertiary) var(--slider-pct, 50%), var(--bg-tertiary) 100%);
+}
+
+.settings-modal__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--text-primary);
+  border: 2px solid var(--brand);
+  border-radius: 50%;
+  margin-top: -4px;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.settings-modal__slider::-webkit-slider-thumb:active {
+  transform: scale(1.15);
+}
+
+.settings-modal__slider-value {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  min-width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.settings-modal__meter-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.settings-modal__meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 60ms linear, background 0.3s ease;
+}
+
+.settings-modal__meter-fill--low {
+  background: var(--brand);
+}
+
+.settings-modal__meter-fill--mid {
+  background: var(--yellow);
+}
+
+.settings-modal__meter-fill--high {
+  background: var(--red);
+}
+
+.settings-modal__meter-threshold {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--text-muted);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.settings-modal__keybind-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-modal__keybind-label {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.settings-modal__keybind-btn {
+  padding: 4px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  min-width: 80px;
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.settings-modal__keybind-btn:hover {
+  border-color: var(--brand);
+}
+
+.settings-modal__keybind-btn--listening {
+  border-color: var(--brand);
+  background: var(--brand-dim);
+  color: var(--brand);
+  animation: keybind-pulse 1s ease infinite;
+}
+
+@keyframes keybind-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
