@@ -182,6 +182,8 @@ export interface ServerInfo {
   description: string
   passwordProtected: boolean
   icon: string | null
+  serverUrl: string | null
   hasBackground: boolean
   backgroundBlur: number
+  customCss: string | null
 }

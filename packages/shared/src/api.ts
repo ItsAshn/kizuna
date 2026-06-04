@@ -208,8 +208,9 @@ export async function updateServerSettings(
   name: string,
   icon?: string | null,
   background_blur?: number,
+  customCss?: string | null,
 ): Promise<ServerInfo> {
-  const res = await client(serverUrl, token).patch('/api/server/settings', { name, icon, background_blur })
+  const res = await client(serverUrl, token).patch('/api/server/settings', { name, icon, background_blur, custom_css: customCss })
   return res.data as ServerInfo
 }
 

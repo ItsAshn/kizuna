@@ -18,7 +18,7 @@ export default function Chat() {
   const session = useServerStore((s) => s.activeSession)
   const servers = useServerStore((s) => s.servers)
   const setActiveSession = useServerStore((s) => s.setActiveSession)
-  const { setChannels, setMembers, setDMChannels, activeChannelId, activeDMChannelId, setActiveChannel, setActiveDMChannel, serverBackgroundEnabled } = useChatStore()
+  const { setChannels, setMembers, setDMChannels, activeChannelId, activeDMChannelId, setActiveChannel, setActiveDMChannel, serverBackgroundEnabled, customCssEnabled } = useChatStore()
   const socketRef = useSocket()
   const {
     joinVoice,
@@ -32,7 +32,7 @@ export default function Chat() {
   const [showMembers, setShowMembers] = useState(false)
   const [chatClosing, setChatClosing] = useState(false)
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [bgInfo, setBgInfo] = useState<{ hasBackground: boolean; backgroundBlur: number } | null>(null)
+  const [bgInfo, setBgInfo] = useState<{ hasBackground: boolean; backgroundBlur: number; customCss: string | null } | null>(null)
 
   const closeChat = useCallback(() => {
     setChatClosing(true)
@@ -80,7 +80,7 @@ export default function Chat() {
         setChannels(channels)
         setMembers(members)
         setDMChannels(dms)
-        setBgInfo({ hasBackground: info.hasBackground, backgroundBlur: info.backgroundBlur })
+        setBgInfo({ hasBackground: info.hasBackground, backgroundBlur: info.backgroundBlur, customCss: info.customCss })
       } catch {
         setActiveSession(null)
         navigate('/')
@@ -88,6 +88,26 @@ export default function Chat() {
     }
     load()
   }, [session?.serverId])
+
+  useEffect(() => {
+    const el = document.getElementById('kizuna-custom-css') as HTMLStyleElement | null
+    if (customCssEnabled && bgInfo?.customCss) {
+      if (el) {
+        el.textContent = bgInfo.customCss
+      } else {
+        const style = document.createElement('style')
+        style.id = 'kizuna-custom-css'
+        style.textContent = bgInfo.customCss
+        document.head.appendChild(style)
+      }
+    } else if (el) {
+      el.remove()
+    }
+    return () => {
+      const style = document.getElementById('kizuna-custom-css')
+      if (style) style.remove()
+    }
+  }, [session?.serverId, customCssEnabled, bgInfo?.customCss])
 
   if (!session) return null
 

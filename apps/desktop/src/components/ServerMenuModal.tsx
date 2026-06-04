@@ -59,7 +59,7 @@ function fileToDataUrl(file: File): Promise<string> {
   })
 }
 
-type AdminTab = 'settings' | 'members' | 'invites' | 'roles'
+type AdminTab = 'settings' | 'members' | 'invites' | 'roles' | 'css'
 
 const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'send_messages', label: 'send' },
@@ -126,6 +126,10 @@ export default function ServerMenuModal({ onClose }: Props) {
   const [bgUploading, setBgUploading] = useState(false)
   const pendingBgFile = useRef<File | null>(null)
 
+  const [customCss, setCustomCss] = useState('')
+  const [customCssSaving, setCustomCssSaving] = useState(false)
+  const [customCssMsg, setCustomCssMsg] = useState<string | null>(null)
+
   const bgPreviewUrl = serverUrl && bgHasImage ? `${serverUrl}/api/server/background?t=${bgPreviewTs}` : null
 
   useEffect(() => {
@@ -133,8 +137,29 @@ export default function ServerMenuModal({ onClose }: Props) {
     fetchServerInfo(serverUrl).then(info => {
       setBgHasImage(info.hasBackground)
       setBgBlur(info.backgroundBlur)
+      setCustomCss(info.customCss || '')
     }).catch(() => {})
   }, [serverUrl])
+
+  useEffect(() => {
+    const previewEl = document.getElementById('kizuna-custom-css-preview') as HTMLStyleElement | null
+    if (adminTab === 'css' && customCss) {
+      if (previewEl) {
+        previewEl.textContent = customCss
+      } else {
+        const style = document.createElement('style')
+        style.id = 'kizuna-custom-css-preview'
+        style.textContent = customCss
+        document.head.appendChild(style)
+      }
+    } else if (previewEl) {
+      previewEl.remove()
+    }
+    return () => {
+      const el = document.getElementById('kizuna-custom-css-preview')
+      if (el) el.remove()
+    }
+  }, [adminTab, customCss])
 
   // ─── Members ─────────────────────────────────────────
   const [membersLoading, setMembersLoading] = useState(false)
@@ -262,6 +287,23 @@ export default function ServerMenuModal({ onClose }: Props) {
       setServerMsg(handleApiErr(err))
     }
     setServerSaving(false)
+  }
+
+  const handleSaveCustomCss = async () => {
+    if (!serverUrl || !token || !session) return
+    setCustomCssSaving(true)
+    setCustomCssMsg(null)
+    try {
+      const cssValue = customCss.trim() || null
+      await updateServerSettings(serverUrl, token, serverName, undefined, undefined, cssValue)
+      if (cssValue) {
+        setCustomCss(cssValue)
+      }
+      setCustomCssMsg('saved')
+    } catch (err) {
+      setCustomCssMsg(handleApiErr(err))
+    }
+    setCustomCssSaving(false)
   }
 
   // ─── Background handlers ────────────────────────────
@@ -465,6 +507,15 @@ export default function ServerMenuModal({ onClose }: Props) {
                 {useChatStore(s => s.serverBackgroundEnabled) ? 'enabled' : 'disabled'}
               </button>
             </div>
+            <div className="server-menu__field" style={{ marginTop: '12px' }}>
+              <label className="server-menu__label">enable custom css</label>
+              <button
+                onClick={() => useChatStore.getState().setCustomCssEnabled(!useChatStore.getState().customCssEnabled)}
+                className={`server-menu__toggle ${useChatStore(s => s.customCssEnabled) ? 'server-menu__toggle--on' : ''}`}
+              >
+                {useChatStore(s => s.customCssEnabled) ? 'enabled' : 'disabled'}
+              </button>
+            </div>
             <div className="server-menu__save-row">
               <button onClick={handleSaveProfile} disabled={profileSaving} className="server-menu__save-btn">
                 {profileSaving ? '...' : 'save profile'}
@@ -483,7 +534,7 @@ export default function ServerMenuModal({ onClose }: Props) {
               <p className="server-menu__section-title">admin</p>
 
               <div className="server-menu__tab-bar">
-                {(['settings', 'members', 'invites', 'roles'] as AdminTab[]).map(t => (
+                {(['settings', 'members', 'invites', 'roles', 'css'] as AdminTab[]).map(t => (
                   <button key={t} onClick={() => setAdminTab(t)}
                     className={`server-menu__tab ${adminTab === t ? 'server-menu__tab--active' : ''}`}>
                     {t}
@@ -760,6 +811,38 @@ export default function ServerMenuModal({ onClose }: Props) {
                       </div>
                     ))
                   )}
+                </div>
+              )}
+
+              {/* Custom CSS tab */}
+              {adminTab === 'css' && (
+                <div style={{ marginTop: '16px' }}>
+                  <p className="server-menu__section-title" style={{ marginBottom: '4px' }}>custom css</p>
+                  <p className="server-menu__css-hint">
+                    Override CSS variables to theme your server. Changes preview live below.
+                  </p>
+                  <textarea
+                    className="server-menu__css-editor"
+                    value={customCss}
+                    onChange={(e) => setCustomCss(e.target.value)}
+                    placeholder={`/* Kizuna Custom CSS — override any variable below */\n:root {\n  /* Backgrounds */\n  --bg-primary: #0a0a0a;\n  --bg-secondary: #111111;\n  --bg-tertiary: #1a1a1a;\n  --bg-hover: #262626;\n  --bg-active: #2d2d2d;\n\n  /* Text */\n  --text-primary: #ffffff;\n  --text-secondary: #a0a0a0;\n  --text-muted: #6b6b6b;\n\n  /* Borders */\n  --border-color: #2a2a2a;\n\n  /* Brand / Accent */\n  --brand: #4c6ef5;\n  --brand-hover: #4263eb;\n  --brand-dim: rgba(76, 110, 245, 0.15);\n  --accent-color: #6366f1;\n\n  /* Semantic colors */\n  --red: #ff4d4d;\n  --red-hover: #ff3333;\n  --red-dim: rgba(255, 77, 77, 0.15);\n  --red-dim-border: rgba(255, 77, 77, 0.30);\n  --green: #40c057;\n  --green-dim: rgba(64, 192, 87, 0.15);\n  --green-dim-border: rgba(64, 192, 87, 0.20);\n  --yellow: #fab005;\n\n  /* Border radius */\n  --radius-sm: 8px;\n  --radius-md: 12px;\n  --radius-lg: 16px;\n  --radius-xl: 24px;\n  --radius-full: 9999px;\n\n  /* Font */\n  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;\n}`}
+                    spellCheck={false}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                    <span className="server-menu__css-char-count">
+                      {customCss.length} / 50000
+                    </span>
+                  </div>
+                  <div className="server-menu__save-row">
+                    <button onClick={handleSaveCustomCss} disabled={customCssSaving || customCss.length > 50000} className="server-menu__save-btn">
+                      {customCssSaving ? '...' : 'save css'}
+                    </button>
+                    {customCssMsg && (
+                      <span className={`server-menu__save-msg ${customCssMsg === 'saved' ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`}>
+                        {customCssMsg}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
             </section>

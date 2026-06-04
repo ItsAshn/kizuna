@@ -42,6 +42,7 @@ interface ChatState {
   availableMonitors: MonitorInfo[]
 
   serverBackgroundEnabled: boolean
+  customCssEnabled: boolean
 
   updateState: 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
   updateProgress: number
@@ -86,6 +87,7 @@ interface ChatState {
   setScreenShareVideoProducerId: (producerId: string | null) => void
   setAvailableMonitors: (monitors: MonitorInfo[]) => void
   setServerBackgroundEnabled: (enabled: boolean) => void
+  setCustomCssEnabled: (enabled: boolean) => void
   setUpdateState: (state: 'idle' | 'checking' | 'downloading' | 'ready' | 'error') => void
   setUpdateProgress: (progress: number) => void
   setUpdateVersion: (version: string | null) => void
@@ -128,6 +130,7 @@ export const useChatStore = create<ChatState>()(
       screenShareVideoProducerId: null,
       availableMonitors: [],
       serverBackgroundEnabled: true,
+      customCssEnabled: true,
       updateState: 'idle' as const,
       updateProgress: 0,
       updateVersion: null,
@@ -199,6 +202,7 @@ export const useChatStore = create<ChatState>()(
       setScreenShareVideoProducerId: (screenShareVideoProducerId) => set({ screenShareVideoProducerId }),
       setAvailableMonitors: (availableMonitors) => set({ availableMonitors }),
       setServerBackgroundEnabled: (serverBackgroundEnabled) => set({ serverBackgroundEnabled }),
+      setCustomCssEnabled: (customCssEnabled) => set({ customCssEnabled }),
       setUpdateState: (updateState) => set({ updateState }),
       setUpdateProgress: (updateProgress) => set({ updateProgress }),
       setUpdateVersion: (updateVersion) => set({ updateVersion }),
@@ -219,6 +223,7 @@ export const useChatStore = create<ChatState>()(
         inputVolume: state.inputVolume,
         outputVolume: state.outputVolume,
         serverBackgroundEnabled: state.serverBackgroundEnabled,
+        customCssEnabled: state.customCssEnabled,
       }),
     },
   ),

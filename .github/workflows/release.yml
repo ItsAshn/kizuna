@@ -94,10 +94,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" \
-            apps/desktop/src-tauri/target/release/bundle/msi/*.msi \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber
+          shopt -s nullglob
+          FILES=(
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi.sig
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe.sig
+          )
+          if [ ${#FILES[@]} -gt 0 ]; then
+            gh release upload "$GITHUB_REF_NAME" "${FILES[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          fi
 
   build-desktop-linux:
     needs: create-release
@@ -137,11 +145,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" \
-            apps/desktop/src-tauri/target/release/bundle/deb/*.deb \
-            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber
+          shopt -s nullglob
+          FILES=(
+            apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage.sig
+          )
+          if [ ${#FILES[@]} -gt 0 ]; then
+            gh release upload "$GITHUB_REF_NAME" "${FILES[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          fi
 
   publish-release:
     needs: [build-docker, build-desktop-windows, build-desktop-linux]
@@ -157,3 +171,71 @@ jobs:
           gh release edit "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --draft=false
+
+      - name: Generate and upload updater manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_TAG="$GITHUB_REF_NAME"
+          REPO="$GITHUB_REPOSITORY"
+
+          echo "Getting release assets for $RELEASE_TAG..."
+          ASSETS_JSON=$(gh api "repos/$REPO/releases/tags/$RELEASE_TAG" --jq '[.assets[] | {name, browser_download_url}]')
+
+          # Build platforms object from .sig files
+          PLATFORMS="{}"
+          for row in $(echo "$ASSETS_JSON" | jq -c '.[]'); do
+            name=$(echo "$row" | jq -r '.name')
+            url=$(echo "$row" | jq -r '.browser_download_url')
+
+            case "$name" in
+              *.AppImage.sig)
+                bundle_name="${name%.sig}"
+                bundle_url=$(echo "$ASSETS_JSON" | jq -r --arg n "$bundle_name" '.[] | select(.name == $n) | .browser_download_url')
+                sig_content=$(curl -sL "$url")
+                PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$sig_content" --arg u "$bundle_url" '. + {"linux-x86_64": {signature: $sig, url: $u}}')
+                echo "  Added linux-x86_64: $bundle_name"
+                ;;
+              *.msi.sig)
+                bundle_name="${name%.sig}"
+                bundle_url=$(echo "$ASSETS_JSON" | jq -r --arg n "$bundle_name" '.[] | select(.name == $n) | .browser_download_url')
+                sig_content=$(curl -sL "$url")
+                PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$sig_content" --arg u "$bundle_url" '. + {"windows-x86_64": {signature: $sig, url: $u}}')
+                echo "  Added windows-x86_64 (msi): $bundle_name"
+                ;;
+              *.exe.sig)
+                bundle_name="${name%.sig}"
+                bundle_url=$(echo "$ASSETS_JSON" | jq -r --arg n "$bundle_name" '.[] | select(.name == $n) | .browser_download_url')
+                sig_content=$(curl -sL "$url")
+                # NSIS installer gets its own platform entry; uses same key
+                # Only add if no msi.sig already set the key
+                if echo "$PLATFORMS" | jq -e 'has("windows-x86_64")' > /dev/null 2>&1; then
+                  echo "  Skipped windows-x86_64 (nsis): already set via msi"
+                else
+                  PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$sig_content" --arg u "$bundle_url" '. + {"windows-x86_64": {signature: $sig, url: $u}}')
+                  echo "  Added windows-x86_64 (nsis): $bundle_name"
+                fi
+                ;;
+            esac
+          done
+
+          if [ "$PLATFORMS" = "{}" ]; then
+            echo "No .sig files found in release assets. Skipping latest.json generation."
+            exit 0
+          fi
+
+          echo "Generating latest.json..."
+          jq -n --arg version "$RELEASE_TAG" --argjson platforms "$PLATFORMS" '{
+            version: $version,
+            notes: "",
+            pub_date: (now | todate),
+            platforms: $platforms
+          }' > latest.json
+
+          echo "Uploading latest.json to release..."
+          gh release upload "$RELEASE_TAG" latest.json \
+            --repo "$REPO" \
+            --clobber
+
+          echo "Done. latest.json content:"
+          cat latest.json

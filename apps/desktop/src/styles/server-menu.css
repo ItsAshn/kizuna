@@ -815,3 +815,44 @@
   border-color: var(--brand);
   color: var(--brand);
 }
+
+/* Custom CSS editor */
+
+.server-menu__css-editor {
+  width: 100%;
+  min-height: 280px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  tab-size: 2;
+  transition: border-color 0.15s ease;
+}
+
+.server-menu__css-editor:focus {
+  border-color: var(--brand);
+}
+
+.server-menu__css-editor::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.server-menu__css-hint {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-bottom: 8px;
+}
+
+.server-menu__css-char-count {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}

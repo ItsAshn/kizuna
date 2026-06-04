@@ -25,6 +25,7 @@ function getServerInfo() {
   const icon = db.prepare("SELECT value FROM server_settings WHERE key = 'server_icon'").get() as { value: string } | undefined
   const serverUrl = db.prepare("SELECT value FROM server_settings WHERE key = 'server_url'").get() as { value: string } | undefined
   const backgroundBlur = db.prepare("SELECT value FROM server_settings WHERE key = 'background_blur'").get() as { value: string } | undefined
+  const customCss = db.prepare("SELECT value FROM server_settings WHERE key = 'custom_css'").get() as { value: string } | undefined
 
   let hasBackground = false
   try {
@@ -40,6 +41,7 @@ function getServerInfo() {
     serverUrl: serverUrl?.value || null,
     hasBackground,
     backgroundBlur: backgroundBlur?.value ? parseInt(backgroundBlur.value, 10) : 0,
+    customCss: customCss?.value || null,
   }
 }
 
@@ -66,8 +68,8 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
   const user = getAuth(c)
   if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
 
-  const body = await c.req.json() as { name?: string; icon?: string | null; background_blur?: number }
-  const { name, icon, background_blur } = body
+  const body = await c.req.json() as { name?: string; icon?: string | null; background_blur?: number; custom_css?: string | null }
+  const { name, icon, background_blur, custom_css } = body
   const db = getDb()
 
   if (name !== undefined) {
@@ -87,6 +89,19 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
   if (background_blur !== undefined) {
     const blur = Math.max(0, Math.min(20, background_blur))
     db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('background_blur', ?)").run(String(blur))
+  }
+  if (custom_css !== undefined) {
+    if (custom_css !== null && typeof custom_css !== 'string') {
+      return c.json({ error: 'custom_css must be a string or null' }, 400)
+    }
+    if (custom_css !== null && custom_css.length > 50000) {
+      return c.json({ error: 'custom_css must be under 50000 characters' }, 400)
+    }
+    if (custom_css === null) {
+      db.prepare("DELETE FROM server_settings WHERE key = 'custom_css'").run()
+    } else {
+      db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('custom_css', ?)").run(custom_css)
+    }
   }
 
   return c.json(getServerInfo())
