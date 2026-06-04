@@ -50,9 +50,10 @@ function startSpeakingDetection(
   thresholdRef: { current: number },
   onLevel?: (level: number) => void,
   gainNode?: GainNode,
+  audioCtx?: AudioContext,
 ): () => void {
   const analyserStream = stream.clone()
-  const ctx = new AudioContext()
+  const ctx = audioCtx ?? new AudioContext()
   const source = ctx.createMediaStreamSource(analyserStream)
   const analyser = ctx.createAnalyser()
   analyser.fftSize = 512
@@ -112,7 +113,7 @@ function startSpeakingDetection(
     if (timer !== null) clearTimeout(timer)
     if (holdTimer !== null) clearTimeout(holdTimer)
     source.disconnect()
-    ctx.close()
+    if (!audioCtx) ctx.close()
     analyserStream.getTracks().forEach((t) => t.stop())
   }
 }
@@ -576,6 +577,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         thresholdRef,
         (level) => setLiveAudioLevel(level),
         gainNode,
+        audioCtx,
       )
 
       if (voiceInputMode === 'push-to-talk') {
