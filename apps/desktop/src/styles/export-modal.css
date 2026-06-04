@@ -1,5 +1,5 @@
 .export-modal {
-  background: var(--bg-secondary);
+  background: var(--modal-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   width: 380px;

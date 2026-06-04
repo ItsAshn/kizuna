@@ -37,7 +37,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--modal-backdrop);
   backdrop-filter: blur(4px);
   animation: modalOverlayFadeIn 0.2s ease-out;
 }
@@ -48,7 +48,7 @@
 }
 
 .server-menu {
-  background: var(--bg-secondary);
+  background: var(--modal-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   width: 500px;

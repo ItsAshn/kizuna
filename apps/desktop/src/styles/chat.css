@@ -82,7 +82,7 @@
 .chat-modal {
   width: 100%;
   height: 100%;
-  background: var(--bg-secondary);
+  background: var(--modal-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-xl);
   overflow: hidden;

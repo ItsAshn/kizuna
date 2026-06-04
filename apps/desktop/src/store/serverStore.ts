@@ -76,6 +76,7 @@ export const useServerStore = create<ServerState>()(
         servers: state.servers,
         sessions: state.sessions,
         activeServerId: state.activeServerId,
+        activeSession: state.activeSession,
       }),
     },
   ),

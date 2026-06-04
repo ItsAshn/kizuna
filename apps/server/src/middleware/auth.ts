@@ -44,7 +44,9 @@ export function getUserPermissions(userId: string): { role: string; permissions:
 
   if (!member) return null
 
-  let permissions: Record<string, boolean> = {}
+  let permissions: Record<string, boolean> = {
+    send_messages: true,
+  }
   if (member.role === 'admin') {
     permissions = {
       send_messages: true,
@@ -55,9 +57,9 @@ export function getUserPermissions(userId: string): { role: string; permissions:
     }
   } else if (member.permissions) {
     try {
-      permissions = JSON.parse(member.permissions)
+      permissions = { send_messages: true, ...JSON.parse(member.permissions) }
     } catch {
-      permissions = {}
+      permissions = { send_messages: true }
     }
   }
 

@@ -3,8 +3,6 @@ import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useNavigate } from 'react-router-dom'
 import { createChannel } from '@kizuna/shared'
-import ServerMenuModal from './ServerMenuModal'
-import SettingsModal from './SettingsModal'
 import VoiceOverlay from './VoiceOverlay'
 import '../styles/sidebar.css'
 
@@ -16,9 +14,11 @@ interface SidebarProps {
   socketRef: React.MutableRefObject<any>
   startScreenshare: (channelId: string, monitorIndex: number, fps: number) => Promise<string | null>
   stopScreenshare: () => void
+  onOpenSettings: () => void
+  onOpenMenu: () => void
 }
 
-export default function Sidebar({ joinVoice, leaveVoice, toggleMute, setAudioBitrate, socketRef, startScreenshare, stopScreenshare }: SidebarProps) {
+export default function Sidebar({ joinVoice, leaveVoice, toggleMute, setAudioBitrate, socketRef, startScreenshare, stopScreenshare, onOpenSettings, onOpenMenu }: SidebarProps) {
   const navigate = useNavigate()
   const session = useServerStore((s) => s.activeSession)
   const setActiveSession = useServerStore((s) => s.setActiveSession)
@@ -31,8 +31,6 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, setAudioBit
   const [newChannelName, setNewChannelName] = useState('')
   const [newChannelType, setNewChannelType] = useState<'text' | 'voice'>('text')
   const [creating, setCreating] = useState(false)
-  const [showMenu, setShowMenu] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
 
   function handleLogout() {
     setActiveSession(null)
@@ -70,7 +68,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, setAudioBit
             <p className="sidebar__user-subtitle">@{session?.user.username}{isAdmin ? ' · admin' : ''}</p>
           </div>
           <button
-            onClick={() => setShowMenu(true)}
+            onClick={onOpenMenu}
             className="sidebar__channel-icon"
             style={{ marginLeft: 'auto', fontSize: '14px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
             title="server menu"
@@ -189,12 +187,9 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, setAudioBit
       />
 
       <div className="sidebar__footer">
-        <button onClick={() => setShowSettings(true)} className="sidebar__logout">Settings</button>
+        <button onClick={onOpenSettings} className="sidebar__logout">Settings</button>
         <button onClick={handleLogout} className="sidebar__logout">Disconnect</button>
       </div>
-
-      {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} />}
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   )
 }

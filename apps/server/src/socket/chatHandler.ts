@@ -120,7 +120,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     if (content.length > 4000) return
 
     const userInfo = getUserPermissions(authorId)
-    if (!hasPermission(userInfo!, 'send_messages')) {
+    if (!userInfo || !hasPermission(userInfo, 'send_messages')) {
       socket.emit('error', { code: 'FORBIDDEN', message: 'You do not have permission to send messages' })
       return
     }

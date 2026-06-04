@@ -13,6 +13,8 @@
   --brand-dim: rgba(76, 110, 245, 0.15);
   --accent-color: #6366f1;
   --bg-surface: #1a1a1a;
+  --modal-bg: rgba(17, 17, 17, 0.94);
+  --modal-backdrop: rgba(0, 0, 0, 0.6);
   --red: #ff4d4d;
   --red-hover: #ff3333;
   --red-dim: rgba(255, 77, 77, 0.15);

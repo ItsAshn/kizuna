@@ -11,7 +11,7 @@
 
 .sidebar {
   width: 240px;
-  background: var(--bg-secondary);
+  background: var(--modal-bg);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border-color);

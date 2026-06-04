@@ -110,16 +110,28 @@ export default function SettingsModal({ onClose }: Props) {
 
   useEffect(() => {
     async function loadDevices() {
+      let hasPermission = false
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const stream = await Promise.race([
+          navigator.mediaDevices.getUserMedia({ audio: true }),
+          new Promise<MediaStream>((_, reject) =>
+            setTimeout(() => reject(new Error('Permission request timed out')), 3000)
+          ),
+        ])
         stream.getTracks().forEach(t => t.stop())
+        hasPermission = true
       } catch {
-        setPermissionDenied(true)
-        return
+        // permission denied or timed out — enumerate without labels
       }
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      setInputDevices(devices.filter(d => d.kind === 'audioinput'))
-      setOutputDevices(devices.filter(d => d.kind === 'audiooutput'))
+
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        setInputDevices(devices.filter(d => d.kind === 'audioinput'))
+        setOutputDevices(devices.filter(d => d.kind === 'audiooutput'))
+        if (!hasPermission) setPermissionDenied(true)
+      } catch {
+        // enumerateDevices failed silently
+      }
     }
     loadDevices()
     getVersion().then(v => {

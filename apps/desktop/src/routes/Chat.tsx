@@ -10,6 +10,8 @@ import Sidebar from '../components/Sidebar'
 import ChatArea from '../components/ChatArea'
 import MemberList from '../components/MemberList'
 import ScreenShareOverlay from '../components/ScreenShareOverlay'
+import SettingsModal from '../components/SettingsModal'
+import ServerMenuModal from '../components/ServerMenuModal'
 import { useNavigate } from 'react-router-dom'
 import '../styles/chat.css'
 
@@ -29,7 +31,9 @@ export default function Chat() {
     videoElRef,
   } = useVoice(socketRef)
   const { startScreenshare, stopScreenshare } = useScreenshare(socketRef, sendTransportRef)
-  const [showMembers, setShowMembers] = useState(false)
+  const [showMembers, setShowMembers] = useState(true)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
   const [chatClosing, setChatClosing] = useState(false)
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [bgInfo, setBgInfo] = useState<{ hasBackground: boolean; backgroundBlur: number; customCss: string | null } | null>(null)
@@ -116,6 +120,7 @@ export default function Chat() {
   const showBg = bgInfo?.hasBackground && serverBackgroundEnabled
 
   return (
+    <>
     <div
       className={`chat-layout${showBg ? ' chat-layout--has-bg' : ''}`}
       style={showBg && session ? {
@@ -132,16 +137,10 @@ export default function Chat() {
         socketRef={socketRef}
         startScreenshare={startScreenshare}
         stopScreenshare={stopScreenshare}
+        onOpenSettings={() => setShowSettings(true)}
+        onOpenMenu={() => setShowMenu(true)}
       />
       <div className="chat-main">
-        {!chatOpen && !chatClosing && (
-          <div className="chat-area__empty">
-            <div className="chat-area__empty-content">
-              <p className="chat-area__empty-title">Welcome to Kizuna</p>
-              <p className="chat-area__empty-subtitle">Select a channel to start chatting</p>
-            </div>
-          </div>
-        )}
         {shouldShowChat && (
           <div className={`chat-modal-overlay${chatClosing ? ' chat-modal-overlay--closing' : ''}`} onClick={closeChat}>
             <div className={`chat-modal${chatClosing ? ' chat-modal--closing' : ''}`} onClick={(e) => e.stopPropagation()}>
@@ -161,5 +160,8 @@ export default function Chat() {
       </button>
       <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
     </div>
+    {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+    {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} />}
+    </>
   )
 }

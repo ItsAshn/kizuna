@@ -1,4 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+
+declare const __VERCEL__: boolean
 import { useServerStore } from './store/serverStore'
 import { useUpdater } from './hooks/useUpdater'
 import { useBackgroundNotifications } from './hooks/useBackgroundNotifications'
@@ -16,7 +18,7 @@ function AppContent() {
   return (
     <div className="app-shell__content" style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
       <Routes>
-        <Route path="/" element={activeSession ? <Navigate to="/chat" replace /> : <Welcome isLanding={true} />} />
+        <Route path="/" element={activeSession ? <Navigate to="/chat" replace /> : <Welcome isLanding={__VERCEL__} />} />
         <Route path="/login/:serverId" element={<Login />} />
         <Route path="/chat" element={activeSession ? <Chat /> : <Navigate to="/" replace />} />
       </Routes>
