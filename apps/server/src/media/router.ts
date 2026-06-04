@@ -12,6 +12,15 @@ const MEDIA_CODECS: mediasoupTypes.RtpCodecCapability[] = [
     channels: 2,
     preferredPayloadType: 100,
   },
+  {
+    kind: 'video',
+    mimeType: 'video/VP8',
+    clockRate: 90000,
+    parameters: {
+      'x-google-start-bitrate': 1000,
+    },
+    preferredPayloadType: 101,
+  },
 ]
 
 export async function createRouter(channelId: string): Promise<mediasoupTypes.Router> {
@@ -47,7 +56,7 @@ export async function createTransport(router: mediasoupTypes.Router): Promise<me
     enableUdp: true,
     enableTcp: true,
     preferUdp: true,
-    initialAvailableOutgoingBitrate: 1000000,
+    initialAvailableOutgoingBitrate: 5000000,
   })
 
   return transport

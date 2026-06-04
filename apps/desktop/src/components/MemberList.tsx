@@ -13,6 +13,7 @@ export default function MemberList({ visible }: Props) {
   const session = useServerStore((s) => s.activeSession)
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
   const dmChannels = useChatStore((s) => s.dmChannels)
+  const setDMChannels = useChatStore((s) => s.setDMChannels)
   const [search, setSearch] = useState('')
   const [closing, setClosing] = useState(false)
 
@@ -37,6 +38,11 @@ export default function MemberList({ visible }: Props) {
     if (!session) return
     try {
       const dm = await getOrCreateDMChannel(session.url, session.token, userId)
+      const store = useChatStore.getState()
+      store.setDMChannels([
+        dm,
+        ...store.dmChannels.filter((d) => d.id !== dm.id),
+      ])
       setActiveDMChannel(dm.id)
     } catch { /* ignore */ }
   }

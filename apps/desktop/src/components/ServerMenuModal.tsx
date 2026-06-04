@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
+import QRCode from 'qrcode'
 import {
   updateProfile,
   updateServerSettings,
@@ -31,7 +32,25 @@ function handleApiErr(err: unknown): string {
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const maxSize = 512
+        let { width, height } = img
+        if (width > maxSize || height > maxSize) {
+          if (width > height) { height = Math.round((height / width) * maxSize); width = maxSize }
+          else { width = Math.round((width / height) * maxSize); height = maxSize }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx?.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', 0.85))
+      }
+      img.onerror = () => reject(new Error('failed to load image'))
+      img.src = reader.result as string
+    }
     reader.onerror = () => reject(new Error('failed to read file'))
     reader.readAsDataURL(file)
   })
@@ -107,6 +126,7 @@ export default function ServerMenuModal({ onClose }: Props) {
   const [newMaxUses, setNewMaxUses] = useState('')
   const [newExpiry, setNewExpiry] = useState('0')
   const [creatingInvite, setCreatingInvite] = useState(false)
+  const [activeQr, setActiveQr] = useState<{ code: string; dataUrl: string } | null>(null)
 
   // ─── Roles ───────────────────────────────────────────
   const [roles, setRoles] = useState<CustomRole[]>([])
@@ -275,10 +295,31 @@ export default function ServerMenuModal({ onClose }: Props) {
       const expiresInHours = newExpiry !== '0' ? parseFloat(newExpiry) : undefined
       const invite = await createInvite(serverUrl, token, maxUses, expiresInHours)
       setInvites(prev => [invite, ...prev])
+      const deepLink = `kizuna://join?server=${encodeURIComponent(serverUrl)}&code=${invite.code}`
+      const qrDataUrl = await QRCode.toDataURL(deepLink, {
+        width: 200,
+        margin: 2,
+        color: { dark: '#f2f3f5', light: '#1e1f22' },
+      })
+      setActiveQr({ code: invite.code, dataUrl: qrDataUrl })
       setNewMaxUses('')
       setNewExpiry('0')
     } catch {}
     setCreatingInvite(false)
+  }
+
+  const handleShowQr = async (invite: any) => {
+    if (activeQr?.code === invite.code) {
+      setActiveQr(null)
+      return
+    }
+    const deepLink = `kizuna://join?server=${encodeURIComponent(serverUrl!)}&code=${invite.code}`
+    const qrDataUrl = await QRCode.toDataURL(deepLink, {
+      width: 200,
+      margin: 2,
+      color: { dark: '#f2f3f5', light: '#1e1f22' },
+    })
+    setActiveQr({ code: invite.code, dataUrl: qrDataUrl })
   }
 
   const handleRevokeInvite = async (code: string) => {
@@ -514,6 +555,26 @@ export default function ServerMenuModal({ onClose }: Props) {
                     </button>
                   </div>
 
+                  {activeQr && (
+                    <div className="server-menu__qr-panel">
+                      <p className="server-menu__section-title">invite code</p>
+                      <img src={activeQr.dataUrl} alt="QR" className="server-menu__qr-img" />
+                      <div className="server-menu__qr-code-row">
+                        <code className="server-menu__qr-code">{activeQr.code}</code>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(activeQr.code)}
+                          className="server-menu__qr-copy-btn"
+                        >
+                          copy
+                        </button>
+                      </div>
+                      <p className="server-menu__qr-hint">share this code — recipients join with just the code</p>
+                      <button onClick={() => setActiveQr(null)} className="server-menu__qr-dismiss-btn">
+                        dismiss
+                      </button>
+                    </div>
+                  )}
+
                   <p className="server-menu__section-title">active codes ({invites.length})</p>
                   {invitesLoading ? (
                     <p className="server-menu__loading">loading...</p>
@@ -527,7 +588,12 @@ export default function ServerMenuModal({ onClose }: Props) {
                           <div>{inv.uses}/{inv.max_uses ?? '∞'} uses</div>
                           <div>{inv.expires_at ? new Date(inv.expires_at * 1000).toLocaleDateString() : 'never'}</div>
                         </div>
-                        <button onClick={() => handleRevokeInvite(inv.code)} className="server-menu__invite-revoke">revoke</button>
+                        <div className="server-menu__invite-actions">
+                          <button onClick={() => handleShowQr(inv)} className={`server-menu__invite-qr-btn ${activeQr?.code === inv.code ? 'server-menu__invite-qr-btn--active' : ''}`}>
+                            qr
+                          </button>
+                          <button onClick={() => { if (activeQr?.code === inv.code) setActiveQr(null); handleRevokeInvite(inv.code) }} className="server-menu__invite-revoke">revoke</button>
+                        </div>
                       </div>
                     ))
                   )}

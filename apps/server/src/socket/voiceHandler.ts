@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io'
 import { ensureRouter, createTransport, connectTransport, produceOnTransport, consumeOnTransport } from '../media/router'
 import type { types as mediasoupTypes } from 'mediasoup'
 import jwt from 'jsonwebtoken'
+import { getDb } from '../db'
 
 function getIceServers() {
   const servers: { urls: string; username?: string; credential?: string }[] = []
@@ -41,6 +42,18 @@ export function getPeersInChannel(channelId: string): PeerInfo[] {
   return result
 }
 
+function getScreenSharer(channelId: string): { peerId: string; userId: string; username: string } | null {
+  for (const peer of peers.values()) {
+    if (peer.channelId !== channelId) continue
+    for (const [, producer] of peer.producers) {
+      if (producer.kind === 'video') {
+        return { peerId: peer.socketId, userId: peer.userId, username: peer.username }
+      }
+    }
+  }
+  return null
+}
+
 export function registerVoiceHandlers(io: Server, socket: Socket): void {
   socket.on('voice:join', async ({ channelId, userId, username }: {
     channelId: string
@@ -54,11 +67,18 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         return
       }
       try {
-        const payload = jwt.verify(token, process.env.JWT_SECRET!) as { id: string; username: string }
-        userId = payload.id
+        const payload = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string; username: string }
+        userId = payload.userId
         username = payload.username
       } catch {
         if (typeof callback === 'function') callback({ error: 'Invalid or expired token' })
+        return
+      }
+
+      const db = getDb()
+      const member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
+      if (!member) {
+        if (typeof callback === 'function') callback({ error: 'Not a server member' })
         return
       }
 
@@ -97,6 +117,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
           routerRtpCapabilities: router.rtpCapabilities,
           peers: channelPeers,
           iceServers: getIceServers(),
+          screenSharePeer: getScreenSharer(channelId),
         })
       }
     } catch (err: any) {
@@ -197,10 +218,11 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('voice:consume', async ({ channelId, peerId, rtpCapabilities }: {
+  socket.on('voice:consume', async ({ channelId, peerId, rtpCapabilities, kind }: {
     channelId: string
     peerId: string
     rtpCapabilities: mediasoupTypes.RtpCapabilities
+    kind?: 'audio' | 'video'
   }, callback?: Function) => {
     try {
       const requestingPeer = peers.get(socket.id)
@@ -227,15 +249,16 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         return
       }
 
+      const targetKind = kind || 'audio'
       let producerId = null
       for (const [id, producer] of targetPeer.producers) {
-        if (producer.kind === 'audio') {
+        if (producer.kind === targetKind) {
           producerId = id
           break
         }
       }
       if (!producerId) {
-        if (typeof callback === 'function') callback({ error: 'Target peer has no audio producer' })
+        if (typeof callback === 'function') callback({ error: `Target peer has no ${targetKind} producer` })
         return
       }
 
@@ -325,6 +348,41 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     io.to(peer.channelId).emit('voice:mute', { userId: peer.userId, muted })
   })
 
+  socket.on('screen:start', async ({ channelId }: { channelId: string }, callback?: Function) => {
+    const peer = peers.get(socket.id)
+    if (!peer) {
+      if (typeof callback === 'function') callback({ error: 'Not in a voice channel' })
+      return
+    }
+    const existing = getScreenSharer(channelId)
+    if (existing && existing.peerId !== socket.id) {
+      if (typeof callback === 'function') callback({ error: 'Someone else is already sharing' })
+      return
+    }
+    let hasVideo = false
+    for (const [, producer] of peer.producers) {
+      if (producer.kind === 'video') { hasVideo = true; break }
+    }
+    if (!hasVideo) {
+      if (typeof callback === 'function') callback({ error: 'No video producer found' })
+      return
+    }
+    console.log(`[Screen] START | channel=${channelId} | user=${peer.username}`)
+    socket.to(channelId).emit('screen:peerStarted', {
+      peerId: socket.id,
+      userId: peer.userId,
+      username: peer.username,
+    })
+    if (typeof callback === 'function') callback({ ok: true })
+  })
+
+  socket.on('screen:stop', ({ channelId }: { channelId: string }) => {
+    const peer = peers.get(socket.id)
+    if (!peer) return
+    console.log(`[Screen] STOP | channel=${channelId} | user=${peer.username}`)
+    io.to(channelId).emit('screen:peerStopped', { peerId: socket.id })
+  })
+
   socket.on('voice:leave', async (payload?: { channelId?: string }) => {
     const channelId = payload?.channelId
     if (channelId) {
@@ -353,6 +411,11 @@ function cleanupPeer(socketId: string, channelId: string, io: Server): void {
   const peer = peers.get(socketId)
   if (!peer) return
 
+  let wasSharing = false
+  for (const [, p] of peer.producers) {
+    if (p.kind === 'video') { wasSharing = true; break }
+  }
+
   console.log(`[Voice] LEFT | channel=${channelId} | user=${peer.username}`)
 
   peer.producers.forEach((p) => { try { p.close() } catch {} })
@@ -362,4 +425,7 @@ function cleanupPeer(socketId: string, channelId: string, io: Server): void {
   peers.delete(socketId)
 
   io.to(channelId).emit('voice:peerLeft', { peerId: socketId })
+  if (wasSharing) {
+    io.to(channelId).emit('screen:peerStopped', { peerId: socketId })
+  }
 }

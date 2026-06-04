@@ -119,6 +119,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const [loading, setLoading] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [atQuery, setAtQuery] = useState<string | null>(null)
   const [atIndex, setAtIndex] = useState(0)
@@ -273,8 +274,9 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const handleUpload = async () => {
     if (!pendingFile || !session || !activeChannelId) return
     setUploading(true)
+    setUploadProgress(0)
     try {
-      const result = await uploadAttachment(session.url, session.token, activeChannelId, pendingFile)
+      const result = await uploadAttachment(session.url, session.token, activeChannelId, pendingFile, (pct) => setUploadProgress(pct))
       const attachmentText = `![${result.filename}](${result.url})`
       const text = input.trim()
       const message = await sendMessage(
@@ -411,7 +413,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
             </div>
             <button className="chat-area__upload-cancel" onClick={() => setPendingFile(null)} disabled={uploading}>cancel</button>
             <button className="btn-primary" onClick={handleUpload} disabled={uploading} style={{ fontSize: '12px', padding: '4px 12px' }}>
-              {uploading ? 'uploading...' : 'upload'}
+              {uploadProgress > 0 && uploadProgress < 100 ? `${uploadProgress}%` : uploading ? 'uploading...' : 'upload'}
             </button>
           </div>
         )}

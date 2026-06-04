@@ -644,3 +644,105 @@
 .server-menu__done-btn:hover {
   background: var(--brand-hover);
 }
+
+/* QR code panel */
+.server-menu__qr-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-hover);
+  border: 1px solid var(--accent-color);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.server-menu__qr-img {
+  border-radius: 4px;
+  image-rendering: pixelated;
+}
+
+.server-menu__qr-code-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.server-menu__qr-code {
+  font-size: 11px;
+  font-family: monospace;
+  font-weight: 600;
+  letter-spacing: 1px;
+  background: var(--bg-primary);
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.server-menu__qr-copy-btn {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.server-menu__qr-copy-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-primary);
+}
+
+.server-menu__qr-hint {
+  font-size: 9px;
+  font-family: monospace;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.server-menu__qr-dismiss-btn {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.server-menu__qr-dismiss-btn:hover {
+  color: var(--text-primary);
+}
+
+.server-menu__invite-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.server-menu__invite-qr-btn {
+  font-size: 9px;
+  font-family: monospace;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.server-menu__invite-qr-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-color);
+}
+
+.server-menu__invite-qr-btn--active {
+  color: var(--accent-color);
+  border-color: var(--accent-color);
+  background: var(--accent-color)11;
+}

@@ -160,3 +160,16 @@ export interface UnreadCount {
   channel_id: string
   count: number
 }
+
+export interface ScreenSharePeer {
+  peerId: string
+  userId: string
+  username: string
+}
+
+export interface MonitorInfo {
+  index: number
+  name: string
+  width: number
+  height: number
+}

@@ -2,8 +2,15 @@
   height: 100vh;
   width: 100vw;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   background: var(--bg-primary);
   color: var(--text-primary);
   overflow: hidden;
+}
+
+.app-shell__content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-width: 0;
 }

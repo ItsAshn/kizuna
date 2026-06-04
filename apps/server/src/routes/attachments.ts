@@ -9,30 +9,74 @@ function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const attachmentRoutes = new Hono()
 
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
+const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '10485760', 10)
+
+const ALLOWED_EXTENSIONS = [
+  '.jpg', '.jpeg', '.png', '.gif', '.webp',
+  '.mp4', '.webm', '.mp3', '.ogg', '.wav',
+  '.pdf', '.txt', '.json',
+]
+
+const MIME_TYPES: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.wav': 'audio/wav',
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain',
+  '.json': 'application/json',
+}
+
+function getContentType(filename: string): string {
+  const ext = path.extname(filename).toLowerCase()
+  return MIME_TYPES[ext] || 'application/octet-stream'
+}
+
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+}
+
 // POST /attachments/:channelId — upload file via multipart/form-data
 attachmentRoutes.post('/:channelId', authMiddleware, async (c) => {
   const user = getAuth(c)
   const channelId = c.req.param('channelId')
 
+  const contentLength = parseInt(c.req.header('content-length') || '0', 10)
+  if (contentLength > MAX_FILE_SIZE) {
+    return c.json({ error: `File too large. Maximum size is ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB` }, 413)
+  }
+
   const formData = await c.req.formData()
   const file = formData.get('file') as File | null
   if (!file) return c.json({ error: 'No file provided' }, 400)
 
-  const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
-  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
+  const ext = path.extname(file.name).toLowerCase()
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return c.json({ error: `File type not allowed. Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}` }, 415)
+  }
 
-  const ext = path.extname(file.name) || '.bin'
-  const filename = `${uuidv4()}${ext}`
-  const filepath = path.join(uploadsDir, filename)
+  if (file.size > MAX_FILE_SIZE) {
+    return c.json({ error: `File too large. Maximum size is ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB` }, 413)
+  }
 
   const buffer = Buffer.from(await file.arrayBuffer())
+  const storedFilename = `${uuidv4()}${ext}`
+  const filepath = path.join(UPLOADS_DIR, storedFilename)
+
   fs.writeFileSync(filepath, buffer)
 
   const id = uuidv4()
   const db = getDb()
   db.prepare(
-    'INSERT INTO attachments (id, message_id, filename, url, size) VALUES (?, ?, ?, ?, ?)'
-  ).run(id, '', file.name, `/uploads/${filename}`, buffer.length)
+    'INSERT INTO attachments (id, message_id, filename, url, size, content_type) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(id, '', file.name, `/uploads/${storedFilename}`, buffer.length, getContentType(file.name))
 
   const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as any
   return c.json({
@@ -42,7 +86,7 @@ attachmentRoutes.post('/:channelId', authMiddleware, async (c) => {
       filename: attachment.filename,
       url: attachment.url,
       size: attachment.size,
-      content_type: file.type || undefined,
+      content_type: attachment.content_type || getContentType(attachment.filename),
       created_at: attachment.created_at * 1000,
     },
   }, 201)
@@ -59,10 +103,62 @@ attachmentRoutes.get('/message/:messageId', authMiddleware, (c) => {
     filename: a.filename,
     url: a.url,
     size: a.size,
-    content_type: a.content_type,
+    content_type: a.content_type || getContentType(a.filename),
     created_at: a.created_at * 1000,
   }))
   return c.json({ attachments: result })
+})
+
+// GET /attachments/file/:filename — serve an uploaded file
+attachmentRoutes.get('/file/:filename', authMiddleware, (c) => {
+  const filename = c.req.param('filename') || ''
+  const sanitized = path.basename(filename)
+  if (sanitized !== filename || filename.includes('..')) {
+    return c.json({ error: 'Invalid filename' }, 400)
+  }
+
+  const ext = path.extname(sanitized).toLowerCase()
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return c.json({ error: 'File type not allowed' }, 403)
+  }
+
+  const filepath = path.join(UPLOADS_DIR, sanitized)
+  if (!fs.existsSync(filepath)) {
+    return c.json({ error: 'File not found' }, 404)
+  }
+
+  const contentType = getContentType(sanitized)
+  const content = fs.readFileSync(filepath)
+  return new Response(content, {
+    status: 200,
+    headers: { 'Content-Type': contentType },
+  })
+})
+
+// DELETE /attachments/:id — delete an attachment
+attachmentRoutes.delete('/:id', authMiddleware, (c) => {
+  const user = getAuth(c)
+  const db = getDb()
+  const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(c.req.param('id')) as any
+  if (!attachment) return c.json({ error: 'Attachment not found' }, 404)
+
+  if (!attachment.message_id) {
+    const member = db.prepare('SELECT role FROM server_members WHERE user_id = ?').get(user.userId) as { role: string } | undefined
+    if (member?.role !== 'admin') {
+      return c.json({ error: 'Cannot delete unattached files' }, 403)
+    }
+  } else {
+    const message = db.prepare('SELECT author_id FROM messages WHERE id = ?').get(attachment.message_id) as { author_id: string } | undefined
+    if (message && message.author_id !== user.userId) {
+      return c.json({ error: 'Not authorized' }, 403)
+    }
+  }
+
+  const filepath = path.join(UPLOADS_DIR, path.basename(attachment.url))
+  try { fs.unlinkSync(filepath) } catch { /* file may not exist */ }
+
+  db.prepare('DELETE FROM attachments WHERE id = ?').run(c.req.param('id'))
+  return c.json({ ok: true })
 })
 
 export default attachmentRoutes

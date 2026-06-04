@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useChatStore } from '../store/chatStore'
+import { useUpdaterActions } from '../hooks/useUpdater'
 import '../styles/settings.css'
 
 interface Props {
@@ -21,12 +22,15 @@ export default function SettingsModal({ onClose }: Props) {
     audioInputDeviceId, setAudioInputDeviceId,
     audioOutputDeviceId, setAudioOutputDeviceId,
     audioBitrateKbps, setAudioBitrateKbps,
+    updateState, updateProgress, updateVersion, updateError,
   } = useChatStore()
+  const { checkForUpdates, getVersion } = useUpdaterActions()
 
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([])
   const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([])
   const [permissionDenied, setPermissionDenied] = useState(false)
   const [appVersion, setAppVersion] = useState('0.1.0')
+  const [isDev, setIsDev] = useState(true)
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -48,6 +52,10 @@ export default function SettingsModal({ onClose }: Props) {
       setOutputDevices(devices.filter(d => d.kind === 'audiooutput'))
     }
     loadDevices()
+    getVersion().then(v => {
+      setAppVersion(v)
+      setIsDev(false)
+    })
   }, [])
 
   return (
@@ -118,11 +126,27 @@ export default function SettingsModal({ onClose }: Props) {
           </section>
 
           <section style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-            <p className="settings-modal__section-title">app version</p>
+            <p className="settings-modal__section-title">updates</p>
             <div className="settings-modal__version-row">
-              <span className="settings-modal__version-text">Kizuna v{appVersion}</span>
-              <span className="settings-modal__version-tag">self-hosted</span>
+              <span className="settings-modal__version-text">Kizuna v{appVersion}{isDev ? ' (dev)' : ''}</span>
+              <button
+                onClick={() => checkForUpdates()}
+                disabled={updateState === 'checking' || updateState === 'downloading'}
+                className="settings-modal__check-btn"
+              >
+                {updateState === 'checking' ? 'checking...' : updateState === 'downloading' ? `${updateProgress}%` : 'check for updates'}
+              </button>
             </div>
+            {updateState === 'ready' && (
+              <p className="settings-modal__alert settings-modal__alert--success">
+                update {updateVersion} ready — restart to apply
+              </p>
+            )}
+            {updateState === 'error' && (
+              <p className="settings-modal__alert settings-modal__alert--error">
+                {updateError || 'update check failed'}
+              </p>
+            )}
           </section>
         </div>
 

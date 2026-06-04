@@ -6,7 +6,6 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "${SERVER_PORT:-5000}:5000"
       - "${RTC_MIN_PORT:-40000}-${RTC_MAX_PORT:-40099}:${RTC_MIN_PORT:-40000}-${RTC_MAX_PORT:-40099}/udp"
     environment:
       SERVER_PORT: ${SERVER_PORT:-5000}
@@ -21,10 +20,27 @@ services:
       RTC_MAX_PORT: ${RTC_MAX_PORT:-40099}
       MEDIASOUP_LOG_LEVEL: ${MEDIASOUP_LOG_LEVEL:-warn}
       IS_PUBLIC: ${IS_PUBLIC:-false}
+      SERVER_URL: ${SERVER_URL:-}
+      UPNP_ENABLED: ${UPNP_ENABLED:-false}
     volumes:
       - kizuna_data:/data
       - kizuna_uploads:/app/uploads
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env to your domain name}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   kizuna_data:
   kizuna_uploads:
+  caddy_data:
+  caddy_config:

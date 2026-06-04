@@ -52,9 +52,13 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
   const db = getDb()
 
   if (name !== undefined) {
+    if (!name?.trim()) return c.json({ error: 'name cannot be empty' }, 400)
     db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('server_name', ?)").run(name.trim())
   }
   if (icon !== undefined) {
+    if (icon !== null && typeof icon !== 'string') {
+      return c.json({ error: 'icon must be a string or null' }, 400)
+    }
     if (icon === null) {
       db.prepare("DELETE FROM server_settings WHERE key = 'server_icon'").run()
     } else {
@@ -63,6 +67,23 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
   }
 
   return c.json(getServerInfo())
+})
+
+serverInfoRoutes.post('/announce', authMiddleware, async (c) => {
+  const body = await c.req.json() as { title: string; body: string }
+  const { title, body: announceBody } = body
+  if (!title || !announceBody) {
+    return c.json({ error: 'title and body are required' }, 400)
+  }
+
+  try {
+    const io: any = c.get('io' as never)
+    if (!io) return c.json({ error: 'Socket.IO not available' }, 500)
+    io.to('__notifications__').emit('server:announce', { title, body: announceBody })
+    return c.json({ ok: true })
+  } catch {
+    return c.json({ error: 'Socket.IO not available' }, 500)
+  }
 })
 
 serverInfoRoutes.post('/invites', authMiddleware, async (c) => {
@@ -83,12 +104,16 @@ serverInfoRoutes.post('/invites', authMiddleware, async (c) => {
     serverUrl = `http://${publicAddress}:${port}`
   }
 
+  const max = maxUses && maxUses > 0 ? Math.round(maxUses) : null
+  const expiresAt = expiresInHours && expiresInHours > 0
+    ? Math.floor(Date.now() / 1000) + Math.round(expiresInHours * 3600)
+    : null
+
   const code = generateInviteCode(serverUrl)
-  const expiresAt = expiresInHours ? Math.floor(Date.now() / 1000) + expiresInHours * 3600 : null
 
   db.prepare(
     'INSERT INTO invite_codes (code, created_by, max_uses, uses, expires_at) VALUES (?, ?, ?, 0, ?)'
-  ).run(code, user.userId, maxUses || null, expiresAt)
+  ).run(code, user.userId, max, expiresAt)
 
   const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as any
   return c.json({
@@ -108,7 +133,13 @@ serverInfoRoutes.get('/invites', authMiddleware, (c) => {
     return c.json({ error: 'Forbidden' }, 403)
   }
   const db = getDb()
-  const invites = db.prepare('SELECT * FROM invite_codes ORDER BY created_at DESC').all() as any[]
+  const now = Math.floor(Date.now() / 1000)
+  const invites = db.prepare(
+    `SELECT * FROM invite_codes
+     WHERE (expires_at IS NULL OR expires_at > ?)
+       AND (max_uses IS NULL OR uses < max_uses)
+     ORDER BY created_at DESC`
+  ).all(now) as any[]
   const result = invites.map((inv) => ({
     code: inv.code,
     created_by: inv.created_by,

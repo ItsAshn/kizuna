@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Channel, Message, Member, DMChannelData, VoicePeer, ConnectionQuality } from '@kizuna/shared'
+import type { Channel, Message, Member, DMChannelData, VoicePeer, ConnectionQuality, ScreenSharePeer, MonitorInfo } from '@kizuna/shared'
 
 interface ChatState {
   channels: Channel[]
@@ -22,6 +22,17 @@ interface ChatState {
   audioOutputDeviceId: string | null
   voiceError: string | null
   typingUsers: Record<string, string[]>
+
+  screenSharePeerId: string | null
+  screenShareUsername: string | null
+  isScreenSharing: boolean
+  screenShareVideoProducerId: string | null
+  availableMonitors: MonitorInfo[]
+
+  updateState: 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
+  updateProgress: number
+  updateVersion: string | null
+  updateError: string | null
 
   setChannels: (channels: Channel[]) => void
   setDMChannels: (channels: DMChannelData[]) => void
@@ -46,6 +57,15 @@ interface ChatState {
   setAudioOutputDeviceId: (id: string | null) => void
   setVoiceError: (error: string | null) => void
   setTypingUsers: (channelId: string, users: string[]) => void
+  setScreenSharePeer: (peerId: string | null, username: string | null) => void
+  clearScreenSharePeer: () => void
+  setIsScreenSharing: (active: boolean) => void
+  setScreenShareVideoProducerId: (producerId: string | null) => void
+  setAvailableMonitors: (monitors: MonitorInfo[]) => void
+  setUpdateState: (state: 'idle' | 'checking' | 'downloading' | 'ready' | 'error') => void
+  setUpdateProgress: (progress: number) => void
+  setUpdateVersion: (version: string | null) => void
+  setUpdateError: (error: string | null) => void
 }
 
 export const useChatStore = create<ChatState>()(
@@ -69,6 +89,15 @@ export const useChatStore = create<ChatState>()(
       audioOutputDeviceId: null,
       voiceError: null,
       typingUsers: {},
+      screenSharePeerId: null,
+      screenShareUsername: null,
+      isScreenSharing: false,
+      screenShareVideoProducerId: null,
+      availableMonitors: [],
+      updateState: 'idle' as const,
+      updateProgress: 0,
+      updateVersion: null,
+      updateError: null,
 
       setChannels: (channels) => set({ channels }),
       setDMChannels: (dmChannels) => set({ dmChannels }),
@@ -115,6 +144,17 @@ export const useChatStore = create<ChatState>()(
         set((s) => ({
           typingUsers: { ...s.typingUsers, [channelId]: users },
         })),
+      setScreenSharePeer: (screenSharePeerId, screenShareUsername) =>
+        set({ screenSharePeerId, screenShareUsername }),
+      clearScreenSharePeer: () =>
+        set({ screenSharePeerId: null, screenShareUsername: null }),
+      setIsScreenSharing: (isScreenSharing) => set({ isScreenSharing }),
+      setScreenShareVideoProducerId: (screenShareVideoProducerId) => set({ screenShareVideoProducerId }),
+      setAvailableMonitors: (availableMonitors) => set({ availableMonitors }),
+      setUpdateState: (updateState) => set({ updateState }),
+      setUpdateProgress: (updateProgress) => set({ updateProgress }),
+      setUpdateVersion: (updateVersion) => set({ updateVersion }),
+      setUpdateError: (updateError) => set({ updateError }),
     }),
     {
       name: 'kizuna-voice-settings',

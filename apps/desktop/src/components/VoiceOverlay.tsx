@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useChatStore } from '../store/chatStore'
 import type { ConnectionQuality } from '@kizuna/shared'
-import { Volume2, Mic, MicOff, PhoneOff } from 'lucide-react'
+import { Volume2, Mic, MicOff, PhoneOff, Monitor, MonitorOff } from 'lucide-react'
+import MonitorPicker from './MonitorPicker'
 import '../styles/voice-overlay.css'
 
 interface VoiceOverlayProps {
@@ -9,6 +10,8 @@ interface VoiceOverlayProps {
   toggleMute: () => void
   setAudioBitrate: (socket: any, kbps: number) => void
   socketRef: React.MutableRefObject<any>
+  startScreenshare: (channelId: string, monitorIndex: number, fps: number) => Promise<string | null>
+  stopScreenshare: () => void
 }
 
 function ConnectionQualityBars({ quality }: { quality: ConnectionQuality | null | undefined }) {
@@ -38,7 +41,7 @@ function ConnectionQualityBars({ quality }: { quality: ConnectionQuality | null 
   )
 }
 
-export default function VoiceOverlay({ leaveVoice, toggleMute, setAudioBitrate, socketRef }: VoiceOverlayProps) {
+export default function VoiceOverlay({ leaveVoice, toggleMute, setAudioBitrate, socketRef, startScreenshare, stopScreenshare }: VoiceOverlayProps) {
   const {
     activeVoiceChannelId,
     voicePeers,
@@ -48,9 +51,13 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, setAudioBitrate, 
     localConnectionQuality,
     audioBitrateKbps,
     voiceError,
+    isScreenSharing,
+    screenSharePeerId,
     setVoiceError,
   } = useChatStore()
   const [closing, setClosing] = useState(false)
+  const [showMonitorPicker, setShowMonitorPicker] = useState(false)
+  const [screenShareError, setScreenShareError] = useState<string | null>(null)
 
   useEffect(() => {
     if (activeVoiceChannelId) setClosing(false)
@@ -99,6 +106,25 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, setAudioBitrate, 
         </span>
         {!voiceError && (
           <>
+            {'__TAURI_INTERNALS__' in window && (
+              <button
+                onClick={() => {
+                  if (isScreenSharing) {
+                    stopScreenshare()
+                    setScreenShareError(null)
+                  } else if (screenSharePeerId) {
+                    setScreenShareError('Someone else is already sharing')
+                  } else {
+                    setShowMonitorPicker(true)
+                  }
+                }}
+                className={`voice-header__btn ${isScreenSharing ? 'voice-header__btn--screenshare-active' : 'voice-header__btn--screenshare'}`}
+                title={isScreenSharing ? 'Stop sharing' : screenSharePeerId ? 'Someone else is sharing' : 'Share screen'}
+                disabled={!!screenSharePeerId && !isScreenSharing}
+              >
+                {isScreenSharing ? <MonitorOff className="icon-xs" /> : <Monitor className="icon-xs" />}
+              </button>
+            )}
             <button
               onClick={toggleMute}
               className={`voice-header__btn ${isMuted ? 'voice-header__btn--unmute' : 'voice-header__btn--mute'}`}
@@ -116,6 +142,27 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, setAudioBitrate, 
           </>
         )}
       </div>
+
+      {screenShareError && (
+        <div className="voice-error" style={{ marginTop: 0, borderTop: 'none' }}>
+          <p className="voice-error__message">{screenShareError}</p>
+          <button onClick={() => setScreenShareError(null)} className="voice-error__btn voice-error__btn--retry" style={{ marginTop: 4 }}>
+            dismiss
+          </button>
+        </div>
+      )}
+
+      {showMonitorPicker && (
+        <MonitorPicker
+          onSelect={async (monitorIndex) => {
+            setShowMonitorPicker(false)
+            if (!activeVoiceChannelId) return
+            const err = await startScreenshare(activeVoiceChannelId, monitorIndex, 15)
+            if (err) setScreenShareError(err)
+          }}
+          onCancel={() => setShowMonitorPicker(false)}
+        />
+      )}
 
       <div className="voice-body">
         {!voiceError && (

@@ -1,0 +1,9 @@
+{
+  "buildCommand": "pnpm --filter @kizuna/desktop build",
+  "outputDirectory": "apps/desktop/dist",
+  "installCommand": "pnpm install",
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}

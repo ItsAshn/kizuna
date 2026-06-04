@@ -169,6 +169,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const producerRef = useRef<Producer | null>(null)
   const consumersRef = useRef<Map<string, Consumer>>(new Map())
   const audioElemsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
+  const videoConsumerRef = useRef<Consumer | null>(null)
+  const videoElRef = useRef<HTMLVideoElement | null>(null)
   const channelIdRef = useRef<string | null>(null)
   const localSpeakingCleanupRef = useRef<(() => void) | null>(null)
   const remoteSpeakingCleanupsRef = useRef<Map<string, () => void>>(new Map())
@@ -185,6 +187,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     audioBitrateKbps, setAudioBitrateKbps,
     audioInputDeviceId, audioOutputDeviceId,
     setVoiceError,
+    setScreenSharePeer, clearScreenSharePeer,
   } = useChatStore()
 
   const cleanupVoice = useCallback(() => {
@@ -202,6 +205,13 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     producerRef.current = null
     consumersRef.current.forEach((c) => c.close())
     consumersRef.current.clear()
+    videoConsumerRef.current?.close()
+    videoConsumerRef.current = null
+    if (videoElRef.current) {
+      videoElRef.current.pause()
+      videoElRef.current.srcObject = null
+      videoElRef.current = null
+    }
     audioElemsRef.current.forEach((el) => {
       el.pause()
       el.srcObject = null
@@ -215,7 +225,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setVoicePeers([])
     setIsSpeaking(false)
     setLocalConnectionQuality(null)
-  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality])
+    clearScreenSharePeer()
+  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, clearScreenSharePeer])
 
   const consumePeer = useCallback(async (
     socket: Socket,
@@ -276,6 +287,63 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     const peerQInt = setInterval(pollPeerQuality, QUALITY_POLL_MS)
     peerQualityIntervalsRef.current.set(peerId, peerQInt)
   }, [audioOutputDeviceId, updateVoicePeer])
+
+  const consumeScreenShare = useCallback(async (
+    socket: Socket,
+    device: Device,
+    recvTransport: Transport,
+    sharerPeerId: string,
+    channelId: string,
+    username: string,
+  ) => {
+    try {
+      const params: any = await new Promise((resolve) =>
+        socket.emit('voice:consume', {
+          channelId,
+          peerId: sharerPeerId,
+          kind: 'video',
+          rtpCapabilities: device.rtpCapabilities,
+        }, resolve),
+      )
+      if (!params?.id) {
+        console.warn('Failed to consume screen share from', sharerPeerId)
+        return
+      }
+
+      const consumer = await recvTransport.consume(params)
+      videoConsumerRef.current = consumer
+
+      await new Promise<void>((resolve) =>
+        socket.emit('voice:resumeConsumer', { channelId, consumerId: consumer.id }, () => resolve()),
+      )
+      await consumer.resume()
+
+      const videoEl = document.createElement('video')
+      videoEl.autoplay = true
+      videoEl.playsInline = true
+      videoEl.muted = true
+      videoEl.srcObject = new MediaStream([consumer.track])
+      videoEl.style.width = '100%'
+      videoEl.style.height = '100%'
+      await videoEl.play().catch(() => {})
+      videoElRef.current = videoEl
+
+      setScreenSharePeer(sharerPeerId, username)
+    } catch (err) {
+      console.error('Failed to consume screen share:', err)
+    }
+  }, [setScreenSharePeer])
+
+  const stopScreenConsume = useCallback(() => {
+    videoConsumerRef.current?.close()
+    videoConsumerRef.current = null
+    if (videoElRef.current) {
+      videoElRef.current.pause()
+      videoElRef.current.srcObject = null
+      videoElRef.current = null
+    }
+    clearScreenSharePeer()
+  }, [clearScreenSharePeer])
 
   const joinVoice = useCallback(async (channelId: string): Promise<string | null> => {
     const socket = socketRef.current
@@ -387,6 +455,20 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       updateVoicePeer(peerId, { speaking })
     })
 
+    socket.on('screen:peerStarted', async (data: { peerId: string; userId: string; username: string }) => {
+      await consumeScreenShare(socket, device, recvTransport, data.peerId, channelId, data.username)
+    })
+
+    socket.on('screen:peerStopped', () => {
+      stopScreenConsume()
+    })
+
+    socket.on('voice:consumerClosed', ({ consumerId }: { consumerId: string }) => {
+      if (videoConsumerRef.current?.id === consumerId) {
+        stopScreenConsume()
+      }
+    })
+
     setActiveVoiceChannel(channelId)
 
     for (const peer of joinResult.peers || []) {
@@ -399,6 +481,11 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         speaking: false,
         muted: false,
       })
+    }
+
+    if (joinResult.screenSharePeer) {
+      const { peerId, username } = joinResult.screenSharePeer
+      await consumeScreenShare(socket, device, recvTransport, peerId, channelId, username)
     }
 
     try {
@@ -460,6 +547,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     addVoicePeer, removeVoicePeer, updateVoicePeer, setIsSpeaking,
     setLocalConnectionQuality, audioBitrateKbps, audioInputDeviceId,
     audioOutputDeviceId, setVoiceError, consumePeer,
+    consumeScreenShare, stopScreenConsume, setScreenSharePeer,
   ])
 
   const handleTransportFailure = useCallback((socket: Socket, channelId: string) => {
@@ -499,6 +587,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       socket.off('voice:newPeer')
       socket.off('voice:peerLeft')
       socket.off('voice:peerSpeaking')
+      socket.off('screen:peerStarted')
+      socket.off('screen:peerStopped')
+      socket.off('voice:consumerClosed')
+      stopScreenConsume()
       socket.emit('voice:leave', { channelId: channelIdRef.current })
     }
     channelIdRef.current = null
@@ -533,5 +625,5 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     }
   }, [setAudioBitrateKbps])
 
-  return { joinVoice, leaveVoice, toggleMute, setAudioBitrate }
+  return { joinVoice, leaveVoice, toggleMute, setAudioBitrate, sendTransportRef, recvTransportRef, videoElRef }
 }

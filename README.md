@@ -1,29 +1,36 @@
 # Kizuna
 
-Self-hosted Discord alternative with text chat and voice channels. You host the server, you own the data.
+Self-hosted Discord alternative with text chat, voice channels, and screen sharing. You host the server, you own the data.
 
 ## Features
 
-- Real-time text chat with channels and direct messages
-- Voice channels powered by WebRTC (mediasoup SFU)
-- Custom roles and permissions
-- File uploads and attachments
-- Desktop client (Windows + Linux) via Tauri
-- Docker one-command deployment
+- **Real-time text chat** — channels, direct messages, typing indicators, and `@mentions` (`@everyone`, `@here`, `@user`)
+- **Voice channels** — powered by WebRTC via mediasoup SFU with per-channel audio quality controls
+- **Screen sharing** — share your screen in voice channels (desktop client only)
+- **Custom roles & permissions** — create roles with granular permissions (send messages, manage channels, delete messages, kick members, manage invites)
+- **File uploads & attachments** — images, video, audio, PDFs, and more with drag-and-drop
+- **Invite codes** — generate join links with usage limits and expiry, with QR codes
+- **Cross-server** — connect to multiple self-hosted Kizuna servers from one client
+- **Desktop client** — Windows + Linux via Tauri v2 with auto-updates and background notifications
+- **Docker deployment** — one-command deploy with automatic HTTPS via Caddy
 
 ## Hosting a Server
 
 ### Docker (recommended)
 
 ```bash
+# Clone and configure
+git clone https://github.com/ItsAshn/kizuna.git
+cd kizuna
+
 # Create .env file
-cp apps/server/.env.example .env
-# Edit .env — set JWT_SECRET at minimum
+cp .env.example .env
+# Edit .env — set DOMAIN and JWT_SECRET at minimum
 
 docker compose up -d
 ```
 
-The server will be available on port `5000`. For voice to work, ensure UDP ports `40000-40099` are reachable.
+The server will be available at `https://your-domain.com`. For voice and screen sharing to work, ensure UDP ports `40000-40099` are reachable.
 
 ### Manual
 
@@ -34,19 +41,37 @@ pnpm build:server
 pnpm start
 ```
 
-### Configuration
+### Environment Variables
 
-All settings are in the `.env` file. The only required one is `JWT_SECRET` — generate it with:
+All settings are in the `.env` file. See `.env.example` for a full reference.
 
-```bash
-openssl rand -hex 64
-```
+**Required:**
+- `DOMAIN` — your domain name (Caddy needs this for HTTPS)
+- `JWT_SECRET` — generate with `openssl rand -hex 64`
 
-See `apps/server/.env.example` for a full reference of every option (public address, voice ports, TURN, DDNS, UPnP, etc).
+**Optional but recommended:**
+- `SERVER_NAME` — display name shown to clients
+- `SERVER_DESCRIPTION` — short description
+- `SERVER_URL` — full HTTPS URL (used for invite codes)
+- `SERVER_PASSWORD` — optional join password
+- `PUBLIC_ADDRESS` — your server's public IP for WebRTC (auto-detected if blank)
 
 ## Connecting
 
-Download the latest desktop client from [releases](https://github.com/itsashn/kizuna/releases) and point it at your server's address.
+Download the latest desktop client from [releases](https://github.com/ItsAshn/kizuna/releases) and point it at your server's address.
+
+## Building from Source
+
+```bash
+# Prerequisites: Node.js 22+, pnpm 9+, Rust toolchain
+pnpm install
+
+# Build the server
+pnpm build:server
+
+# Build the desktop client
+pnpm build:desktop
+```
 
 ## License
 

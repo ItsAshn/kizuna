@@ -8,7 +8,7 @@ interface MentionResult {
   target: string | null
 }
 
-function parseMentions(content: string): MentionResult[] {
+export function parseMentions(content: string): MentionResult[] {
   const results: MentionResult[] = []
   const seen = new Set<string>()
 
@@ -35,7 +35,7 @@ function parseMentions(content: string): MentionResult[] {
   return results
 }
 
-function processMentions(io: Server, message: any, mentions: MentionResult[]): void {
+export function processMentions(io: Server, message: any, mentions: MentionResult[]): void {
   if (!mentions.length) return
   const db = getDb()
 

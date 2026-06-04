@@ -32,7 +32,7 @@ Thumbs.db
 docker-compose.override.yml
 
 # Tauri
-src-tauri/target/
+**/src-tauri/target/
 
 # Build artifacts
 *.AppImage

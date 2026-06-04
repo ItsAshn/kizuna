@@ -3,11 +3,13 @@ import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useSocket } from '../hooks/useSocket'
 import { useVoice } from '../hooks/useVoice'
+import { useScreenshare } from '../hooks/useScreenshare'
 import { fetchChannels, fetchMembers, fetchDMChannels } from '@kizuna/shared'
 import Sidebar from '../components/Sidebar'
 import ChatArea from '../components/ChatArea'
 import MemberList from '../components/MemberList'
 import VoiceOverlay from '../components/VoiceOverlay'
+import ScreenShareOverlay from '../components/ScreenShareOverlay'
 import { useNavigate } from 'react-router-dom'
 import '../styles/chat.css'
 
@@ -17,7 +19,16 @@ export default function Chat() {
   const setActiveSession = useServerStore((s) => s.setActiveSession)
   const { setChannels, setMembers, setDMChannels } = useChatStore()
   const socketRef = useSocket()
-  const { joinVoice, leaveVoice, toggleMute, setAudioBitrate } = useVoice(socketRef)
+  const {
+    joinVoice,
+    leaveVoice,
+    toggleMute,
+    setAudioBitrate,
+    sendTransportRef,
+    recvTransportRef,
+    videoElRef,
+  } = useVoice(socketRef)
+  const { startScreenshare, stopScreenshare } = useScreenshare(socketRef, sendTransportRef)
   const [showMembers, setShowMembers] = useState(false)
 
   useEffect(() => {
@@ -58,7 +69,15 @@ export default function Chat() {
       >
         {showMembers ? 'Hide Members' : 'Members'}
       </button>
-      <VoiceOverlay leaveVoice={leaveVoice} toggleMute={toggleMute} setAudioBitrate={setAudioBitrate} socketRef={socketRef} />
+      <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
+      <VoiceOverlay
+        leaveVoice={leaveVoice}
+        toggleMute={toggleMute}
+        setAudioBitrate={setAudioBitrate}
+        socketRef={socketRef}
+        startScreenshare={startScreenshare}
+        stopScreenshare={stopScreenshare}
+      />
     </div>
   )
 }

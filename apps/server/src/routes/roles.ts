@@ -74,10 +74,15 @@ roleRoutes.patch('/:id', authMiddleware, async (c) => {
   }
   const { name, color, permissions } = body
 
+  const existingRow = existing as any
+  const updatedPermissions = permissions !== undefined
+    ? JSON.stringify(permissions)
+    : existingRow.permissions
+
   db.prepare('UPDATE roles SET name = ?, color = ?, permissions = ? WHERE id = ?').run(
-    name?.trim() || (existing as any).name,
-    color || (existing as any).color,
-    JSON.stringify(permissions || {}),
+    name?.trim() || existingRow.name,
+    color || existingRow.color,
+    updatedPermissions,
     id,
   )
 

@@ -2,9 +2,15 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import { fetchServerInfo, login, register, fetchDMChannels } from '@kizuna/shared'
+import { fetchServerInfo, login, register, fetchDMChannels, resolveInviteCode } from '@kizuna/shared'
 import type { DMChannelData } from '@kizuna/shared'
 import '../styles/welcome.css'
+
+const INVITE_CODE_RE = /^[A-Za-z0-9+\-_=]+\.[A-Za-z0-9+\-_=]+$/
+
+function isInviteCode(input: string): boolean {
+  return INVITE_CODE_RE.test(input.trim())
+}
 
 interface ServerDMs {
   serverId: string
@@ -55,12 +61,18 @@ export default function Welcome() {
     setConnecting(true)
     setError('')
     try {
-      const info = await fetchServerInfo(urlToUse.trim())
-      setServerInfo(info)
-      setUrl(urlToUse.trim())
+      if (isInviteCode(urlToUse)) {
+        const resolved = await resolveInviteCode(urlToUse.trim())
+        setServerInfo(resolved)
+        setUrl(resolved.serverUrl)
+      } else {
+        const info = await fetchServerInfo(urlToUse.trim())
+        setServerInfo(info)
+        setUrl(urlToUse.trim())
+      }
       setShowConnect(true)
-    } catch {
-      setError('Could not reach server. Check the URL and try again.')
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || 'Could not reach server. Check the URL or invite code and try again.')
     }
     setConnecting(false)
   }
@@ -153,7 +165,7 @@ export default function Welcome() {
 
           <div className="welcome__card">
             <h2 className="welcome__card-title">Connect to a Server</h2>
-            <input className="input-field welcome__input-spacer" placeholder="Server URL (e.g. http://localhost:5000)" value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleConnect(url)} />
+            <input className="input-field welcome__input-spacer" placeholder="Server URL or invite code..." value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleConnect(url)} />
             <button className="btn-primary" style={{ width: '100%' }} onClick={() => handleConnect(url)} disabled={connecting || !url.trim()}>
               {connecting ? 'Connecting...' : 'Connect'}
             </button>
