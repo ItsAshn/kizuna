@@ -179,6 +179,11 @@ jobs:
           set -euo pipefail
           echo "Building webkit2gtk-4.1 $WEBKIT_VER with ENABLE_WEB_RTC=ON..."
 
+          # Enable source repos (required for apt source)
+          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+            sudo sed -i 's/^# deb-src /deb-src /' /etc/apt/sources.list
+          sudo apt-get update
+
           # Build dependencies
           sudo apt-get install -y \
             cmake ninja-build gperf bison flex ruby python3 perl \

@@ -123,6 +123,10 @@ build_debian() {
 
   info "Installing build dependencies..."
   sudo apt-get update
+  # Enable source repos (required for build-dep and apt source)
+  sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+    sudo sed -i 's/^# deb-src /deb-src /' /etc/apt/sources.list
+  sudo apt-get update
   sudo apt-get build-dep -y webkit2gtk 2>/dev/null || {
     warn "build-dep failed, installing common deps manually..."
     sudo apt-get install -y \
