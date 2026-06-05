@@ -210,8 +210,25 @@ jobs:
           ninja -C build -j$(nproc)
           sudo ninja -C build install
 
-          # Package for caching (only the shared libraries + pkgconfig)
-          tar czf "/tmp/$WEBKIT_TAR" -C / usr/local/lib/libwebkit2gtk-4.1.so* usr/local/lib/libjavascriptcoregtk-4.1.so* usr/local/lib/pkgconfig/webkit2gtk-4.1.pc 2>/dev/null || true
+          # Find where the libraries were actually installed (may be multiarch)
+          WEBKIT_LIB=$(find /usr/local/lib -name "libwebkit2gtk-4.1.so*" -type f 2>/dev/null | head -1)
+          JSCORE_LIB=$(find /usr/local/lib -name "libjavascriptcoregtk-4.1.so*" -type f 2>/dev/null | head -1)
+          WEBKIT_PC=$(find /usr/local/lib -name "webkit2gtk-4.1.pc" -type f 2>/dev/null | head -1)
+
+          if [ -z "$WEBKIT_LIB" ]; then
+            echo "ERROR: webkit2gtk build appeared to succeed but libwebkit2gtk-4.1.so not found under /usr/local/lib/"
+            find /usr/local -name "libwebkit2gtk*" 2>/dev/null | head -10
+            exit 1
+          fi
+
+          echo "Packaging for cache: $WEBKIT_LIB"
+          WEBKIT_LIBDIR=$(dirname "$WEBKIT_LIB")
+          JSCORE_LIBDIR=$(dirname "$JSCORE_LIB")
+          WEBKIT_PCDIR=$(dirname "$WEBKIT_PC")
+          tar czf "/tmp/$WEBKIT_TAR" -C / \
+            "${WEBKIT_LIBDIR#/}"/libwebkit2gtk-4.1.so* \
+            "${JSCORE_LIBDIR#/}"/libjavascriptcoregtk-4.1.so* \
+            "${WEBKIT_PCDIR#/}"/webkit2gtk-4.1.pc
 
           # Upload cache artifact to a release tag
           if ! gh release view "$WEBKIT_TAG" --repo "$GITHUB_REPOSITORY" &>/dev/null; then
@@ -240,9 +257,16 @@ jobs:
             exit 1
           fi
           echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/webrtc-webkit.conf
+          # Also add multiarch path if it exists (install may use lib/x86_64-linux-gnu)
+          if [ -d "/usr/local/lib/x86_64-linux-gnu" ]; then
+            echo "/usr/local/lib/x86_64-linux-gnu" | sudo tee -a /etc/ld.so.conf.d/webrtc-webkit.conf
+          fi
           sudo ldconfig
-          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
+          echo "=== Verifying WebRTC webkit libs ==="
+          find /usr/local/lib -name "libwebkit2gtk-4.1.so*" -ls 2>/dev/null || echo "MISSING: libwebkit2gtk-4.1 not found!"
           echo "WebKit WebRTC libs ready."
 
       # ── End WebKit block ────────────────────────────────────────────
@@ -285,14 +309,29 @@ jobs:
           fi
 
           echo "Found AppDir: $APPDIR"
-          ls -la "$APPDIR/usr/bin/"
 
           echo "Binary RPATH:"
           patchelf --print-rpath "$APPDIR/usr/bin/kizuna" || true
 
+          # Locate the custom WebRTC-enabled webkit libs (may be in multiarch subdir)
+          WEBKIT_SO=$(find /usr/local/lib -maxdepth 3 -name "libwebkit2gtk-4.1.so.0" 2>/dev/null | head -1)
+          JSCORE_SO=$(find /usr/local/lib -maxdepth 3 -name "libjavascriptcoregtk-4.1.so.0" 2>/dev/null | head -1)
+
+          if [ -z "$WEBKIT_SO" ]; then
+            echo "ERROR: custom WebRTC webkit2gtk not found in /usr/local/lib/"
+            echo "Searching full filesystem for any libwebkit2gtk-4.1:"
+            find /usr -name "libwebkit2gtk-4.1.so*" 2>/dev/null | head -10 || true
+            exit 1
+          fi
+
+          WEBKIT_DIR=$(dirname "$WEBKIT_SO")
+          JSCORE_DIR=$(dirname "$JSCORE_SO")
+          echo "Found WebRTC webkit at $WEBKIT_SO"
+          echo "Found WebRTC jscore at $JSCORE_SO"
+
           mkdir -p "$APPDIR/usr/lib"
-          cp -v /usr/local/lib/libwebkit2gtk-4.1.so* "$APPDIR/usr/lib/"
-          cp -v /usr/local/lib/libjavascriptcoregtk-4.1.so* "$APPDIR/usr/lib/"
+          cp -v "$WEBKIT_DIR"/libwebkit2gtk-4.1.so* "$APPDIR/usr/lib/"
+          cp -v "$JSCORE_DIR"/libjavascriptcoregtk-4.1.so* "$APPDIR/usr/lib/"
 
           rm -f "$BUNDLE_DIR"/*.AppImage "$BUNDLE_DIR"/*.AppImage.sig
 
