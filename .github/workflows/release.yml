@@ -209,6 +209,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DUSE_SOUP3=ON \
             -DENABLE_WEB_RTC=ON \
+            -DUSE_GTK4=OFF \
             -DENABLE_GAMEPAD=OFF \
             -DENABLE_DOCUMENTATION=OFF \
             -DENABLE_SPEECH_SYNTHESIS=OFF \
