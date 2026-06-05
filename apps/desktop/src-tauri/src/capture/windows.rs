@@ -15,11 +15,14 @@ mod imp {
         D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE,
     };
     use windows::Win32::Graphics::Dxgi::{
-        CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory1, IDXGIOutput1, IDXGIOutputDuplication,
-        DXGI_OUTPUT_DESC, DXGI_ERROR_WAIT_TIMEOUT,
+        IDXGIAdapter1, IDXGIFactory1, IDXGIOutput1, IDXGIOutputDuplication,
+        IDXGIResource, DXGI_OUTDUPL_FRAME_INFO,
+        DXGI_ERROR_WAIT_TIMEOUT,
     };
-    use windows::Win32::Graphics::Gdi::{EnumDisplayDevicesW, DISPLAY_DEVICEW, EDD_GET_DEVICE_INTERFACE_NAME};
-    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::Graphics::Gdi::{EnumDisplayDevicesW, DISPLAY_DEVICEW};
+    use windows::Win32::Foundation::HMODULE;
+
+    const EDD_GET_DEVICE_INTERFACE_NAME: u32 = 0x00000001;
 
     use super::super::{CaptureSession, MonitorInfo, ScreenFramePayload};
 
@@ -93,7 +96,7 @@ mod imp {
         let cancel_clone = cancel.clone();
 
         let (device, context) = create_d3d11_device()?;
-        let (duplication, output_desc) =
+        let duplication =
             create_desktop_duplication(&device, monitor_index)?;
 
         let handle = thread::spawn(move || {
@@ -111,7 +114,6 @@ mod imp {
                     &device,
                     &context,
                     &duplication,
-                    &output_desc,
                 ) {
                     Ok(payload) => {
                         consecutive_errors = 0;
@@ -153,15 +155,13 @@ mod imp {
             D3D11CreateDevice(
                 None,
                 windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE,
-                HANDLE::default(),
+                HMODULE::default(),
                 windows::Win32::Graphics::Direct3D11::D3D11_CREATE_DEVICE_BGRA_SUPPORT,
                 None,
-                windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_0,
                 0,
-                None,
                 Some(&mut device),
-                Some(&mut context),
                 None,
+                Some(&mut context),
             )
             .map_err(|e| format!("D3D11CreateDevice failed: {e}"))?;
         }
@@ -175,7 +175,7 @@ mod imp {
     fn create_desktop_duplication(
         device: &ID3D11Device,
         monitor_index: usize,
-    ) -> Result<(IDXGIOutputDuplication, DXGI_OUTPUT_DESC), String> {
+    ) -> Result<IDXGIOutputDuplication, String> {
         let dxgi_device: windows::Win32::Graphics::Dxgi::IDXGIDevice =
             device.cast().map_err(|e| format!("Cast to IDXGIDevice failed: {e}"))?;
 
@@ -205,16 +205,13 @@ mod imp {
                 .cast()
                 .map_err(|e| format!("Cast to IDXGIOutput1 failed: {e}"))?;
 
-            let desc = unsafe { output1.GetDesc() }
-                .map_err(|e| format!("GetDesc failed: {e}"))?;
-
             if output_index as usize == monitor_index {
                 let duplication = unsafe {
                     output1.DuplicateOutput(device)
                 }
                 .map_err(|e| format!("DuplicateOutput failed: {e}"))?;
 
-                return Ok((duplication, desc));
+                return Ok(duplication);
             }
 
             output_index += 1;
@@ -227,12 +224,13 @@ mod imp {
         device: &ID3D11Device,
         context: &ID3D11DeviceContext,
         duplication: &IDXGIOutputDuplication,
-        output_desc: &DXGI_OUTPUT_DESC,
     ) -> Result<ScreenFramePayload, String> {
         unsafe {
-            let (acquired, frame_info, desktop_resource) = loop {
-                match duplication.AcquireNextFrame(100) {
-                    Ok((info, resource)) => break (true, info, resource),
+            let (frame_info, desktop_resource) = loop {
+                let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
+                let mut desktop_resource: Option<IDXGIResource> = None;
+                match duplication.AcquireNextFrame(100, &mut frame_info, Some(&mut desktop_resource)) {
+                    Ok(()) => break (frame_info, desktop_resource),
                     Err(e) if e.code() == DXGI_ERROR_WAIT_TIMEOUT => {
                         return Err("Timeout acquiring frame".into());
                     }
@@ -242,9 +240,8 @@ mod imp {
                 }
             };
 
-            if !acquired {
-                return Err("No frame acquired".into());
-            }
+            let desktop_resource = desktop_resource
+                .ok_or("No desktop resource acquired")?;
 
             let texture: ID3D11Texture2D = desktop_resource
                 .cast()
@@ -262,24 +259,29 @@ mod imp {
             staging_desc.Usage = windows::Win32::Graphics::Direct3D11::D3D11_USAGE_STAGING;
             staging_desc.MiscFlags = 0;
 
-            let staging_texture = device
-                .CreateTexture2D(&staging_desc, None)
+            let mut staging_texture: Option<ID3D11Texture2D> = None;
+            device
+                .CreateTexture2D(&staging_desc, None, Some(&mut staging_texture))
                 .map_err(|e| format!("CreateTexture2D failed: {e}"))?;
+            let staging_texture = staging_texture
+                .ok_or("CreateTexture2D returned null")?;
 
             context.CopyResource(&staging_texture, &texture);
 
-            let mapped: D3D11_MAPPED_SUBRESOURCE = context
+            let mut mapped: D3D11_MAPPED_SUBRESOURCE = std::mem::zeroed();
+            context
                 .Map(
                     &staging_texture,
                     0,
                     D3D11_MAP_READ,
                     0,
+                    Some(&mut mapped),
                 )
                 .map_err(|e| format!("Map failed: {e}"))?;
 
             let data = std::slice::from_raw_parts(
                 mapped.pData as *const u8,
-                (mapped.RowPitch as usize * height as usize),
+                mapped.RowPitch as usize * height as usize,
             );
 
             let encoded = encode_frame(data, mapped.RowPitch as u32, width, height)?;
