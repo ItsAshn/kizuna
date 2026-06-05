@@ -90,6 +90,36 @@
   background: var(--bg-hover);
 }
 
+.voice-error__debug {
+  margin-bottom: 8px;
+}
+
+.voice-error__debug-summary {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.voice-error__debug-summary:hover {
+  color: var(--text-secondary);
+}
+
+.voice-error__debug-log {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .voice-header {
   display: flex;
   align-items: center;

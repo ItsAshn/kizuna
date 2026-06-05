@@ -22,17 +22,25 @@ const SCRIPT_PROCESSOR_BUFFER_SIZE = 480
 const AUDIO_SAMPLE_RATE = 48000
 
 let __voiceSeq = 0
-function vlog(tag: string, msg: string, data?: unknown) {
+const MAX_VOICE_LOG_LINES = 30
+const __voiceLogBuffer: string[] = []
+function voiceLog(level: 'log'|'err', tag: string, msg: string, extra?: string) {
   const seq = ++__voiceSeq
   const ts = new Date().toISOString().split('T')[1].slice(0, 12)
+  const line = `[${ts}] ${tag}: ${msg}${extra ?? ''}`
+  __voiceLogBuffer.push(line)
+  if (__voiceLogBuffer.length > MAX_VOICE_LOG_LINES) __voiceLogBuffer.shift()
+  if (level === 'err') console.error(`[VOICE ${seq}] ${line}`)
+  else console.log(`[VOICE ${seq}] ${line}`)
+}
+export function getVoiceLogLines(): string[] { return [...__voiceLogBuffer] }
+function vlog(tag: string, msg: string, data?: unknown) {
   const extra = data !== undefined ? ` ${JSON.stringify(data).slice(0, 200)}` : ''
-  console.log(`[VOICE ${seq}] [${ts}] ${tag}: ${msg}${extra}`)
+  voiceLog('log', tag, msg, extra)
 }
 function verr(tag: string, msg: string, err?: unknown) {
-  const seq = ++__voiceSeq
-  const ts = new Date().toISOString().split('T')[1].slice(0, 12)
   const detail = err instanceof Error ? `${err.message} (${err.name})` : String(err ?? '')
-  console.error(`[VOICE ${seq}] [${ts}] ${tag}: ${msg} | ${detail}`)
+  voiceLog('err', tag, msg, ` | ${detail}`)
 }
 
 interface AudioDataPayload {
@@ -542,6 +550,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       return err
     }
 
+    setActiveVoiceChannel(channelId)
+
     if (typeof RTCPeerConnection === 'undefined') {
       verr('joinVoice', 'RTCPeerConnection undefined - WebRTC not supported')
       const err = 'WebRTC is not supported in this browser. On Linux, ensure webkit2gtk is built with WebRTC support, or use Chromium/Firefox via pnpm dev:desktop.'
@@ -553,8 +563,19 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     }
 
     vlog('joinVoice', 'creating mediasoup Device and loading rtpCapabilities')
-    const device = new Device()
-    await device.load({ routerRtpCapabilities: joinResult.routerRtpCapabilities })
+    let device: Device
+    try {
+      device = new Device()
+      await device.load({ routerRtpCapabilities: joinResult.routerRtpCapabilities })
+    } catch (loadErr: any) {
+      verr('joinVoice', 'mediasoup Device.load() failed', loadErr)
+      const err = `WebRTC codec/device initialization failed: ${loadErr?.message || loadErr}. On Linux, ensure webkit2gtk is built with full WebRTC support and required audio codecs (opus) are available.`
+      setVoiceError(err)
+      cleanupVoice()
+      socket.emit('voice:leave', { channelId })
+      channelIdRef.current = null
+      return err
+    }
     vlog('joinVoice', 'Device loaded successfully')
     deviceRef.current = device
 
@@ -680,8 +701,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         stopScreenConsume()
       }
     })
-
-    setActiveVoiceChannel(channelId)
 
     const remoteCtx = new AudioContext()
     remoteAudioCtxRef.current = remoteCtx

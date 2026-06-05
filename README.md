@@ -1,5 +1,9 @@
 # Kizuna
 
+<p align="center">
+  <img src="Logo.svg" alt="Kizuna" width="120" />
+</p>
+
 Self-hosted Discord alternative with text chat, voice channels, and screen sharing. You host the server, you own the data.
 
 ## Features

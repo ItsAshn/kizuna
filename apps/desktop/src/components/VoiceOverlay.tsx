@@ -3,6 +3,7 @@ import { useChatStore } from '../store/chatStore'
 import type { ConnectionQuality } from '@kizuna/shared'
 import { Volume2, Mic, MicOff, PhoneOff, Monitor, MonitorOff } from 'lucide-react'
 import MonitorPicker from './MonitorPicker'
+import { getVoiceLogLines } from '../hooks/useVoice'
 import '../styles/voice-overlay.css'
 
 interface VoiceOverlayProps {
@@ -85,6 +86,10 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, setAudioBitrate, 
         <div className="voice-error">
           <div className="voice-error__label">Voice Error</div>
           <p className="voice-error__message">{voiceError}</p>
+          <details className="voice-error__debug">
+            <summary className="voice-error__debug-summary">debug log</summary>
+            <pre className="voice-error__debug-log">{getVoiceLogLines().join('\n')}</pre>
+          </details>
           <div className="voice-error__actions">
             <button onClick={handleRetry} className="voice-error__btn voice-error__btn--retry">
               retry

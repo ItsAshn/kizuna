@@ -54,7 +54,7 @@ export function useBackgroundNotifications(): void {
 
       socket.on('server:announce', ({ title, body }: { title: string; body: string }) => {
         if (document.visibilityState === 'hidden') {
-          try { new Notification(title, { body, icon: '/icon.png' }) } catch { /* not supported */ }
+          try { new Notification(title, { body, icon: '/Logo.webp' }) } catch { /* not supported */ }
         }
       })
 
@@ -94,6 +94,6 @@ function tryShowNotification(message: Message) {
   try {
     const title = `${message.display_name || message.username || 'Someone'}`
     const body = message.content.length > 100 ? message.content.slice(0, 100) + '...' : message.content
-    new Notification(title, { body, icon: '/icon.png' })
+    new Notification(title, { body, icon: '/Logo.webp' })
   } catch { /* not supported */ }
 }

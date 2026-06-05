@@ -128,6 +128,7 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
       <div className="welcome">
         <div className="welcome__container">
           <div className="welcome__branding">
+            <img src="/Logo.svg" alt="Kizuna" className="welcome__logo" />
             <h1 className="welcome__title">Kizuna</h1>
             <p className="welcome__subtitle">Self-hosted voice & chat</p>
           </div>
@@ -169,6 +170,7 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
       <div className="welcome">
         <div className="welcome__container">
           <div className="welcome__branding">
+            <img src="/Logo.svg" alt="Kizuna" className="welcome__logo" />
             <h1 className="welcome__title">Kizuna</h1>
             <p className="welcome__subtitle">Self-hosted voice & chat</p>
           </div>
@@ -204,6 +206,7 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
     return (
       <div className="welcome welcome--landing">
         <div className="landing-hero">
+          <img src="/Logo.svg" alt="Kizuna" className="landing-logo" />
           <h1 className="landing-title">Kizuna</h1>
           <p className="landing-tagline">Self-hosted voice &amp; chat</p>
         </div>
@@ -349,6 +352,7 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
   return (
     <div className="welcome welcome--dashboard">
       <div className="welcome__branding">
+        <img src="/Logo.svg" alt="Kizuna" className="welcome__logo" />
         <h1 className="welcome__title">Kizuna</h1>
         <p className="welcome__subtitle">Self-hosted voice & chat</p>
         {import.meta.env.DEV && (
