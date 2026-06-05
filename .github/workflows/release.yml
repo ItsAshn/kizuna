@@ -153,22 +153,31 @@ jobs:
           echo "WEBKIT_TAR=webkit-webrtc-linux-x64_$(pkg-config --modversion webkit2gtk-4.1).tar.gz" >> $GITHUB_ENV
           echo "WEBKIT_TAG=webkit-webrtc-v$(pkg-config --modversion webkit2gtk-4.1)" >> $GITHUB_ENV
 
-      - name: Download cached webkit WebRTC build
-        id: cache-download
-        continue-on-error: true
+      - name: Try restore cached webkit WebRTC build
+        id: cache-restore
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           gh release download "$WEBKIT_TAG" \
             --pattern "$WEBKIT_TAR" \
             --repo "$GITHUB_REPOSITORY" \
-            --dir /tmp/webrtc-cache || true
+            --dir /tmp/webrtc-cache 2>/dev/null || true
+
           if [ -f "/tmp/webrtc-cache/$WEBKIT_TAR" ]; then
-            echo "WEBKIT_CACHED=true" >> $GITHUB_ENV
-            echo "Cache hit: $WEBKIT_TAR"
+            echo "Extracting cached build..."
+            sudo tar xzf "/tmp/webrtc-cache/$WEBKIT_TAR" -C /
+            # Verify the extraction actually put files in place
+            if find /usr/local/lib -name "libwebkit2gtk-4.1.so*" -print -quit 2>/dev/null | grep -q .; then
+              echo "WEBKIT_CACHED=true" >> $GITHUB_ENV
+              echo "Cache valid — WebRTC webkit found"
+            else
+              echo "WEBKIT_CACHED=false" >> $GITHUB_ENV
+              echo "Cache INVALID (no .so files after extraction) — forcing rebuild"
+            fi
           else
             echo "WEBKIT_CACHED=false" >> $GITHUB_ENV
-            echo "Cache miss — will build from source"
+            echo "No cache — will build from source"
           fi
 
       - name: Build webkit2gtk with WebRTC (apt source)
@@ -244,20 +253,21 @@ jobs:
 
           echo "WebKit WebRTC build + upload complete."
 
-      - name: Extract webkit WebRTC libs
+      - name: Setup webkit WebRTC libs
         run: |
-          if [ -f "/tmp/webrtc-cache/$WEBKIT_TAR" ]; then
-            echo "Extracting from cache..."
-            sudo tar xzf "/tmp/webrtc-cache/$WEBKIT_TAR" -C /
-          elif [ -f "/tmp/$WEBKIT_TAR" ]; then
-            echo "Extracting from local build..."
-            sudo tar xzf "/tmp/$WEBKIT_TAR" -C /
-          else
-            echo "ERROR: No webkit WebRTC tarball found"
-            exit 1
+          set -euo pipefail
+          # If built from source (cache miss or invalid), extract the local tarball
+          if [ "$WEBKIT_CACHED" = "false" ]; then
+            if [ -f "/tmp/$WEBKIT_TAR" ]; then
+              echo "Extracting from local build..."
+              sudo tar xzf "/tmp/$WEBKIT_TAR" -C /
+            else
+              echo "ERROR: No webkit WebRTC tarball found (neither cache nor local build)"
+              exit 1
+            fi
           fi
+          # Configure library search paths
           echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/webrtc-webkit.conf
-          # Also add multiarch path if it exists (install may use lib/x86_64-linux-gnu)
           if [ -d "/usr/local/lib/x86_64-linux-gnu" ]; then
             echo "/usr/local/lib/x86_64-linux-gnu" | sudo tee -a /etc/ld.so.conf.d/webrtc-webkit.conf
           fi
@@ -266,8 +276,14 @@ jobs:
           echo "LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
           echo "=== Verifying WebRTC webkit libs ==="
-          find /usr/local/lib -name "libwebkit2gtk-4.1.so*" -ls 2>/dev/null || echo "MISSING: libwebkit2gtk-4.1 not found!"
-          echo "WebKit WebRTC libs ready."
+          if find /usr/local/lib -name "libwebkit2gtk-4.1.so*" -print -quit 2>/dev/null | grep -q .; then
+            find /usr/local/lib -name "libwebkit2gtk-4.1.so*" -ls 2>/dev/null
+            echo "WebKit WebRTC libs ready."
+          else
+            echo "FATAL: No libwebkit2gtk-4.1 found in /usr/local/lib after setup!"
+            find /usr -name "libwebkit2gtk-4.1.so*" 2>/dev/null | head -10
+            exit 1
+          fi
 
       # ── End WebKit block ────────────────────────────────────────────
 
