@@ -235,10 +235,12 @@ jobs:
           WEBKIT_LIBDIR=$(dirname "$WEBKIT_LIB")
           JSCORE_LIBDIR=$(dirname "$JSCORE_LIB")
           WEBKIT_PCDIR=$(dirname "$WEBKIT_PC")
-          tar czf "/tmp/$WEBKIT_TAR" -C / \
-            "${WEBKIT_LIBDIR#/}"/libwebkit2gtk-4.1.so* \
-            "${JSCORE_LIBDIR#/}"/libjavascriptcoregtk-4.1.so* \
-            "${WEBKIT_PCDIR#/}"/webkit2gtk-4.1.pc
+          # Use find + tar pipeline so globs resolve relative to /, not CWD
+          (cd / && find \
+            "${WEBKIT_LIBDIR#/}" -maxdepth 1 -name "libwebkit2gtk-4.1.so*" -type f \
+            "${JSCORE_LIBDIR#/}" -maxdepth 1 -name "libjavascriptcoregtk-4.1.so*" -type f \
+            "${WEBKIT_PCDIR#/}" -maxdepth 1 -name "webkit2gtk-4.1.pc" -type f \
+            -print0 | tar czf "/tmp/$WEBKIT_TAR" --null -T -)
 
           # Upload cache artifact to a release tag
           if ! gh release view "$WEBKIT_TAG" --repo "$GITHUB_REPOSITORY" &>/dev/null; then
