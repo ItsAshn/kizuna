@@ -28,7 +28,6 @@ export default function Chat() {
     joinVoice,
     leaveVoice,
     toggleMute,
-    setAudioBitrate,
     sendTransportRef,
     videoElRef,
   } = useVoice(socketRef)
@@ -136,7 +135,6 @@ export default function Chat() {
         joinVoice={joinVoice}
         leaveVoice={leaveVoice}
         toggleMute={toggleMute}
-        setAudioBitrate={setAudioBitrate}
         socketRef={socketRef}
         startScreenshare={startScreenshare}
         stopScreenshare={stopScreenshare}

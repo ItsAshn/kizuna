@@ -32,7 +32,7 @@ function getIceServers() {
   return servers
 }
 
-interface PeerInfo {
+export interface PeerInfo {
   socketId: string
   userId: string
   username: string
@@ -45,6 +45,20 @@ interface PeerInfo {
 }
 
 const peers = new Map<string, PeerInfo>()
+
+export function getAllPeers(): PeerInfo[] {
+  return Array.from(peers.values())
+}
+
+function getServerVoiceBitrateKbps(): number {
+  const db = getDb()
+  const row = db.prepare("SELECT value FROM server_settings WHERE key = 'voice_bitrate_kbps'").get() as { value: string } | undefined
+  if (row?.value) {
+    const parsed = parseInt(row.value, 10)
+    if (!isNaN(parsed) && parsed >= 8 && parsed <= 512) return parsed
+  }
+  return 64
+}
 
 export function getPeersInChannel(channelId: string): PeerInfo[] {
   const result: PeerInfo[] = []
@@ -132,7 +146,8 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
 
       const iceServers = getIceServers()
       const screenSharePeer = getScreenSharer(channelId)
-      vlog('join', `success | socketId=${socket.id} | username=${username} | channelPeers=${channelPeers.length} | iceServers=${iceServers.length} | screenShare=${!!screenSharePeer} | ms=${Date.now() - joinTs}`)
+      const voiceBitrateKbps = getServerVoiceBitrateKbps()
+      vlog('join', `success | socketId=${socket.id} | username=${username} | channelPeers=${channelPeers.length} | iceServers=${iceServers.length} | screenShare=${!!screenSharePeer} | voiceBitrate=${voiceBitrateKbps}kbps | ms=${Date.now() - joinTs}`)
 
       if (typeof callback === 'function') {
         callback({
@@ -140,6 +155,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
           peers: channelPeers,
           iceServers,
           screenSharePeer,
+          voiceBitrateKbps,
         })
       }
     } catch (err: any) {
@@ -164,7 +180,13 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       const transport = await createTransport(peer.router);
       (transport as any)._direction = direction
       peer.transports.set(transport.id, transport as any)
-      vlog('createTransport', `created | socketId=${socket.id} | dir=${direction} | transportId=${transport.id} | ms=${Date.now() - t0}`)
+
+      const bitrateKbps = getServerVoiceBitrateKbps()
+      transport.setMaxIncomingBitrate(bitrateKbps * 1000).catch((e) => {
+        verr('createTransport', `setMaxIncomingBitrate failed`, e)
+      })
+
+      vlog('createTransport', `created | socketId=${socket.id} | dir=${direction} | transportId=${transport.id} | bitrate=${bitrateKbps}kbps | ms=${Date.now() - t0}`)
 
       transport.on('dtlsstatechange', (state: string) => {
         vlog('dtls', `${direction} dtlsstatechange -> ${state} | socketId=${socket.id} | transportId=${transport.id}`)
@@ -362,22 +384,6 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
           speaking,
         })
       }
-    }
-  })
-
-  socket.on('voice:setBitrate', async ({ channelId, transportId, maxBitrateKbps }: {
-    channelId: string
-    transportId: string
-    maxBitrateKbps: number
-  }) => {
-    try {
-      const peer = peers.get(socket.id)
-      const transport = peer?.transports.get(transportId)
-      if (!transport) return
-      const bps = Math.max(8000, Math.min(512000, maxBitrateKbps * 1000))
-      await transport.setMaxIncomingBitrate(bps)
-    } catch (err: any) {
-      console.error('[Voice] setBitrate error:', err.message)
     }
   })
 

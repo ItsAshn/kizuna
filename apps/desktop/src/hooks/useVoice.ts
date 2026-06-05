@@ -302,13 +302,14 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const nativeAudioUnlistenRef = useRef<(() => void) | null>(null)
   const scriptNodeRef = useRef<ScriptProcessorNode | null>(null)
   const pcmRingBufferRef = useRef<Float32Array[]>([])
+  const serverBitrateRef = useRef<number>(64)
 
   const {
     setActiveVoiceChannel,
     setVoicePeers, addVoicePeer, removeVoicePeer, updateVoicePeer,
     isMuted, setIsMuted, setIsSpeaking,
     setLocalConnectionQuality,
-    audioBitrateKbps, setAudioBitrateKbps,
+    serverVoiceBitrateKbps, setServerVoiceBitrateKbps,
     audioInputDeviceId, audioOutputDeviceId,
     setVoiceError,
     setScreenSharePeer, clearScreenSharePeer,
@@ -530,7 +531,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         username: session.user.username,
       }, resolve),
     )
-    vlog('joinVoice', 'voice:join response', { hasError: !!joinResult?.error, hasRtp: !!joinResult?.routerRtpCapabilities, peers: joinResult?.peers?.length, iceServers: joinResult?.iceServers?.length, screenShare: !!joinResult?.screenSharePeer })
+    vlog('joinVoice', 'voice:join response', { hasError: !!joinResult?.error, hasRtp: !!joinResult?.routerRtpCapabilities, peers: joinResult?.peers?.length, iceServers: joinResult?.iceServers?.length, screenShare: !!joinResult?.screenSharePeer, voiceBitrate: joinResult?.voiceBitrateKbps })
 
     if (joinResult?.error) {
       verr('joinVoice', 'voice:join error', joinResult.error)
@@ -723,13 +724,26 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       await consumeScreenShare(socket, device, recvTransport, peerId, channelId, username)
     }
 
+    const voiceBitrateKbps = joinResult.voiceBitrateKbps ?? 64
+    serverBitrateRef.current = voiceBitrateKbps
+    setServerVoiceBitrateKbps(voiceBitrateKbps)
+
+    socket.on('server:voiceBitrateChanged', ({ voiceBitrateKbps: newKbps }: { voiceBitrateKbps: number }) => {
+      vlog('bitrate', `server:voiceBitrateChanged -> ${newKbps} kbps`)
+      serverBitrateRef.current = newKbps
+      setServerVoiceBitrateKbps(newKbps)
+      if (producerRef.current) {
+        producerRef.current.setRtpEncodingParameters({ maxBitrate: newKbps * 1000 }).catch(console.error)
+      }
+    })
+
     try {
       if (isTauri()) {
         vlog('mic', 'taking NATIVE microphone path')
-        await setupNativeMicrophone(socket, channelId, sendTransport)
+        await setupNativeMicrophone(socket, channelId, sendTransport, voiceBitrateKbps)
       } else {
         vlog('mic', 'taking BROWSER microphone path')
-        await setupBrowserMicrophone(socket, channelId, sendTransport)
+        await setupBrowserMicrophone(socket, channelId, sendTransport, voiceBitrateKbps)
       }
       vlog('joinVoice', 'microphone setup complete - voice joined successfully')
     } catch (err: any) {
@@ -775,8 +789,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   }, [
     socketRef, session, cleanupVoice, setActiveVoiceChannel, setVoicePeers,
     addVoicePeer, removeVoicePeer, updateVoicePeer, setIsSpeaking,
-    setLocalConnectionQuality, audioBitrateKbps, audioInputDeviceId,
-    audioOutputDeviceId, setVoiceError, consumePeer,
+    setLocalConnectionQuality, serverVoiceBitrateKbps, setServerVoiceBitrateKbps,
+    audioInputDeviceId, audioOutputDeviceId, setVoiceError, consumePeer,
     consumeScreenShare, stopScreenConsume, setScreenSharePeer,
     setLiveAudioLevel, voiceGateThreshold, voiceInputMode,
     pushToTalkKey, noiseSuppression, echoCancellation, autoGainControl,
@@ -787,8 +801,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     socket: Socket,
     channelId: string,
     sendTransport: Transport,
+    bitrateKbps: number,
   ) => {
-    vlog('browserMic', `starting | inputDeviceId=${audioInputDeviceId} | inputVolume=${inputVolume} | noiseSupp=${noiseSuppression} | echoCanc=${echoCancellation} | autoGain=${autoGainControl}`)
+    vlog('browserMic', `starting | inputDeviceId=${audioInputDeviceId} | inputVolume=${inputVolume} | noiseSupp=${noiseSuppression} | echoCanc=${echoCancellation} | autoGain=${autoGainControl} | bitrate=${bitrateKbps}`)
     const micConstraints: MediaTrackConstraints = audioInputDeviceId
       ? {
           deviceId: { exact: audioInputDeviceId },
@@ -826,7 +841,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     vlog('browserMic', `creating producer | trackKind=${processedTrack.kind} | readyState=${processedTrack.readyState}`)
     const producer = await sendTransport.produce({
       track: processedTrack,
-      encodings: [{ maxBitrate: audioBitrateKbps * 1000 }],
+      encodings: [{ maxBitrate: bitrateKbps * 1000 }],
       codecOptions: { opusStereo: false, opusDtx: true },
     })
     producerRef.current = producer
@@ -852,15 +867,16 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       setupPushToTalk(socket, channelId, producer)
     }
   }, [audioInputDeviceId, noiseSuppression, echoCancellation, autoGainControl,
-      inputVolume, audioBitrateKbps, voiceGateThreshold, voiceInputMode,
+      inputVolume, voiceGateThreshold, voiceInputMode,
       setLiveAudioLevel, setIsSpeaking, pushToTalkKey])
 
   const setupNativeMicrophone = useCallback(async (
     socket: Socket,
     channelId: string,
     sendTransport: Transport,
+    bitrateKbps: number,
   ) => {
-    vlog('nativeMic', `starting | inputDeviceId=${audioInputDeviceId} | inputVolume=${inputVolume} | bitrate=${audioBitrateKbps}`)
+    vlog('nativeMic', `starting | inputDeviceId=${audioInputDeviceId} | inputVolume=${inputVolume} | bitrate=${bitrateKbps}`)
     const [{ invoke }, { listen }] = await Promise.all([
       import('@tauri-apps/api/core'),
       import('@tauri-apps/api/event'),
@@ -969,13 +985,13 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       throw e
     }
 
-    vlog('nativeMic', `creating producer | sampleRate=${AUDIO_SAMPLE_RATE} | bitrate=${audioBitrateKbps * 1000}`)
+    vlog('nativeMic', `creating producer | sampleRate=${AUDIO_SAMPLE_RATE} | bitrate=${bitrateKbps * 1000}`)
     const processedTrack = destination.stream.getAudioTracks()[0]
     vlog('nativeMic', `track info | kind=${processedTrack.kind} | label=${processedTrack.label} | readyState=${processedTrack.readyState} | enabled=${processedTrack.enabled}`)
 
     const producer = await sendTransport.produce({
       track: processedTrack,
-      encodings: [{ maxBitrate: audioBitrateKbps * 1000 }],
+      encodings: [{ maxBitrate: bitrateKbps * 1000 }],
       codecOptions: { opusStereo: false, opusDtx: true },
     })
     producerRef.current = producer
@@ -999,7 +1015,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     if (voiceInputMode === 'push-to-talk') {
       setupPushToTalk(socket, channelId, producer)
     }
-  }, [audioInputDeviceId, inputVolume, audioBitrateKbps, voiceGateThreshold,
+  }, [audioInputDeviceId, inputVolume, voiceGateThreshold,
       voiceInputMode, setLiveAudioLevel, setIsSpeaking, pushToTalkKey])
 
   const setupPushToTalk = useCallback((
@@ -1093,23 +1109,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     }
   }, [isMuted, setIsMuted, voiceInputMode])
 
-  const setAudioBitrate = useCallback((socket: Socket, kbps: number) => {
-    setAudioBitrateKbps(kbps)
-    const bps = kbps * 1000
-
-    if (producerRef.current) {
-      producerRef.current.setRtpEncodingParameters({ maxBitrate: bps }).catch(console.error)
-    }
-
-    if (socket && sendTransportRef.current) {
-      socket.emit('voice:setBitrate', {
-        channelId: channelIdRef.current,
-        transportId: sendTransportRef.current.id,
-        maxBitrateKbps: kbps,
-      })
-    }
-  }, [setAudioBitrateKbps])
-
   useEffect(() => {
     let prevInputVolume = inputVolume
     let prevOutputVolume = outputVolume
@@ -1136,5 +1135,5 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     return unsub
   }, [])
 
-  return { joinVoice, leaveVoice, toggleMute, setAudioBitrate, sendTransportRef, recvTransportRef, videoElRef }
+  return { joinVoice, leaveVoice, toggleMute, sendTransportRef, recvTransportRef, videoElRef }
 }

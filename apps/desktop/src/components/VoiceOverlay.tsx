@@ -9,7 +9,6 @@ import '../styles/voice-overlay.css'
 interface VoiceOverlayProps {
   leaveVoice: () => void
   toggleMute: () => void
-  setAudioBitrate: (socket: any, kbps: number) => void
   socketRef: React.MutableRefObject<any>
   startScreenshare: (channelId: string, monitorIndex: number, fps: number) => Promise<string | null>
   stopScreenshare: () => void
@@ -42,7 +41,7 @@ function ConnectionQualityBars({ quality }: { quality: ConnectionQuality | null 
   )
 }
 
-export default function VoiceOverlay({ leaveVoice, toggleMute, setAudioBitrate, socketRef, startScreenshare, stopScreenshare }: VoiceOverlayProps) {
+export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare }: VoiceOverlayProps) {
   const {
     activeVoiceChannelId,
     voicePeers,
@@ -50,7 +49,7 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, setAudioBitrate, 
     isSpeaking,
     channels,
     localConnectionQuality,
-    audioBitrateKbps,
+    serverVoiceBitrateKbps,
     voiceError,
     isScreenSharing,
     screenSharePeerId,
@@ -229,22 +228,7 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, setAudioBitrate, 
           <span className="voice-bitrate__label">
             bitrate
           </span>
-          <select
-            value={audioBitrateKbps}
-            onChange={(e) => {
-              const kbps = Number(e.target.value)
-              if (socketRef.current) setAudioBitrate(socketRef.current, kbps)
-            }}
-            className="voice-bitrate__select"
-          >
-            <option value={32}>32 kbps</option>
-            <option value={64}>64 kbps</option>
-            <option value={96}>96 kbps</option>
-            <option value={128}>128 kbps</option>
-            <option value={192}>192 kbps</option>
-            <option value={256}>256 kbps</option>
-            <option value={320}>320 kbps</option>
-          </select>
+          <span className="voice-bitrate__value">{serverVoiceBitrateKbps} kbps</span>
         </div>
       )}
     </div>

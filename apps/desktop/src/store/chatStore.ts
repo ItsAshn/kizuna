@@ -19,7 +19,7 @@ interface ChatState {
   isMuted: boolean
   isSpeaking: boolean
   localConnectionQuality: ConnectionQuality | null
-  audioBitrateKbps: number
+  serverVoiceBitrateKbps: number
   audioInputDeviceId: string | null
   audioOutputDeviceId: string | null
   voiceError: string | null
@@ -67,7 +67,7 @@ interface ChatState {
   setIsMuted: (muted: boolean) => void
   setIsSpeaking: (speaking: boolean) => void
   setLocalConnectionQuality: (quality: ConnectionQuality | null) => void
-  setAudioBitrateKbps: (kbps: number) => void
+  setServerVoiceBitrateKbps: (kbps: number) => void
   setAudioInputDeviceId: (id: string | null) => void
   setAudioOutputDeviceId: (id: string | null) => void
   setVoiceError: (error: string | null) => void
@@ -110,7 +110,7 @@ export const useChatStore = create<ChatState>()(
       isMuted: false,
       isSpeaking: false,
       localConnectionQuality: null,
-      audioBitrateKbps: 64,
+      serverVoiceBitrateKbps: 64,
       audioInputDeviceId: null,
       audioOutputDeviceId: null,
       voiceError: null,
@@ -177,7 +177,7 @@ export const useChatStore = create<ChatState>()(
       setIsMuted: (isMuted) => set({ isMuted }),
       setIsSpeaking: (isSpeaking) => set({ isSpeaking }),
       setLocalConnectionQuality: (localConnectionQuality) => set({ localConnectionQuality }),
-      setAudioBitrateKbps: (audioBitrateKbps) => set({ audioBitrateKbps }),
+      setServerVoiceBitrateKbps: (serverVoiceBitrateKbps) => set({ serverVoiceBitrateKbps }),
       setAudioInputDeviceId: (audioInputDeviceId) => set({ audioInputDeviceId }),
       setAudioOutputDeviceId: (audioOutputDeviceId) => set({ audioOutputDeviceId }),
       setVoiceError: (voiceError) => set({ voiceError }),
@@ -213,7 +213,7 @@ export const useChatStore = create<ChatState>()(
       partialize: (state) => ({
         audioInputDeviceId: state.audioInputDeviceId,
         audioOutputDeviceId: state.audioOutputDeviceId,
-        audioBitrateKbps: state.audioBitrateKbps,
+        serverVoiceBitrateKbps: state.serverVoiceBitrateKbps,
         voiceInputMode: state.voiceInputMode,
         voiceGateThreshold: state.voiceGateThreshold,
         pushToTalkKey: state.pushToTalkKey,

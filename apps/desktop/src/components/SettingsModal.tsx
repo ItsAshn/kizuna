@@ -19,16 +19,6 @@ function isTauri(): boolean {
   return !!(window as any).__TAURI_INTERNALS__
 }
 
-const BITRATE_OPTIONS = [
-  { value: 32, label: '32 kbps — low bandwidth' },
-  { value: 64, label: '64 kbps — balanced' },
-  { value: 96, label: '96 kbps' },
-  { value: 128, label: '128 kbps — high quality' },
-  { value: 192, label: '192 kbps' },
-  { value: 256, label: '256 kbps' },
-  { value: 320, label: '320 kbps — max quality' },
-]
-
 const INPUT_MODES: { value: VoiceInputMode; label: string; desc: string }[] = [
   { value: 'voice-activity', label: 'voice activity', desc: 'automatically transmit when you speak' },
   { value: 'push-to-talk', label: 'push to talk', desc: 'hold a key to transmit' },
@@ -76,7 +66,6 @@ export default function SettingsModal({ onClose }: Props) {
   const {
     audioInputDeviceId, setAudioInputDeviceId,
     audioOutputDeviceId, setAudioOutputDeviceId,
-    audioBitrateKbps, setAudioBitrateKbps,
     voiceInputMode, setVoiceInputMode,
     voiceGateThreshold, setVoiceGateThreshold,
     pushToTalkKey, setPushToTalkKey,
@@ -305,20 +294,6 @@ export default function SettingsModal({ onClose }: Props) {
                 )}
               </>
             )}
-          </section>
-
-          <section>
-            <p className="settings-modal__section-title">voice bitrate</p>
-            <select
-              value={audioBitrateKbps}
-              onChange={(e) => setAudioBitrateKbps(Number(e.target.value))}
-              className="settings-modal__select"
-            >
-              {BITRATE_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-            <p className="settings-modal__hint">takes effect on next voice channel join</p>
           </section>
 
           <hr className="settings-modal__section-divider" />

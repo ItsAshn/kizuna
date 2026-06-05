@@ -129,6 +129,7 @@ export default function ServerMenuModal({ onClose }: Props) {
   const [customCss, setCustomCss] = useState('')
   const [customCssSaving, setCustomCssSaving] = useState(false)
   const [customCssMsg, setCustomCssMsg] = useState<string | null>(null)
+  const [voiceBitrateKbps, setVoiceBitrateKbps] = useState(64)
 
   const bgPreviewUrl = serverUrl && bgHasImage ? `${serverUrl}/api/server/background?t=${bgPreviewTs}` : null
 
@@ -138,6 +139,7 @@ export default function ServerMenuModal({ onClose }: Props) {
       setBgHasImage(info.hasBackground)
       setBgBlur(info.backgroundBlur)
       setCustomCss(info.customCss || '')
+      setVoiceBitrateKbps(info.voiceBitrateKbps ?? 64)
     }).catch(() => {})
   }, [serverUrl])
 
@@ -278,7 +280,7 @@ export default function ServerMenuModal({ onClose }: Props) {
           iconPayload = await fileToDataUrl(pendingServerIconFile.current)
         }
       }
-      const res = await updateServerSettings(serverUrl, token, serverName, iconPayload, bgBlur)
+      const res = await updateServerSettings(serverUrl, token, serverName, iconPayload, bgBlur, undefined, voiceBitrateKbps)
       updateServerInfo(session.serverId, { name: res.name, icon: res.icon ?? undefined })
       setServerIconChanged(false)
       pendingServerIconFile.current = null
@@ -586,6 +588,23 @@ export default function ServerMenuModal({ onClose }: Props) {
                   <div className="server-menu__field" style={{ marginTop: '12px' }}>
                     <label className="server-menu__label">background blur ({bgBlur}px)</label>
                     <input type="range" min="0" max="20" value={bgBlur} onChange={(e) => setBgBlur(Number(e.target.value))} className="server-menu__range" />
+                  </div>
+                  <div className="server-menu__field" style={{ marginTop: '12px' }}>
+                    <label className="server-menu__label">voice bitrate</label>
+                    <select
+                      value={voiceBitrateKbps}
+                      onChange={(e) => setVoiceBitrateKbps(Number(e.target.value))}
+                      className="server-menu__select"
+                    >
+                      <option value={32}>32 kbps — low bandwidth</option>
+                      <option value={64}>64 kbps — balanced</option>
+                      <option value={96}>96 kbps</option>
+                      <option value={128}>128 kbps — high quality</option>
+                      <option value={192}>192 kbps</option>
+                      <option value={256}>256 kbps</option>
+                      <option value={320}>320 kbps — max quality</option>
+                    </select>
+                    <p className="server-menu__hint">applies immediately to all connected users</p>
                   </div>
                   <div className="server-menu__save-row">
                     <button onClick={handleSaveServer} disabled={serverSaving} className="server-menu__save-btn">

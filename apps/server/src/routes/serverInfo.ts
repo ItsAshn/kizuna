@@ -5,6 +5,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission, getUserInfo } from '../middleware/auth'
+import { getAllPeers } from '../socket/voiceHandler'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
@@ -26,6 +27,7 @@ function getServerInfo() {
   const serverUrl = db.prepare("SELECT value FROM server_settings WHERE key = 'server_url'").get() as { value: string } | undefined
   const backgroundBlur = db.prepare("SELECT value FROM server_settings WHERE key = 'background_blur'").get() as { value: string } | undefined
   const customCss = db.prepare("SELECT value FROM server_settings WHERE key = 'custom_css'").get() as { value: string } | undefined
+  const voiceBitrateRow = db.prepare("SELECT value FROM server_settings WHERE key = 'voice_bitrate_kbps'").get() as { value: string } | undefined
 
   let hasBackground = false
   try {
@@ -42,6 +44,7 @@ function getServerInfo() {
     hasBackground,
     backgroundBlur: backgroundBlur?.value ? parseInt(backgroundBlur.value, 10) : 0,
     customCss: customCss?.value || null,
+    voiceBitrateKbps: voiceBitrateRow?.value ? parseInt(voiceBitrateRow.value, 10) || 64 : 64,
   }
 }
 
@@ -68,8 +71,8 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
   const user = getAuth(c)
   if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
 
-  const body = await c.req.json() as { name?: string; icon?: string | null; background_blur?: number; custom_css?: string | null }
-  const { name, icon, background_blur, custom_css } = body
+  const body = await c.req.json() as { name?: string; icon?: string | null; background_blur?: number; custom_css?: string | null; voice_bitrate_kbps?: number }
+  const { name, icon, background_blur, custom_css, voice_bitrate_kbps } = body
   const db = getDb()
 
   if (name !== undefined) {
@@ -101,6 +104,20 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
       db.prepare("DELETE FROM server_settings WHERE key = 'custom_css'").run()
     } else {
       db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('custom_css', ?)").run(custom_css)
+    }
+  }
+  if (voice_bitrate_kbps !== undefined) {
+    const kbps = Math.max(8, Math.min(512, Math.round(voice_bitrate_kbps)))
+    db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('voice_bitrate_kbps', ?)").run(String(kbps))
+    const bps = kbps * 1000
+    for (const peer of getAllPeers()) {
+      for (const [, transport] of peer.transports) {
+        transport.setMaxIncomingBitrate(bps).catch(() => {})
+      }
+    }
+    const io: any = c.get('io' as never)
+    if (io) {
+      io.emit('server:voiceBitrateChanged', { voiceBitrateKbps: kbps })
     }
   }
 

@@ -10,7 +10,6 @@ interface SidebarProps {
   joinVoice: (channelId: string) => Promise<string | null>
   leaveVoice: () => void
   toggleMute: () => void
-  setAudioBitrate: (socket: any, kbps: number) => void
   socketRef: React.MutableRefObject<any>
   startScreenshare: (channelId: string, monitorIndex: number, fps: number) => Promise<string | null>
   stopScreenshare: () => void
@@ -18,7 +17,7 @@ interface SidebarProps {
   onOpenMenu: () => void
 }
 
-export default function Sidebar({ joinVoice, leaveVoice, toggleMute, setAudioBitrate, socketRef, startScreenshare, stopScreenshare, onOpenSettings, onOpenMenu }: SidebarProps) {
+export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare, onOpenSettings, onOpenMenu }: SidebarProps) {
   const navigate = useNavigate()
   const session = useServerStore((s) => s.activeSession)
   const setActiveSession = useServerStore((s) => s.setActiveSession)
@@ -180,7 +179,6 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, setAudioBit
       <VoiceOverlay
         leaveVoice={leaveVoice}
         toggleMute={toggleMute}
-        setAudioBitrate={setAudioBitrate}
         socketRef={socketRef}
         startScreenshare={startScreenshare}
         stopScreenshare={stopScreenshare}

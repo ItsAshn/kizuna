@@ -209,8 +209,9 @@ export async function updateServerSettings(
   icon?: string | null,
   background_blur?: number,
   customCss?: string | null,
+  voiceBitrateKbps?: number,
 ): Promise<ServerInfo> {
-  const res = await client(serverUrl, token).patch('/api/server/settings', { name, icon, background_blur, custom_css: customCss })
+  const res = await client(serverUrl, token).patch('/api/server/settings', { name, icon, background_blur, custom_css: customCss, voice_bitrate_kbps: voiceBitrateKbps })
   return res.data as ServerInfo
 }
 

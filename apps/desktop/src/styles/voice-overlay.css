@@ -349,21 +349,10 @@
   flex-shrink: 0;
 }
 
-.voice-bitrate__select {
-  flex: 1;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+.voice-bitrate__value {
   font-size: 10px;
   font-family: var(--font-mono);
   color: var(--text-secondary);
-  padding: 3px 6px;
-  outline: none;
-  cursor: pointer;
-}
-
-.voice-bitrate__select:focus {
-  border-color: var(--brand);
 }
 
 @keyframes ping {

@@ -186,4 +186,5 @@ export interface ServerInfo {
   hasBackground: boolean
   backgroundBlur: number
   customCss: string | null
+  voiceBitrateKbps: number
 }
