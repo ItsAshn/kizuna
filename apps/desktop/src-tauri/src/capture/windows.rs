@@ -179,13 +179,19 @@ mod imp {
         let dxgi_device: windows::Win32::Graphics::Dxgi::IDXGIDevice =
             device.cast().map_err(|e| format!("Cast to IDXGIDevice failed: {e}"))?;
 
-        let adapter: IDXGIAdapter1 = unsafe { dxgi_device.GetAdapter() }
-            .and_then(|a| a.cast())
-            .map_err(|e| format!("GetAdapter failed: {e}"))?;
+        let adapter: IDXGIAdapter1 = unsafe {
+            dxgi_device
+                .GetAdapter()
+                .map_err(|e| format!("GetAdapter failed: {e}"))?
+                .cast()
+                .map_err(|e| format!("Cast to IDXGIAdapter1 failed: {e}"))?
+        };
 
-        let factory: IDXGIFactory1 = unsafe { adapter.GetParent() }
-            .and_then(|p| p.cast())
-            .map_err(|e| format!("GetParent factory failed: {e}"))?;
+        let factory: IDXGIFactory1 = unsafe {
+            adapter
+                .GetParent::<IDXGIFactory1>()
+                .map_err(|e| format!("GetParent factory failed: {e}"))?
+        };
 
         let mut output_index = 0u32;
         loop {
@@ -229,7 +235,7 @@ mod imp {
             let (frame_info, desktop_resource) = loop {
                 let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
                 let mut desktop_resource: Option<IDXGIResource> = None;
-                match duplication.AcquireNextFrame(100, &mut frame_info, Some(&mut desktop_resource)) {
+                match duplication.AcquireNextFrame(100, &mut frame_info, &mut desktop_resource) {
                     Ok(()) => break (frame_info, desktop_resource),
                     Err(e) if e.code() == DXGI_ERROR_WAIT_TIMEOUT => {
                         return Err("Timeout acquiring frame".into());
