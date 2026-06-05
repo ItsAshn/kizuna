@@ -237,9 +237,9 @@ jobs:
           WEBKIT_PCDIR=$(dirname "$WEBKIT_PC")
           # Use find + tar pipeline so globs resolve relative to /, not CWD
           (cd / && find \
-            "${WEBKIT_LIBDIR#/}" -maxdepth 1 -name "libwebkit2gtk-4.1.so*" -type f \
-            "${JSCORE_LIBDIR#/}" -maxdepth 1 -name "libjavascriptcoregtk-4.1.so*" -type f \
-            "${WEBKIT_PCDIR#/}" -maxdepth 1 -name "webkit2gtk-4.1.pc" -type f \
+            "${WEBKIT_LIBDIR#/}" "${JSCORE_LIBDIR#/}" "${WEBKIT_PCDIR#/}" \
+            -maxdepth 1 -type f \
+            \( -name "libwebkit2gtk-4.1.so*" -o -name "libjavascriptcoregtk-4.1.so*" -o -name "webkit2gtk-4.1.pc" \) \
             -print0 | tar czf "/tmp/$WEBKIT_TAR" --null -T -)
 
           # Upload cache artifact to a release tag
