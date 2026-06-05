@@ -77,7 +77,7 @@ Open `http://localhost:1420` in Chrome or Firefox. Voice channels require WebRTC
 
 ### Linux Dev Notes
 
-Voice channels in the Tauri desktop window (`pnpm desktop`) require `webkit2gtk-4.1` built with WebRTC support. On Arch Linux, the standard `extra/webkit2gtk-4.1` package does not include it. Use `pnpm dev:desktop` and open Chrome/Firefox for voice features during development. The CI-built AppImage bundles WebKit+GStreamer from Ubuntu, which includes full WebRTC support out of the box.
+Voice channels in the Tauri desktop window (`pnpm desktop`) require `webkit2gtk-4.1` built with WebRTC support. On Arch Linux, the standard `extra/webkit2gtk-4.1` package does not include it. Use `pnpm dev:desktop` and open Chrome/Firefox for voice features during development. The CI-built AppImage bundles WebKit from Ubuntu, which includes full WebRTC support out of the box.
 
 **PipeWire systems (Arch, CachyOS, Fedora, etc.):** Ensure `pipewire-pulse` is installed and running so the AppImage's audio pipeline can access your microphone through the PulseAudio compatibility layer. Without it, microphone permissions will be denied and the settings panel may freeze.
 

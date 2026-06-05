@@ -42,24 +42,6 @@ windows = { version = "0.62", features = [
   "Win32_System_Threading",
 ] }
 
-gstreamer = { version = "0.25", optional = true }
-gstreamer-app = { version = "0.25", optional = true }
-gstreamer-video = { version = "0.25", optional = true }
-gstreamer-audio = { version = "0.25", optional = true }
-glib = { version = "0.22", optional = true }
-
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
-gstreamer-backend = [
-  "dep:gstreamer",
-  "dep:gstreamer-app",
-  "dep:gstreamer-video",
-  "dep:gstreamer-audio",
-  "dep:glib",
-]
-
-[[bin]]
-name = "gstreamer-test"
-path = "src/bin/gstreamer_test.rs"
-required-features = ["gstreamer-backend"]
