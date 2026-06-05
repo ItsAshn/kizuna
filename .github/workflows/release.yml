@@ -83,6 +83,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Set version from git tag (Windows)
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Setting tauri.conf.json version to $VERSION"
+          node -e "
+            const fs = require('fs');
+            const conf = JSON.parse(fs.readFileSync('apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
+            conf.version = process.argv[1];
+            fs.writeFileSync('apps/desktop/src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
+          " "$VERSION"
+
       - name: Build Tauri (Windows)
         working-directory: apps/desktop
         env:
@@ -130,10 +142,21 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf libpipewire-0.3-dev libgbm-dev libgstreamer-plugins-bad1.0-0 libnice-dev libpulse0 gstreamer1.0-pipewire
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf libpipewire-0.3-dev libspa-0.2-dev libgbm-dev libgstreamer-plugins-bad1.0-0 libnice-dev libpulse0 gstreamer1.0-pipewire
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Set version from git tag (Linux)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Setting tauri.conf.json version to $VERSION"
+          node -e "
+            const fs = require('fs');
+            const conf = JSON.parse(fs.readFileSync('apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
+            conf.version = process.argv[1];
+            fs.writeFileSync('apps/desktop/src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
+          " "$VERSION"
 
       - name: Build Tauri (Linux)
         working-directory: apps/desktop

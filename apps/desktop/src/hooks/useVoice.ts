@@ -17,6 +17,19 @@ const SPEAKING_HOLD_MS = 600
 const QUALITY_POLL_MS = 3000
 const RECONNECT_DELAY_MS = 1000
 const MAX_RECONNECT_ATTEMPTS = 5
+const PCM_BUFFER_MAX_CHUNKS = 100
+const SCRIPT_PROCESSOR_BUFFER_SIZE = 480
+const AUDIO_SAMPLE_RATE = 48000
+
+interface AudioDataPayload {
+  samples_f32: number[]
+  sample_rate: number
+  channels: number
+}
+
+function isTauri(): boolean {
+  return !!(window as any).__TAURI_INTERNALS__
+}
 
 function computeQualityFromStats(report: RTCStatsReport): ConnectionQuality {
   let rttMs = 0
@@ -118,11 +131,74 @@ function startSpeakingDetection(
   }
 }
 
+function startNativeSpeakingDetection(
+  pcmRingBuffer: Float32Array[],
+  onSpeaking: (speaking: boolean) => void,
+  thresholdRef: { current: number },
+  onLevel?: (level: number) => void,
+): () => void {
+  let speaking = false
+  let stopped = false
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let holdTimer: ReturnType<typeof setTimeout> | null = null
+
+  const poll = () => {
+    if (stopped) return
+
+    const combinedLength = pcmRingBuffer.reduce((s, c) => s + c.length, 0)
+    if (combinedLength === 0) {
+      timer = setTimeout(poll, SPEAKING_POLL_MS)
+      return
+    }
+
+    let squareSum = 0
+    let sampleCount = 0
+    for (const chunk of pcmRingBuffer) {
+      for (let i = 0; i < chunk.length; i++) {
+        squareSum += chunk[i] * chunk[i]
+        sampleCount++
+      }
+    }
+    const rms = Math.sqrt(squareSum / sampleCount)
+    onLevel?.(rms)
+
+    const threshold = thresholdRef.current
+    const nowSpeaking = rms > threshold
+    if (nowSpeaking) {
+      if (holdTimer !== null) {
+        clearTimeout(holdTimer)
+        holdTimer = null
+      }
+      if (!speaking) {
+        speaking = true
+        onSpeaking(true)
+      }
+    } else if (speaking && holdTimer === null) {
+      holdTimer = setTimeout(() => {
+        holdTimer = null
+        speaking = false
+        onSpeaking(false)
+      }, SPEAKING_HOLD_MS)
+    }
+    timer = setTimeout(poll, SPEAKING_POLL_MS)
+  }
+
+  timer = setTimeout(poll, SPEAKING_POLL_MS)
+
+  return () => {
+    stopped = true
+    if (timer !== null) clearTimeout(timer)
+    if (holdTimer !== null) clearTimeout(holdTimer)
+  }
+}
+
 function startRemoteSpeakingDetection(
   track: MediaStreamTrack,
   onSpeaking: (speaking: boolean) => void,
+  sharedCtx?: AudioContext,
 ): () => void {
-  const ctx = new AudioContext()
+  const ownsCtx = !sharedCtx
+  const ctx = sharedCtx ?? new AudioContext()
   const stream = new MediaStream([track])
   const source = ctx.createMediaStreamSource(stream)
   const analyser = ctx.createAnalyser()
@@ -172,7 +248,7 @@ function startRemoteSpeakingDetection(
     if (timer !== null) clearTimeout(timer)
     if (holdTimer !== null) clearTimeout(holdTimer)
     source.disconnect()
-    ctx.close()
+    if (ownsCtx) ctx.close()
   }
 }
 
@@ -195,11 +271,15 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const reconnectAttemptsRef = useRef(0)
   const isReconnectingRef = useRef(false)
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const remoteAudioCtxRef = useRef<AudioContext | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
   const pttCleanupRef = useRef<(() => void) | null>(null)
   const thresholdRef = useRef<number>(8)
   const pttPressedRef = useRef<boolean>(false)
+  const nativeAudioUnlistenRef = useRef<(() => void) | null>(null)
+  const scriptNodeRef = useRef<ScriptProcessorNode | null>(null)
+  const pcmRingBufferRef = useRef<Float32Array[]>([])
 
   const {
     setActiveVoiceChannel,
@@ -227,10 +307,25 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     }
     peerQualityIntervalsRef.current.forEach((interval) => clearInterval(interval))
     peerQualityIntervalsRef.current.clear()
+
     localSpeakingCleanupRef.current?.()
     localSpeakingCleanupRef.current = null
     remoteSpeakingCleanupsRef.current.forEach((cleanup) => cleanup())
     remoteSpeakingCleanupsRef.current.clear()
+
+    nativeAudioUnlistenRef.current?.()
+    nativeAudioUnlistenRef.current = null
+
+    if (isTauri()) {
+      import('@tauri-apps/api/core').then(({ invoke }) =>
+        invoke('stop_audio_capture').catch(() => {})
+      )
+    }
+
+    scriptNodeRef.current?.disconnect()
+    scriptNodeRef.current = null
+    pcmRingBufferRef.current = []
+
     producerRef.current?.close()
     producerRef.current = null
     consumersRef.current.forEach((c) => c.close())
@@ -255,6 +350,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     gainNodeRef.current = null
     audioCtxRef.current?.close()
     audioCtxRef.current = null
+    remoteAudioCtxRef.current?.close()
+    remoteAudioCtxRef.current = null
     micStreamRef.current?.getTracks().forEach((t) => t.stop())
     micStreamRef.current = null
     setVoicePeers([])
@@ -270,6 +367,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     recvTransport: Transport,
     peerId: string,
     channelId: string,
+    remoteCtx: AudioContext,
   ) => {
     const params: any = await new Promise((resolve) =>
       socket.emit('voice:consume', { channelId, peerId, rtpCapabilities: device.rtpCapabilities }, resolve),
@@ -305,6 +403,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     const cleanupRemote = startRemoteSpeakingDetection(
       consumer.track,
       (speaking) => updateVoicePeer(peerId, { speaking }),
+      remoteCtx,
     )
     remoteSpeakingCleanupsRef.current.set(peerId, cleanupRemote)
 
@@ -465,7 +564,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     })
 
     socket.on('voice:newPeer', async (peer: { peerId: string; userId: string; username: string }) => {
-      await consumePeer(socket, device, recvTransport, peer.peerId, channelId)
+      await consumePeer(socket, device, recvTransport, peer.peerId, channelId, remoteAudioCtxRef.current!)
       addVoicePeer({
         id: peer.peerId,
         userId: peer.userId,
@@ -512,9 +611,12 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
     setActiveVoiceChannel(channelId)
 
+    const remoteCtx = new AudioContext()
+    remoteAudioCtxRef.current = remoteCtx
+
     for (const peer of joinResult.peers || []) {
       const socketId = peer.id
-      await consumePeer(socket, device, recvTransport, socketId, channelId)
+      await consumePeer(socket, device, recvTransport, socketId, channelId, remoteCtx)
       addVoicePeer({
         id: socketId,
         userId: peer.userId,
@@ -530,82 +632,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     }
 
     try {
-      const micConstraints: MediaTrackConstraints = audioInputDeviceId
-        ? {
-            deviceId: { exact: audioInputDeviceId },
-            noiseSuppression: { ideal: noiseSuppression },
-            echoCancellation: { ideal: echoCancellation },
-            autoGainControl: { ideal: autoGainControl },
-          }
-        : {
-            noiseSuppression: { ideal: noiseSuppression },
-            echoCancellation: { ideal: echoCancellation },
-            autoGainControl: { ideal: autoGainControl },
-          }
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints })
-      micStreamRef.current = stream
-      const track = stream.getAudioTracks()[0]
-      const audioCtx = new AudioContext()
-      audioCtxRef.current = audioCtx
-      const source = audioCtx.createMediaStreamSource(stream)
-      const gainNode = audioCtx.createGain()
-      gainNode.gain.value = inputVolume / 100
-      gainNodeRef.current = gainNode
-      const destination = audioCtx.createMediaStreamDestination()
-      source.connect(gainNode)
-      gainNode.connect(destination)
-
-      const processedTrack = destination.stream.getAudioTracks()[0]
-      const producer = await sendTransport.produce({
-        track: processedTrack,
-        encodings: [{ maxBitrate: audioBitrateKbps * 1000 }],
-        codecOptions: { opusStereo: false, opusDtx: true },
-      })
-      producerRef.current = producer
-
-      thresholdRef.current = thresholdToRms(voiceGateThreshold)
-
-      localSpeakingCleanupRef.current?.()
-      localSpeakingCleanupRef.current = startSpeakingDetection(
-        stream,
-        (speaking) => {
-          if (voiceInputMode === 'push-to-talk') return
-          setIsSpeaking(speaking)
-          socket.emit('voice:speaking', { channelId, speaking })
-        },
-        thresholdRef,
-        (level) => setLiveAudioLevel(level),
-        gainNode,
-        audioCtx,
-      )
-
-      if (voiceInputMode === 'push-to-talk') {
-        setIsSpeaking(false)
-        const handleKeyDown = (e: KeyboardEvent) => {
-          if (e.code === pushToTalkKey && !e.repeat && producerRef.current) {
-            e.preventDefault()
-            pttPressedRef.current = true
-            producerRef.current.resume()
-            setIsSpeaking(true)
-            socket.emit('voice:speaking', { channelId, speaking: true })
-          }
-        }
-        const handleKeyUp = (e: KeyboardEvent) => {
-          if (e.code === pushToTalkKey && producerRef.current) {
-            pttPressedRef.current = false
-            producerRef.current.pause()
-            setIsSpeaking(false)
-            socket.emit('voice:speaking', { channelId, speaking: false })
-          }
-        }
-        window.addEventListener('keydown', handleKeyDown)
-        window.addEventListener('keyup', handleKeyUp)
-        producer.pause()
-        pttCleanupRef.current = () => {
-          window.removeEventListener('keydown', handleKeyDown)
-          window.removeEventListener('keyup', handleKeyUp)
-        }
+      if (isTauri()) {
+        await setupNativeMicrophone(socket, channelId, sendTransport)
+      } else {
+        await setupBrowserMicrophone(socket, channelId, sendTransport)
       }
     } catch (err: any) {
       console.error('Microphone access error', err)
@@ -614,8 +644,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         errorMsg = 'Microphone access was denied. Please allow microphone access and try again.'
       } else if (err.name === 'NotFoundError') {
         errorMsg = 'No microphone found. Please connect a microphone and try again.'
-      } else if (err.name === 'NotReadableError' || err.name === 'OverconstrainedError') {
-        errorMsg = 'Microphone is being used by another application.'
+      } else if (err.name === 'NotReadableError' || err.name === 'OverconstrainedError' || err.message?.includes('timed out')) {
+        errorMsg = 'Microphone is unavailable or in use by another application. On Linux, ensure pipewire-pulse is installed and running.'
       } else {
         errorMsg = `Failed to access microphone: ${err.message || 'Unknown error'}`
       }
@@ -652,6 +682,201 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     pushToTalkKey, noiseSuppression, echoCancellation, autoGainControl,
     inputVolume,
   ])
+
+  const setupBrowserMicrophone = useCallback(async (
+    socket: Socket,
+    channelId: string,
+    sendTransport: Transport,
+  ) => {
+    const micConstraints: MediaTrackConstraints = audioInputDeviceId
+      ? {
+          deviceId: { exact: audioInputDeviceId },
+          noiseSuppression: { ideal: noiseSuppression },
+          echoCancellation: { ideal: echoCancellation },
+          autoGainControl: { ideal: autoGainControl },
+        }
+      : {
+          noiseSuppression: { ideal: noiseSuppression },
+          echoCancellation: { ideal: echoCancellation },
+          autoGainControl: { ideal: autoGainControl },
+        }
+
+    const stream = await Promise.race([
+      navigator.mediaDevices.getUserMedia({ audio: micConstraints }),
+      new Promise<MediaStream>((_, reject) =>
+        setTimeout(() => reject(new Error('Microphone access timed out')), 5000)
+      ),
+    ])
+    micStreamRef.current = stream
+    const audioCtx = new AudioContext()
+    audioCtxRef.current = audioCtx
+    const source = audioCtx.createMediaStreamSource(stream)
+    const gainNode = audioCtx.createGain()
+    gainNode.gain.value = inputVolume / 100
+    gainNodeRef.current = gainNode
+    const destination = audioCtx.createMediaStreamDestination()
+    source.connect(gainNode)
+    gainNode.connect(destination)
+
+    const processedTrack = destination.stream.getAudioTracks()[0]
+    const producer = await sendTransport.produce({
+      track: processedTrack,
+      encodings: [{ maxBitrate: audioBitrateKbps * 1000 }],
+      codecOptions: { opusStereo: false, opusDtx: true },
+    })
+    producerRef.current = producer
+
+    thresholdRef.current = thresholdToRms(voiceGateThreshold)
+
+    localSpeakingCleanupRef.current?.()
+    localSpeakingCleanupRef.current = startSpeakingDetection(
+      stream,
+      (speaking) => {
+        if (voiceInputMode === 'push-to-talk') return
+        setIsSpeaking(speaking)
+        socket.emit('voice:speaking', { channelId, speaking })
+      },
+      thresholdRef,
+      (level) => setLiveAudioLevel(level),
+      gainNode,
+      audioCtx,
+    )
+
+    if (voiceInputMode === 'push-to-talk') {
+      setupPushToTalk(socket, channelId, producer)
+    }
+  }, [audioInputDeviceId, noiseSuppression, echoCancellation, autoGainControl,
+      inputVolume, audioBitrateKbps, voiceGateThreshold, voiceInputMode,
+      setLiveAudioLevel, setIsSpeaking, pushToTalkKey])
+
+  const setupNativeMicrophone = useCallback(async (
+    socket: Socket,
+    channelId: string,
+    sendTransport: Transport,
+  ) => {
+    const [{ invoke }, { listen }] = await Promise.all([
+      import('@tauri-apps/api/core'),
+      import('@tauri-apps/api/event'),
+    ])
+
+    const audioCtx = new AudioContext()
+    audioCtxRef.current = audioCtx
+
+    const scriptNode = audioCtx.createScriptProcessor(
+      SCRIPT_PROCESSOR_BUFFER_SIZE, 1, 1
+    )
+    scriptNodeRef.current = scriptNode
+
+    const gainNode = audioCtx.createGain()
+    gainNode.gain.value = inputVolume / 100
+    gainNodeRef.current = gainNode
+
+    const destination = audioCtx.createMediaStreamDestination()
+    scriptNode.connect(gainNode)
+    gainNode.connect(destination)
+
+    const pcmBuffer: Float32Array[] = []
+    let pcmOffset = 0
+    pcmRingBufferRef.current = pcmBuffer
+
+    scriptNode.onaudioprocess = (e) => {
+      const output = e.outputBuffer.getChannelData(0)
+      const needed = output.length
+      let written = 0
+
+      while (written < needed && pcmBuffer.length > 0) {
+        const chunk = pcmBuffer[0]
+        const remaining = chunk.length - pcmOffset
+        const toCopy = Math.min(needed - written, remaining)
+        output.set(chunk.subarray(pcmOffset, pcmOffset + toCopy), written)
+        written += toCopy
+        pcmOffset += toCopy
+        if (pcmOffset >= chunk.length) {
+          pcmBuffer.shift()
+          pcmOffset = 0
+        }
+      }
+
+      if (written < needed) {
+        output.fill(0, written)
+      }
+    }
+
+    const unlisten = await listen<AudioDataPayload>('audio:data', (event) => {
+      const samples = new Float32Array(event.payload.samples_f32)
+      pcmBuffer.push(samples)
+      while (pcmBuffer.length > PCM_BUFFER_MAX_CHUNKS) {
+        pcmBuffer.shift()
+        if (pcmOffset > 0) pcmOffset = 0
+      }
+    })
+    nativeAudioUnlistenRef.current = unlisten
+
+    await invoke('start_audio_capture', {
+      deviceName: audioInputDeviceId ?? null,
+      sampleRate: AUDIO_SAMPLE_RATE,
+      channels: 1,
+    })
+
+    const processedTrack = destination.stream.getAudioTracks()[0]
+    const producer = await sendTransport.produce({
+      track: processedTrack,
+      encodings: [{ maxBitrate: audioBitrateKbps * 1000 }],
+      codecOptions: { opusStereo: false, opusDtx: true },
+    })
+    producerRef.current = producer
+
+    thresholdRef.current = thresholdToRms(voiceGateThreshold)
+
+    localSpeakingCleanupRef.current?.()
+    localSpeakingCleanupRef.current = startNativeSpeakingDetection(
+      pcmBuffer,
+      (speaking) => {
+        if (voiceInputMode === 'push-to-talk') return
+        setIsSpeaking(speaking)
+        socket.emit('voice:speaking', { channelId, speaking })
+      },
+      thresholdRef,
+      (level) => setLiveAudioLevel(level),
+    )
+
+    if (voiceInputMode === 'push-to-talk') {
+      setupPushToTalk(socket, channelId, producer)
+    }
+  }, [audioInputDeviceId, inputVolume, audioBitrateKbps, voiceGateThreshold,
+      voiceInputMode, setLiveAudioLevel, setIsSpeaking, pushToTalkKey])
+
+  const setupPushToTalk = useCallback((
+    socket: Socket,
+    channelId: string,
+    producer: Producer,
+  ) => {
+    setIsSpeaking(false)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === pushToTalkKey && !e.repeat && producerRef.current) {
+        e.preventDefault()
+        pttPressedRef.current = true
+        producerRef.current.resume()
+        setIsSpeaking(true)
+        socket.emit('voice:speaking', { channelId, speaking: true })
+      }
+    }
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === pushToTalkKey && producerRef.current) {
+        pttPressedRef.current = false
+        producerRef.current.pause()
+        setIsSpeaking(false)
+        socket.emit('voice:speaking', { channelId, speaking: false })
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    producer.pause()
+    pttCleanupRef.current = () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [pushToTalkKey, setIsSpeaking])
 
   const handleTransportFailure = useCallback((socket: Socket, channelId: string) => {
     if (isReconnectingRef.current) return

@@ -1,10 +1,22 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useChatStore, type VoiceInputMode } from '../store/chatStore'
 import { useUpdaterActions } from '../hooks/useUpdater'
 import '../styles/settings.css'
 
 interface Props {
   onClose: () => void
+}
+
+interface AudioDevice {
+  name: string
+  device_id: string
+  is_default: boolean
+  max_channels: number
+  default_sample_rate: number
+}
+
+function isTauri(): boolean {
+  return !!(window as any).__TAURI_INTERNALS__
 }
 
 const BITRATE_OPTIONS = [
@@ -78,12 +90,14 @@ export default function SettingsModal({ onClose }: Props) {
   } = useChatStore()
   const { checkForUpdates, getVersion } = useUpdaterActions()
 
-  const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([])
-  const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([])
+  const [inputDevices, setInputDevices] = useState<AudioDevice[] | null>(null)
+  const [outputDevices, setOutputDevices] = useState<AudioDevice[] | null>(null)
   const [permissionDenied, setPermissionDenied] = useState(false)
+  const [devicesLoading, setDevicesLoading] = useState(false)
   const [appVersion, setAppVersion] = useState('0.1.0')
   const [isDev, setIsDev] = useState(true)
   const [listeningForKey, setListeningForKey] = useState(false)
+  const unmountedRef = useRef(false)
 
   const rmsThreshold = thresholdToRms(voiceGateThreshold)
   const meterLevel = rmsToLevel(liveAudioLevel)
@@ -108,9 +122,66 @@ export default function SettingsModal({ onClose }: Props) {
     return () => window.removeEventListener('keydown', handleKey, true)
   }, [onClose, listeningForKey, handleKeyCapture])
 
-  useEffect(() => {
-    async function loadDevices() {
-      let hasPermission = false
+  const loadDevices = useCallback(async () => {
+    setDevicesLoading(true)
+    setPermissionDenied(false)
+
+    if (isTauri()) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const [inputs, outputs] = await Promise.all([
+          invoke<AudioDevice[]>('list_audio_input_devices'),
+          invoke<AudioDevice[]>('list_audio_output_devices'),
+        ])
+        if (!unmountedRef.current) {
+          setInputDevices(inputs)
+          setOutputDevices(outputs)
+        }
+      } catch (err) {
+        console.error('Failed to list audio devices via Tauri:', err)
+        if (!unmountedRef.current) {
+          setInputDevices([])
+          setOutputDevices([])
+        }
+      }
+    } else {
+      try {
+        const devices = await Promise.race([
+          navigator.mediaDevices.enumerateDevices(),
+          new Promise<MediaDeviceInfo[]>((_, reject) =>
+            setTimeout(() => reject(new Error('Device enumeration timed out')), 3000)
+          ),
+        ])
+        if (unmountedRef.current) return
+        setInputDevices(
+          devices
+            .filter(d => d.kind === 'audioinput')
+            .map(d => ({
+              name: d.label || `microphone (${d.deviceId.slice(0, 8)}...)`,
+              device_id: d.deviceId,
+              is_default: d.deviceId === 'default',
+              max_channels: 1,
+              default_sample_rate: 48000,
+            }))
+        )
+        setOutputDevices(
+          devices
+            .filter(d => d.kind === 'audiooutput')
+            .map(d => ({
+              name: d.label || `speaker (${d.deviceId.slice(0, 8)}...)`,
+              device_id: d.deviceId,
+              is_default: d.deviceId === 'default',
+              max_channels: 2,
+              default_sample_rate: 48000,
+            }))
+        )
+      } catch {
+        if (!unmountedRef.current) {
+          setInputDevices([])
+          setOutputDevices([])
+        }
+      }
+
       try {
         const stream = await Promise.race([
           navigator.mediaDevices.getUserMedia({ audio: true }),
@@ -118,26 +189,58 @@ export default function SettingsModal({ onClose }: Props) {
             setTimeout(() => reject(new Error('Permission request timed out')), 3000)
           ),
         ])
+        if (unmountedRef.current) {
+          stream.getTracks().forEach(t => t.stop())
+          return
+        }
         stream.getTracks().forEach(t => t.stop())
-        hasPermission = true
-      } catch {
-        // permission denied or timed out — enumerate without labels
-      }
 
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        setInputDevices(devices.filter(d => d.kind === 'audioinput'))
-        setOutputDevices(devices.filter(d => d.kind === 'audiooutput'))
-        if (!hasPermission) setPermissionDenied(true)
+        const devices = await Promise.race([
+          navigator.mediaDevices.enumerateDevices(),
+          new Promise<MediaDeviceInfo[]>((_, reject) =>
+            setTimeout(() => reject(new Error('Device enumeration timed out')), 3000)
+          ),
+        ])
+        if (unmountedRef.current) return
+        setInputDevices(
+          devices
+            .filter(d => d.kind === 'audioinput')
+            .map(d => ({
+              name: d.label || `microphone (${d.deviceId.slice(0, 8)}...)`,
+              device_id: d.deviceId,
+              is_default: d.deviceId === 'default',
+              max_channels: 1,
+              default_sample_rate: 48000,
+            }))
+        )
+        setOutputDevices(
+          devices
+            .filter(d => d.kind === 'audiooutput')
+            .map(d => ({
+              name: d.label || `speaker (${d.deviceId.slice(0, 8)}...)`,
+              device_id: d.deviceId,
+              is_default: d.deviceId === 'default',
+              max_channels: 2,
+              default_sample_rate: 48000,
+            }))
+        )
       } catch {
-        // enumerateDevices failed silently
+        if (!unmountedRef.current) setPermissionDenied(true)
       }
     }
-    loadDevices()
+
+    if (!unmountedRef.current) setDevicesLoading(false)
+  }, [])
+
+  useEffect(() => {
+    unmountedRef.current = false
     getVersion().then(v => {
-      setAppVersion(v)
-      setIsDev(false)
+      if (!unmountedRef.current) {
+        setAppVersion(v)
+        setIsDev(false)
+      }
     })
+    return () => { unmountedRef.current = true }
   }, [])
 
   return (
@@ -156,40 +259,50 @@ export default function SettingsModal({ onClose }: Props) {
           )}
 
           <section>
-            <p className="settings-modal__section-title">audio input (microphone)</p>
-            <select
-              value={audioInputDeviceId ?? ''}
-              onChange={(e) => setAudioInputDeviceId(e.target.value || null)}
-              className="settings-modal__select"
-            >
-              <option value="">system default</option>
-              {inputDevices.map(d => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || `microphone (${d.deviceId.slice(0, 8)}...)`}
-                </option>
-              ))}
-            </select>
-          </section>
-
-          <section>
-            <p className="settings-modal__section-title">audio output (speakers / headphones)</p>
-            {outputDevices.length === 0 ? (
-              <p className="settings-modal__alert">
-                output device selection not supported in this environment
-              </p>
-            ) : (
-              <select
-                value={audioOutputDeviceId ?? ''}
-                onChange={(e) => setAudioOutputDeviceId(e.target.value || null)}
-                className="settings-modal__select"
+            <p className="settings-modal__section-title">audio devices</p>
+            {inputDevices === null ? (
+              <button
+                onClick={loadDevices}
+                disabled={devicesLoading}
+                className="settings-modal__check-btn"
               >
-                <option value="">system default</option>
-                {outputDevices.map(d => (
-                  <option key={d.deviceId} value={d.deviceId}>
-                    {d.label || `speaker (${d.deviceId.slice(0, 8)}...)`}
-                  </option>
-                ))}
-              </select>
+                {devicesLoading ? 'detecting...' : 'detect audio devices'}
+              </button>
+            ) : (
+              <>
+                <p className="settings-modal__hint" style={{ marginBottom: '6px' }}>input (microphone)</p>
+                <select
+                  value={audioInputDeviceId ?? ''}
+                  onChange={(e) => setAudioInputDeviceId(e.target.value || null)}
+                  className="settings-modal__select"
+                >
+                  <option value="">system default</option>
+                  {inputDevices.map(d => (
+                    <option key={d.device_id} value={d.device_id}>
+                      {d.name}{d.is_default ? ' (default)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="settings-modal__hint" style={{ marginTop: '10px', marginBottom: '6px' }}>output (speakers / headphones)</p>
+                {outputDevices && outputDevices.length > 0 ? (
+                  <select
+                    value={audioOutputDeviceId ?? ''}
+                    onChange={(e) => setAudioOutputDeviceId(e.target.value || null)}
+                    className="settings-modal__select"
+                  >
+                    <option value="">system default</option>
+                    {outputDevices.map(d => (
+                      <option key={d.device_id} value={d.device_id}>
+                        {d.name}{d.is_default ? ' (default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="settings-modal__alert">
+                    output device selection not supported in this environment
+                  </p>
+                )}
+              </>
             )}
           </section>
 
@@ -322,7 +435,11 @@ export default function SettingsModal({ onClose }: Props) {
                 </label>
               </div>
             </div>
-            <p className="settings-modal__hint" style={{ marginTop: '8px' }}>applied on next voice channel join</p>
+            <p className="settings-modal__hint" style={{ marginTop: '8px' }}>
+              {isTauri()
+                ? 'browser-based processing is not available with native audio capture'
+                : 'applied on next voice channel join'}
+            </p>
           </section>
 
           <hr className="settings-modal__section-divider" />

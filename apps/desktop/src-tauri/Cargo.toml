@@ -23,7 +23,40 @@ serde_json = "1"
 xcap = "0.9"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 base64 = "0.22"
+ashpd = { version = "0.13", features = ["screencast", "tokio"] }
+pipewire = "0.9"
+cpal = "0.17"
+libc = "0.2"
+bytemuck = "1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Gdi",
+  "Win32_Foundation",
+  "Win32_System_Threading",
+] }
+
+gstreamer = { version = "0.25", optional = true }
+gstreamer-app = { version = "0.25", optional = true }
+gstreamer-video = { version = "0.25", optional = true }
+gstreamer-audio = { version = "0.25", optional = true }
+glib = { version = "0.22", optional = true }
 
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+gstreamer-backend = [
+  "dep:gstreamer",
+  "dep:gstreamer-app",
+  "dep:gstreamer-video",
+  "dep:gstreamer-audio",
+  "dep:glib",
+]
+
+[[bin]]
+name = "gstreamer-test"
+path = "src/bin/gstreamer_test.rs"
+required-features = ["gstreamer-backend"]

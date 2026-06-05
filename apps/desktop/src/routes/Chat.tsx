@@ -12,6 +12,8 @@ import MemberList from '../components/MemberList'
 import ScreenShareOverlay from '../components/ScreenShareOverlay'
 import SettingsModal from '../components/SettingsModal'
 import ServerMenuModal from '../components/ServerMenuModal'
+import EnvStatus from '../components/EnvStatus'
+import SetupWizard from '../components/SetupWizard'
 import { useNavigate } from 'react-router-dom'
 import '../styles/chat.css'
 
@@ -34,6 +36,7 @@ export default function Chat() {
   const [showMembers, setShowMembers] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+  const [showEnvWizard, setShowEnvWizard] = useState(false)
   const [chatClosing, setChatClosing] = useState(false)
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [bgInfo, setBgInfo] = useState<{ hasBackground: boolean; backgroundBlur: number; customCss: string | null } | null>(null)
@@ -158,10 +161,14 @@ export default function Chat() {
       >
         {showMembers ? 'Hide Members' : 'Members'}
       </button>
+      <div style={{ position: 'absolute', top: '12px', right: showMembers ? '140px' : '100px', zIndex: 40 }}>
+        <EnvStatus onOpenWizard={() => setShowEnvWizard(true)} />
+      </div>
       <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
     </div>
     {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} />}
+    {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
     </>
   )
 }

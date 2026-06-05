@@ -1,28 +1,63 @@
 mod capture;
+mod env;
 
 use std::sync::Mutex;
 
-static CAPTURE_SESSION: Mutex<Option<capture::CaptureSession>> = Mutex::new(None);
+use capture::audio::AudioCaptureSession;
+use capture::audio::AudioDeviceInfo;
+use capture::{CaptureSession, MonitorInfo, SessionType};
 
-#[tauri::command]
-fn list_monitors() -> Result<Vec<capture::MonitorInfo>, String> {
-    capture::list_monitors()
+static CAPTURE_SESSION: Mutex<Option<CaptureSession>> = Mutex::new(None);
+static AUDIO_SESSION: Mutex<Option<AudioCaptureSession>> = Mutex::new(None);
+static SESSION_TYPE: Mutex<Option<SessionType>> = Mutex::new(None);
+
+fn get_session_type() -> SessionType {
+    let mut guard = SESSION_TYPE.lock().unwrap();
+    if guard.is_none() {
+        *guard = Some(capture::detect_session_type());
+    }
+    guard.unwrap()
 }
 
 #[tauri::command]
-fn start_screen_capture(app: tauri::AppHandle, monitor_index: usize, fps: u32) -> Result<(), String> {
-    let mut session_guard = CAPTURE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+fn list_monitors() -> Result<Vec<MonitorInfo>, String> {
+    match get_session_type() {
+        SessionType::Wayland => {
+            tauri::async_runtime::block_on(capture::wayland::list_sources())
+        }
+        SessionType::X11 => capture::x11::list_monitors(),
+        SessionType::Windows => capture::windows::list_monitors(),
+    }
+}
+
+#[tauri::command]
+fn start_screen_capture(
+    app: tauri::AppHandle,
+    monitor_index: usize,
+    fps: u32,
+) -> Result<(), String> {
+    let mut session_guard =
+        CAPTURE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
     if session_guard.is_some() {
         return Err("A capture session is already active".into());
     }
-    let session = capture::start_capture(app, monitor_index, fps)?;
+
+    let session = match get_session_type() {
+        SessionType::Wayland => tauri::async_runtime::block_on(
+            capture::wayland::start_capture(app, monitor_index, fps),
+        )?,
+        SessionType::X11 => capture::x11::start_capture(app, monitor_index, fps)?,
+        SessionType::Windows => capture::windows::start_capture(app, monitor_index, fps)?,
+    };
+
     *session_guard = Some(session);
     Ok(())
 }
 
 #[tauri::command]
 fn stop_screen_capture() -> Result<(), String> {
-    let mut session_guard = CAPTURE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+    let mut session_guard =
+        CAPTURE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
     if let Some(mut session) = session_guard.take() {
         session.stop();
         Ok(())
@@ -32,11 +67,64 @@ fn stop_screen_capture() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn list_audio_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
+    capture::audio::list_input_devices()
+}
+
+#[tauri::command]
+fn list_audio_output_devices() -> Result<Vec<AudioDeviceInfo>, String> {
+    capture::audio::list_output_devices()
+}
+
+#[tauri::command]
+fn start_audio_capture(
+    app: tauri::AppHandle,
+    device_name: Option<String>,
+    sample_rate: u32,
+    channels: u16,
+) -> Result<(), String> {
+    let mut session_guard =
+        AUDIO_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if session_guard.is_some() {
+        return Err("An audio capture session is already active".into());
+    }
+
+    let session = capture::audio::start_capture(
+        app,
+        device_name,
+        sample_rate,
+        channels,
+    )?;
+
+    *session_guard = Some(session);
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_audio_capture() -> Result<(), String> {
+    let mut session_guard =
+        AUDIO_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(mut session) = session_guard.take() {
+        session.stop();
+        Ok(())
+    } else {
+        Err("No active audio capture session".into())
+    }
+}
+
+#[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}!", name)
 }
 
+#[tauri::command]
+async fn get_environment() -> Result<env::EnvDiagnostic, String> {
+    env::check_environment().await
+}
+
 pub fn run() {
+    let _ = get_session_type();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -47,6 +135,11 @@ pub fn run() {
             list_monitors,
             start_screen_capture,
             stop_screen_capture,
+            list_audio_input_devices,
+            list_audio_output_devices,
+            start_audio_capture,
+            stop_audio_capture,
+            get_environment,
         ])
         .setup(|_app| {
             #[cfg(debug_assertions)]
