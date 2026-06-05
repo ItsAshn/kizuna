@@ -214,6 +214,7 @@ jobs:
             -DENABLE_DOCUMENTATION=OFF \
             -DENABLE_SPEECH_SYNTHESIS=OFF \
             -DUSE_LIBBACKTRACE=OFF \
+            -DUSE_LIBRICE=OFF \
             -DUSE_SYSTEM_MALLOC=ON
 
           ninja -C build -j$(nproc)
