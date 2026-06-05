@@ -25,6 +25,7 @@ fn runtime_dir() -> String {
 
 fn detect_portal_backend(compositor: &str) -> String {
     let portal_dir = "/usr/share/xdg-desktop-portal/portals";
+    let compositor_lower = compositor.to_lowercase();
     if let Ok(entries) = std::fs::read_dir(portal_dir) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
@@ -32,6 +33,13 @@ fn detect_portal_backend(compositor: &str) -> String {
                 if let Ok(content) = std::fs::read_to_string(entry.path()) {
                     if content.contains(&format!("UseIn={}", compositor))
                         || content.contains(&format!("UseIn={};", compositor))
+                    {
+                        return name.replace(".portal", "");
+                    }
+                    if content.contains(&format!("default={};", compositor_lower))
+                        || content.contains(&format!("default={}:", compositor_lower))
+                        || content.contains(&format!("default={}\n", compositor_lower))
+                        || content.contains(&format!("default={}", compositor_lower))
                     {
                         return name.replace(".portal", "");
                     }
@@ -132,17 +140,28 @@ pub async fn check_environment() -> Result<EnvDiagnostic, String> {
 
 fn into_distro_command(pkg: &str) -> String {
     let (install_cmd, enable_cmd) = detect_distro_commands(pkg);
-    format!("{} && {}", install_cmd, enable_cmd)
+    if enable_cmd.is_empty() {
+        install_cmd
+    } else {
+        format!("{} && {}", install_cmd, enable_cmd)
+    }
 }
 
 fn detect_distro_commands(pkg: &str) -> (String, String) {
-    if std::path::Path::new("/etc/arch-release").exists() {
-        let svc = if pkg.contains("pipewire") { pkg } else { "pipewire-pulse" };
+    if !pkg.contains("pipewire") {
+        if std::path::Path::new("/etc/arch-release").exists() {
+            (format!("sudo pacman -S --needed {}", pkg), String::new())
+        } else if std::path::Path::new("/etc/fedora-release").exists() {
+            (format!("sudo dnf install -y {}", pkg), String::new())
+        } else {
+            (format!("sudo apt install -y {}", pkg), String::new())
+        }
+    } else if std::path::Path::new("/etc/arch-release").exists() {
         (
             format!("sudo pacman -S --needed {}", pkg),
             format!(
                 "systemctl --user enable --now {} {}.socket",
-                svc, svc
+                pkg, pkg
             ),
         )
     } else if std::path::Path::new("/etc/fedora-release").exists() {

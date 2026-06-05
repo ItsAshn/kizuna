@@ -240,8 +240,9 @@ export default function SettingsModal({ onClose }: Props) {
         setIsDev(false)
       }
     })
+    loadDevices()
     return () => { unmountedRef.current = true }
-  }, [])
+  }, [loadDevices])
 
   return (
     <div className="modal-overlay" onClick={onClose}>

@@ -645,9 +645,13 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       } else if (err.name === 'NotFoundError') {
         errorMsg = 'No microphone found. Please connect a microphone and try again.'
       } else if (err.name === 'NotReadableError' || err.name === 'OverconstrainedError' || err.message?.includes('timed out')) {
-        errorMsg = 'Microphone is unavailable or in use by another application. On Linux, ensure pipewire-pulse is installed and running.'
+        errorMsg = 'Microphone is unavailable or in use by another application. On Linux, ensure pipewire-pulse and pipewire-alsa are installed and running.'
       } else {
-        errorMsg = `Failed to access microphone: ${err.message || 'Unknown error'}`
+        const msg = err.message || err.toString?.() || 'Unknown error'
+        const linuxHint = navigator.platform?.toLowerCase().includes('linux') || isTauri()
+          ? ' On Linux, ensure pipewire, pipewire-pulse, and pipewire-alsa are installed and your user session is running PipeWire.'
+          : ''
+        errorMsg = `Failed to access microphone: ${msg}.${linuxHint}`
       }
       setVoiceError(errorMsg)
       cleanupVoice()
