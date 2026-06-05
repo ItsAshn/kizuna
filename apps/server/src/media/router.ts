@@ -2,6 +2,14 @@ import type { types as mediasoupTypes } from 'mediasoup'
 import type { Server as IoServer } from 'socket.io'
 import { createWorker, getWorker } from './worker'
 
+function rlog(msg: string) {
+  console.log(`[mediasoup] ${msg}`)
+}
+function rerr(msg: string, err?: unknown) {
+  const detail = err instanceof Error ? err.message : String(err ?? '')
+  console.error(`[mediasoup] ${msg} | ${detail}`)
+}
+
 const routers = new Map<string, mediasoupTypes.Router>()
 
 const MEDIA_CODECS: mediasoupTypes.RtpCodecCapability[] = [
@@ -27,11 +35,13 @@ export async function createRouter(channelId: string): Promise<mediasoupTypes.Ro
   const w = getWorker()
   if (!w) throw new Error('mediasoup worker not initialized')
 
+  rlog(`createRouter | channelId=${channelId}`)
   const router = await w.createRouter({
     mediaCodecs: MEDIA_CODECS,
   })
 
   routers.set(channelId, router)
+  rlog(`createRouter OK | channelId=${channelId} | totalRouters=${routers.size}`)
   return router
 }
 
@@ -43,7 +53,10 @@ export { getCachedRouter as getOrCreateRouter }
 
 export async function ensureRouter(channelId: string): Promise<mediasoupTypes.Router> {
   const existing = routers.get(channelId)
-  if (existing) return existing
+  if (existing) {
+    rlog(`ensureRouter cached | channelId=${channelId}`)
+    return existing
+  }
   return createRouter(channelId)
 }
 
@@ -51,6 +64,7 @@ export async function createTransport(router: mediasoupTypes.Router): Promise<me
   const listenIp = process.env.MEDIASOUP_LISTEN_IP || '0.0.0.0'
   const announcedIp = process.env.PUBLIC_ADDRESS || undefined
 
+  rlog(`createTransport | listenIp=${listenIp} | announcedIp=${announcedIp ?? 'none'} | enableUdp=true | enableTcp=true`)
   const transport = await router.createWebRtcTransport({
     listenIps: [{ ip: listenIp, announcedIp }],
     enableUdp: true,
@@ -59,6 +73,7 @@ export async function createTransport(router: mediasoupTypes.Router): Promise<me
     initialAvailableOutgoingBitrate: 5000000,
   })
 
+  rlog(`createTransport OK | transportId=${transport.id} | iceCandidates=${transport.iceCandidates?.length ?? 0}`)
   return transport
 }
 
@@ -89,6 +104,7 @@ export async function consumeOnTransport(
   io: IoServer,
 ): Promise<mediasoupTypes.Consumer | null> {
   try {
+    rlog(`consumeOnTransport | socketId=${socketId} | producerId=${producerId} | kind=${kind}`)
     const consumer = await transport.consume({
       producerId,
       rtpCapabilities: router.rtpCapabilities,
@@ -96,6 +112,7 @@ export async function consumeOnTransport(
       appData: {},
     })
 
+    rlog(`consumeOnTransport OK | consumerId=${consumer.id} | kind=${consumer.kind} | type=${consumer.type} | producerPaused=${consumer.producerPaused}`)
     io.to(socketId).emit('voice:newConsumer', {
       id: consumer.id,
       producerId,
@@ -106,12 +123,13 @@ export async function consumeOnTransport(
     })
 
     consumer.on('producerclose', () => {
+      rlog(`producerclose | consumerId=${consumer.id} | producerId=${producerId}`)
       io.to(socketId).emit('voice:consumerClosed', { consumerId: consumer.id })
     })
 
     return consumer
   } catch (err: any) {
-    console.error('[mediasoup] consume error:', err.message)
+    rerr(`consumeOnTransport failed | producerId=${producerId} | kind=${kind}`, err)
     return null
   }
 }
@@ -119,6 +137,7 @@ export async function consumeOnTransport(
 export function closeRouter(channelId: string): void {
   const router = routers.get(channelId)
   if (router) {
+    rlog(`closeRouter | channelId=${channelId}`)
     router.close()
     routers.delete(channelId)
   }

@@ -62,6 +62,22 @@ Download the latest desktop client from [releases](https://github.com/ItsAshn/ki
 
 ## Development
 
+### Quick Start (recommended)
+
+```bash
+# One-line install — detects OS, installs deps, clones, builds
+curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install.sh | bash
+```
+
+This installs Rust, Node.js, pnpm, and all system dependencies (including rebuilding webkit2gtk with WebRTC on Arch). On Windows, it sets up WebView2, Visual C++ Build Tools, and the full toolchain.
+
+Skip the WebRTC rebuild if you only need text chat:
+```bash
+curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install.sh | bash -s -- --skip-webrtc
+```
+
+### Manual Setup
+
 ```bash
 # Install dependencies
 pnpm install
@@ -75,11 +91,20 @@ pnpm dev:desktop
 
 Open `http://localhost:1420` in Chrome or Firefox. Voice channels require WebRTC support.
 
-### Linux Dev Notes
+### Linux Voice / WebRTC
 
-Voice channels in the Tauri desktop window (`pnpm desktop`) require `webkit2gtk-4.1` built with WebRTC support. On Arch Linux, the standard `extra/webkit2gtk-4.1` package does not include it. Use `pnpm dev:desktop` and open Chrome/Firefox for voice features during development. The CI-built AppImage bundles WebKit from Ubuntu, which includes full WebRTC support out of the box.
+Voice channels need `webkit2gtk-4.1` compiled with `ENABLE_WEB_RTC=ON`. Most distros ship without it.
 
-**PipeWire systems (Arch, CachyOS, Fedora, etc.):** Ensure `pipewire-pulse` is installed and running so the AppImage's audio pipeline can access your microphone through the PulseAudio compatibility layer. Without it, microphone permissions will be denied and the settings panel may freeze.
+| Distro | Status | Fix |
+|--------|--------|-----|
+| **Arch / CachyOS** (`extra` repo) | No WebRTC | `scripts/build-webkit-webrtc.sh` (rebuilds from PKGBUILD, ~45 min) |
+| **Debian / Ubuntu** | No WebRTC | `scripts/build-webkit-webrtc.sh` (rebuilds from apt source, ~60 min) |
+| **Fedora** | No WebRTC | `scripts/build-webkit-webrtc.sh` (rebuilds from dnf source, ~60 min) |
+| **CI AppImage** | WebRTC enabled | Pre-built AppImage bundles patched webkit — end users get voice out of the box |
+
+The install script detects your distro and offers to run `build-webkit-webrtc.sh` automatically. If you skip the rebuild, use `pnpm dev:desktop` and open Chrome/Firefox instead — voice will work there.
+
+**PipeWire systems (Arch, CachyOS, Fedora, etc.):** Ensure `pipewire-pulse` is installed and running so the audio pipeline can access your microphone.
 
 ```bash
 # CachyOS / Arch Linux
@@ -90,7 +115,14 @@ systemctl --user enable --now pipewire-pulse pipewire-pulse.socket
 ## Building from Source
 
 ```bash
+# One-line setup (recommended — installs all deps)
+curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install.sh | bash
+
+# Or manually:
 # Prerequisites: Node.js 22+, pnpm 9+, Rust toolchain
+# Linux: also need webkit2gtk-4.1, gtk3, alsa (see scripts/install-linux.sh)
+# Arch Linux: rebuild webkit2gtk-4.1 with ENABLE_WEB_RTC=ON for voice (see scripts/build-webkit-webrtc.sh)
+
 pnpm install
 
 # Build the server
@@ -99,6 +131,8 @@ pnpm build:server
 # Build the desktop client
 pnpm build:desktop
 ```
+
+The CI-built AppImage and `.deb` bundle the patched webkit2gtk automatically — voice works out of the box for end users.
 
 ## License
 

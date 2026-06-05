@@ -4,6 +4,18 @@ import type { types as mediasoupTypes } from 'mediasoup'
 import jwt from 'jsonwebtoken'
 import { getDb } from '../db'
 
+function vts(): string {
+  return new Date().toISOString().split('T')[1].slice(0, 12)
+}
+function vlog(tag: string, msg: string, extras?: Record<string, unknown>) {
+  const extra = extras ? ' ' + JSON.stringify(extras) : ''
+  console.log(`[${vts()}] [Voice] ${tag}: ${msg}${extra}`)
+}
+function verr(tag: string, msg: string, err?: unknown) {
+  const detail = err instanceof Error ? err.message : String(err ?? '')
+  console.error(`[${vts()}] [Voice] ${tag}: ${msg} | ${detail}`)
+}
+
 function getIceServers() {
   const servers: { urls: string; username?: string; credential?: string }[] = []
   const stunEnv = process.env.STUN_SERVERS || 'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302'
@@ -60,9 +72,12 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     userId: string
     username: string
   }, callback?: Function) => {
+    const joinTs = Date.now()
+    vlog('join', `request | socketId=${socket.id} | channelId=${channelId} | userId=${userId} | username=${username} | peers=${peers.size}`)
     try {
       const token = socket.handshake?.auth?.token
       if (!token) {
+        vlog('join', 'rejected: no auth token')
         if (typeof callback === 'function') callback({ error: 'Authentication required' })
         return
       }
@@ -70,7 +85,8 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         const payload = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string; username: string }
         userId = payload.userId
         username = payload.username
-      } catch {
+      } catch (e) {
+        vlog('join', `rejected: invalid JWT | ${String(e)}`)
         if (typeof callback === 'function') callback({ error: 'Invalid or expired token' })
         return
       }
@@ -78,11 +94,13 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       const db = getDb()
       const member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
       if (!member) {
+        vlog('join', `rejected: not a server member | userId=${userId}`)
         if (typeof callback === 'function') callback({ error: 'Not a server member' })
         return
       }
 
       const router = await ensureRouter(channelId)
+      vlog('join', `router ready | channelId=${channelId}`)
 
       socket.join(channelId)
 
@@ -112,16 +130,20 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         }
       }
 
+      const iceServers = getIceServers()
+      const screenSharePeer = getScreenSharer(channelId)
+      vlog('join', `success | socketId=${socket.id} | username=${username} | channelPeers=${channelPeers.length} | iceServers=${iceServers.length} | screenShare=${!!screenSharePeer} | ms=${Date.now() - joinTs}`)
+
       if (typeof callback === 'function') {
         callback({
           routerRtpCapabilities: router.rtpCapabilities,
           peers: channelPeers,
-          iceServers: getIceServers(),
-          screenSharePeer: getScreenSharer(channelId),
+          iceServers,
+          screenSharePeer,
         })
       }
     } catch (err: any) {
-      console.error('[Voice] join error:', err.message)
+      verr('join', 'error', err)
       if (typeof callback === 'function') callback({ error: err.message })
     }
   })
@@ -130,9 +152,11 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     channelId: string
     direction: string
   }, callback?: Function) => {
+    const t0 = Date.now()
     try {
       const peer = peers.get(socket.id)
       if (!peer) {
+        vlog('createTransport', `rejected: not in voice channel | socketId=${socket.id}`)
         if (typeof callback === 'function') callback({ error: 'Not in a voice channel' })
         return
       }
@@ -140,10 +164,12 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       const transport = await createTransport(peer.router);
       (transport as any)._direction = direction
       peer.transports.set(transport.id, transport as any)
+      vlog('createTransport', `created | socketId=${socket.id} | dir=${direction} | transportId=${transport.id} | ms=${Date.now() - t0}`)
 
       transport.on('dtlsstatechange', (state: string) => {
+        vlog('dtls', `${direction} dtlsstatechange -> ${state} | socketId=${socket.id} | transportId=${transport.id}`)
         if (state === 'failed' || state === 'closed') {
-          console.warn(`[Voice] transport dtls=${state} | dir=${direction} | peer=${socket.id}`)
+          verr('dtls', `${direction} dtls ${state} | socketId=${socket.id}`)
           try { transport.close() } catch {}
         }
       })
@@ -157,7 +183,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         })
       }
     } catch (err: any) {
-      console.error('[Voice] createTransport error:', err.message)
+      verr('createTransport', `failed | socketId=${socket.id} | dir=${direction}`, err)
       if (typeof callback === 'function') callback({ error: err.message })
     }
   })
@@ -171,13 +197,16 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       const peer = peers.get(socket.id)
       const transport = peer?.transports.get(transportId)
       if (!transport) {
+        vlog('connectTransport', `rejected: transport not found | transportId=${transportId}`)
         if (typeof callback === 'function') callback({ error: 'Transport not found' })
         return
       }
+      const dir = (transport as any)._direction || '?'
       await connectTransport(transport, dtlsParameters)
+      vlog('connectTransport', `ok | socketId=${socket.id} | dir=${dir} | transportId=${transportId}`)
       if (typeof callback === 'function') callback({ ok: true })
     } catch (err: any) {
-      console.error('[Voice] connectTransport error:', err.message)
+      verr('connectTransport', `failed | transportId=${transportId}`, err)
       if (typeof callback === 'function') callback({ error: err.message })
     }
   })
@@ -192,18 +221,20 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       const peer = peers.get(socket.id)
       const transport = peer?.transports.get(transportId)
       if (!peer || !transport) {
+        vlog('produce', `rejected: transport not found | transportId=${transportId}`)
         if (typeof callback === 'function') callback({ error: 'Transport not found' })
         return
       }
 
       const producer = await produceOnTransport(transport, { kind, rtpParameters })
       peer.producers.set(producer.id, producer)
+      vlog('produce', `created | socketId=${socket.id} | user=${peer.username} | kind=${kind} | producerId=${producer.id} | announced=${peer.announced}`)
 
       producer.on('transportclose', () => producer.close())
 
       if (!peer.announced) {
         peer.announced = true
-        console.log(`[Voice] PRODUCE | channel=${channelId} | user=${peer.username} | kind=${kind}`)
+        vlog('produce', `announcing new peer | socketId=${socket.id} | user=${peer.username} | channelPeers=${peers.size}`)
         socket.to(channelId).emit('voice:newPeer', {
           peerId: socket.id,
           userId: peer.userId,
@@ -213,7 +244,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
 
       if (typeof callback === 'function') callback({ id: producer.id })
     } catch (err: any) {
-      console.error('[Voice] produce error:', err.message)
+      verr('produce', `failed | socketId=${socket.id}`, err)
       if (typeof callback === 'function') callback({ error: err.message })
     }
   })
@@ -239,12 +270,14 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         }
       }
       if (!recvTransport) {
+        vlog('consume', `rejected: no recv transport | socketId=${socket.id} | peerId=${peerId}`)
         if (typeof callback === 'function') callback({ error: 'Recv transport not found' })
         return
       }
 
       const targetPeer = peers.get(peerId)
       if (!targetPeer) {
+        vlog('consume', `rejected: target peer not found | peerId=${peerId}`)
         if (typeof callback === 'function') callback({ error: 'Target peer not found' })
         return
       }
@@ -258,11 +291,13 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         }
       }
       if (!producerId) {
+        vlog('consume', `rejected: no ${targetKind} producer | peerId=${peerId}`)
         if (typeof callback === 'function') callback({ error: `Target peer has no ${targetKind} producer` })
         return
       }
 
       if (!requestingPeer.router.canConsume({ producerId, rtpCapabilities })) {
+        vlog('consume', `rejected: router cannot consume | producerId=${producerId}`)
         if (typeof callback === 'function') callback({ error: 'Router cannot consume this producer' })
         return
       }
@@ -272,6 +307,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         rtpCapabilities,
         paused: true,
       })
+      vlog('consume', `created | socketId=${socket.id} -> producerId=${producerId} | consumerId=${consumer.id} | kind=${consumer.kind} | paused=${consumer.producerPaused}`)
 
       requestingPeer.consumers.set(consumer.id, consumer)
       consumer.on('transportclose', () => consumer.close())
@@ -290,7 +326,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         })
       }
     } catch (err: any) {
-      console.error('[Voice] consume error:', err.message)
+      verr('consume', `failed | peerId=${peerId}`, err)
       if (typeof callback === 'function') callback({ error: err.message })
     }
   })
@@ -304,10 +340,13 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       const consumer = peer?.consumers.get(consumerId)
       if (consumer) {
         await consumer.resume()
+        vlog('resumeConsumer', `ok | socketId=${socket.id} | consumerId=${consumerId}`)
+      } else {
+        vlog('resumeConsumer', `not found | socketId=${socket.id} | consumerId=${consumerId}`)
       }
       if (typeof callback === 'function') callback()
     } catch (err: any) {
-      console.error('[Voice] resumeConsumer error:', err.message)
+      verr('resumeConsumer', `failed | consumerId=${consumerId}`, err)
       if (typeof callback === 'function') callback()
     }
   })
@@ -400,6 +439,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
   socket.on('disconnect', async () => {
     for (const [sid, peer] of peers) {
       if (sid === socket.id) {
+        vlog('disconnect', `socket disconnected | socketId=${socket.id} | user=${peer.username} | channelId=${peer.channelId}`)
         cleanupPeer(socket.id, peer.channelId, io)
         break
       }
@@ -412,11 +452,13 @@ function cleanupPeer(socketId: string, channelId: string, io: Server): void {
   if (!peer) return
 
   let wasSharing = false
+  let producerCount = 0
   for (const [, p] of peer.producers) {
-    if (p.kind === 'video') { wasSharing = true; break }
+    producerCount++
+    if (p.kind === 'video') { wasSharing = true }
   }
 
-  console.log(`[Voice] LEFT | channel=${channelId} | user=${peer.username}`)
+  vlog('cleanup', `peer leaving | socketId=${socketId} | user=${peer.username} | channelId=${channelId} | producers=${producerCount} | consumers=${peer.consumers.size} | transports=${peer.transports.size} | wasSharing=${wasSharing} | remainingPeers=${peers.size - 1}`)
 
   peer.producers.forEach((p) => { try { p.close() } catch {} })
   peer.consumers.forEach((c) => { try { c.close() } catch {} })

@@ -144,6 +144,110 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf libpipewire-0.3-dev libspa-0.2-dev libgbm-dev libasound2-dev libfuse2 dpkg-dev
 
+      # ── WebKit WebRTC build / cache ────────────────────────────────
+
+      - name: Detect webkit2gtk version
+        run: |
+          PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig" pkg-config --modversion webkit2gtk-4.1
+          echo "WEBKIT_VER=$(pkg-config --modversion webkit2gtk-4.1)" >> $GITHUB_ENV
+          echo "WEBKIT_TAR=webkit-webrtc-linux-x64_$(pkg-config --modversion webkit2gtk-4.1).tar.gz" >> $GITHUB_ENV
+          echo "WEBKIT_TAG=webkit-webrtc-v$(pkg-config --modversion webkit2gtk-4.1)" >> $GITHUB_ENV
+
+      - name: Download cached webkit WebRTC build
+        id: cache-download
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "$WEBKIT_TAG" \
+            --pattern "$WEBKIT_TAR" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir /tmp/webrtc-cache || true
+          if [ -f "/tmp/webrtc-cache/$WEBKIT_TAR" ]; then
+            echo "WEBKIT_CACHED=true" >> $GITHUB_ENV
+            echo "Cache hit: $WEBKIT_TAR"
+          else
+            echo "WEBKIT_CACHED=false" >> $GITHUB_ENV
+            echo "Cache miss — will build from source"
+          fi
+
+      - name: Build webkit2gtk with WebRTC (apt source)
+        if: env.WEBKIT_CACHED == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "Building webkit2gtk-4.1 $WEBKIT_VER with ENABLE_WEB_RTC=ON..."
+
+          # Build dependencies
+          sudo apt-get install -y \
+            cmake ninja-build gperf bison flex ruby python3 perl \
+            libgtk-3-dev libsoup-3.0-dev libsecret-1-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libgstreamer-plugins-bad1.0-dev \
+            libenchant-2-dev libhyphen-dev libmanette-0.2-dev \
+            libegl1-mesa-dev libgles2-mesa-dev \
+            libwoff-dev libjpeg-dev libpng-dev libwebp-dev \
+            libavif-dev libjxl-dev libopenjp2-7-dev \
+            libxslt1-dev libxml2-dev libsqlite3-dev \
+            libsystemd-dev libgcrypt20-dev libtasn1-6-dev \
+            liblcms2-dev libseccomp-dev libbrotli-dev \
+            libepoxy-dev libxt-dev libxcomposite-dev libxdamage-dev libxrender-dev \
+            libexpat1-dev libfreetype6-dev libfontconfig1-dev || true
+
+          WORKDIR=$(mktemp -d)
+          cd "$WORKDIR"
+          apt source webkit2gtk
+          cd webkit2gtk-*
+
+          cmake -B build -G Ninja \
+            -DPORT=GTK \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_SOUP3=ON \
+            -DENABLE_WEB_RTC=ON \
+            -DENABLE_GAMEPAD=OFF \
+            -DUSE_SYSTEM_MALLOC=ON
+
+          ninja -C build -j$(nproc)
+          sudo ninja -C build install
+
+          # Package for caching (only the shared libraries + pkgconfig)
+          tar czf "/tmp/$WEBKIT_TAR" -C / usr/local/lib/libwebkit2gtk-4.1.so* usr/local/lib/libjavascriptcoregtk-4.1.so* usr/local/lib/pkgconfig/webkit2gtk-4.1.pc 2>/dev/null || true
+
+          # Upload cache artifact to a release tag
+          if ! gh release view "$WEBKIT_TAG" --repo "$GITHUB_REPOSITORY" &>/dev/null; then
+            gh release create "$WEBKIT_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "WebKit WebRTC $WEBKIT_VER" \
+              --notes "Pre-built webkit2gtk-4.1 with ENABLE_WEB_RTC=ON" \
+              --prerelease || true
+          fi
+          gh release upload "$WEBKIT_TAG" "/tmp/$WEBKIT_TAR" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber || true
+
+          echo "WebKit WebRTC build + upload complete."
+
+      - name: Extract webkit WebRTC libs
+        run: |
+          if [ -f "/tmp/webrtc-cache/$WEBKIT_TAR" ]; then
+            echo "Extracting from cache..."
+            sudo tar xzf "/tmp/webrtc-cache/$WEBKIT_TAR" -C /
+          elif [ -f "/tmp/$WEBKIT_TAR" ]; then
+            echo "Extracting from local build..."
+            sudo tar xzf "/tmp/$WEBKIT_TAR" -C /
+          else
+            echo "ERROR: No webkit WebRTC tarball found"
+            exit 1
+          fi
+          echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/webrtc-webkit.conf
+          sudo ldconfig
+          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "WebKit WebRTC libs ready."
+
+      # ── End WebKit block ────────────────────────────────────────────
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -162,6 +266,8 @@ jobs:
         working-directory: apps/desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
+          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
         run: pnpm tauri build
 
       - name: Upload to release
