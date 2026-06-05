@@ -211,6 +211,7 @@ jobs:
             -DUSE_SOUP3=ON \
             -DENABLE_WEB_RTC=ON \
             -DENABLE_GAMEPAD=OFF \
+            -DENABLE_DOCUMENTATION=OFF \
             -DUSE_SYSTEM_MALLOC=ON
 
           ninja -C build -j$(nproc)
