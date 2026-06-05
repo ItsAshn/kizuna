@@ -60,6 +60,7 @@ pub async fn check_environment() -> Result<EnvDiagnostic, String> {
     let pipewire_pulse_ok =
         std::path::Path::new(&format!("{}/pulse/native", rd)).exists();
 
+    #[cfg(target_os = "linux")]
     let (portal_ok, portal_backend) = if is_wayland {
         let backend = detect_portal_backend(&compositor);
         let ok = ashpd::desktop::screencast::Screencast::new().await.is_ok();
@@ -67,6 +68,8 @@ pub async fn check_environment() -> Result<EnvDiagnostic, String> {
     } else {
         (false, "none".into())
     };
+    #[cfg(not(target_os = "linux"))]
+    let (portal_ok, portal_backend) = (false, "none".into());
 
     let mut issues = Vec::new();
 

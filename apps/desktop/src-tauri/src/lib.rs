@@ -22,11 +22,13 @@ fn get_session_type() -> SessionType {
 #[tauri::command]
 fn list_monitors() -> Result<Vec<MonitorInfo>, String> {
     match get_session_type() {
+        #[cfg(target_os = "linux")]
         SessionType::Wayland => {
             tauri::async_runtime::block_on(capture::wayland::list_sources())
         }
+        #[cfg(not(target_os = "windows"))]
         SessionType::X11 => capture::x11::list_monitors(),
-        SessionType::Windows => capture::windows::list_monitors(),
+        _ => capture::windows::list_monitors(),
     }
 }
 
@@ -43,11 +45,13 @@ fn start_screen_capture(
     }
 
     let session = match get_session_type() {
+        #[cfg(target_os = "linux")]
         SessionType::Wayland => tauri::async_runtime::block_on(
             capture::wayland::start_capture(app, monitor_index, fps),
         )?,
+        #[cfg(not(target_os = "windows"))]
         SessionType::X11 => capture::x11::start_capture(app, monitor_index, fps)?,
-        SessionType::Windows => capture::windows::start_capture(app, monitor_index, fps)?,
+        _ => capture::windows::start_capture(app, monitor_index, fps)?,
     };
 
     *session_guard = Some(session);

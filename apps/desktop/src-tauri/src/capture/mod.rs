@@ -1,7 +1,9 @@
 pub mod audio;
 pub mod media;
+#[cfg(target_os = "linux")]
 pub mod wayland;
 pub mod windows;
+#[cfg(not(target_os = "windows"))]
 pub mod x11;
 
 use std::sync::atomic::{AtomicBool, Ordering};
