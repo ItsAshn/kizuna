@@ -184,21 +184,11 @@ jobs:
             sudo sed -i 's/^# deb-src /deb-src /' /etc/apt/sources.list
           sudo apt-get update
 
-          # Build dependencies
+          # Build dependencies (use build-dep for full coverage)
+          sudo apt-get build-dep -y webkit2gtk || true
           sudo apt-get install -y \
             cmake ninja-build gperf bison flex ruby python3 perl \
-            libgtk-3-dev libgtk-4-dev libsoup-3.0-dev libsecret-1-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            libgstreamer-plugins-bad1.0-dev \
-            libenchant-2-dev libhyphen-dev libmanette-0.2-dev \
-            libegl1-mesa-dev libgles2-mesa-dev \
-            libwoff-dev libjpeg-dev libpng-dev libwebp-dev \
-            libavif-dev libjxl-dev libopenjp2-7-dev \
-            libxslt1-dev libxml2-dev libsqlite3-dev \
-            libsystemd-dev libgcrypt20-dev libtasn1-6-dev \
-            liblcms2-dev libseccomp-dev libbrotli-dev \
-            libepoxy-dev libxt-dev libxcomposite-dev libxdamage-dev libxrender-dev \
-            libexpat1-dev libfreetype6-dev libfontconfig1-dev || true
+            libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev || true
 
           WORKDIR=$(mktemp -d)
           cd "$WORKDIR"
