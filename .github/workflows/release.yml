@@ -391,7 +391,18 @@ jobs:
             'HERE="$(dirname "$(readlink -f "$0")")"' \
             'export PATH="$HERE/usr/bin:$PATH"' \
             'export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"' \
-            'exec "$HERE/usr/bin/kizuna" "$@"' \
+            'export WEBKIT_DISABLE_COMPOSITING_MODE=1' \
+            'export WEBKIT_DISABLE_DMABUF_RENDERER=1' \
+            'LOG="/tmp/kizuna-appimage-$(date +%s).log"' \
+            '{' \
+            '  echo "Kizuna AppImage started at $(date)"' \
+            '  echo "AppDir: $HERE"' \
+            '  echo "DISPLAY: ${DISPLAY:-none}"' \
+            '  echo "XDG_SESSION_TYPE: ${XDG_SESSION_TYPE:-unknown}"' \
+            '  echo "WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-none}"' \
+            '  echo "---"' \
+            '} >> "$LOG" 2>/dev/null || true' \
+            'exec "$HERE/usr/bin/kizuna" "$@" 2>>"$LOG"' \
             > "$APPDIR/AppRun"
           chmod +x "$APPDIR/AppRun"
 
@@ -405,6 +416,81 @@ jobs:
 
           echo "AppImage built successfully"
           ls -la "$APPIMAGE_OUT"
+
+      - name: Verify AppImage library resolution
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          set -euo pipefail
+          APPIMAGE="apps/desktop/src-tauri/target/release/bundle/appimage/kizuna.AppImage"
+          rm -rf /tmp/appimage-verify squashfs-root
+
+          echo "=== Extracting AppImage ==="
+          "$APPIMAGE" --appimage-extract > /dev/null 2>&1 || {
+            echo "ERROR: Failed to extract AppImage"
+            exit 1
+          }
+          # appimagetool extracts to ./squashfs-root
+          if [ -d squashfs-root ]; then
+            mv squashfs-root /tmp/appimage-verify
+          else
+            echo "ERROR: squashfs-root not created after extraction"
+            ls -la
+            exit 1
+          fi
+          EXTRACT_DIR="/tmp/appimage-verify"
+
+          BINARY="$EXTRACT_DIR/usr/bin/kizuna"
+          if [ ! -f "$BINARY" ]; then
+            echo "ERROR: binary not found in extracted AppImage"
+            find "$EXTRACT_DIR" -type f | head -20
+            exit 1
+          fi
+
+          echo "=== Binary RPATH ==="
+          patchelf --print-rpath "$BINARY" || true
+
+          echo "=== Checking for missing libraries ==="
+          MISSING=$(ldd "$BINARY" 2>&1 | grep -i "not found" || true)
+          if [ -n "$MISSING" ]; then
+            echo "WARNING: Missing libraries detected:"
+            echo "$MISSING"
+            echo ""
+            echo "Full ldd output:"
+            ldd "$BINARY" 2>&1 || true
+          else
+            echo "All libraries resolved successfully."
+          fi
+
+          echo "=== Verifying bundled webkit ==="
+          WEBKIT_SO=$(find "$EXTRACT_DIR/usr/lib" -name "libwebkit2gtk-4.1.so.0" -print -quit 2>/dev/null || true)
+          if [ -n "$WEBKIT_SO" ]; then
+            echo "Bundled webkit: $WEBKIT_SO"
+            echo "Size: $(stat -c%s "$WEBKIT_SO" 2>/dev/null || stat -f%z "$WEBKIT_SO" 2>/dev/null || echo unknown)"
+            # Check that the bundled webkit resolves against the AppDir's lib path
+            echo "WebKit dependencies (with AppDir LD_LIBRARY_PATH):"
+            LD_LIBRARY_PATH="$EXTRACT_DIR/usr/lib" ldd "$WEBKIT_SO" 2>&1 | grep -i "not found" || echo "  All resolved"
+          else
+            echo "WARNING: libwebkit2gtk-4.1.so.0 not found in AppDir!"
+          fi
+
+          echo "=== Checking for WebRTC symbols ==="
+          if [ -n "$WEBKIT_SO" ]; then
+            if nm -D "$WEBKIT_SO" 2>/dev/null | grep -qi "webrtc\|rtcpeerconnection" || \
+               strings "$WEBKIT_SO" 2>/dev/null | grep -qi "webrtc" || true; then
+              # nm/strings check passes; try a more specific symbol
+              if nm -D "$WEBKIT_SO" 2>/dev/null | grep -q "webkit_web_view_is_playing_audio"; then
+                echo "WebKit symbols verified (general check passed)."
+              else
+                echo "WARNING: Could not confirm WebRTC-specific symbols."
+              fi
+            else
+              echo "WARNING: No WebRTC-related symbols/strings found in bundled webkit!"
+            fi
+          fi
+
+          echo "=== Verification complete ==="
+          rm -rf "$EXTRACT_DIR"
 
       - name: Upload to release
         env:

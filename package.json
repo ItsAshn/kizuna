@@ -7,7 +7,7 @@
     "dev": "pnpm --filter @kizuna/server dev",
     "dev:server": "pnpm --filter @kizuna/server dev",
     "dev:desktop": "pnpm --filter @kizuna/desktop dev",
-    "desktop": "WEBKIT_DISABLE_COMPOSITING_MODE=1 pnpm --filter @kizuna/desktop tauri dev",
+    "desktop": "WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 pnpm --filter @kizuna/desktop tauri dev",
     "desktop:build": "pnpm --filter @kizuna/desktop tauri build",
     "build": "pnpm --filter @kizuna/server build && pnpm --filter @kizuna/desktop build",
     "build:server": "pnpm --filter @kizuna/server build",
