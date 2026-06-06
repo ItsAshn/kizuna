@@ -385,13 +385,19 @@ jobs:
             'Categories=Network;Chat;' \
             > "$APPDIR/kizuna.desktop"
 
-          # AppRun entry point (use Tauri's AppRun binary)
-          wget -q "https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64" -O "$APPDIR/AppRun"
+          # AppRun entry point
+          printf '%s\n' \
+            '#!/bin/bash' \
+            'HERE="$(dirname "$(readlink -f "$0")")"' \
+            'export PATH="$HERE/usr/bin:$PATH"' \
+            'export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"' \
+            'exec "$HERE/usr/bin/kizuna" "$@"' \
+            > "$APPDIR/AppRun"
           chmod +x "$APPDIR/AppRun"
 
           # Download appimagetool and package
           mkdir -p "$BUNDLE_DIR"
-          wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O /tmp/appimagetool
+          wget -nv "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O /tmp/appimagetool || { echo "ERROR: failed to download appimagetool"; exit 1; }
           chmod +x /tmp/appimagetool
           APPIMAGE_OUT="$BUNDLE_DIR/kizuna.AppImage"
           rm -f "$APPIMAGE_OUT"
