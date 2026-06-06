@@ -143,166 +143,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf libpipewire-0.3-dev libspa-0.2-dev libgbm-dev libasound2-dev libfuse2 dpkg-dev
-          # Runtime deps bundled webkit needs (always install even on cache hit)
-          sudo apt-get install -y libgstreamer-plugins-bad1.0-0 2>/dev/null || true
-
-      # ── WebKit WebRTC build / cache ────────────────────────────────
-
-      - name: Detect webkit2gtk version
-        run: |
-          PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig" pkg-config --modversion webkit2gtk-4.1
-          echo "WEBKIT_VER=$(pkg-config --modversion webkit2gtk-4.1)" >> $GITHUB_ENV
-          echo "WEBKIT_TAR=webkit-webrtc-linux-x64_$(pkg-config --modversion webkit2gtk-4.1).tar.gz" >> $GITHUB_ENV
-          echo "WEBKIT_TAG=webkit-webrtc-v$(pkg-config --modversion webkit2gtk-4.1)-r2" >> $GITHUB_ENV
-
-      - name: Try restore cached webkit WebRTC build
-        id: cache-restore
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          gh release download "$WEBKIT_TAG" \
-            --pattern "$WEBKIT_TAR" \
-            --repo "$GITHUB_REPOSITORY" \
-            --dir /tmp/webrtc-cache 2>/dev/null || true
-
-          if [ -f "/tmp/webrtc-cache/$WEBKIT_TAR" ]; then
-            echo "Extracting cached build..."
-            sudo tar xzf "/tmp/webrtc-cache/$WEBKIT_TAR" -C /
-            # Verify the extraction actually put files in place
-            if find /usr/local/lib -name "libwebkit2gtk-4.1.so*" -print -quit 2>/dev/null | grep -q .; then
-              echo "WEBKIT_CACHED=true" >> $GITHUB_ENV
-              echo "Cache valid — WebRTC webkit found"
-            else
-              echo "WEBKIT_CACHED=false" >> $GITHUB_ENV
-              echo "Cache INVALID (no .so files after extraction) — forcing rebuild"
-            fi
-          else
-            echo "WEBKIT_CACHED=false" >> $GITHUB_ENV
-            echo "No cache — will build from source"
-          fi
-
-      - name: Build webkit2gtk with WebRTC (apt source)
-        if: env.WEBKIT_CACHED == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          echo "Building webkit2gtk-4.1 $WEBKIT_VER with ENABLE_WEB_RTC=ON..."
-
-          # Enable source repos (required for apt source)
-          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
-            sudo sed -i 's/^# deb-src /deb-src /' /etc/apt/sources.list
-          sudo apt-get update
-
-          # Build dependencies (use build-dep for full coverage)
-          sudo apt-get build-dep -y webkit2gtk || true
-          sudo apt-get install -y \
-            cmake ninja-build gperf bison flex ruby python3 perl \
-            libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev || true
-
-          WORKDIR=$(mktemp -d)
-          cd "$WORKDIR"
-          apt source webkit2gtk
-          cd webkit2gtk-*
-
-          cmake -B build -G Ninja \
-            -DPORT=GTK \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DUSE_SOUP3=ON \
-            -DENABLE_WEB_RTC=ON \
-            -DUSE_GTK4=OFF \
-            -DUSE_AVIF=OFF \
-            -DUSE_JPEGXL=OFF \
-            -DENABLE_GAMEPAD=OFF \
-            -DENABLE_DOCUMENTATION=OFF \
-            -DENABLE_SPEECH_SYNTHESIS=OFF \
-            -DUSE_LIBBACKTRACE=OFF \
-            -DUSE_LIBRICE=OFF \
-            -DUSE_SYSTEM_MALLOC=ON
-
-          ninja -C build -j$(nproc)
-          sudo ninja -C build install
-
-          # Find where the libraries were actually installed (may be multiarch)
-          WEBKIT_LIB=$(find /usr/local/lib -name "libwebkit2gtk-4.1.so*" -type f 2>/dev/null | head -1)
-          JSCORE_LIB=$(find /usr/local/lib -name "libjavascriptcoregtk-4.1.so*" -type f 2>/dev/null | head -1)
-          WEBKIT_PC=$(find /usr/local/lib -name "webkit2gtk-4.1.pc" -type f 2>/dev/null | head -1)
-
-          if [ -z "$WEBKIT_LIB" ]; then
-            echo "ERROR: webkit2gtk build appeared to succeed but libwebkit2gtk-4.1.so not found under /usr/local/lib/"
-            find /usr/local -name "libwebkit2gtk*" 2>/dev/null | head -10
-            exit 1
-          fi
-
-          echo "Packaging for cache: $WEBKIT_LIB"
-          WEBKIT_LIBDIR=$(dirname "$WEBKIT_LIB")
-          JSCORE_LIBDIR=$(dirname "$JSCORE_LIB")
-          WEBKIT_PCDIR=$(dirname "$WEBKIT_PC")
-          # Use find + tar pipeline so globs resolve relative to /, not CWD
-          (cd / && find \
-            "${WEBKIT_LIBDIR#/}" "${JSCORE_LIBDIR#/}" "${WEBKIT_PCDIR#/}" \
-            -maxdepth 1 -type f \
-            \( -name "libwebkit2gtk-4.1.so*" -o -name "libjavascriptcoregtk-4.1.so*" -o -name "webkit2gtk-4.1.pc" \) \
-            -print0 | tar czf "/tmp/$WEBKIT_TAR" --null -T -)
-
-          # Upload cache artifact to a release tag
-          if ! gh release view "$WEBKIT_TAG" --repo "$GITHUB_REPOSITORY" &>/dev/null; then
-            gh release create "$WEBKIT_TAG" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "WebKit WebRTC $WEBKIT_VER" \
-              --notes "Pre-built webkit2gtk-4.1 with ENABLE_WEB_RTC=ON" \
-              --prerelease || true
-          fi
-          gh release upload "$WEBKIT_TAG" "/tmp/$WEBKIT_TAR" \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber || true
-
-          echo "WebKit WebRTC build + upload complete."
-
-      - name: Setup webkit WebRTC libs
-        run: |
-          set -euo pipefail
-          # If built from source (cache miss or invalid), extract the local tarball
-          if [ "$WEBKIT_CACHED" = "false" ]; then
-            if [ -f "/tmp/$WEBKIT_TAR" ]; then
-              echo "Extracting from local build..."
-              sudo tar xzf "/tmp/$WEBKIT_TAR" -C /
-            else
-              echo "ERROR: No webkit WebRTC tarball found (neither cache nor local build)"
-              exit 1
-            fi
-          fi
-          # Configure library search paths via ldconfig (no env vars — linuxdeploy chokes on custom LD_LIBRARY_PATH)
-          echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/webrtc-webkit.conf
-          if [ -d "/usr/local/lib/x86_64-linux-gnu" ]; then
-            echo "/usr/local/lib/x86_64-linux-gnu" | sudo tee -a /etc/ld.so.conf.d/webrtc-webkit.conf
-            # Symlink .so files to /usr/local/lib/ so the linker finds them without env vars
-            sudo ln -sf /usr/local/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so* /usr/local/lib/ 2>/dev/null || true
-            sudo ln -sf /usr/local/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so* /usr/local/lib/ 2>/dev/null || true
-            # Symlink .pc file so pkg-config finds it on its default search path
-            sudo mkdir -p /usr/local/lib/pkgconfig
-            sudo ln -sf /usr/local/lib/x86_64-linux-gnu/pkgconfig/webkit2gtk-4.1.pc /usr/local/lib/pkgconfig/ 2>/dev/null || true
-          fi
-          sudo ldconfig
-
-          echo "=== Verifying WebRTC webkit libs ==="
-          if find /usr/local/lib -name "libwebkit2gtk-4.1.so*" -print -quit 2>/dev/null | grep -q .; then
-            find /usr/local/lib -name "libwebkit2gtk-4.1.so*" -ls 2>/dev/null
-            echo "WebKit WebRTC libs ready."
-          else
-            echo "FATAL: No libwebkit2gtk-4.1 found in /usr/local/lib after setup!"
-            find /usr -name "libwebkit2gtk-4.1.so*" 2>/dev/null | head -10
-            exit 1
-          fi
-
-      # ── End WebKit block ────────────────────────────────────────────
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Set RPATH for bundled WebKit (Linux)
-        run: echo 'RUSTFLAGS=-C link-args=-Wl,-rpath,$ORIGIN/../lib' >> "$GITHUB_ENV"
 
       - name: Set version from git tag (Linux)
         run: |
@@ -312,8 +155,7 @@ jobs:
             const fs = require('fs');
             const conf = JSON.parse(fs.readFileSync('apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
             conf.version = process.argv[1];
-            // Exclude appimage from Tauri's bundler — we build it manually to bundle WebRTC webkit
-            conf.bundle.targets = ['deb', 'rpm'];
+            conf.bundle.targets = ['deb', 'appimage'];
             fs.writeFileSync('apps/desktop/src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
           " "$VERSION"
 
@@ -321,221 +163,52 @@ jobs:
         working-directory: apps/desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          PKG_CONFIG_PATH: /usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: pnpm tauri build
 
-      - name: Build AppImage with bundled WebKit WebRTC
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-        run: |
-          set -euo pipefail
-          SRC_TARGET="apps/desktop/src-tauri/target/release"
-          BINARY="$SRC_TARGET/kizuna"
-          BUNDLE_DIR="$SRC_TARGET/bundle/appimage"
-          ICON_DIR="apps/desktop/src-tauri/icons"
-          APPDIR="/tmp/kizuna.AppDir"
-
-          if [ ! -f "$BINARY" ]; then
-            echo "ERROR: binary not found at $BINARY"
-            exit 1
-          fi
-
-          # Locate the custom WebRTC-enabled webkit libs
-          WEBKIT_SO=$(find /usr/local/lib -maxdepth 3 -name "libwebkit2gtk-4.1.so.0" 2>/dev/null | head -1)
-          JSCORE_SO=$(find /usr/local/lib -maxdepth 3 -name "libjavascriptcoregtk-4.1.so.0" 2>/dev/null | head -1)
-
-          if [ -z "$WEBKIT_SO" ]; then
-            echo "ERROR: custom WebRTC webkit2gtk not found in /usr/local/lib/"
-            find /usr -name "libwebkit2gtk-4.1.so*" 2>/dev/null | head -10 || true
-            exit 1
-          fi
-
-          WEBKIT_DIR=$(dirname "$WEBKIT_SO")
-          JSCORE_DIR=$(dirname "$JSCORE_SO")
-          echo "Found WebRTC webkit at $WEBKIT_SO"
-
-          # Create fresh AppDir
-          rm -rf "$APPDIR"
-          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" "$APPDIR/usr/share/icons/hicolor/256x256/apps"
-
-          # Copy binary
-          cp "$BINARY" "$APPDIR/usr/bin/kizuna"
-          chmod +x "$APPDIR/usr/bin/kizuna"
-
-          # Copy bundled WebRTC webkit libs
-          cp -v "$WEBKIT_DIR"/libwebkit2gtk-4.1.so* "$APPDIR/usr/lib/"
-          cp -v "$JSCORE_DIR"/libjavascriptcoregtk-4.1.so* "$APPDIR/usr/lib/"
-
-          # Resolve and bundle missing transitive dependencies of the bundled webkit
-          echo "=== Resolving webkit dependencies ==="
-          for attempt in 1 2 3; do
-            MISSING=$(LD_LIBRARY_PATH="$APPDIR/usr/lib" ldd "$APPDIR/usr/lib/libwebkit2gtk-4.1.so.0" 2>&1 | grep "not found" | awk '{print $1}' || true)
-            MISSING_JS=$(LD_LIBRARY_PATH="$APPDIR/usr/lib" ldd "$APPDIR/usr/lib/libjavascriptcoregtk-4.1.so.0" 2>&1 | grep "not found" | awk '{print $1}' || true)
-            MISSING="$MISSING $MISSING_JS"
-            if [ -z "$(echo $MISSING | tr -d ' ')" ]; then
-              echo "All dependencies resolved (pass $attempt)."
-              break
-            fi
-            echo "Pass $attempt: missing: $MISSING"
-            for lib in $MISSING; do
-              FOUND=$(find -L /usr/lib /usr/local/lib /lib -name "$lib" -print -quit 2>/dev/null)
-              if [ -z "$FOUND" ]; then
-                FOUND=$(find -L /usr/lib -maxdepth 5 -name "$lib" -print -quit 2>/dev/null)
-              fi
-              if [ -n "$FOUND" ] && [ ! -f "$APPDIR/usr/lib/$lib" ]; then
-                echo "  Bundling $lib from $FOUND"
-                cp -v "$FOUND" "$APPDIR/usr/lib/"
-              elif [ -z "$FOUND" ]; then
-                echo "  WARNING: Could not locate $lib on the system"
-              fi
-            done
-          done
-
-          # Verify all webkit deps resolve
-          echo "=== Final dependency check ==="
-          STILL_MISSING=$(LD_LIBRARY_PATH="$APPDIR/usr/lib" ldd "$APPDIR/usr/lib/libwebkit2gtk-4.1.so.0" 2>&1 | grep "not found" || true)
-          if [ -n "$STILL_MISSING" ]; then
-            echo "ERROR: Unresolved webkit dependencies remain:"
-            echo "$STILL_MISSING"
-            exit 1
-          fi
-          echo "All webkit dependencies resolved."
-
-          # Verify RPATH
-          echo "Binary RPATH:"
-          patchelf --print-rpath "$APPDIR/usr/bin/kizuna" || true
-
-          # Copy icon (use largest PNG available)
-          ICON_SRC=$(find "$ICON_DIR" -maxdepth 1 \( -name "128x128@2x.png" -o -name "128x128.png" -o -name "icon.png" \) -print -quit 2>/dev/null)
-          if [ -n "$ICON_SRC" ]; then
-            cp "$ICON_SRC" "$APPDIR/usr/share/icons/hicolor/256x256/apps/kizuna.png"
-            cp "$ICON_SRC" "$APPDIR/kizuna.png"
-          fi
-
-          # Desktop file
-          printf '%s\n' \
-            '[Desktop Entry]' \
-            'Type=Application' \
-            'Name=Kizuna' \
-            'Comment=Self-hosted voice & chat' \
-            'Exec=kizuna' \
-            'Icon=kizuna' \
-            'Categories=Network;Chat;' \
-            > "$APPDIR/kizuna.desktop"
-
-          # AppRun entry point
-          printf '%s\n' \
-            '#!/bin/bash' \
-            'HERE="$(dirname "$(readlink -f "$0")")"' \
-            'export PATH="$HERE/usr/bin:$PATH"' \
-            'export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"' \
-            'export WEBKIT_DISABLE_COMPOSITING_MODE=1' \
-            'export WEBKIT_DISABLE_DMABUF_RENDERER=1' \
-            'LOG="/tmp/kizuna-appimage-$(date +%s).log"' \
-            '{' \
-            '  echo "Kizuna AppImage started at $(date)"' \
-            '  echo "AppDir: $HERE"' \
-            '  echo "DISPLAY: ${DISPLAY:-none}"' \
-            '  echo "XDG_SESSION_TYPE: ${XDG_SESSION_TYPE:-unknown}"' \
-            '  echo "WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-none}"' \
-            '  echo "---"' \
-            '} >> "$LOG" 2>/dev/null || true' \
-            'exec "$HERE/usr/bin/kizuna" "$@" 2>>"$LOG"' \
-            > "$APPDIR/AppRun"
-          chmod +x "$APPDIR/AppRun"
-
-          # Download appimagetool and package
-          mkdir -p "$BUNDLE_DIR"
-          wget -nv "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O /tmp/appimagetool || { echo "ERROR: failed to download appimagetool"; exit 1; }
-          chmod +x /tmp/appimagetool
-          APPIMAGE_OUT="$BUNDLE_DIR/kizuna.AppImage"
-          rm -f "$APPIMAGE_OUT"
-          ARCH=x86_64 /tmp/appimagetool "$APPDIR" "$APPIMAGE_OUT"
-
-          echo "AppImage built successfully"
-          ls -la "$APPIMAGE_OUT"
-
-      - name: Verify AppImage library resolution
+      - name: Verify AppImage binary
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
           set -euo pipefail
           APPIMAGE="apps/desktop/src-tauri/target/release/bundle/appimage/kizuna.AppImage"
-          rm -rf /tmp/appimage-verify squashfs-root
+          if [ ! -f "$APPIMAGE" ]; then
+            echo "ERROR: AppImage not found at $APPIMAGE"
+            exit 1
+          fi
 
           echo "=== Extracting AppImage ==="
+          rm -rf /tmp/appimage-verify squashfs-root
           "$APPIMAGE" --appimage-extract > /dev/null 2>&1 || {
             echo "ERROR: Failed to extract AppImage"
             exit 1
           }
-          # appimagetool extracts to ./squashfs-root
           if [ -d squashfs-root ]; then
             mv squashfs-root /tmp/appimage-verify
           else
-            echo "ERROR: squashfs-root not created after extraction"
-            ls -la
+            echo "ERROR: squashfs-root not created"
             exit 1
           fi
           EXTRACT_DIR="/tmp/appimage-verify"
 
           BINARY="$EXTRACT_DIR/usr/bin/kizuna"
           if [ ! -f "$BINARY" ]; then
-            echo "ERROR: binary not found in extracted AppImage"
-            find "$EXTRACT_DIR" -type f | head -20
+            echo "ERROR: binary not found"
             exit 1
           fi
 
           echo "=== Binary RPATH ==="
           patchelf --print-rpath "$BINARY" || true
 
-          echo "=== Checking for missing libraries (with AppDir LD_LIBRARY_PATH) ==="
-          MISSING=$(LD_LIBRARY_PATH="$EXTRACT_DIR/usr/lib" ldd "$BINARY" 2>&1 | grep -i "not found" || true)
+          echo "=== Checking for missing libraries ==="
+          MISSING=$(ldd "$BINARY" 2>&1 | grep -i "not found" || true)
           if [ -n "$MISSING" ]; then
-            echo "ERROR: Missing libraries detected in AppImage:"
+            echo "ERROR: Missing libraries:"
             echo "$MISSING"
-            echo ""
-            echo "Full ldd output:"
-            LD_LIBRARY_PATH="$EXTRACT_DIR/usr/lib" ldd "$BINARY" 2>&1 || true
+            ldd "$BINARY" 2>&1 || true
             exit 1
           fi
-          echo "All libraries resolved successfully."
-
-          echo "=== Verifying bundled webkit ==="
-          WEBKIT_SO=$(find "$EXTRACT_DIR/usr/lib" -name "libwebkit2gtk-4.1.so.0" -print -quit 2>/dev/null || true)
-          if [ -z "$WEBKIT_SO" ]; then
-            echo "ERROR: libwebkit2gtk-4.1.so.0 not found in AppDir!"
-            exit 1
-          fi
-          echo "Bundled webkit: $WEBKIT_SO"
-          echo "Size: $(stat -c%s "$WEBKIT_SO" 2>/dev/null || stat -f%z "$WEBKIT_SO" 2>/dev/null || echo unknown)"
-          echo "WebKit RPATH: $(patchelf --print-rpath "$WEBKIT_SO" 2>/dev/null || echo none)"
-
-          echo "=== WebKit dependency check (with AppDir LD_LIBRARY_PATH) ==="
-          WEBKIT_MISSING=$(LD_LIBRARY_PATH="$EXTRACT_DIR/usr/lib" ldd "$WEBKIT_SO" 2>&1 | grep -i "not found" || true)
-          if [ -n "$WEBKIT_MISSING" ]; then
-            echo "ERROR: WebKit has unresolved dependencies:"
-            echo "$WEBKIT_MISSING"
-            exit 1
-          fi
-          echo "All webkit dependencies resolved."
-
-          echo "=== Checking for WebRTC symbols ==="
-          if [ -n "$WEBKIT_SO" ]; then
-            if nm -D "$WEBKIT_SO" 2>/dev/null | grep -qi "webrtc\|rtcpeerconnection" || \
-               strings "$WEBKIT_SO" 2>/dev/null | grep -qi "webrtc" || true; then
-              # nm/strings check passes; try a more specific symbol
-              if nm -D "$WEBKIT_SO" 2>/dev/null | grep -q "webkit_web_view_is_playing_audio"; then
-                echo "WebKit symbols verified (general check passed)."
-              else
-                echo "WARNING: Could not confirm WebRTC-specific symbols."
-              fi
-            else
-              echo "WARNING: No WebRTC-related symbols/strings found in bundled webkit!"
-            fi
-          fi
-
-          echo "=== Verification complete ==="
+          echo "All libraries resolved."
           rm -rf "$EXTRACT_DIR"
 
       - name: Upload to release

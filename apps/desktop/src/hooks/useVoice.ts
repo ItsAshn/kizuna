@@ -510,8 +510,180 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     clearScreenSharePeer()
   }, [clearScreenSharePeer])
 
+    const nativeVoiceUnlistenRef = useRef<(() => void) | null>(null)
+  const nativeRemoteAudioUnlistenRef = useRef<(() => void) | null>(null)
+  const nativeAudioCtxRef = useRef<AudioContext | null>(null)
+  const nativeAudioNextTimeRef = useRef<number>(0)
+  const nativeInitializedRef = useRef(false)
+
+  const initNativeVoice = useCallback(async () => {
+    if (nativeInitializedRef.current) return
+    if (!session) return
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('voice_init', {
+        serverUrl: session.url,
+        authToken: session.token,
+        userId: session.user.id,
+        username: session.user.username,
+      })
+      nativeInitializedRef.current = true
+      vlog('voice_init', 'Rust voice backend initialized')
+    } catch (e) {
+      verr('voice_init', 'Failed to init native voice', e)
+    }
+  }, [session])
+
+  const setupNativeVoiceListeners = useCallback(() => {
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen<any>('voice:event', (event) => {
+        const ev = event.payload
+        switch (ev.type) {
+          case 'State': {
+            const data = ev.data
+            if (data.state === 'active' || data.state === 'joined') {
+              setActiveVoiceChannel(channelIdRef.current!)
+            } else if (data.state === 'failed' || data.state === 'disconnected') {
+              if (data.error) setVoiceError(data.error)
+            }
+            break
+          }
+          case 'PeerJoined': {
+            addVoicePeer({
+              id: ev.data.peer_id,
+              userId: ev.data.user_id,
+              username: ev.data.username,
+              speaking: false,
+              muted: false,
+            })
+            break
+          }
+          case 'PeerLeft': {
+            removeVoicePeer(ev.data.peer_id)
+            break
+          }
+          case 'PeerSpeaking': {
+            updateVoicePeer(ev.data.peer_id, { speaking: ev.data.speaking })
+            break
+          }
+          case 'ScreenShareStarted': {
+            setScreenSharePeer(ev.data.peer_id, ev.data.username)
+            break
+          }
+          case 'ScreenShareStopped': {
+            clearScreenSharePeer()
+            break
+          }
+        }
+      }).then((unlisten) => {
+        nativeVoiceUnlistenRef.current = unlisten
+      })
+
+      listen<any>('voice:remote_audio', (event) => {
+        const { samples, sampleRate } = event.payload
+        if (!samples || samples.length === 0) return
+
+        const ctx = nativeAudioCtxRef.current
+        if (!ctx || ctx.sampleRate !== (sampleRate || 48000)) {
+          nativeAudioCtxRef.current?.close()
+          nativeAudioCtxRef.current = new AudioContext({ sampleRate: sampleRate || 48000 })
+          nativeAudioNextTimeRef.current = 0
+        }
+
+        const audioCtx = nativeAudioCtxRef.current!
+        const sampleCount = samples.length
+        const buffer = audioCtx.createBuffer(1, sampleCount, audioCtx.sampleRate)
+        buffer.copyToChannel(new Float32Array(samples), 0)
+
+        const source = audioCtx.createBufferSource()
+        source.buffer = buffer
+        source.connect(audioCtx.destination)
+
+        let startTime = nativeAudioNextTimeRef.current
+        const now = audioCtx.currentTime
+        if (startTime < now) {
+          startTime = now
+        }
+        source.start(startTime)
+
+        nativeAudioNextTimeRef.current = startTime + sampleCount / audioCtx.sampleRate
+      }).then((unlisten) => {
+        nativeRemoteAudioUnlistenRef.current = unlisten
+      })
+    }).catch((e) => {
+      verr('setupNativeVoice', 'Failed to setup voice listeners', e)
+    })
+  }, [addVoicePeer, removeVoicePeer, updateVoicePeer, setActiveVoiceChannel, setVoiceError,
+      setScreenSharePeer, clearScreenSharePeer])
+
+  const joinVoiceNative = useCallback(async (channelId: string): Promise<string | null> => {
+    const socket = socketRef.current
+    if (!session) {
+      const err = 'No active session'
+      setVoiceError(err)
+      return err
+    }
+
+    cleanupVoice()
+    channelIdRef.current = channelId
+    setVoiceError(null)
+
+    await initNativeVoice()
+
+    setupNativeVoiceListeners()
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('voice_join', { channelId })
+      vlog('joinVoice', 'Native voice join sent')
+      return null
+    } catch (e: any) {
+      const err = e?.toString?.() || 'Failed to join voice'
+      verr('joinVoice', 'Native join failed', e)
+      setVoiceError(err)
+      return err
+    }
+  }, [socketRef, session, cleanupVoice, setVoiceError, initNativeVoice, setupNativeVoiceListeners])
+
+  const leaveVoiceNative = useCallback(async () => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('voice_leave')
+    } catch (e) {
+      verr('leaveVoice', 'Native leave failed', e)
+    }
+    nativeVoiceUnlistenRef.current?.()
+    nativeVoiceUnlistenRef.current = null
+    nativeRemoteAudioUnlistenRef.current?.()
+    nativeRemoteAudioUnlistenRef.current = null
+    nativeAudioCtxRef.current?.close()
+    nativeAudioCtxRef.current = null
+    channelIdRef.current = null
+    setVoicePeers([])
+    setIsSpeaking(false)
+    setLocalConnectionQuality(null)
+    setLiveAudioLevel(0)
+    clearScreenSharePeer()
+  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, setLiveAudioLevel, clearScreenSharePeer])
+
+  const toggleMuteNative = useCallback(async () => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const newMuted = !isMuted
+      await invoke('voice_set_muted', { muted: newMuted })
+      setIsMuted(newMuted)
+    } catch (e) {
+      verr('toggleMute', 'Native mute toggle failed', e)
+    }
+  }, [isMuted, setIsMuted])
+
   const joinVoice = useCallback(async (channelId: string): Promise<string | null> => {
     vlog('joinVoice', `starting | channelId=${channelId} | isTauri=${isTauri()} | socket=${!!socketRef.current} | session=${!!session}`)
+
+    if (isTauri()) {
+      return joinVoiceNative(channelId)
+    }
+
     const socket = socketRef.current
     if (!socket || !session) {
       const err = 'No socket connection'
@@ -531,7 +703,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         username: session.user.username,
       }, resolve),
     )
-    vlog('joinVoice', 'voice:join response', { hasError: !!joinResult?.error, hasRtp: !!joinResult?.routerRtpCapabilities, peers: joinResult?.peers?.length, iceServers: joinResult?.iceServers?.length, screenShare: !!joinResult?.screenSharePeer, voiceBitrate: joinResult?.voiceBitrateKbps })
 
     if (joinResult?.error) {
       verr('joinVoice', 'voice:join error', joinResult.error)
@@ -1081,6 +1252,13 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   }, [joinVoice, cleanupVoice, setVoiceError])
 
   const leaveVoice = useCallback(() => {
+    if (isTauri()) {
+      leaveVoiceNative()
+      setActiveVoiceChannel(null)
+      setIsMuted(false)
+      setVoiceError(null)
+      return
+    }
     const socket = socketRef.current
     cleanupVoice()
     if (socket) {
@@ -1101,6 +1279,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
   const toggleMute = useCallback(() => {
     if (voiceInputMode === 'push-to-talk') return
+    if (isTauri()) {
+      toggleMuteNative()
+      return
+    }
     const muted = !isMuted
     setIsMuted(muted)
     if (producerRef.current) {

@@ -1,15 +1,18 @@
 mod capture;
 mod env;
+mod voice;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use capture::audio::AudioCaptureSession;
 use capture::audio::AudioDeviceInfo;
 use capture::{CaptureSession, MonitorInfo, SessionType};
+use voice::VoiceSession;
 
 static CAPTURE_SESSION: Mutex<Option<CaptureSession>> = Mutex::new(None);
 static AUDIO_SESSION: Mutex<Option<AudioCaptureSession>> = Mutex::new(None);
 static SESSION_TYPE: Mutex<Option<SessionType>> = Mutex::new(None);
+static VOICE_SESSION: Mutex<Option<Arc<VoiceSession>>> = Mutex::new(None);
 
 fn get_session_type() -> SessionType {
     let mut guard = SESSION_TYPE.lock().unwrap();
@@ -126,6 +129,99 @@ async fn get_environment() -> Result<env::EnvDiagnostic, String> {
     env::check_environment().await
 }
 
+#[tauri::command]
+fn voice_init(
+    app: tauri::AppHandle,
+    server_url: String,
+    auth_token: String,
+    user_id: String,
+    username: String,
+) -> Result<(), String> {
+    let mut guard = VOICE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(old) = guard.take() {
+        drop(old);
+    }
+    let session = VoiceSession::new(app, server_url, auth_token, user_id, username);
+    *guard = Some(Arc::new(session));
+    Ok(())
+}
+
+#[tauri::command]
+async fn voice_join(channel_id: String) -> Result<(), String> {
+    let session = {
+        let guard = VOICE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+        guard.clone()
+    };
+    match session {
+        Some(s) => {
+            s.join(channel_id).await;
+            Ok(())
+        }
+        None => Err("Voice not initialized. Call voice_init first.".into()),
+    }
+}
+
+#[tauri::command]
+async fn voice_leave() -> Result<(), String> {
+    let session = {
+        let guard = VOICE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+        guard.clone()
+    };
+    match session {
+        Some(s) => {
+            s.leave().await;
+            Ok(())
+        }
+        None => Err("Voice not initialized.".into()),
+    }
+}
+
+#[tauri::command]
+async fn voice_set_muted(muted: bool) -> Result<(), String> {
+    let session = {
+        let guard = VOICE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+        guard.clone()
+    };
+    match session {
+        Some(s) => {
+            s.set_muted(muted).await;
+            Ok(())
+        }
+        None => Err("Voice not initialized.".into()),
+    }
+}
+
+#[tauri::command]
+async fn voice_screen_share_start(app: tauri::AppHandle, monitor_index: usize, fps: u32) -> Result<(), String> {
+    {
+        let guard = CAPTURE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+        if guard.is_some() {
+            return Err("Screen capture already active".into());
+        }
+    }
+    let session = match get_session_type() {
+        #[cfg(target_os = "linux")]
+        SessionType::Wayland => capture::wayland::start_capture(app, monitor_index, fps).await?,
+        #[cfg(not(target_os = "windows"))]
+        SessionType::X11 => capture::x11::start_capture(app.clone(), monitor_index, fps)?,
+        _ => capture::windows::start_capture(app, monitor_index, fps)?,
+    };
+    let mut guard = CAPTURE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+    *guard = Some(session);
+    Ok(())
+}
+
+#[tauri::command]
+fn voice_screen_share_stop() -> Result<(), String> {
+    let mut guard = CAPTURE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(mut session) = guard.take() {
+        session.stop();
+        Ok(())
+    } else {
+        Err("No active screen capture".into())
+    }
+}
+
 pub fn run() {
     let _ = get_session_type();
 
@@ -144,6 +240,12 @@ pub fn run() {
             start_audio_capture,
             stop_audio_capture,
             get_environment,
+            voice_init,
+            voice_join,
+            voice_leave,
+            voice_set_muted,
+            voice_screen_share_start,
+            voice_screen_share_stop,
         ])
         .setup(|_app| {
             #[cfg(debug_assertions)]
