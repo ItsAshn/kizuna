@@ -308,6 +308,8 @@ jobs:
             const fs = require('fs');
             const conf = JSON.parse(fs.readFileSync('apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
             conf.version = process.argv[1];
+            // Exclude appimage from Tauri's bundler — we build it manually to bundle WebRTC webkit
+            conf.bundle.targets = ['deb', 'rpm'];
             fs.writeFileSync('apps/desktop/src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
           " "$VERSION"
 
@@ -317,7 +319,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           PKG_CONFIG_PATH: /usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig
           APPIMAGE_EXTRACT_AND_RUN: "1"
-        run: pnpm tauri build --bundles deb
+        run: pnpm tauri build
 
       - name: Build AppImage with bundled WebKit WebRTC
         env:
