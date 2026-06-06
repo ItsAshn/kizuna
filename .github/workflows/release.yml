@@ -363,6 +363,41 @@ jobs:
           cp -v "$WEBKIT_DIR"/libwebkit2gtk-4.1.so* "$APPDIR/usr/lib/"
           cp -v "$JSCORE_DIR"/libjavascriptcoregtk-4.1.so* "$APPDIR/usr/lib/"
 
+          # Resolve and bundle missing transitive dependencies of the bundled webkit
+          echo "=== Resolving webkit dependencies ==="
+          for attempt in 1 2 3; do
+            MISSING=$(LD_LIBRARY_PATH="$APPDIR/usr/lib" ldd "$APPDIR/usr/lib/libwebkit2gtk-4.1.so.0" 2>&1 | grep "not found" | awk '{print $1}' || true)
+            MISSING_JS=$(LD_LIBRARY_PATH="$APPDIR/usr/lib" ldd "$APPDIR/usr/lib/libjavascriptcoregtk-4.1.so.0" 2>&1 | grep "not found" | awk '{print $1}' || true)
+            MISSING="$MISSING $MISSING_JS"
+            if [ -z "$(echo $MISSING | tr -d ' ')" ]; then
+              echo "All dependencies resolved (pass $attempt)."
+              break
+            fi
+            echo "Pass $attempt: missing: $MISSING"
+            for lib in $MISSING; do
+              FOUND=$(find /usr/lib /usr/local/lib -name "$lib" -print -quit 2>/dev/null)
+              if [ -z "$FOUND" ]; then
+                FOUND=$(find /lib -maxdepth 2 -name "$lib" -print -quit 2>/dev/null)
+              fi
+              if [ -n "$FOUND" ] && [ ! -f "$APPDIR/usr/lib/$lib" ]; then
+                echo "  Bundling $lib from $FOUND"
+                cp -v "$FOUND" "$APPDIR/usr/lib/"
+              elif [ -z "$FOUND" ]; then
+                echo "  WARNING: Could not locate $lib on the system"
+              fi
+            done
+          done
+
+          # Verify all webkit deps resolve
+          echo "=== Final dependency check ==="
+          STILL_MISSING=$(LD_LIBRARY_PATH="$APPDIR/usr/lib" ldd "$APPDIR/usr/lib/libwebkit2gtk-4.1.so.0" 2>&1 | grep "not found" || true)
+          if [ -n "$STILL_MISSING" ]; then
+            echo "ERROR: Unresolved webkit dependencies remain:"
+            echo "$STILL_MISSING"
+            exit 1
+          fi
+          echo "All webkit dependencies resolved."
+
           # Verify RPATH
           echo "Binary RPATH:"
           patchelf --print-rpath "$APPDIR/usr/bin/kizuna" || true
@@ -450,29 +485,36 @@ jobs:
           echo "=== Binary RPATH ==="
           patchelf --print-rpath "$BINARY" || true
 
-          echo "=== Checking for missing libraries ==="
-          MISSING=$(ldd "$BINARY" 2>&1 | grep -i "not found" || true)
+          echo "=== Checking for missing libraries (with AppDir LD_LIBRARY_PATH) ==="
+          MISSING=$(LD_LIBRARY_PATH="$EXTRACT_DIR/usr/lib" ldd "$BINARY" 2>&1 | grep -i "not found" || true)
           if [ -n "$MISSING" ]; then
-            echo "WARNING: Missing libraries detected:"
+            echo "ERROR: Missing libraries detected in AppImage:"
             echo "$MISSING"
             echo ""
             echo "Full ldd output:"
-            ldd "$BINARY" 2>&1 || true
-          else
-            echo "All libraries resolved successfully."
+            LD_LIBRARY_PATH="$EXTRACT_DIR/usr/lib" ldd "$BINARY" 2>&1 || true
+            exit 1
           fi
+          echo "All libraries resolved successfully."
 
           echo "=== Verifying bundled webkit ==="
           WEBKIT_SO=$(find "$EXTRACT_DIR/usr/lib" -name "libwebkit2gtk-4.1.so.0" -print -quit 2>/dev/null || true)
-          if [ -n "$WEBKIT_SO" ]; then
-            echo "Bundled webkit: $WEBKIT_SO"
-            echo "Size: $(stat -c%s "$WEBKIT_SO" 2>/dev/null || stat -f%z "$WEBKIT_SO" 2>/dev/null || echo unknown)"
-            # Check that the bundled webkit resolves against the AppDir's lib path
-            echo "WebKit dependencies (with AppDir LD_LIBRARY_PATH):"
-            LD_LIBRARY_PATH="$EXTRACT_DIR/usr/lib" ldd "$WEBKIT_SO" 2>&1 | grep -i "not found" || echo "  All resolved"
-          else
-            echo "WARNING: libwebkit2gtk-4.1.so.0 not found in AppDir!"
+          if [ -z "$WEBKIT_SO" ]; then
+            echo "ERROR: libwebkit2gtk-4.1.so.0 not found in AppDir!"
+            exit 1
           fi
+          echo "Bundled webkit: $WEBKIT_SO"
+          echo "Size: $(stat -c%s "$WEBKIT_SO" 2>/dev/null || stat -f%z "$WEBKIT_SO" 2>/dev/null || echo unknown)"
+          echo "WebKit RPATH: $(patchelf --print-rpath "$WEBKIT_SO" 2>/dev/null || echo none)"
+
+          echo "=== WebKit dependency check (with AppDir LD_LIBRARY_PATH) ==="
+          WEBKIT_MISSING=$(LD_LIBRARY_PATH="$EXTRACT_DIR/usr/lib" ldd "$WEBKIT_SO" 2>&1 | grep -i "not found" || true)
+          if [ -n "$WEBKIT_MISSING" ]; then
+            echo "ERROR: WebKit has unresolved dependencies:"
+            echo "$WEBKIT_MISSING"
+            exit 1
+          fi
+          echo "All webkit dependencies resolved."
 
           echo "=== Checking for WebRTC symbols ==="
           if [ -n "$WEBKIT_SO" ]; then
