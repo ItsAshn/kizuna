@@ -171,11 +171,17 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
           set -euo pipefail
-          APPIMAGE="apps/desktop/src-tauri/target/release/bundle/appimage/kizuna.AppImage"
-          if [ ! -f "$APPIMAGE" ]; then
-            echo "ERROR: AppImage not found at $APPIMAGE"
+          BUNDLE_DIR="apps/desktop/src-tauri/target/release/bundle/appimage"
+          APPIMAGE=$(find "$BUNDLE_DIR" -maxdepth 1 -name "*.AppImage" -print -quit 2>/dev/null || true)
+
+          if [ -z "$APPIMAGE" ] || [ ! -f "$APPIMAGE" ]; then
+            echo "ERROR: No AppImage found in $BUNDLE_DIR"
+            ls -la "$BUNDLE_DIR" 2>/dev/null || echo "  Directory does not exist"
             exit 1
           fi
+
+          echo "Found AppImage: $APPIMAGE"
+          ls -la "$APPIMAGE"
 
           echo "=== Extracting AppImage ==="
           rm -rf /tmp/appimage-verify squashfs-root
