@@ -269,14 +269,18 @@ jobs:
               exit 1
             fi
           fi
-          # Configure library search paths
+          # Configure library search paths via ldconfig (no env vars — linuxdeploy chokes on custom LD_LIBRARY_PATH)
           echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/webrtc-webkit.conf
           if [ -d "/usr/local/lib/x86_64-linux-gnu" ]; then
             echo "/usr/local/lib/x86_64-linux-gnu" | sudo tee -a /etc/ld.so.conf.d/webrtc-webkit.conf
+            # Symlink .so files to /usr/local/lib/ so the linker finds them without env vars
+            sudo ln -sf /usr/local/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so* /usr/local/lib/ 2>/dev/null || true
+            sudo ln -sf /usr/local/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so* /usr/local/lib/ 2>/dev/null || true
+            # Symlink .pc file so pkg-config finds it on its default search path
+            sudo mkdir -p /usr/local/lib/pkgconfig
+            sudo ln -sf /usr/local/lib/x86_64-linux-gnu/pkgconfig/webkit2gtk-4.1.pc /usr/local/lib/pkgconfig/ 2>/dev/null || true
           fi
           sudo ldconfig
-          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
 
           echo "=== Verifying WebRTC webkit libs ==="
           if find /usr/local/lib -name "libwebkit2gtk-4.1.so*" -print -quit 2>/dev/null | grep -q .; then
@@ -311,8 +315,6 @@ jobs:
         working-directory: apps/desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
-          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: pnpm tauri build
 
