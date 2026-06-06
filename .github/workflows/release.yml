@@ -313,6 +313,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
           LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
+          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: pnpm tauri build
 
       - name: Bundle WebKit WebRTC into AppImage
@@ -356,6 +357,7 @@ jobs:
 
           wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O /tmp/appimagetool
           chmod +x /tmp/appimagetool
+          export APPIMAGE_EXTRACT_AND_RUN=1
           ARCH=x86_64 /tmp/appimagetool "$APPDIR" "$BUNDLE_DIR/kizuna.AppImage"
 
           echo "AppImage repacked successfully"
