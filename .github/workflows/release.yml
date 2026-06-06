@@ -368,7 +368,7 @@ jobs:
           patchelf --print-rpath "$APPDIR/usr/bin/kizuna" || true
 
           # Copy icon (use largest PNG available)
-          ICON_SRC=$(ls "$ICON_DIR"/128x128@2x.png "$ICON_DIR"/128x128.png "$ICON_DIR"/icon.png 2>/dev/null | head -1)
+          ICON_SRC=$(find "$ICON_DIR" -maxdepth 1 \( -name "128x128@2x.png" -o -name "128x128.png" -o -name "icon.png" \) -print -quit 2>/dev/null)
           if [ -n "$ICON_SRC" ]; then
             cp "$ICON_SRC" "$APPDIR/usr/share/icons/hicolor/256x256/apps/kizuna.png"
             cp "$ICON_SRC" "$APPDIR/kizuna.png"
