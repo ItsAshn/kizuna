@@ -375,15 +375,15 @@ jobs:
           fi
 
           # Desktop file
-          cat > "$APPDIR/kizuna.desktop" << 'DESKTOPEOF'
-[Desktop Entry]
-Type=Application
-Name=Kizuna
-Comment=Self-hosted voice & chat
-Exec=kizuna
-Icon=kizuna
-Categories=Network;Chat;
-DESKTOPEOF
+          printf '%s\n' \
+            '[Desktop Entry]' \
+            'Type=Application' \
+            'Name=Kizuna' \
+            'Comment=Self-hosted voice & chat' \
+            'Exec=kizuna' \
+            'Icon=kizuna' \
+            'Categories=Network;Chat;' \
+            > "$APPDIR/kizuna.desktop"
 
           # AppRun entry point (use Tauri's AppRun binary)
           wget -q "https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64" -O "$APPDIR/AppRun"
