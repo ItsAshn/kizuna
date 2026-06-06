@@ -6,6 +6,7 @@ import { useVoice } from '../hooks/useVoice'
 import { useScreenshare } from '../hooks/useScreenshare'
 import { fetchChannels, fetchMembers, fetchDMChannels, fetchServerInfo } from '@kizuna/shared'
 import ServerPanel from '../components/ServerPanel'
+import UpdateBanner from '../components/UpdateBanner'
 import Sidebar from '../components/Sidebar'
 import ChatArea from '../components/ChatArea'
 import MemberList from '../components/MemberList'
@@ -142,14 +143,17 @@ export default function Chat() {
         onOpenMenu={() => setShowMenu(true)}
       />
       <div className="chat-main">
-        {shouldShowChat && (
-          <div className={`chat-modal-overlay${chatClosing ? ' chat-modal-overlay--closing' : ''}`} onClick={closeChat}>
-            <div className={`chat-modal${chatClosing ? ' chat-modal--closing' : ''}`} onClick={(e) => e.stopPropagation()}>
-              <button className="chat-modal__close-btn" onClick={closeChat}>[esc]</button>
-              <ChatArea socketRef={socketRef} />
+        <UpdateBanner />
+        <div className="chat-main__content">
+          {shouldShowChat && (
+            <div className={`chat-modal-overlay${chatClosing ? ' chat-modal-overlay--closing' : ''}`} onClick={closeChat}>
+              <div className={`chat-modal${chatClosing ? ' chat-modal--closing' : ''}`} onClick={(e) => e.stopPropagation()}>
+                <button className="chat-modal__close-btn" onClick={closeChat}>[esc]</button>
+                <ChatArea socketRef={socketRef} />
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
       <MemberList visible={showMembers} />
       <button

@@ -6,6 +6,7 @@ import { fetchServerInfo, login, register, fetchDMChannels, resolveInviteCode, u
 import { generateAndStoreKey, initializeCrypto, userNeedsKeyUpload, getPublicKey } from '../store/keyStore'
 import type { DMChannelData } from '@kizuna/shared'
 import { FaWindows, FaLinux, FaGithub } from 'react-icons/fa'
+import AuthForm from '../components/AuthForm'
 import '../styles/welcome.css'
 
 const INVITE_CODE_RE = /^[A-Za-z0-9+\-_=]+\.[A-Za-z0-9+\-_=]+$/
@@ -134,31 +135,26 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
           </div>
 
           <div className="welcome__card">
-            <h2 className="welcome__server-name">{serverInfo.name}</h2>
-            <p className="welcome__server-url">{url}</p>
-
-            <div className="welcome__tabs">
-              <button className={`welcome__tab ${!isRegister ? 'welcome__tab--active' : ''}`} onClick={() => setIsRegister(false)}>Sign In</button>
-              <button className={`welcome__tab ${isRegister ? 'welcome__tab--active' : ''}`} onClick={() => setIsRegister(true)}>Register</button>
-            </div>
-
-            <input className="input-field welcome__input-spacer" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
-            <input className="input-field welcome__input-spacer" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAuth()} />
-            {isRegister && (
-              <>
-                <input className="input-field welcome__input-spacer" placeholder="Display name (optional)" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-                {serverInfo.passwordProtected && (
-                  <input className="input-field welcome__input-spacer" type="password" placeholder="Server password" value={serverPassword} onChange={(e) => setServerPassword(e.target.value)} />
-                )}
-              </>
-            )}
-
-            <button className="btn-primary" style={{ width: '100%' }} onClick={handleAuth} disabled={loading || !username.trim() || !password.trim()}>
-              {loading ? 'Please wait...' : isRegister ? 'Create Account' : 'Sign In'}
-            </button>
-            <button className="welcome__back-btn" onClick={() => { setShowConnect(false); setServerInfo(null); setError('') }}>Back to Dashboard</button>
-
-            {error && <p className="welcome__error">{error}</p>}
+            <AuthForm
+              serverName={serverInfo.name}
+              serverUrl={url}
+              isRegister={isRegister}
+              setIsRegister={setIsRegister}
+              username={username}
+              setUsername={setUsername}
+              password={password}
+              setPassword={setPassword}
+              displayName={displayName}
+              setDisplayName={setDisplayName}
+              serverPassword={serverPassword}
+              setServerPassword={setServerPassword}
+              serverPasswordProtected={!!serverInfo.passwordProtected}
+              error={error}
+              loading={loading}
+              onSubmit={handleAuth}
+              onBack={() => { setShowConnect(false); setServerInfo(null); setError('') }}
+              backLabel="Back to Dashboard"
+            />
           </div>
         </div>
       </div>

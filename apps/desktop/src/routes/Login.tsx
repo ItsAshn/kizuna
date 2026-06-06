@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { login, register, fetchServerInfo, uploadPublicKey } from '@kizuna/shared'
 import { generateAndStoreKey, initializeCrypto, userNeedsKeyUpload, getPublicKey } from '../store/keyStore'
+import AuthForm from '../components/AuthForm'
 import '../styles/login.css'
 
 export default function Login() {
@@ -74,49 +75,26 @@ export default function Login() {
   return (
     <div className="login">
       <div className="login__card">
-        <h2 className="login__server-name">{serverInfo?.name || server.name}</h2>
-        <p className="login__server-url">{server.url}</p>
-
-        <div className="login__tabs">
-          <button
-            className={`login__tab ${!isRegister ? 'login__tab--active' : ''}`}
-            onClick={() => setIsRegister(false)}
-          >
-            Sign In
-          </button>
-          <button
-            className={`login__tab ${isRegister ? 'login__tab--active' : ''}`}
-            onClick={() => setIsRegister(true)}
-          >
-            Register
-          </button>
-        </div>
-
-        <input className="input-field login__input-spacer" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
-        <input className="input-field login__input-spacer" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAuth()} />
-        {isRegister && (
-          <>
-            <input className="input-field login__input-spacer" placeholder="Display name (optional)" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-            {serverInfo?.passwordProtected && (
-              <input className="input-field login__input-spacer" type="password" placeholder="Server password" value={serverPassword} onChange={(e) => setServerPassword(e.target.value)} />
-            )}
-          </>
-        )}
-
-        <button
-          className="btn-primary"
-          style={{ width: '100%' }}
-          onClick={handleAuth}
-          disabled={loading || !username.trim() || !password.trim()}
-        >
-          {loading ? 'Please wait...' : isRegister ? 'Create Account' : 'Sign In'}
-        </button>
-
-        <button className="login__back-btn" onClick={() => navigate('/')}>
-          Back to servers
-        </button>
-
-        {error && <p className="login__error">{error}</p>}
+        <AuthForm
+          serverName={serverInfo?.name || server.name}
+          serverUrl={server.url}
+          isRegister={isRegister}
+          setIsRegister={setIsRegister}
+          username={username}
+          setUsername={setUsername}
+          password={password}
+          setPassword={setPassword}
+          displayName={displayName}
+          setDisplayName={setDisplayName}
+          serverPassword={serverPassword}
+          setServerPassword={setServerPassword}
+          serverPasswordProtected={!!serverInfo?.passwordProtected}
+          error={error}
+          loading={loading}
+          onSubmit={handleAuth}
+          onBack={() => navigate('/')}
+          backLabel="Back to servers"
+        />
       </div>
     </div>
   )

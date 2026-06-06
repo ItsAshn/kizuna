@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { useUpdaterActions } from '../hooks/useUpdater'
 import '../styles/update-banner.css'
@@ -8,49 +9,65 @@ export default function UpdateBanner() {
   const updateVersion = useChatStore((s) => s.updateVersion)
   const updateError = useChatStore((s) => s.updateError)
   const { installUpdate } = useUpdaterActions()
+  const [dismissed, setDismissed] = useState(false)
+  const prevStateRef = useRef(updateState)
 
-  if (updateState === 'idle') return null
+  useEffect(() => {
+    if (prevStateRef.current !== updateState) {
+      prevStateRef.current = updateState
+      setDismissed(false)
+    }
+  }, [updateState])
 
-  if (updateState === 'error') {
-    return (
-      <div className="update-banner update-banner--error">
-        update failed: {updateError ?? 'unknown error'}
-      </div>
-    )
-  }
+  useEffect(() => {
+    if (updateState === 'idle') {
+      setDismissed(false)
+    }
+  }, [updateState])
 
-  if (updateState === 'checking') {
-    return (
-      <div className="update-banner update-banner--checking">
-        checking for updates...
-      </div>
-    )
-  }
+  if (updateState === 'idle' || dismissed) return null
 
-  if (updateState === 'downloading') {
-    return (
-      <div className="update-banner update-banner--downloading">
-        <div className="update-banner__row">
-          <span>downloading update {updateVersion}</span>
-          <span>{updateProgress}%</span>
+  return (
+    <div className="update-banner-card">
+      <button className="update-banner-card__close-btn" onClick={() => setDismissed(true)}>
+        [esc]
+      </button>
+
+      {updateState === 'error' && (
+        <div className="update-banner-card__content update-banner-card__content--error">
+          update failed: {updateError ?? 'unknown error'}
         </div>
-        <div className="update-banner__progress">
-          <div className="update-banner__progress-fill" style={{ width: `${updateProgress}%` }} />
+      )}
+
+      {updateState === 'checking' && (
+        <div className="update-banner-card__content update-banner-card__content--checking">
+          checking for updates...
         </div>
-      </div>
-    )
-  }
+      )}
 
-  if (updateState === 'ready') {
-    return (
-      <div className="update-banner update-banner--ready">
-        <span>update {updateVersion} ready</span>
-        <button onClick={installUpdate} className="update-banner__restart-btn">
-          restart now
-        </button>
-      </div>
-    )
-  }
+      {updateState === 'downloading' && (
+        <div className="update-banner-card__content update-banner-card__content--downloading">
+          <div className="update-banner-card__row">
+            <span>downloading update {updateVersion}</span>
+            <span>{updateProgress}%</span>
+          </div>
+          <div className="update-banner-card__progress">
+            <div
+              className="update-banner-card__progress-fill"
+              style={{ width: `${updateProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
 
-  return null
+      {updateState === 'ready' && (
+        <div className="update-banner-card__content update-banner-card__content--ready">
+          <span>update {updateVersion} ready</span>
+          <button onClick={installUpdate} className="update-banner-card__restart-btn">
+            restart now
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }

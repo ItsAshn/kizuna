@@ -9,7 +9,6 @@ import Welcome from './routes/Welcome'
 import Chat from './routes/Chat'
 import Login from './routes/Login'
 import ServerPanel from './components/ServerPanel'
-import UpdateBanner from './components/UpdateBanner'
 import SetupWizard from './components/SetupWizard'
 import './styles/global.css'
 import './styles/app.css'
@@ -45,10 +44,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <UpdateBanner />
-        <AppContent />
-      </div>
+      <AppContent />
     </div>
   )
 }

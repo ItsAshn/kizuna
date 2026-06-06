@@ -1,0 +1,111 @@
+.auth-form__server-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.auth-form__server-url {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.auth-form__tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.auth-form__tab {
+  flex: 1;
+  padding: 8px 0;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.auth-form__tab--active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.auth-form__input-spacer {
+  margin-bottom: 12px;
+}
+
+.auth-form__back-btn {
+  width: 100%;
+  text-align: center;
+  padding: 8px 0;
+  margin-top: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: color 0.15s ease;
+}
+
+.auth-form__back-btn:hover {
+  color: var(--text-secondary);
+}
+
+.auth-form__error {
+  margin-top: 16px;
+  color: var(--red);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ── Password input wrapper ───────────────────────────────── */
+
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper__input {
+  padding-right: 36px;
+}
+
+.password-input-wrapper__toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+}
+
+.password-input-wrapper__toggle:hover {
+  color: var(--text-secondary);
+}
+
+/* ── Spinner ──────────────────────────────────────────────── */
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-icon {
+  animation: spinner-rotate 0.7s linear infinite;
+  margin-right: 6px;
+  flex-shrink: 0;
+}

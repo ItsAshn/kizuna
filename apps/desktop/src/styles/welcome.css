@@ -76,30 +76,6 @@
   margin-bottom: 16px;
 }
 
-.welcome__tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.welcome__tab {
-  flex: 1;
-  padding: 8px 0;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  font-weight: 500;
-  border: none;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-}
-
-.welcome__tab--active {
-  background: var(--bg-active);
-  color: var(--text-primary);
-}
-
 .welcome__input-spacer {
   margin-bottom: 12px;
 }

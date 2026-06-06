@@ -668,7 +668,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                                   value={m.custom_role_id ?? ''}
                                   disabled={assigningRole[m.id]}
                                   onChange={(e) => handleAssignCustomRole(m.id, e.target.value || null)}
-                                  className="server-menu__input"
+                                  className="server-menu__select"
                                   style={{ fontSize: '9px', padding: '2px 4px' }}
                                 >
                                   <option value="">no role</option>

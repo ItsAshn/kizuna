@@ -28,11 +28,18 @@
 
 .chat-main {
   flex: 1;
-  position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  margin: 8px;
+  gap: 0;
+}
+
+.chat-main__content {
+  flex: 1;
+  position: relative;
   border-radius: var(--radius-xl);
   overflow: hidden;
-  margin: 8px;
 }
 
 @keyframes chatModalOverlayFadeIn {
