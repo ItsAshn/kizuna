@@ -143,6 +143,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf libpipewire-0.3-dev libspa-0.2-dev libgbm-dev libasound2-dev libfuse2 dpkg-dev
+          # Runtime deps bundled webkit needs (always install even on cache hit)
+          sudo apt-get install -y libgstreamer-plugins-bad1.0-0 2>/dev/null || true
 
       # ── WebKit WebRTC build / cache ────────────────────────────────
 
@@ -151,7 +153,7 @@ jobs:
           PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig" pkg-config --modversion webkit2gtk-4.1
           echo "WEBKIT_VER=$(pkg-config --modversion webkit2gtk-4.1)" >> $GITHUB_ENV
           echo "WEBKIT_TAR=webkit-webrtc-linux-x64_$(pkg-config --modversion webkit2gtk-4.1).tar.gz" >> $GITHUB_ENV
-          echo "WEBKIT_TAG=webkit-webrtc-v$(pkg-config --modversion webkit2gtk-4.1)" >> $GITHUB_ENV
+          echo "WEBKIT_TAG=webkit-webrtc-v$(pkg-config --modversion webkit2gtk-4.1)-r2" >> $GITHUB_ENV
 
       - name: Try restore cached webkit WebRTC build
         id: cache-restore
@@ -210,6 +212,8 @@ jobs:
             -DUSE_SOUP3=ON \
             -DENABLE_WEB_RTC=ON \
             -DUSE_GTK4=OFF \
+            -DUSE_AVIF=OFF \
+            -DUSE_JPEGXL=OFF \
             -DENABLE_GAMEPAD=OFF \
             -DENABLE_DOCUMENTATION=OFF \
             -DENABLE_SPEECH_SYNTHESIS=OFF \
@@ -375,9 +379,9 @@ jobs:
             fi
             echo "Pass $attempt: missing: $MISSING"
             for lib in $MISSING; do
-              FOUND=$(find /usr/lib /usr/local/lib -name "$lib" -print -quit 2>/dev/null)
+              FOUND=$(find -L /usr/lib /usr/local/lib /lib -name "$lib" -print -quit 2>/dev/null)
               if [ -z "$FOUND" ]; then
-                FOUND=$(find /lib -maxdepth 2 -name "$lib" -print -quit 2>/dev/null)
+                FOUND=$(find -L /usr/lib -maxdepth 5 -name "$lib" -print -quit 2>/dev/null)
               fi
               if [ -n "$FOUND" ] && [ ! -f "$APPDIR/usr/lib/$lib" ]; then
                 echo "  Bundling $lib from $FOUND"
