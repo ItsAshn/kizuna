@@ -115,10 +115,12 @@ impl VoiceSession {
     }
 
     pub async fn join(&self, channel_id: String) {
+        eprintln!("[VoiceSession] join({channel_id}) - sending command");
         let _ = self
             .command_tx
             .send(VoiceCommand::Join { channel_id })
             .await;
+        eprintln!("[VoiceSession] join - command sent");
     }
 
     pub async fn leave(&self) {

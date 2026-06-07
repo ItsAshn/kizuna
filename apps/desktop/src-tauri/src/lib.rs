@@ -148,6 +148,7 @@ fn voice_init(
 
 #[tauri::command]
 async fn voice_join(channel_id: String) -> Result<(), String> {
+    eprintln!("[Voice] voice_join command: channel_id={channel_id}");
     let session = {
         let guard = VOICE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
         guard.clone()
@@ -157,7 +158,10 @@ async fn voice_join(channel_id: String) -> Result<(), String> {
             s.join(channel_id).await;
             Ok(())
         }
-        None => Err("Voice not initialized. Call voice_init first.".into()),
+        None => {
+            eprintln!("[Voice] voice_join: VoiceSession not found, voice_init may not have been called");
+            Err("Voice not initialized. Call voice_init first.".into())
+        }
     }
 }
 

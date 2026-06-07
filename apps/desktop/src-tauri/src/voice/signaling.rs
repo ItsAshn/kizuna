@@ -242,8 +242,15 @@ pub async fn run_signaling_loop(
         loop {
             tokio::select! {
                 cmd = command_rx.recv() => {
+                    eprintln!("[VoiceSignal] inner loop: got command {:?}", cmd.as_ref().map(|c| match c {
+                        VoiceCommand::Join { .. } => "Join",
+                        VoiceCommand::Leave => "Leave",
+                        VoiceCommand::SetMuted { .. } => "SetMuted",
+                        VoiceCommand::SetVolume { .. } => "SetVolume",
+                    }));
                     match cmd {
                         Some(VoiceCommand::Join { channel_id: cid }) => {
+                            eprintln!("[VoiceSignal] handle_join START channel={cid}");
                             handle_join(
                                 &app_clone,
                                 &socket,
@@ -257,6 +264,7 @@ pub async fn run_signaling_loop(
                                 &mut router_caps,
                             )
                             .await;
+                            eprintln!("[VoiceSignal] handle_join DONE");
                         }
                         Some(VoiceCommand::Leave) => {
                             if let Some(call) = active_call.take() {
@@ -311,6 +319,7 @@ pub async fn run_signaling_loop(
 }
 
 fn emit_state(app: &AppHandle, state: &str, error: Option<&str>) {
+    eprintln!("[VoiceSignal] emit_state: state={state} error={error:?}");
     let _ = app.emit(
         "voice:event",
         VoiceEvent::State {
@@ -365,9 +374,14 @@ async fn handle_join(
         "username": username,
     });
 
+    eprintln!("[VoiceSignal] handle_join: sending voice:join channel={channel_id} user={user_id}");
     let ack = match ack_emit(socket, "voice:join", join_payload).await {
-        Ok(p) => p,
+        Ok(p) => {
+            eprintln!("[VoiceSignal] handle_join: voice:join ack OK");
+            p
+        }
         Err(e) => {
+            eprintln!("[VoiceSignal] handle_join: voice:join ack FAILED: {e}");
             emit_state(app, "failed", Some(&e));
             return;
         }
