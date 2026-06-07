@@ -45,6 +45,7 @@ pub async fn run_signaling_loop(
     muted: Arc<AtomicBool>,
     cancel: Arc<AtomicBool>,
 ) {
+    eprintln!("[VoiceSignal] run_signaling_loop START: url={server_url} user={username}");
     let mut active_call: Option<ActiveCall> = None;
     let mut recv_pending: Option<Arc<tokio::sync::Mutex<Vec<String>>>> = None;
     let mut current_channel: Option<String> = None;
@@ -212,13 +213,17 @@ pub async fn run_signaling_loop(
             .on("voice:peerSpeaking", on_speaking);
 
         let socket = match builder.connect().await {
-            Ok(s) => s,
+            Ok(s) => {
+                eprintln!("[VoiceSignal] connected OK to {server_url}");
+                s
+            }
             Err(e) => {
+                eprintln!("[VoiceSignal] connect FAILED to {server_url}: {e}");
                 let _ = app_clone.emit(
                     "voice:event",
                     VoiceEvent::State {
                         state: "disconnected".into(),
-                        error: Some(format!("Connection failed: {e}")),
+                        error: Some(format!("Connection to {} failed: {e}", server_url)),
                     },
                 );
                 tokio::time::sleep(Duration::from_secs(2)).await;

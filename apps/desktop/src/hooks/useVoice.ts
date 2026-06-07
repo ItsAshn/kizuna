@@ -530,6 +530,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const initNativeVoice = useCallback(async () => {
     if (nativeInitializedRef.current) return
     if (!session) return
+    vlog('voice_init', `connecting to ${session.url} as ${session.user.username}`)
     try {
       const { invoke } = await import('@tauri-apps/api/core')
       await invoke('voice_init', {
@@ -553,13 +554,18 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       Promise.all([
         listen<any>('voice:event', (event) => {
           const ev = event.payload
+          vlog('voice:event', `type=${ev.type}`, ev)
           switch (ev.type) {
             case 'State': {
               const data = ev.data
+              vlog('voice:state', `state=${data.state} error=${data.error || 'none'}`)
               if (data.state === 'active' || data.state === 'joined') {
                 setActiveVoiceChannel(channelIdRef.current!)
               } else if (data.state === 'failed' || data.state === 'disconnected') {
-                if (data.error) setVoiceError(data.error)
+                if (data.error) {
+                  verr('voice:state', data.error)
+                  setVoiceError(data.error)
+                }
               }
               break
             }
@@ -639,6 +645,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       return err
     }
 
+    vlog('joinVoiceNative', `joining channel=${channelId} url=${session.url}`)
     cleanupVoice()
     channelIdRef.current = channelId
     setVoiceError(null)

@@ -82,6 +82,10 @@ impl VoiceSession {
         user_id: String,
         username: String,
     ) -> Self {
+        // Ensure OpenSSL can find CA certificates on Linux.
+        // This is critical for TLS connections to work in AppImage builds.
+        let _ = openssl_probe::probe();
+
         let (command_tx, command_rx) = mpsc::channel(32);
         let muted = Arc::new(AtomicBool::new(false));
         let cancel = Arc::new(AtomicBool::new(false));
