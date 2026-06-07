@@ -126,9 +126,9 @@ impl VoiceController {
         let ssrc = params.encodings.first().map(|e| e.ssrc).unwrap_or(1);
 
         let rtp_params = json!({
-            "ssrc": ssrc,
             "codecs": [{
                 "mimeType": "audio/opus",
+                "payloadType": 100,
                 "clockRate": 48000,
                 "channels": 1,
                 "parameters": {
