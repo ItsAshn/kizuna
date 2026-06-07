@@ -16,20 +16,70 @@ pub fn start_native_audio_capture(
 ) -> Result<cpal::Stream, String> {
     let host = cpal::default_host();
 
-    let device = if let Some(ref name) = device_name {
-        host.input_devices()
+    // If a specific device was requested, try only that
+    if let Some(ref name) = device_name {
+        let device = host
+            .input_devices()
             .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
             .find(|d| {
                 d.description()
                     .map(|desc| desc.name() == *name)
                     .unwrap_or(false)
             })
-            .ok_or_else(|| format!("Input device '{}' not found", name))?
-    } else {
-        host.default_input_device()
-            .ok_or("No input device found")?
-    };
+            .ok_or_else(|| format!("Input device '{}' not found", name))?;
 
+        return open_device(&device, sample_rate, channels, &pcm_tx, &cancel)
+            .map(|s| { eprintln!("[AudioCapture] using specific device: {name}"); s });
+    }
+
+    // Try default device first
+    if let Some(default_device) = host.default_input_device() {
+        match open_device(&default_device, sample_rate, channels, &pcm_tx, &cancel) {
+            Ok(stream) => {
+                let dname = default_device
+                    .description()
+                    .map(|d| d.name().to_string())
+                    .unwrap_or_else(|_| "default".into());
+                eprintln!("[AudioCapture] using default device: {dname}");
+                return Ok(stream);
+            }
+            Err(e) => {
+                eprintln!("[AudioCapture] default device failed: {e} (will try other devices)");
+            }
+        }
+    }
+
+    // Fall back to any available input device
+    let devices = host
+        .input_devices()
+        .map_err(|e| format!("Failed to enumerate input devices: {e}"))?;
+
+    for device in devices {
+        let dname = device
+            .description()
+            .map(|d| d.name().to_string())
+            .unwrap_or_else(|_| "unknown".into());
+        match open_device(&device, sample_rate, channels, &pcm_tx, &cancel) {
+            Ok(stream) => {
+                eprintln!("[AudioCapture] using fallback device: {dname}");
+                return Ok(stream);
+            }
+            Err(e) => {
+                eprintln!("[AudioCapture] trying next device '{dname}' (error: {e})");
+            }
+        }
+    }
+
+    Err("No working audio input device found".into())
+}
+
+fn open_device(
+    device: &cpal::Device,
+    sample_rate: u32,
+    channels: u16,
+    pcm_tx: &tokio::sync::mpsc::UnboundedSender<Vec<f32>>,
+    cancel: &Arc<AtomicBool>,
+) -> Result<cpal::Stream, String> {
     let default_cfg = device
         .default_input_config()
         .map_err(|e| format!("Cannot get default input config: {e}"))?;
@@ -45,13 +95,13 @@ pub fn start_native_audio_capture(
         eprintln!("[AudioCapture] cpal error: {err}");
     };
 
+    let pcm_tx = pcm_tx.clone();
+    let cancel = cancel.clone();
     let stream = match sample_format {
         cpal::SampleFormat::F32 => device.build_input_stream(
             &config,
             move |data: &[f32], _info| {
-                if cancel.load(Ordering::Relaxed) {
-                    return;
-                }
+                if cancel.load(Ordering::Relaxed) { return; }
                 let _ = pcm_tx.send(data.to_vec());
             },
             err_fn,
@@ -59,24 +109,26 @@ pub fn start_native_audio_capture(
         ),
         cpal::SampleFormat::I16 => device.build_input_stream(
             &config,
-            move |data: &[i16], _info| {
-                if cancel.load(Ordering::Relaxed) {
-                    return;
+            {
+                let pcm_tx = pcm_tx.clone();
+                move |data: &[i16], _info| {
+                    if cancel.load(Ordering::Relaxed) { return; }
+                    let f32_samples: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
+                    let _ = pcm_tx.send(f32_samples);
                 }
-                let f32_samples: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
-                let _ = pcm_tx.send(f32_samples);
             },
             err_fn,
             None,
         ),
         cpal::SampleFormat::U16 => device.build_input_stream(
             &config,
-            move |data: &[u16], _info| {
-                if cancel.load(Ordering::Relaxed) {
-                    return;
+            {
+                let pcm_tx = pcm_tx.clone();
+                move |data: &[u16], _info| {
+                    if cancel.load(Ordering::Relaxed) { return; }
+                    let f32_samples: Vec<f32> = data.iter().map(|&s| (s as f32 - 32768.0) / 32768.0).collect();
+                    let _ = pcm_tx.send(f32_samples);
                 }
-                let f32_samples: Vec<f32> = data.iter().map(|&s| (s as f32 - 32768.0) / 32768.0).collect();
-                let _ = pcm_tx.send(f32_samples);
             },
             err_fn,
             None,
