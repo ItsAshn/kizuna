@@ -49,7 +49,7 @@ pub fn start_native_audio_capture(
         }
     }
 
-    // Fall back to any available input device
+    // Fall back to any available input device, skipping obvious non-microphones
     let devices = host
         .input_devices()
         .map_err(|e| format!("Failed to enumerate input devices: {e}"))?;
@@ -59,6 +59,20 @@ pub fn start_native_audio_capture(
             .description()
             .map(|d| d.name().to_string())
             .unwrap_or_else(|_| "unknown".into());
+
+        // Skip known non-microphone virtual/dummy devices
+        let lower = dname.to_lowercase();
+        if lower.contains("discard") || lower.contains("rate converter")
+            || lower.contains("plugin for") || lower.contains("jack audio")
+            || lower.contains("open sound") || lower.contains("speex")
+            || lower.contains("upmix") || lower.contains("downmix")
+            || lower.contains("output") || lower.contains("pipewire sound server")
+            || lower.contains("pulseaudio sound server")
+        {
+            eprintln!("[AudioCapture] skipped virtual device: {dname}");
+            continue;
+        }
+
         match open_device(&device, sample_rate, channels, &pcm_tx, &cancel) {
             Ok(stream) => {
                 eprintln!("[AudioCapture] using fallback device: {dname}");
