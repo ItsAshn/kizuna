@@ -491,7 +491,7 @@ async fn handle_join(
         .unwrap_or("")
         .to_string();
 
-    let _ = ack_emit(
+    let send_connect_ack = ack_emit(
         socket,
         "voice:connectTransport",
         json!({
@@ -501,6 +501,19 @@ async fn handle_join(
         }),
     )
     .await;
+    match &send_connect_ack {
+        Ok(Payload::Text(values)) => {
+            if let Some(data) = values.first() {
+                if let Some(err) = data.get("error").and_then(|v| v.as_str()) {
+                    eprintln!("[Signaling] send connectTransport error: {err}");
+                } else {
+                    eprintln!("[Signaling] send connectTransport OK");
+                }
+            }
+        }
+        Ok(_) => eprintln!("[Signaling] send connectTransport: unexpected ack payload"),
+        Err(e) => eprintln!("[Signaling] send connectTransport: ack failed: {e}"),
+    }
 
     let recv_transport_id = recv_params
         .get("id")
@@ -508,7 +521,7 @@ async fn handle_join(
         .unwrap_or("")
         .to_string();
 
-    let _ = ack_emit(
+    let recv_connect_ack = ack_emit(
         socket,
         "voice:connectTransport",
         json!({
@@ -518,6 +531,19 @@ async fn handle_join(
         }),
     )
     .await;
+    match &recv_connect_ack {
+        Ok(Payload::Text(values)) => {
+            if let Some(data) = values.first() {
+                if let Some(err) = data.get("error").and_then(|v| v.as_str()) {
+                    eprintln!("[Signaling] recv connectTransport error: {err}");
+                } else {
+                    eprintln!("[Signaling] recv connectTransport OK");
+                }
+            }
+        }
+        Ok(_) => eprintln!("[Signaling] recv connectTransport: unexpected ack payload"),
+        Err(e) => eprintln!("[Signaling] recv connectTransport: ack failed: {e}"),
+    }
 
     let rtp_sender = transport_pair.audio_sender.clone();
     let params = rtp_sender.get_parameters().await;

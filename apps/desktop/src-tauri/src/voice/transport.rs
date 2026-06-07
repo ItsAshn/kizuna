@@ -152,13 +152,19 @@ pub fn extract_dtls_params_from_sdp(sdp_str: &str) -> Option<Value> {
         }
     }
 
+    let role = match setup {
+        "active" => "client",
+        "passive" => "server",
+        _ => "auto",
+    };
+
     fingerprint.map(|fp| {
         serde_json::json!({
             "fingerprints": [{
                 "algorithm": "sha-256",
                 "value": fp,
             }],
-            "role": setup,
+            "role": role,
         })
     })
 }
@@ -181,6 +187,11 @@ pub async fn create_transports(
         ice_servers: build_ice_servers(ice_servers_json),
         ..Default::default()
     };
+
+    let pending_tracks: Arc<tokio::sync::Mutex<Vec<String>>> =
+        Arc::new(tokio::sync::Mutex::new(Vec::new()));
+
+    let pending_tracks_clone = pending_tracks.clone();
 
     let send_pc = api
         .new_peer_connection(config.clone())
@@ -209,6 +220,45 @@ pub async fn create_transports(
         })
     }));
 
+    send_pc.on_ice_connection_state_change(Box::new(move |state: RTCIceConnectionState| {
+        eprintln!("[SendPC] ICE state: {state:?}");
+        Box::pin(async {})
+    }));
+
+    let audio_track = Arc::new(TrackLocalStaticSample::new(
+        RTCRtpCodecCapability {
+            mime_type: "audio/opus".to_string(),
+            clock_rate: 48000,
+            channels: 1,
+            sdp_fmtp_line: "minptime=10;useinbandfec=1".to_string(),
+            rtcp_feedback: vec![],
+        },
+        "audio".to_string(),
+        "kizuna-audio".to_string(),
+    ));
+
+    let video_track = Arc::new(TrackLocalStaticSample::new(
+        RTCRtpCodecCapability {
+            mime_type: "video/VP8".to_string(),
+            clock_rate: 90000,
+            channels: 0,
+            sdp_fmtp_line: String::new(),
+            rtcp_feedback: vec![],
+        },
+        "video".to_string(),
+        "kizuna-video".to_string(),
+    ));
+
+    send_pc
+        .add_track(video_track.clone() as Arc<dyn TrackLocal + Send + Sync>)
+        .await
+        .map_err(|e| format!("Failed to add video track: {e}"))?;
+
+    let rtp_sender = send_pc
+        .add_track(audio_track.clone() as Arc<dyn TrackLocal + Send + Sync>)
+        .await
+        .map_err(|e| format!("Failed to add audio track: {e}"))?;
+
     let remote_sdp_str = build_remote_sdp(send_params);
     let remote_sdp = RTCSessionDescription::offer(remote_sdp_str)
         .map_err(|e| format!("Failed to parse remote SDP: {e}"))?;
@@ -236,11 +286,6 @@ pub async fn create_transports(
     let send_dtls = extract_dtls_params_from_sdp(&local_sdp.sdp)
         .ok_or("Failed to extract DTLS params from send local SDP")?;
 
-    let pending_tracks: Arc<tokio::sync::Mutex<Vec<String>>> =
-        Arc::new(tokio::sync::Mutex::new(Vec::new()));
-
-    let pending_tracks_clone = pending_tracks.clone();
-
     let recv_pc = api
         .new_peer_connection(config)
         .await
@@ -266,6 +311,11 @@ pub async fn create_transports(
                 );
             }
         })
+    }));
+
+    recv_pc.on_ice_connection_state_change(Box::new(move |state: RTCIceConnectionState| {
+        eprintln!("[RecvPC] ICE state: {state:?}");
+        Box::pin(async {})
     }));
 
     let recv_app = app.clone();
@@ -316,40 +366,6 @@ pub async fn create_transports(
 
     let recv_dtls = extract_dtls_params_from_sdp(&recv_local_sdp.sdp)
         .ok_or("Failed to extract DTLS params from recv local SDP")?;
-
-    let audio_track = Arc::new(TrackLocalStaticSample::new(
-        RTCRtpCodecCapability {
-            mime_type: "audio/opus".to_string(),
-            clock_rate: 48000,
-            channels: 1,
-            sdp_fmtp_line: "minptime=10;useinbandfec=1".to_string(),
-            rtcp_feedback: vec![],
-        },
-        "audio".to_string(),
-        "kizuna-audio".to_string(),
-    ));
-
-    let rtp_sender = send_pc
-        .add_track(audio_track.clone() as Arc<dyn TrackLocal + Send + Sync>)
-        .await
-        .map_err(|e| format!("Failed to add audio track: {e}"))?;
-
-    let video_track = Arc::new(TrackLocalStaticSample::new(
-        RTCRtpCodecCapability {
-            mime_type: "video/VP8".to_string(),
-            clock_rate: 90000,
-            channels: 0,
-            sdp_fmtp_line: String::new(),
-            rtcp_feedback: vec![],
-        },
-        "video".to_string(),
-        "kizuna-video".to_string(),
-    ));
-
-    send_pc
-        .add_track(video_track.clone() as Arc<dyn TrackLocal + Send + Sync>)
-        .await
-        .map_err(|e| format!("Failed to add video track: {e}"))?;
 
     Ok((
         TransportPair {
