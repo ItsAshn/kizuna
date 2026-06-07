@@ -737,6 +737,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         iceServers,
         sendParams,
         recvParams,
+        voiceBitrateKbps,
       }) as [any, any, any]
       vlog('joinVoiceNative', 'voice_begin OK', { ssrc: rtpParams?.ssrc })
 

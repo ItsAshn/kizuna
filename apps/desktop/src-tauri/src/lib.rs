@@ -155,10 +155,11 @@ fn voice_begin(
     ice_servers: Vec<serde_json::Value>,
     send_params: serde_json::Value,
     recv_params: serde_json::Value,
+    voice_bitrate_kbps: u64,
 ) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value), String> {
     let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
     let controller = guard.as_mut().ok_or("Voice not initialized")?;
-    tauri::async_runtime::block_on(controller.begin_join(&channel_id, ice_servers, send_params, recv_params))
+    tauri::async_runtime::block_on(controller.begin_join(&channel_id, ice_servers, send_params, recv_params, voice_bitrate_kbps))
 }
 
 #[tauri::command]

@@ -97,6 +97,11 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
             continue;
         }
 
+        if is_virtual_device_name(&trim_name) {
+            alog!("  SKIP virtual: name='{}' id={}", trim_name, device_id);
+            continue;
+        }
+
         let default_config = device.default_input_config().ok();
         let max_channels = default_config.as_ref().map(|c| c.channels()).unwrap_or(1);
         let default_sample_rate =
@@ -148,6 +153,10 @@ pub fn list_output_devices() -> Result<Vec<AudioDeviceInfo>, String> {
 
         let trim_name = name.trim().to_string();
         if !seen_names.insert(trim_name.clone()) {
+            continue;
+        }
+
+        if is_virtual_device_name(&trim_name) {
             continue;
         }
 
@@ -371,4 +380,19 @@ pub fn start_capture(
         stream_sample_rate: target_sample_rate,
         stream_channels: channels,
     })
+}
+
+fn is_virtual_device_name(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower.contains("discard")
+        || lower.contains("rate converter")
+        || lower.contains("plugin for")
+        || lower.contains("jack audio")
+        || lower.contains("open sound")
+        || lower.contains("speex")
+        || lower.contains("upmix")
+        || lower.contains("downmix")
+        || (lower.contains("output") && !lower.contains("wave") && !lower.contains("usb"))
+        || lower.contains("pipewire sound server")
+        || lower.contains("pulseaudio sound server")
 }

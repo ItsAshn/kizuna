@@ -105,6 +105,7 @@ impl VoiceController {
         ice_servers: Vec<Value>,
         send_params: Value,
         recv_params: Value,
+        voice_bitrate_kbps: u64,
     ) -> Result<(Value, Value, Value), String> {
         eprintln!("[VoiceNative] begin_join channel={channel_id}");
 
@@ -141,7 +142,7 @@ impl VoiceController {
             "encodings": [{
                 "ssrc": ssrc,
                 "dtx": true,
-                "maxBitrate": 64000,
+                "maxBitrate": voice_bitrate_kbps * 1000,
             }],
             "rtcp": {
                 "cname": "",
@@ -164,7 +165,7 @@ impl VoiceController {
                 }],
                 "headerExtensions": []
             }),
-            voice_bitrate_kbps: 64,
+            voice_bitrate_kbps,
             audio_track: Some(transport_pair.audio_track),
             audio_send: None,
         });
