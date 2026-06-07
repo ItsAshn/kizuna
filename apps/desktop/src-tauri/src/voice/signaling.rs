@@ -128,7 +128,7 @@ impl VoiceController {
         let rtp_params = json!({
             "codecs": [{
                 "mimeType": "audio/opus",
-                "payloadType": 100,
+                "payloadType": 111,
                 "clockRate": 48000,
                 "channels": 1,
                 "parameters": {
