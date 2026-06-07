@@ -11,7 +11,7 @@ import Sidebar from '../components/Sidebar'
 import ChatArea from '../components/ChatArea'
 import MemberList from '../components/MemberList'
 import ScreenShareOverlay from '../components/ScreenShareOverlay'
-import SettingsModal from '../components/SettingsModal'
+import UserSettingsModal from '../components/UserSettingsModal'
 import ServerMenuModal from '../components/ServerMenuModal'
 import EnvStatus from '../components/EnvStatus'
 import SetupWizard from '../components/SetupWizard'
@@ -168,7 +168,7 @@ export default function Chat() {
       </div>
       <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
     </div>
-    {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+    {showSettings && <UserSettingsModal onClose={() => setShowSettings(false)} />}
     {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} />}
     {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
     </>

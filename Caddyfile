@@ -2,5 +2,6 @@
     reverse_proxy kizuna:5000 {
         health_uri /health
         health_interval 30s
+        flush_interval -1
     }
 }

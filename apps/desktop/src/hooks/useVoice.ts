@@ -303,6 +303,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const scriptNodeRef = useRef<ScriptProcessorNode | null>(null)
   const pcmRingBufferRef = useRef<Float32Array[]>([])
   const serverBitrateRef = useRef<number>(64)
+  const iceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const {
     setActiveVoiceChannel,
@@ -311,6 +312,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setLocalConnectionQuality,
     serverVoiceBitrateKbps, setServerVoiceBitrateKbps,
     audioInputDeviceId, audioOutputDeviceId,
+    setAudioInputDeviceId,
     setVoiceError,
     setScreenSharePeer, clearScreenSharePeer,
     voiceInputMode, voiceGateThreshold,
@@ -339,6 +341,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
     nativeAudioUnlistenRef.current?.()
     nativeAudioUnlistenRef.current = null
+    nativeVoiceUnlistenRef.current?.()
+    nativeVoiceUnlistenRef.current = null
+    nativeRemoteAudioUnlistenRef.current?.()
+    nativeRemoteAudioUnlistenRef.current = null
 
     if (isTauri()) {
       vlog('cleanup', 'stopping native audio capture')
@@ -350,6 +356,11 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     scriptNodeRef.current?.disconnect()
     scriptNodeRef.current = null
     pcmRingBufferRef.current = []
+
+    if (iceTimerRef.current) {
+      clearTimeout(iceTimerRef.current)
+      iceTimerRef.current = null
+    }
 
     producerRef.current?.close()
     producerRef.current = null
@@ -531,10 +542,13 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       vlog('voice_init', 'Rust voice backend initialized')
     } catch (e) {
       verr('voice_init', 'Failed to init native voice', e)
+      nativeInitializedRef.current = false
     }
   }, [session])
 
   const setupNativeVoiceListeners = useCallback((): Promise<void> => {
+    nativeVoiceUnlistenRef.current?.()
+    nativeRemoteAudioUnlistenRef.current?.()
     return import('@tauri-apps/api/event').then(({ listen }) =>
       Promise.all([
         listen<any>('voice:event', (event) => {
@@ -790,6 +804,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         verr('transport', `send transport state: ${state}`)
         handleTransportFailure(socket, channelId)
       }
+      if (state === 'connected') {
+        if (iceTimerRef.current) { clearTimeout(iceTimerRef.current); iceTimerRef.current = null }
+      }
     })
 
     vlog('joinVoice', 'creating recv transport')
@@ -824,7 +841,21 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         verr('transport', `recv transport state: ${state}`)
         handleTransportFailure(socket, channelId)
       }
+      if (state === 'connected') {
+        if (iceTimerRef.current) { clearTimeout(iceTimerRef.current); iceTimerRef.current = null }
+      }
     })
+
+    if (iceTimerRef.current) clearTimeout(iceTimerRef.current)
+    iceTimerRef.current = setTimeout(() => {
+      const sendState = sendTransportRef.current?.connectionState ?? '?'
+      const recvState = recvTransportRef.current?.connectionState ?? '?'
+      const iceWarning = `ICE negotiation timed out after 12s (send=${sendState}, recv=${recvState}). \
+This usually means the server's PUBLIC_ADDRESS is misconfigured (pointing to localhost or unreachable). \
+Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP, or leave it blank for auto-detection.`
+      verr('joinVoice', iceWarning)
+      setVoiceError(iceWarning)
+    }, 12000)
 
     socket.on('voice:newPeer', async (peer: { peerId: string; userId: string; username: string }) => {
       vlog('peer', `voice:newPeer peerId=${peer.peerId} userId=${peer.userId}`)
@@ -990,12 +1021,34 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         }
 
     vlog('browserMic', 'calling getUserMedia')
-    const stream = await Promise.race([
-      navigator.mediaDevices.getUserMedia({ audio: micConstraints }),
-      new Promise<MediaStream>((_, reject) =>
-        setTimeout(() => reject(new Error('Microphone access timed out')), 5000)
-      ),
-    ])
+    let stream: MediaStream
+    try {
+      stream = await Promise.race([
+        navigator.mediaDevices.getUserMedia({ audio: micConstraints }),
+        new Promise<MediaStream>((_, reject) =>
+          setTimeout(() => reject(new Error('Microphone access timed out')), 5000)
+        ),
+      ])
+    } catch (err: any) {
+      if (audioInputDeviceId && (err.name === 'NotFoundError' || err.name === 'OverconstrainedError')) {
+        vlog('browserMic', `stale device ${audioInputDeviceId}, retrying without device constraint`)
+        setAudioInputDeviceId(null)
+        stream = await Promise.race([
+          navigator.mediaDevices.getUserMedia({
+            audio: {
+              noiseSuppression: { ideal: noiseSuppression },
+              echoCancellation: { ideal: echoCancellation },
+              autoGainControl: { ideal: autoGainControl },
+            },
+          }),
+          new Promise<MediaStream>((_, reject) =>
+            setTimeout(() => reject(new Error('Microphone access timed out')), 5000)
+          ),
+        ])
+      } else {
+        throw err
+      }
+    }
     vlog('browserMic', `getUserMedia OK | audioTracks=${stream.getAudioTracks().length} | track0=${stream.getAudioTracks()[0]?.label}`)
     micStreamRef.current = stream
     const audioCtx = new AudioContext()
@@ -1153,8 +1206,24 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       })
       vlog('nativeMic', 'start_audio_capture OK')
     } catch (e) {
-      verr('nativeMic', 'start_audio_capture failed', e)
-      throw e
+      if (audioInputDeviceId) {
+        verr('nativeMic', `start_audio_capture failed with device ${audioInputDeviceId}, retrying without device constraint`, e)
+        setAudioInputDeviceId(null)
+        try {
+          await invoke('start_audio_capture', {
+            deviceName: null,
+            sampleRate: AUDIO_SAMPLE_RATE,
+            channels: 1,
+          })
+          vlog('nativeMic', 'start_audio_capture OK (default device)')
+        } catch (e2) {
+          verr('nativeMic', 'start_audio_capture failed with default device', e2)
+          throw e2
+        }
+      } else {
+        verr('nativeMic', 'start_audio_capture failed', e)
+        throw e
+      }
     }
 
     vlog('nativeMic', `creating producer | sampleRate=${AUDIO_SAMPLE_RATE} | bitrate=${bitrateKbps * 1000}`)

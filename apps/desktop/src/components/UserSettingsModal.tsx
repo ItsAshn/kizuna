@@ -62,7 +62,7 @@ function keyCodeToLabel(code: string): string {
   return code
 }
 
-export default function SettingsModal({ onClose }: Props) {
+export default function UserSettingsModal({ onClose }: Props) {
   const {
     audioInputDeviceId, setAudioInputDeviceId,
     audioOutputDeviceId, setAudioOutputDeviceId,
@@ -86,6 +86,7 @@ export default function SettingsModal({ onClose }: Props) {
   const [appVersion, setAppVersion] = useState('0.1.0')
   const [isDev, setIsDev] = useState(true)
   const [listeningForKey, setListeningForKey] = useState(false)
+  const [resetConfirm, setResetConfirm] = useState(false)
   const unmountedRef = useRef(false)
 
   const rmsThreshold = thresholdToRms(voiceGateThreshold)
@@ -233,11 +234,22 @@ export default function SettingsModal({ onClose }: Props) {
     return () => { unmountedRef.current = true }
   }, [loadDevices])
 
+  const handleResetAudio = useCallback(() => {
+    setAudioInputDeviceId(null)
+    setAudioOutputDeviceId(null)
+  }, [setAudioInputDeviceId, setAudioOutputDeviceId])
+
+  const handleResetDatabase = useCallback(() => {
+    localStorage.removeItem('kizuna-voice-settings')
+    localStorage.removeItem('kizuna-servers')
+    window.location.reload()
+  }, [])
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
         <div className="settings-modal__header">
-          <span className="settings-modal__header-title">// settings</span>
+          <span className="settings-modal__header-title">// user settings</span>
           <button onClick={onClose} className="settings-modal__close-btn">[esc]</button>
         </div>
 
@@ -452,6 +464,58 @@ export default function SettingsModal({ onClose }: Props) {
                   />
                   <span className="settings-modal__slider-value">{outputVolume}%</span>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          <hr className="settings-modal__section-divider" />
+
+          <section>
+            <p className="settings-modal__section-title">data management</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>reset audio devices</span>
+                  <p className="settings-modal__hint">clear saved microphone and speaker selection</p>
+                </div>
+                <button
+                  onClick={handleResetAudio}
+                  className="settings-modal__check-btn"
+                  style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }}
+                >
+                  reset
+                </button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>reset database</span>
+                  <p className="settings-modal__hint">clear all local data including sessions and settings</p>
+                </div>
+                {resetConfirm ? (
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      onClick={handleResetDatabase}
+                      className="settings-modal__check-btn"
+                      style={{ color: 'var(--red)', borderColor: 'var(--red-dim-border)', background: 'var(--red-dim)' }}
+                    >
+                      confirm
+                    </button>
+                    <button
+                      onClick={() => setResetConfirm(false)}
+                      className="settings-modal__check-btn"
+                    >
+                      cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setResetConfirm(true)}
+                    className="settings-modal__check-btn"
+                    style={{ color: 'var(--red)', borderColor: 'var(--red-dim-border)' }}
+                  >
+                    reset
+                  </button>
+                )}
               </div>
             </div>
           </section>

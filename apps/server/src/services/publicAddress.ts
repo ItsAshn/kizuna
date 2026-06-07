@@ -28,6 +28,13 @@ export async function resolvePublicAddress(): Promise<void> {
 
   // Already an IP — use as-is
   process.env.PUBLIC_ADDRESS = configured
+
+  if (configured === '127.0.0.1' || configured === '::1' || configured === 'localhost') {
+    console.warn('[!] PUBLIC_ADDRESS is set to a loopback address (127.0.0.1 / localhost).')
+    console.warn('[!] This means voice channels will ONLY work for clients running on the same machine as the server.')
+    console.warn('[!] For Caddy/HTTPS or remote access, set PUBLIC_ADDRESS to your server\'s public IP or leave it blank for auto-detection.')
+    console.warn('[!] See the .env file for the three supported modes.')
+  }
 }
 
 export function startIpWatcher(): void {
