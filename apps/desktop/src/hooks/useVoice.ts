@@ -534,83 +534,84 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     }
   }, [session])
 
-  const setupNativeVoiceListeners = useCallback(() => {
-    import('@tauri-apps/api/event').then(({ listen }) => {
-      listen<any>('voice:event', (event) => {
-        const ev = event.payload
-        switch (ev.type) {
-          case 'State': {
-            const data = ev.data
-            if (data.state === 'active' || data.state === 'joined') {
-              setActiveVoiceChannel(channelIdRef.current!)
-            } else if (data.state === 'failed' || data.state === 'disconnected') {
-              if (data.error) setVoiceError(data.error)
+  const setupNativeVoiceListeners = useCallback((): Promise<void> => {
+    return import('@tauri-apps/api/event').then(({ listen }) =>
+      Promise.all([
+        listen<any>('voice:event', (event) => {
+          const ev = event.payload
+          switch (ev.type) {
+            case 'State': {
+              const data = ev.data
+              if (data.state === 'active' || data.state === 'joined') {
+                setActiveVoiceChannel(channelIdRef.current!)
+              } else if (data.state === 'failed' || data.state === 'disconnected') {
+                if (data.error) setVoiceError(data.error)
+              }
+              break
             }
-            break
+            case 'PeerJoined': {
+              addVoicePeer({
+                id: ev.data.peer_id,
+                userId: ev.data.user_id,
+                username: ev.data.username,
+                speaking: false,
+                muted: false,
+              })
+              break
+            }
+            case 'PeerLeft': {
+              removeVoicePeer(ev.data.peer_id)
+              break
+            }
+            case 'PeerSpeaking': {
+              updateVoicePeer(ev.data.peer_id, { speaking: ev.data.speaking })
+              break
+            }
+            case 'ScreenShareStarted': {
+              setScreenSharePeer(ev.data.peer_id, ev.data.username)
+              break
+            }
+            case 'ScreenShareStopped': {
+              clearScreenSharePeer()
+              break
+            }
           }
-          case 'PeerJoined': {
-            addVoicePeer({
-              id: ev.data.peer_id,
-              userId: ev.data.user_id,
-              username: ev.data.username,
-              speaking: false,
-              muted: false,
-            })
-            break
+        }).then((unlisten) => {
+          nativeVoiceUnlistenRef.current = unlisten
+        }),
+        listen<any>('voice:remote_audio', (event) => {
+          const { samples, sampleRate } = event.payload
+          if (!samples || samples.length === 0) return
+
+          const ctx = nativeAudioCtxRef.current
+          if (!ctx || ctx.sampleRate !== (sampleRate || 48000)) {
+            nativeAudioCtxRef.current?.close()
+            nativeAudioCtxRef.current = new AudioContext({ sampleRate: sampleRate || 48000 })
+            nativeAudioNextTimeRef.current = 0
           }
-          case 'PeerLeft': {
-            removeVoicePeer(ev.data.peer_id)
-            break
+
+          const audioCtx = nativeAudioCtxRef.current!
+          const sampleCount = samples.length
+          const buffer = audioCtx.createBuffer(1, sampleCount, audioCtx.sampleRate)
+          buffer.copyToChannel(new Float32Array(samples), 0)
+
+          const source = audioCtx.createBufferSource()
+          source.buffer = buffer
+          source.connect(audioCtx.destination)
+
+          let startTime = nativeAudioNextTimeRef.current
+          const now = audioCtx.currentTime
+          if (startTime < now) {
+            startTime = now
           }
-          case 'PeerSpeaking': {
-            updateVoicePeer(ev.data.peer_id, { speaking: ev.data.speaking })
-            break
-          }
-          case 'ScreenShareStarted': {
-            setScreenSharePeer(ev.data.peer_id, ev.data.username)
-            break
-          }
-          case 'ScreenShareStopped': {
-            clearScreenSharePeer()
-            break
-          }
-        }
-      }).then((unlisten) => {
-        nativeVoiceUnlistenRef.current = unlisten
-      })
+          source.start(startTime)
 
-      listen<any>('voice:remote_audio', (event) => {
-        const { samples, sampleRate } = event.payload
-        if (!samples || samples.length === 0) return
-
-        const ctx = nativeAudioCtxRef.current
-        if (!ctx || ctx.sampleRate !== (sampleRate || 48000)) {
-          nativeAudioCtxRef.current?.close()
-          nativeAudioCtxRef.current = new AudioContext({ sampleRate: sampleRate || 48000 })
-          nativeAudioNextTimeRef.current = 0
-        }
-
-        const audioCtx = nativeAudioCtxRef.current!
-        const sampleCount = samples.length
-        const buffer = audioCtx.createBuffer(1, sampleCount, audioCtx.sampleRate)
-        buffer.copyToChannel(new Float32Array(samples), 0)
-
-        const source = audioCtx.createBufferSource()
-        source.buffer = buffer
-        source.connect(audioCtx.destination)
-
-        let startTime = nativeAudioNextTimeRef.current
-        const now = audioCtx.currentTime
-        if (startTime < now) {
-          startTime = now
-        }
-        source.start(startTime)
-
-        nativeAudioNextTimeRef.current = startTime + sampleCount / audioCtx.sampleRate
-      }).then((unlisten) => {
-        nativeRemoteAudioUnlistenRef.current = unlisten
-      })
-    }).catch((e) => {
+          nativeAudioNextTimeRef.current = startTime + sampleCount / audioCtx.sampleRate
+        }).then((unlisten) => {
+          nativeRemoteAudioUnlistenRef.current = unlisten
+        }),
+      ]).then(() => undefined),
+    ).catch((e) => {
       verr('setupNativeVoice', 'Failed to setup voice listeners', e)
     })
   }, [addVoicePeer, removeVoicePeer, updateVoicePeer, setActiveVoiceChannel, setVoiceError,
@@ -630,7 +631,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
     await initNativeVoice()
 
-    setupNativeVoiceListeners()
+    await setupNativeVoiceListeners()
 
     try {
       const { invoke } = await import('@tauri-apps/api/core')

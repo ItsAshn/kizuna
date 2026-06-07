@@ -30,9 +30,14 @@ pub fn start_native_audio_capture(
             .ok_or("No input device found")?
     };
 
+    let default_cfg = device
+        .default_input_config()
+        .map_err(|e| format!("Cannot get default input config: {e}"))?;
+    let sample_format = default_cfg.sample_format();
+
     let config = cpal::StreamConfig {
         channels,
-        sample_rate: sample_rate,
+        sample_rate,
         buffer_size: cpal::BufferSize::Default,
     };
 
@@ -40,8 +45,8 @@ pub fn start_native_audio_capture(
         eprintln!("[AudioCapture] cpal error: {err}");
     };
 
-    let stream = device
-        .build_input_stream(
+    let stream = match sample_format {
+        cpal::SampleFormat::F32 => device.build_input_stream(
             &config,
             move |data: &[f32], _info| {
                 if cancel.load(Ordering::Relaxed) {
@@ -51,8 +56,36 @@ pub fn start_native_audio_capture(
             },
             err_fn,
             None,
-        )
-        .map_err(|e| format!("Failed to build input stream: {e}"))?;
+        ),
+        cpal::SampleFormat::I16 => device.build_input_stream(
+            &config,
+            move |data: &[i16], _info| {
+                if cancel.load(Ordering::Relaxed) {
+                    return;
+                }
+                let f32_samples: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
+                let _ = pcm_tx.send(f32_samples);
+            },
+            err_fn,
+            None,
+        ),
+        cpal::SampleFormat::U16 => device.build_input_stream(
+            &config,
+            move |data: &[u16], _info| {
+                if cancel.load(Ordering::Relaxed) {
+                    return;
+                }
+                let f32_samples: Vec<f32> = data.iter().map(|&s| (s as f32 - 32768.0) / 32768.0).collect();
+                let _ = pcm_tx.send(f32_samples);
+            },
+            err_fn,
+            None,
+        ),
+        _ => {
+            return Err(format!("Unsupported sample format: {:?}", sample_format));
+        }
+    }
+    .map_err(|e| format!("Failed to build input stream: {e}"))?;
 
     stream
         .play()

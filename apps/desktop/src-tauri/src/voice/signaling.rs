@@ -48,6 +48,7 @@ pub async fn run_signaling_loop(
     let mut active_call: Option<ActiveCall> = None;
     let mut recv_pending: Option<Arc<tokio::sync::Mutex<Vec<String>>>> = None;
     let mut current_channel: Option<String> = None;
+    let mut router_caps: Option<Value> = None;
 
     'outer: loop {
         if cancel.load(Ordering::Relaxed) {
@@ -248,6 +249,7 @@ pub async fn run_signaling_loop(
                                 &mut active_call,
                                 &mut recv_pending,
                                 &mut current_channel,
+                                &mut router_caps,
                             )
                             .await;
                         }
@@ -284,10 +286,10 @@ pub async fn run_signaling_loop(
                 }
                 peer = peer_rx.recv() => {
                     if let Some((peer_id, _uid, _uname)) = peer {
-                        if let (Some(ref channel), Some(ref pending)) =
-                            (&current_channel, &recv_pending)
+                        if let (Some(ref channel), Some(ref pending), Some(ref caps)) =
+                            (&current_channel, &recv_pending, &router_caps)
                         {
-                            consume_peer(&socket, channel, &peer_id, pending).await;
+                            consume_peer(&socket, channel, &peer_id, pending, caps).await;
                         }
                     }
                 }
@@ -345,6 +347,7 @@ async fn handle_join(
     active_call: &mut Option<ActiveCall>,
     recv_pending: &mut Option<Arc<tokio::sync::Mutex<Vec<String>>>>,
     current_channel: &mut Option<String>,
+    router_caps: &mut Option<Value>,
 ) {
     if active_call.is_some() {
         emit_state(app, "failed", Some("Already in a voice channel"));
@@ -382,6 +385,25 @@ async fn handle_join(
             return;
         }
     }
+
+    let router_rtp_capabilities: Value = ack_data
+        .and_then(|d| d.get("routerRtpCapabilities"))
+        .cloned()
+        .unwrap_or(json!({
+            "codecs": [{
+                "mimeType": "audio/opus",
+                "clockRate": 48000,
+                "channels": 2,
+                "parameters": { "useinbandfec": 1, "minptime": 10 },
+                "rtcpFeedback": []
+            }],
+            "headerExtensions": []
+        }));
+
+    let voice_bitrate_kbps: u64 = ack_data
+        .and_then(|d| d.get("voiceBitrateKbps"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(64);
 
     let _ = app.emit(
         "voice:event",
@@ -509,7 +531,7 @@ async fn handle_join(
         "codecs": [{
             "mimeType": "audio/opus",
             "clockRate": 48000,
-            "channels": 2,
+            "channels": 1,
             "parameters": {
                 "useinbandfec": 1,
                 "minptime": 10,
@@ -520,7 +542,7 @@ async fn handle_join(
         "encodings": [{
             "ssrc": ssrc,
             "dtx": true,
-            "maxBitrate": 64000,
+            "maxBitrate": voice_bitrate_kbps * 1000,
         }],
         "rtcp": {
             "cname": "",
@@ -528,7 +550,7 @@ async fn handle_join(
         },
     });
 
-    let _ = ack_emit(
+    let produce_ack = ack_emit(
         socket,
         "voice:produce",
         json!({
@@ -539,6 +561,27 @@ async fn handle_join(
         }),
     )
     .await;
+
+    match produce_ack {
+        Ok(Payload::Text(values)) => {
+            if let Some(data) = values.first() {
+                if let Some(err) = data.get("error").and_then(|v| v.as_str()) {
+                    emit_state(app, "failed", Some(&format!("Produce failed: {err}")));
+                    let _ = socket
+                        .emit("voice:leave", json!({ "channelId": channel_id }))
+                        .await;
+                    return;
+                }
+            }
+        }
+        _ => {
+            emit_state(app, "failed", Some("Produce failed: no response"));
+            let _ = socket
+                .emit("voice:leave", json!({ "channelId": channel_id }))
+                .await;
+            return;
+        }
+    }
 
     let _ = app.emit(
         "voice:event",
@@ -600,6 +643,7 @@ async fn handle_join(
 
             *recv_pending = Some(pending_recv.clone());
             *current_channel = Some(channel_id.to_string());
+            *router_caps = Some(router_rtp_capabilities.clone());
 
             if let Some(data) = ack_data {
                 for peer in data.get("peers").and_then(|v| v.as_array()).into_iter().flatten() {
@@ -607,7 +651,7 @@ async fn handle_join(
                         .and_then(|v| v.as_str())
                         .unwrap_or_default()
                         .to_string();
-                    consume_peer(socket, channel_id, &peer_id, &pending_recv).await;
+                    consume_peer(socket, channel_id, &peer_id, &pending_recv, &router_rtp_capabilities).await;
                 }
             }
         }
@@ -622,6 +666,7 @@ async fn consume_peer(
     channel_id: &str,
     peer_id: &str,
     pending: &Arc<tokio::sync::Mutex<Vec<String>>>,
+    rtp_capabilities: &Value,
 ) {
     let result = ack_emit(
         socket,
@@ -629,16 +674,7 @@ async fn consume_peer(
         json!({
             "channelId": channel_id,
             "peerId": peer_id,
-            "rtpCapabilities": {
-                "codecs": [{
-                    "mimeType": "audio/opus",
-                    "clockRate": 48000,
-                    "channels": 2,
-                    "parameters": { "useinbandfec": 1, "minptime": 10 },
-                    "rtcpFeedback": [],
-                }],
-                "headerExtensions": [],
-            },
+            "rtpCapabilities": rtp_capabilities,
         }),
     )
     .await;

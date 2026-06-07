@@ -78,6 +78,7 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
         .input_devices()
         .map_err(|e| format!("Failed to enumerate input devices: {e}"))?;
 
+    let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut result = Vec::new();
     while let Some(device) = devices.next() {
         let name = device
@@ -90,6 +91,12 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
             .unwrap_or_else(|_| name.clone());
         let is_default = device_id == default_device_id;
 
+        let trim_name = name.trim().to_string();
+        if !seen_names.insert(trim_name.clone()) {
+            alog!("  SKIP duplicate: name='{}' id={}", trim_name, device_id);
+            continue;
+        }
+
         let default_config = device.default_input_config().ok();
         let max_channels = default_config.as_ref().map(|c| c.channels()).unwrap_or(1);
         let default_sample_rate =
@@ -97,11 +104,11 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
 
         alog!(
             "  device: name='{}' id={} default={} maxCh={} defSr={}Hz",
-            name, device_id, is_default, max_channels, default_sample_rate
+            trim_name, device_id, is_default, max_channels, default_sample_rate
         );
 
         result.push(AudioDeviceInfo {
-            name,
+            name: trim_name,
             device_id,
             is_default,
             max_channels,
@@ -125,6 +132,7 @@ pub fn list_output_devices() -> Result<Vec<AudioDeviceInfo>, String> {
         .output_devices()
         .map_err(|e| format!("Failed to enumerate output devices: {e}"))?;
 
+    let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut result = Vec::new();
     while let Some(device) = devices.next() {
         let name = device
@@ -138,13 +146,18 @@ pub fn list_output_devices() -> Result<Vec<AudioDeviceInfo>, String> {
             .unwrap_or_else(|_| name.clone());
         let is_default = device_id == default_device_id;
 
+        let trim_name = name.trim().to_string();
+        if !seen_names.insert(trim_name.clone()) {
+            continue;
+        }
+
         let default_config = device.default_output_config().ok();
         let max_channels = default_config.as_ref().map(|c| c.channels()).unwrap_or(2);
         let default_sample_rate =
             default_config.map(|c| c.sample_rate()).unwrap_or(48000);
 
         result.push(AudioDeviceInfo {
-            name,
+            name: trim_name,
             device_id,
             is_default,
             max_channels,

@@ -321,7 +321,7 @@ pub async fn create_transports(
         RTCRtpCodecCapability {
             mime_type: "audio/opus".to_string(),
             clock_rate: 48000,
-            channels: 2,
+            channels: 1,
             sdp_fmtp_line: "minptime=10;useinbandfec=1".to_string(),
             rtcp_feedback: vec![],
         },
