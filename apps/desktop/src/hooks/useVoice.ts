@@ -523,9 +523,11 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
     const nativeVoiceUnlistenRef = useRef<(() => void) | null>(null)
   const nativeRemoteAudioUnlistenRef = useRef<(() => void) | null>(null)
+  const nativeSpeakingUnlistenRef = useRef<(() => void) | null>(null)
   const nativeAudioCtxRef = useRef<AudioContext | null>(null)
   const nativeAudioNextTimeRef = useRef<number>(0)
   const nativeInitializedRef = useRef(false)
+  const nativePeerHandlersRef = useRef<boolean>(false)
 
   const initNativeVoice = useCallback(async () => {
     if (nativeInitializedRef.current) return
@@ -550,6 +552,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const setupNativeVoiceListeners = useCallback((): Promise<void> => {
     nativeVoiceUnlistenRef.current?.()
     nativeRemoteAudioUnlistenRef.current?.()
+    nativeSpeakingUnlistenRef.current?.()
     return import('@tauri-apps/api/event').then(({ listen }) =>
       Promise.all([
         listen<any>('voice:event', (event) => {
@@ -630,12 +633,22 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         }).then((unlisten) => {
           nativeRemoteAudioUnlistenRef.current = unlisten
         }),
+        listen<any>('voice:speaking', (event) => {
+          const { channelId, speaking } = event.payload
+          const socket = socketRef.current
+          if (socket && channelId) {
+            socket.emit('voice:speaking', { channelId, speaking })
+          }
+          setIsSpeaking(speaking)
+        }).then((unlisten) => {
+          nativeSpeakingUnlistenRef.current = unlisten
+        }),
       ]).then(() => undefined),
     ).catch((e) => {
       verr('setupNativeVoice', 'Failed to setup voice listeners', e)
     })
   }, [addVoicePeer, removeVoicePeer, updateVoicePeer, setActiveVoiceChannel, setVoiceError,
-      setScreenSharePeer, clearScreenSharePeer])
+      setScreenSharePeer, clearScreenSharePeer, setIsSpeaking, socketRef])
 
   const joinVoiceNative = useCallback(async (channelId: string): Promise<string | null> => {
     const socket = socketRef.current
@@ -651,21 +664,150 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setVoiceError(null)
 
     await initNativeVoice()
-
     await setupNativeVoiceListeners()
 
+    const { invoke } = await import('@tauri-apps/api/core')
+
+    // Set up chat socket peer event handlers
+    if (socket && !nativePeerHandlersRef.current) {
+      nativePeerHandlersRef.current = true
+      socket.on('voice:newPeer', async (peer: { peerId: string; userId: string; username: string }) => {
+        vlog('nativePeer', `voice:newPeer peerId=${peer.peerId}`)
+        addVoicePeer({ id: peer.peerId, userId: peer.userId, username: peer.username, speaking: false, muted: false })
+        try {
+          const consumeResult: any = await new Promise((resolve) =>
+            socket!.emit('voice:consume', {
+              channelId: channelIdRef.current,
+              peerId: peer.peerId,
+              rtpCapabilities: { codecs: [{ mimeType: 'audio/opus', clockRate: 48000, channels: 2, parameters: {}, rtcpFeedback: [] }], headerExtensions: [] },
+            }, resolve),
+          )
+          if (consumeResult?.error) {
+            verr('nativePeer', `consume ${peer.peerId} failed: ${consumeResult.error}`)
+          } else {
+            const { invoke: inv } = await import('@tauri-apps/api/core')
+            await inv('voice_add_peer', { peerId: peer.peerId })
+          }
+        } catch (e) {
+          verr('nativePeer', `consume ${peer.peerId} error`, e)
+        }
+      })
+      socket.on('voice:peerLeft', ({ peerId }: { peerId: string }) => {
+        removeVoicePeer(peerId)
+      })
+      socket.on('voice:peerSpeaking', ({ peerId, speaking }: { peerId: string; speaking: boolean }) => {
+        updateVoicePeer(peerId, { speaking })
+      })
+    }
+
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      await invoke('voice_join', { channelId })
-      vlog('joinVoice', 'Native voice join sent')
+      // Step 1: voice:join via chat socket
+      vlog('joinVoiceNative', 'sending voice:join via chat socket')
+      const joinResult: any = await new Promise((resolve) =>
+        socket!.emit('voice:join', { channelId, userId: session.user.id, username: session.user.username }, resolve),
+      )
+      if (joinResult?.error) {
+        throw new Error(`voice:join failed: ${joinResult.error}`)
+      }
+      vlog('joinVoiceNative', 'voice:join OK', { peers: joinResult?.peers?.length, bitrate: joinResult?.voiceBitrateKbps })
+
+      setActiveVoiceChannel(channelId)
+
+      const iceServers = joinResult.iceServers || []
+      const voiceBitrateKbps = joinResult.voiceBitrateKbps || 64
+
+      // Step 2: create send transport via chat socket
+      const sendParams: any = await new Promise((resolve) =>
+        socket!.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
+      )
+      if (sendParams?.error) throw new Error(`send transport create: ${sendParams.error}`)
+      vlog('joinVoiceNative', 'send transport created', { id: sendParams?.id })
+
+      // Step 3: create recv transport via chat socket
+      const recvParams: any = await new Promise((resolve) =>
+        socket!.emit('voice:createTransport', { channelId, direction: 'recv' }, resolve),
+      )
+      if (recvParams?.error) throw new Error(`recv transport create: ${recvParams.error}`)
+      vlog('joinVoiceNative', 'recv transport created', { id: recvParams?.id })
+
+      // Step 4: create WebRTC transports in Rust
+      vlog('joinVoiceNative', 'calling voice_begin')
+      const [sendDtls, recvDtls, rtpParams] = await invoke('voice_begin', {
+        channelId,
+        iceServers,
+        sendParams,
+        recvParams,
+      }) as [any, any, any]
+      vlog('joinVoiceNative', 'voice_begin OK', { ssrc: rtpParams?.ssrc })
+
+      // Step 5: connect send transport
+      const sendConnectResult: any = await new Promise((resolve) =>
+        socket!.emit('voice:connectTransport', {
+          channelId,
+          transportId: sendParams.id,
+          dtlsParameters: sendDtls,
+        }, resolve),
+      )
+      if (sendConnectResult?.error) throw new Error(`send connectTransport: ${sendConnectResult.error}`)
+      vlog('joinVoiceNative', 'send connectTransport OK')
+
+      // Step 6: connect recv transport
+      const recvConnectResult: any = await new Promise((resolve) =>
+        socket!.emit('voice:connectTransport', {
+          channelId,
+          transportId: recvParams.id,
+          dtlsParameters: recvDtls,
+        }, resolve),
+      )
+      if (recvConnectResult?.error) throw new Error(`recv connectTransport: ${recvConnectResult.error}`)
+      vlog('joinVoiceNative', 'recv connectTransport OK')
+
+      // Step 7: produce
+      const produceResult: any = await new Promise((resolve) =>
+        socket!.emit('voice:produce', {
+          channelId,
+          transportId: sendParams.id,
+          kind: 'audio',
+          rtpParameters: rtpParams,
+        }, resolve),
+      )
+      if (produceResult?.error) throw new Error(`produce: ${produceResult.error}`)
+      vlog('joinVoiceNative', 'produce OK', { producerId: produceResult?.id })
+
+      // Step 8: start audio capture in Rust
+      await invoke('voice_finish_join', { voiceBitrateKbps })
+      vlog('joinVoiceNative', 'finish_join OK')
+
+      // Step 9: consume existing peers
+      if (joinResult.peers) {
+        for (const peer of joinResult.peers) {
+          const consumeResult: any = await new Promise((resolve) =>
+            socket!.emit('voice:consume', {
+              channelId,
+              peerId: peer.id,
+              rtpCapabilities: joinResult.routerRtpCapabilities,
+            }, resolve),
+          )
+          if (consumeResult?.error) {
+            verr('joinVoiceNative', `consume peer ${peer.id} failed: ${consumeResult.error}`)
+          } else {
+            await invoke('voice_add_peer', { peerId: peer.id })
+            vlog('joinVoiceNative', `consumed peer ${peer.id}`)
+          }
+        }
+      }
+
       return null
     } catch (e: any) {
       const err = e?.toString?.() || 'Failed to join voice'
-      verr('joinVoice', 'Native join failed', e)
+      verr('joinVoiceNative', 'failed', e)
       setVoiceError(err)
+      socket?.emit('voice:leave', { channelId })
+      try { await invoke('voice_leave') } catch {}
+      channelIdRef.current = null
       return err
     }
-  }, [socketRef, session, cleanupVoice, setVoiceError, initNativeVoice, setupNativeVoiceListeners])
+  }, [socketRef, session, cleanupVoice, setVoiceError, initNativeVoice, setupNativeVoiceListeners, setActiveVoiceChannel])
 
   const leaveVoiceNative = useCallback(async () => {
     try {
@@ -674,10 +816,20 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     } catch (e) {
       verr('leaveVoice', 'Native leave failed', e)
     }
+    // Clean up chat socket peer handlers
+    const socket = socketRef.current
+    if (socket && nativePeerHandlersRef.current) {
+      socket.off('voice:newPeer')
+      socket.off('voice:peerLeft')
+      socket.off('voice:peerSpeaking')
+      nativePeerHandlersRef.current = false
+    }
     nativeVoiceUnlistenRef.current?.()
     nativeVoiceUnlistenRef.current = null
     nativeRemoteAudioUnlistenRef.current?.()
     nativeRemoteAudioUnlistenRef.current = null
+    nativeSpeakingUnlistenRef.current?.()
+    nativeSpeakingUnlistenRef.current = null
     nativeAudioCtxRef.current?.close()
     nativeAudioCtxRef.current = null
     channelIdRef.current = null
@@ -686,7 +838,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setLocalConnectionQuality(null)
     setLiveAudioLevel(0)
     clearScreenSharePeer()
-  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, setLiveAudioLevel, clearScreenSharePeer])
+  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, setLiveAudioLevel, clearScreenSharePeer, socketRef])
 
   const toggleMuteNative = useCallback(async () => {
     try {

@@ -2,17 +2,17 @@ mod capture;
 mod env;
 mod voice;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use capture::audio::AudioCaptureSession;
 use capture::audio::AudioDeviceInfo;
 use capture::{CaptureSession, MonitorInfo, SessionType};
-use voice::VoiceSession;
+use voice::VoiceController;
 
 static CAPTURE_SESSION: Mutex<Option<CaptureSession>> = Mutex::new(None);
 static AUDIO_SESSION: Mutex<Option<AudioCaptureSession>> = Mutex::new(None);
 static SESSION_TYPE: Mutex<Option<SessionType>> = Mutex::new(None);
-static VOICE_SESSION: Mutex<Option<Arc<VoiceSession>>> = Mutex::new(None);
+static VOICE_CONTROLLER: Mutex<Option<VoiceController>> = Mutex::new(None);
 
 fn get_session_type() -> SessionType {
     let mut guard = SESSION_TYPE.lock().unwrap();
@@ -137,62 +137,73 @@ fn voice_init(
     user_id: String,
     username: String,
 ) -> Result<(), String> {
-    let mut guard = VOICE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if let Some(old) = guard.take() {
-        drop(old);
+    let _ = auth_token; // stored in TS session, not needed here
+    let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if guard.is_some() {
+        eprintln!("[Voice] voice_init: already initialized, skipping");
+        return Ok(());
     }
-    let session = VoiceSession::new(app, server_url, auth_token, user_id, username);
-    *guard = Some(Arc::new(session));
+    let controller = VoiceController::new(app, user_id.clone(), username.clone());
+    *guard = Some(controller);
+    eprintln!("[Voice] voice_init: OK (url={server_url} user={username})");
     Ok(())
 }
 
 #[tauri::command]
-async fn voice_join(channel_id: String) -> Result<(), String> {
-    eprintln!("[Voice] voice_join command: channel_id={channel_id}");
-    let session = {
-        let guard = VOICE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
-        guard.clone()
-    };
-    match session {
-        Some(s) => {
-            s.join(channel_id).await;
-            Ok(())
-        }
-        None => {
-            eprintln!("[Voice] voice_join: VoiceSession not found, voice_init may not have been called");
-            Err("Voice not initialized. Call voice_init first.".into())
-        }
+fn voice_begin(
+    channel_id: String,
+    ice_servers: Vec<serde_json::Value>,
+    send_params: serde_json::Value,
+    recv_params: serde_json::Value,
+) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value), String> {
+    let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    let controller = guard.as_mut().ok_or("Voice not initialized")?;
+    tauri::async_runtime::block_on(controller.begin_join(&channel_id, ice_servers, send_params, recv_params))
+}
+
+#[tauri::command]
+fn voice_finish_join(voice_bitrate_kbps: u64) -> Result<(), String> {
+    let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    let controller = guard.as_mut().ok_or("Voice not initialized")?;
+    tauri::async_runtime::block_on(controller.finish_join(voice_bitrate_kbps))
+}
+
+#[tauri::command]
+fn voice_add_peer(peer_id: String) -> Result<(), String> {
+    let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref controller) = *guard {
+        tauri::async_runtime::block_on(controller.add_remote_peer(&peer_id));
+        Ok(())
+    } else {
+        Err("Voice not initialized".into())
     }
 }
 
 #[tauri::command]
-async fn voice_leave() -> Result<(), String> {
-    let session = {
-        let guard = VOICE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
-        guard.clone()
-    };
-    match session {
-        Some(s) => {
-            s.leave().await;
-            Ok(())
-        }
-        None => Err("Voice not initialized.".into()),
+fn voice_leave() -> Result<(), String> {
+    let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref mut controller) = *guard {
+        controller.leave();
+        Ok(())
+    } else {
+        Err("Voice not initialized".into())
     }
 }
 
 #[tauri::command]
-async fn voice_set_muted(muted: bool) -> Result<(), String> {
-    let session = {
-        let guard = VOICE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
-        guard.clone()
-    };
-    match session {
-        Some(s) => {
-            s.set_muted(muted).await;
-            Ok(())
-        }
-        None => Err("Voice not initialized.".into()),
+fn voice_drain_signals() -> Result<Vec<(String, serde_json::Value)>, String> {
+    let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref mut controller) = *guard {
+        Ok(tauri::async_runtime::block_on(controller.drain_signals()))
+    } else {
+        Ok(vec![])
     }
+}
+
+#[tauri::command]
+fn voice_set_muted(muted: bool) -> Result<(), String> {
+    eprintln!("[Voice] voice_set_muted: muted={muted}");
+    Ok(())
 }
 
 #[tauri::command]
@@ -245,8 +256,11 @@ pub fn run() {
             stop_audio_capture,
             get_environment,
             voice_init,
-            voice_join,
+            voice_begin,
+            voice_finish_join,
+            voice_add_peer,
             voice_leave,
+            voice_drain_signals,
             voice_set_muted,
             voice_screen_share_start,
             voice_screen_share_stop,
