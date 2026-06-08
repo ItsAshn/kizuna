@@ -1,0 +1,15 @@
+.env
+.env.*
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+uploads/
+backgrounds/
+node_modules/
+.git/
+.gitignore
+*.md
+Dockerfile
+docker-compose*.yml
+.github/

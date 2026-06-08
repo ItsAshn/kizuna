@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
+import { randomBytes } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -100,6 +101,9 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
     if (custom_css !== null && custom_css.length > 50000) {
       return c.json({ error: 'custom_css must be under 50000 characters' }, 400)
     }
+    if (custom_css !== null && (custom_css.includes('url(') || custom_css.includes('@import'))) {
+      return c.json({ error: 'custom_css may not contain url() or @import directives' }, 400)
+    }
     if (custom_css === null) {
       db.prepare("DELETE FROM server_settings WHERE key = 'custom_css'").run()
     } else {
@@ -125,6 +129,9 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
 })
 
 serverInfoRoutes.post('/announce', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+
   const body = await c.req.json() as { title: string; body: string }
   const { title, body: announceBody } = body
   if (!title || !announceBody) {
@@ -239,7 +246,7 @@ serverInfoRoutes.post('/join/:code', async (c) => {
   if (authHeader?.startsWith('Bearer ')) {
     try {
       const token = authHeader.slice(7)
-      const payload = jwt.verify(token, process.env.JWT_SECRET || '') as { userId: string }
+      const payload = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string }
       userId = payload.userId
     } catch {
       // Invalid token — user must register
@@ -342,6 +349,31 @@ serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, async (c)
   return c.json({ ok: true })
 })
 
+serverInfoRoutes.post('/members/:userId/generate-reset', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+
+  const targetUserId = c.req.param('userId') || ''
+  if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
+
+  const db = getDb()
+  const target = db.prepare('SELECT id, username FROM users WHERE id = ?').get(targetUserId) as { id: string; username: string } | undefined
+  if (!target) return c.json({ error: 'User not found' }, 404)
+
+  const token = randomBytes(32).toString('hex')
+  const expiresAt = Math.floor(Date.now() / 1000) + 86400
+
+  db.prepare(
+    'UPDATE users SET reset_token = ?, reset_token_expires_at = ? WHERE id = ?',
+  ).run(token, expiresAt, targetUserId)
+
+  return c.json({
+    resetToken: token,
+    username: target.username,
+    expiresAt: expiresAt * 1000,
+  })
+})
+
 // POST /background — upload background image (admin only)
 serverInfoRoutes.post('/background', authMiddleware, async (c) => {
   const user = getAuth(c)
@@ -366,6 +398,17 @@ serverInfoRoutes.post('/background', authMiddleware, async (c) => {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer())
+
+  const magicOk = ext === '.jpg' || ext === '.jpeg'
+    ? buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF
+    : ext === '.png'
+    ? buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47
+    : ext === '.webp'
+    ? buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
+    : false
+  if (!magicOk) {
+    return c.json({ error: 'File content does not match its extension' }, 415)
+  }
 
   try {
     const oldFiles = fs.readdirSync(BACKGROUNDS_DIR)

@@ -3,16 +3,34 @@ import { v4 as uuidv4 } from 'uuid'
 import bcrypt from 'bcryptjs'
 import { getDb } from '../db'
 import { signToken, authMiddleware } from '../middleware/auth'
+import { generateChallenge, verifyPoW } from '../middleware/pow'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const authRoutes = new Hono()
 
+authRoutes.get('/challenge', (c) => {
+  const entry = generateChallenge()
+  return c.json({
+    challenge: entry.challenge,
+    difficulty: entry.difficulty,
+    expiresAt: entry.expiresAt,
+  })
+})
+
 authRoutes.post('/register', async (c) => {
-  const { username, password, display_name, serverPassword, public_key } = await c.req.json()
+  const { username, password, display_name, serverPassword, public_key, challenge, nonce } = await c.req.json()
 
   if (!username || !password) {
     return c.json({ error: 'username and password required' }, 400)
+  }
+
+  if (!challenge || !nonce) {
+    return c.json({ error: 'Proof of work required' }, 400)
+  }
+
+  if (!verifyPoW(challenge, nonce)) {
+    return c.json({ error: 'Invalid or expired proof of work. Please solve a new challenge.' }, 400)
   }
 
   if (username.length < 2 || username.length > 32) {
@@ -25,8 +43,8 @@ authRoutes.post('/register', async (c) => {
     }, 400)
   }
 
-  if (password.length < 6) {
-    return c.json({ error: 'Password must be at least 6 characters' }, 400)
+  if (password.length < 8) {
+    return c.json({ error: 'Password must be at least 8 characters' }, 400)
   }
 
   const required = process.env.SERVER_PASSWORD && process.env.SERVER_PASSWORD.trim()
@@ -224,6 +242,58 @@ authRoutes.get('/users/:userId/public-key', authMiddleware, (c) => {
   if (!user) return c.json({ error: 'User not found' }, 404)
 
   return c.json({ public_key: user.public_key || null })
+})
+
+authRoutes.get('/reset-password/:token', (c) => {
+  const token = c.req.param('token') || ''
+  if (!token) return c.json({ error: 'Invalid token' }, 400)
+
+  const db = getDb()
+  const now = Math.floor(Date.now() / 1000)
+  const user = db.prepare(
+    'SELECT username, reset_token_expires_at FROM users WHERE reset_token = ?',
+  ).get(token) as { username: string; reset_token_expires_at: number } | undefined
+
+  if (!user || user.reset_token_expires_at < now) {
+    return c.json({ error: 'Invalid or expired reset token' }, 400)
+  }
+
+  return c.json({ username: user.username })
+})
+
+authRoutes.post('/logout', authMiddleware, (c) => {
+  const auth = getAuth(c)
+  const db = getDb()
+  const now = Math.floor(Date.now() / 1000)
+  db.prepare('UPDATE users SET token_invalidated_at = ? WHERE id = ?').run(now, auth.userId)
+  return c.json({ ok: true })
+})
+
+authRoutes.post('/reset-password/:token', async (c) => {
+  const token = c.req.param('token') || ''
+  if (!token) return c.json({ error: 'Invalid token' }, 400)
+
+  const { password } = await c.req.json() as { password?: string }
+  if (!password || password.length < 8) {
+    return c.json({ error: 'Password must be at least 8 characters' }, 400)
+  }
+
+  const db = getDb()
+  const now = Math.floor(Date.now() / 1000)
+  const user = db.prepare(
+    'SELECT id, reset_token_expires_at FROM users WHERE reset_token = ?',
+  ).get(token) as { id: string; reset_token_expires_at: number } | undefined
+
+  if (!user || user.reset_token_expires_at < now) {
+    return c.json({ error: 'Invalid or expired reset token' }, 400)
+  }
+
+  const hash = await bcrypt.hash(password, 12)
+  db.prepare(
+    'UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires_at = NULL, token_invalidated_at = ? WHERE id = ?',
+  ).run(hash, Math.floor(Date.now() / 1000), user.id)
+
+  return c.json({ ok: true })
 })
 
 export default authRoutes

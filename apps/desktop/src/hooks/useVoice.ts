@@ -687,6 +687,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
           } else {
             const { invoke: inv } = await import('@tauri-apps/api/core')
             await inv('voice_add_peer', { peerId: peer.peerId })
+            socket!.emit('voice:resumeConsumer', { channelId: channelIdRef.current, consumerId: consumeResult.id })
           }
         } catch (e) {
           verr('nativePeer', `consume ${peer.peerId} error`, e)
@@ -704,7 +705,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       // Step 1: voice:join via chat socket
       vlog('joinVoiceNative', 'sending voice:join via chat socket')
       const joinResult: any = await new Promise((resolve) =>
-        socket!.emit('voice:join', { channelId, userId: session.user.id, username: session.user.username }, resolve),
+        socket!.emit('voice:join', { channelId }, resolve),
       )
       if (joinResult?.error) {
         throw new Error(`voice:join failed: ${joinResult.error}`)
@@ -793,6 +794,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
             verr('joinVoiceNative', `consume peer ${peer.id} failed: ${consumeResult.error}`)
           } else {
             await invoke('voice_add_peer', { peerId: peer.id })
+            socket!.emit('voice:resumeConsumer', { channelId, consumerId: consumeResult.id })
             vlog('joinVoiceNative', `consumed peer ${peer.id}`)
           }
         }
@@ -872,11 +874,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
     vlog('joinVoice', 'emitting voice:join')
     const joinResult: any = await new Promise((resolve) =>
-      socket.emit('voice:join', {
-        channelId,
-        userId: session.user.id,
-        username: session.user.username,
-      }, resolve),
+      socket.emit('voice:join', { channelId }, resolve),
     )
 
     if (joinResult?.error) {

@@ -28,9 +28,9 @@ export function useSocket(): MutableRefObject<Socket | null> {
     socketRef.current = socket
 
     socket.on('connect', () => {
-      socket.emit('user:subscribe', { userId: session.user.id })
+      socket.emit('user:subscribe')
       socket.emit('notification:subscribe')
-      socket.emit('user:joined', { userId: session.user.id, username: session.user.username })
+      socket.emit('user:joined')
     })
 
     socket.on('message:new', (message: Message) => {

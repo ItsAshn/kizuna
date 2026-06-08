@@ -10,6 +10,7 @@ import type {
   DMChannelData,
   FileAttachment,
   ServerInfo,
+  PoWChallenge,
 } from './types'
 
 function normalizeUrl(url: string): string {
@@ -25,6 +26,13 @@ function client(baseUrl: string, token?: string) {
 
 // ─── Auth ─────────────────────────────────────────────────
 
+export async function getChallenge(
+  serverUrl: string,
+): Promise<PoWChallenge> {
+  const res = await axios.get(`${normalizeUrl(serverUrl)}/api/auth/challenge`)
+  return res.data
+}
+
 export async function register(
   serverUrl: string,
   username: string,
@@ -32,6 +40,8 @@ export async function register(
   display_name?: string,
   serverPassword?: string,
   public_key?: string,
+  challenge?: string,
+  nonce?: string,
 ): Promise<{ token: string; user: User }> {
   const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/register`, {
     username,
@@ -39,6 +49,8 @@ export async function register(
     display_name: display_name || username,
     ...(serverPassword ? { serverPassword } : {}),
     ...(public_key ? { public_key } : {}),
+    ...(challenge ? { challenge } : {}),
+    ...(nonce ? { nonce } : {}),
   })
   return res.data
 }
@@ -53,6 +65,13 @@ export async function login(
     password,
   })
   return res.data
+}
+
+export async function logout(
+  serverUrl: string,
+  token: string,
+): Promise<void> {
+  await client(serverUrl, token).post('/api/auth/logout')
 }
 
 export async function getMe(serverUrl: string, token: string): Promise<User> {
@@ -77,6 +96,31 @@ export async function getUserPublicKey(
 ): Promise<string | null> {
   const res = await client(serverUrl, token).get(`/api/auth/users/${userId}/public-key`)
   return res.data.public_key ?? null
+}
+
+export async function validateResetToken(
+  serverUrl: string,
+  token: string,
+): Promise<{ username: string }> {
+  const res = await axios.get(`${normalizeUrl(serverUrl)}/api/auth/reset-password/${token}`)
+  return res.data
+}
+
+export async function resetPassword(
+  serverUrl: string,
+  token: string,
+  password: string,
+): Promise<void> {
+  await axios.post(`${normalizeUrl(serverUrl)}/api/auth/reset-password/${token}`, { password })
+}
+
+export async function generatePasswordReset(
+  serverUrl: string,
+  authToken: string,
+  userId: string,
+): Promise<{ resetToken: string; username: string; expiresAt: number }> {
+  const res = await client(serverUrl, authToken).post(`/api/server/members/${userId}/generate-reset`)
+  return res.data
 }
 
 export async function fetchServerInfo(serverUrl: string): Promise<ServerInfo> {

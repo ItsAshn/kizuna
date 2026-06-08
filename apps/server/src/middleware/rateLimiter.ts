@@ -1,4 +1,5 @@
 import type { Context, Next } from 'hono'
+import { createHash } from 'node:crypto'
 
 interface RateLimitEntry {
   count: number
@@ -14,9 +15,19 @@ setInterval(() => {
   }
 }, 60_000).unref()
 
+function getClientIp(c: Context): string {
+  const xff = c.req.header('x-forwarded-for')
+  if (xff) {
+    const firstIp = xff.split(',')[0]?.trim()
+    if (firstIp) return firstIp
+  }
+  return c.req.header('x-real-ip') || '127.0.0.1'
+}
+
 function rateLimiter(maxRequests: number, windowMs: number) {
   return async (c: Context, next: Next): Promise<Response | void> => {
-    const key = c.req.header('x-forwarded-for') || 'unknown'
+    const ip = getClientIp(c)
+    const key = createHash('sha256').update(`rl:${ip}`).digest('hex').slice(0, 24)
     const now = Date.now()
     const entry = store.get(key)
 

@@ -8,16 +8,27 @@ export type { AuthUser }
 export interface JwtPayload {
   userId: string
   username: string
+  iat?: number
+}
+
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    throw new Error('JWT_SECRET is not set. Authentication cannot function.')
+  }
+  if (secret === 'change_this_to_a_long_random_secret') {
+    throw new Error('JWT_SECRET is using the default placeholder. Generate one with: openssl rand -hex 64')
+  }
+  return secret
 }
 
 export function signToken(payload: JwtPayload): string {
-  const secret = process.env.JWT_SECRET || ''
-  return jwt.sign(payload, secret, { expiresIn: '30d' })
+  const now = Math.floor(Date.now() / 1000)
+  return jwt.sign({ ...payload, iat: now }, getJwtSecret(), { expiresIn: '30d' })
 }
 
 export function verifyToken(token: string): JwtPayload {
-  const secret = process.env.JWT_SECRET || ''
-  return jwt.verify(token, secret) as JwtPayload
+  return jwt.verify(token, getJwtSecret()) as JwtPayload
 }
 
 export function getUserInfo(userId: string): AuthUser | null {
@@ -87,6 +98,13 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
     if (!userInfo) {
       return c.json({ error: 'User not found' }, 401)
     }
+
+    const db = getDb()
+    const row = db.prepare('SELECT token_invalidated_at FROM users WHERE id = ?').get(payload.userId) as { token_invalidated_at: number | null } | undefined
+    if (row?.token_invalidated_at && payload.iat && row.token_invalidated_at > payload.iat) {
+      return c.json({ error: 'Token has been revoked' }, 401)
+    }
+
     c.set('auth' as never, userInfo as never)
     await next()
   } catch {

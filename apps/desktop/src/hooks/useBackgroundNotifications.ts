@@ -30,7 +30,7 @@ export function useBackgroundNotifications(): void {
       })
 
       socket.on('connect', () => {
-        socket.emit('user:subscribe', { userId: session.user.id })
+        socket.emit('user:subscribe')
         socket.emit('notification:subscribe')
       })
 

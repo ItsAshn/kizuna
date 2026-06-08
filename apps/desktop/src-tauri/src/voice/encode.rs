@@ -169,15 +169,19 @@ pub struct AudioEncoder {
 }
 
 impl AudioEncoder {
-    pub fn new(sample_rate: u32, channels: u16) -> Result<Self, String> {
+    pub fn new(sample_rate: u32, channels: u16, bitrate_bps: u32) -> Result<Self, String> {
         let ch = if channels == 1 {
             Channels::Mono
         } else {
             Channels::Stereo
         };
 
-        let encoder = OpusEncoder::new(sample_rate, ch, opus::Application::Voip)
+        let mut encoder = OpusEncoder::new(sample_rate, ch, opus::Application::Voip)
             .map_err(|e| format!("Failed to create Opus encoder: {e}"))?;
+
+        encoder
+            .set_bitrate(opus::Bitrate::Bits(bitrate_bps as i32))
+            .map_err(|e| format!("Failed to set Opus bitrate: {e}"))?;
 
         let frame_size = (sample_rate as usize * 20) / 1000;
 

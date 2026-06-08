@@ -7,6 +7,9 @@ export const SCHEMA_SQL = `
     avatar TEXT DEFAULT NULL,
     last_seen_at INTEGER DEFAULT NULL,
     public_key TEXT DEFAULT NULL,
+    token_invalidated_at INTEGER DEFAULT NULL,
+    reset_token TEXT DEFAULT NULL,
+    reset_token_expires_at INTEGER DEFAULT NULL,
     created_at INTEGER DEFAULT (unixepoch())
   );
 

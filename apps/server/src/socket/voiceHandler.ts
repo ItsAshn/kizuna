@@ -1,7 +1,6 @@
 import type { Server, Socket } from 'socket.io'
 import { ensureRouter, createTransport, connectTransport, produceOnTransport, consumeOnTransport } from '../media/router'
 import type { types as mediasoupTypes } from 'mediasoup'
-import jwt from 'jsonwebtoken'
 import { getDb } from '../db'
 
 function vts(): string {
@@ -81,30 +80,19 @@ function getScreenSharer(channelId: string): { peerId: string; userId: string; u
 }
 
 export function registerVoiceHandlers(io: Server, socket: Socket): void {
-  socket.on('voice:join', async ({ channelId, userId, username }: {
+  socket.on('voice:join', async ({ channelId }: {
     channelId: string
-    userId: string
-    username: string
   }, callback?: Function) => {
     const joinTs = Date.now()
+    let userId = socket.data.userId
+    let username = socket.data.username
+    if (!userId) {
+      vlog('join', 'rejected: not authenticated')
+      if (typeof callback === 'function') callback({ error: 'Authentication required' })
+      return
+    }
     vlog('join', `request | socketId=${socket.id} | channelId=${channelId} | userId=${userId} | username=${username} | peers=${peers.size}`)
     try {
-      const token = socket.handshake?.auth?.token
-      if (!token) {
-        vlog('join', 'rejected: no auth token')
-        if (typeof callback === 'function') callback({ error: 'Authentication required' })
-        return
-      }
-      try {
-        const payload = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string; username: string }
-        userId = payload.userId
-        username = payload.username
-      } catch (e) {
-        vlog('join', `rejected: invalid JWT | ${String(e)}`)
-        if (typeof callback === 'function') callback({ error: 'Invalid or expired token' })
-        return
-      }
-
       const db = getDb()
       const member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
       if (!member) {

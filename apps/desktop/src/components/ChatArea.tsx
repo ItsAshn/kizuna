@@ -185,8 +185,8 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
       store.setMentionCounts({ ...store.mentionCounts, [activeChannelId]: 0 })
 
       socketRef.current?.emit('channel:join', activeChannelId)
-      socketRef.current?.emit('mentions:read', { userId: session?.user.id, channelId: activeChannelId })
-      socketRef.current?.emit('channel:read', { userId: session?.user.id, channelId: activeChannelId })
+      socketRef.current?.emit('mentions:read', { channelId: activeChannelId })
+      socketRef.current?.emit('channel:read', { channelId: activeChannelId })
 
       return () => { socketRef.current?.emit('channel:leave', activeChannelId) }
     }
@@ -206,7 +206,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
       store.setUnreadCounts({ ...store.unreadCounts, [activeDMChannelId]: 0 })
       store.setMentionCounts({ ...store.mentionCounts, [activeDMChannelId]: 0 })
 
-      socketRef.current?.emit('dm:read', { userId: session?.user.id, channelId: activeDMChannelId })
+      socketRef.current?.emit('dm:read', { channelId: activeDMChannelId })
 
       return () => { socketRef.current?.emit('channel:leave', activeDMChannelId) }
     }
@@ -238,9 +238,9 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     const channelId = activeChannelId || activeDMChannelId
     if (channelId && session) {
       if (typingTimeout.current) clearTimeout(typingTimeout.current)
-      socketRef.current?.emit('typing:start', { channelId, username: session.user.username })
+      socketRef.current?.emit('typing:start', { channelId })
       typingTimeout.current = setTimeout(() => {
-        socketRef.current?.emit('typing:stop', { channelId, username: session.user.username })
+        socketRef.current?.emit('typing:stop', { channelId })
       }, 3000)
     }
   }, [sendError, activeChannelId, activeDMChannelId, session])
@@ -278,7 +278,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     const channelId = activeChannelId || activeDMChannelId
     if (!channelId) return
 
-    socketRef.current?.emit('typing:stop', { channelId, username: session.user.username })
+    socketRef.current?.emit('typing:stop', { channelId })
 
     try {
       let message: Message

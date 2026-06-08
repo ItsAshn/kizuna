@@ -3,6 +3,28 @@ import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
 import { getUserPermissions, hasPermission } from '../middleware/auth'
 
+const socketRateLimits = new Map<string, { count: number; resetAt: number }>()
+
+function checkSocketRateLimit(socket: Socket, event: string, max: number, windowMs: number): boolean {
+  const key = `${socket.id}:${event}`
+  const now = Date.now()
+  const entry = socketRateLimits.get(key)
+  if (!entry || entry.resetAt <= now) {
+    socketRateLimits.set(key, { count: 1, resetAt: now + windowMs })
+    return true
+  }
+  if (entry.count >= max) return false
+  entry.count++
+  return true
+}
+
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, entry] of socketRateLimits) {
+    if (entry.resetAt <= now) socketRateLimits.delete(key)
+  }
+}, 60_000).unref()
+
 interface MentionResult {
   type: 'everyone' | 'here' | 'user'
   target: string | null
@@ -80,14 +102,24 @@ export function processMentions(io: Server, message: any, mentions: MentionResul
   }
 }
 
+function getSocketUserId(socket: Socket): string {
+  return socket.data.userId || (socket as any).userId
+}
+
+function getSocketUsername(socket: Socket): string {
+  return socket.data.username || (socket as any).username || 'unknown'
+}
+
 export function registerChatHandlers(io: Server, socket: Socket): void {
   const NOTIFICATION_ROOM = '__notifications__'
+  const userId = getSocketUserId(socket)
+  const username = getSocketUsername(socket)
 
   socket.on('notification:subscribe', () => {
     socket.join(NOTIFICATION_ROOM)
   })
 
-  socket.on('user:subscribe', ({ userId }: { userId: string }) => {
+  socket.on('user:subscribe', () => {
     if (userId) {
       socket.join(`user:${userId}`)
       socket.join(`dm:${userId}`)
@@ -95,7 +127,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('dm:subscribe', ({ userId }: { userId: string }) => {
+  socket.on('dm:subscribe', () => {
     if (userId) {
       socket.join(`dm:${userId}`)
     }
@@ -110,16 +142,15 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     socket.leave(channelId)
   })
 
-  socket.on('message:send', ({ channelId, content, authorId, authorUsername }: {
+  socket.on('message:send', ({ channelId, content }: {
     channelId: string
     content: string
-    authorId: string
-    authorUsername: string
   }) => {
-    if (!channelId || !content?.trim() || !authorId) return
+    if (!checkSocketRateLimit(socket, 'message:send', 30, 10_000)) return
+    if (!channelId || !content?.trim() || !userId) return
     if (content.length > 4000) return
 
-    const userInfo = getUserPermissions(authorId)
+    const userInfo = getUserPermissions(userId)
     if (!userInfo || !hasPermission(userInfo, 'send_messages')) {
       socket.emit('error', { code: 'FORBIDDEN', message: 'You do not have permission to send messages' })
       return
@@ -130,7 +161,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     db.prepare(
       `INSERT INTO messages (id, channel_id, author_id, author_username, content)
        VALUES (?, ?, ?, ?, ?)`
-    ).run(id, channelId, authorId, authorUsername, content.trim())
+    ).run(id, channelId, userId, username, content.trim())
 
     const row = db.prepare(
       `SELECT m.*, u.display_name, u.avatar
@@ -157,16 +188,16 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     processMentions(io, { ...message, author_id: row.author_id, author_username: row.author_username }, mentions)
   })
 
-  socket.on('message:edit', ({ messageId, content, authorId }: {
+  socket.on('message:edit', ({ messageId, content }: {
     messageId: string
     content: string
-    authorId: string
   }) => {
-    if (!messageId || !content?.trim()) return
+    if (!checkSocketRateLimit(socket, 'message:edit', 20, 10_000)) return
+    if (!messageId || !content?.trim() || !userId) return
     if (content.length > 4000) return
 
     const db = getDb()
-    const existing = db.prepare('SELECT * FROM messages WHERE id = ? AND author_id = ?').get(messageId, authorId) as any
+    const existing = db.prepare('SELECT * FROM messages WHERE id = ? AND author_id = ?').get(messageId, userId) as any
     if (!existing) {
       socket.emit('error', { code: 'FORBIDDEN', message: 'Cannot edit this message' })
       return
@@ -175,7 +206,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     const now = Math.floor(Date.now() / 1000)
     db.prepare(
       'INSERT INTO message_edits (id, message_id, old_content, edited_by, edited_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(uuidv4(), messageId, existing.content, authorId, now)
+    ).run(uuidv4(), messageId, existing.content, userId, now)
     db.prepare('UPDATE messages SET content = ?, edited_at = ?, updated_at = ? WHERE id = ?').run(
       content.trim(), now, now, messageId,
     )
@@ -202,13 +233,14 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     io.to(existing.channel_id).emit('message:edit', updated)
   })
 
-  socket.on('message:delete', ({ messageId, authorId }: { messageId: string; authorId: string }) => {
+  socket.on('message:delete', ({ messageId }: { messageId: string }) => {
+    if (!userId) return
     const db = getDb()
     const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
     if (!message) return
 
-    const userPerms = getUserPermissions(authorId)
-    if (message.author_id !== authorId && (!userPerms || !hasPermission(userPerms, 'delete_messages'))) {
+    const userPerms = getUserPermissions(userId)
+    if (message.author_id !== userId && (!userPerms || !hasPermission(userPerms, 'delete_messages'))) {
       socket.emit('error', { code: 'FORBIDDEN', message: 'Cannot delete this message' })
       return
     }
@@ -219,7 +251,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     io.to(message.channel_id).emit('message:delete', { id: messageId, channel_id: message.channel_id })
   })
 
-  socket.on('mentions:read', ({ userId, channelId }: { userId: string; channelId?: string }) => {
+  socket.on('mentions:read', ({ channelId }: { channelId?: string }) => {
     if (!userId) return
     const db = getDb()
     if (channelId) {
@@ -236,7 +268,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('channel:read', ({ userId, channelId }: { userId: string; channelId: string }, callback?: Function) => {
+  socket.on('channel:read', ({ channelId }: { channelId: string }, callback?: Function) => {
     if (!userId || !channelId) return
     const db = getDb()
     const now = Math.floor(Date.now() / 1000)
@@ -251,7 +283,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('dm:read', ({ userId, channelId }: { userId: string; channelId: string }, callback?: Function) => {
+  socket.on('dm:read', ({ channelId }: { channelId: string }, callback?: Function) => {
     if (!userId || !channelId) return
     const db = getDb()
     const now = Math.floor(Date.now() / 1000)
@@ -272,7 +304,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('channel:unread', ({ userId }: { userId: string }, callback?: Function) => {
+  socket.on('channel:unread', (_, callback?: Function) => {
     if (!userId || typeof callback !== 'function') return
     const db = getDb()
     const rows = db.prepare(
@@ -294,7 +326,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     callback(unreadCounts)
   })
 
-  socket.on('mentions:unread', ({ userId }: { userId: string }, callback?: Function) => {
+  socket.on('mentions:unread', (_, callback?: Function) => {
     if (!userId || typeof callback !== 'function') return
     const db = getDb()
     const rows = db.prepare(
@@ -305,38 +337,38 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     callback(rows)
   })
 
-  socket.on('typing:start', ({ channelId, username }: { channelId: string; username: string }) => {
+  socket.on('typing:start', ({ channelId }: { channelId: string }) => {
+    if (!checkSocketRateLimit(socket, 'typing', 20, 10_000)) return
     socket.to(channelId).emit('typing:start', { username })
   })
 
-  socket.on('typing:stop', ({ channelId, username }: { channelId: string; username: string }) => {
+  socket.on('typing:stop', ({ channelId }: { channelId: string }) => {
     socket.to(channelId).emit('typing:stop', { username })
   })
 
-  socket.on('dm:send', ({ toUserId, fromId, fromUsername, content, encrypted }: {
+  socket.on('dm:send', ({ toUserId, content, encrypted }: {
     toUserId: string
-    fromId: string
-    fromUsername: string
     content: string
     encrypted?: boolean
   }) => {
-    if (!toUserId || !content?.trim()) return
+    if (!checkSocketRateLimit(socket, 'dm:send', 30, 10_000)) return
+    if (!toUserId || !content?.trim() || !userId) return
 
     const db = getDb()
     let channel = db.prepare(
       'SELECT * FROM dm_channels WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)'
-    ).get(fromId, toUserId, toUserId, fromId) as any
+    ).get(userId, toUserId, toUserId, userId) as any
 
     if (!channel) {
       const channelId = uuidv4()
-      db.prepare('INSERT INTO dm_channels (id, user1_id, user2_id) VALUES (?, ?, ?)').run(channelId, fromId, toUserId)
+      db.prepare('INSERT INTO dm_channels (id, user1_id, user2_id) VALUES (?, ?, ?)').run(channelId, userId, toUserId)
       channel = { id: channelId }
     }
 
     const id = uuidv4()
     db.prepare(
       'INSERT INTO direct_messages (id, channel_id, from_id, from_username, to_id, content, encrypted) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, channel.id, fromId, fromUsername, toUserId, content.trim(), encrypted ? 1 : 0)
+    ).run(id, channel.id, userId, username, toUserId, content.trim(), encrypted ? 1 : 0)
 
     const now = Math.floor(Date.now() / 1000)
     db.prepare('UPDATE dm_channels SET last_message_at = ? WHERE id = ?').run(now, channel.id)
@@ -344,8 +376,8 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     const dm = {
       id,
       channel_id: channel.id,
-      user_id: fromId,
-      username: fromUsername,
+      user_id: userId,
+      username,
       content: content.trim(),
       encrypted: encrypted ? 1 : 0,
       created_at: Date.now(),
@@ -354,7 +386,8 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     socket.emit('dm:sent', dm)
   })
 
-  socket.on('user:joined', ({ userId, username }: { userId: string; username: string }) => {
+  socket.on('user:joined', () => {
+    if (!userId) return
     ;(socket as any).userId = userId
     ;(socket as any).username = username
 
@@ -367,7 +400,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     socket.broadcast.emit('user:online', { userId, username, socketId: socket.id })
   })
 
-  socket.on('presence:heartbeat', ({ userId }: { userId: string }) => {
+  socket.on('presence:heartbeat', () => {
     if (!userId) return
     const db = getDb()
     const now = Math.floor(Date.now() / 1000)
@@ -377,7 +410,6 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
   })
 
   socket.on('disconnect', () => {
-    const userId = (socket as any).userId
     if (userId) {
       socket.broadcast.emit('user:offline', { userId })
     }

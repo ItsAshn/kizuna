@@ -39,6 +39,33 @@ function getContentType(filename: string): string {
   return MIME_TYPES[ext] || 'application/octet-stream'
 }
 
+const MAGIC_BYTES: Record<string, number[][]> = {
+  '.jpg': [[0xFF, 0xD8, 0xFF]],
+  '.jpeg': [[0xFF, 0xD8, 0xFF]],
+  '.png': [[0x89, 0x50, 0x4E, 0x47]],
+  '.gif': [[0x47, 0x49, 0x46, 0x38]],
+  '.webp': [[0x52, 0x49, 0x46, 0x46]],
+  '.mp4': [[0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]],
+  '.mp3': [[0xFF, 0xFB], [0xFF, 0xF3], [0xFF, 0xF2], [0x49, 0x44, 0x33]],
+  '.ogg': [[0x4F, 0x67, 0x67, 0x53]],
+  '.wav': [[0x52, 0x49, 0x46, 0x46]],
+  '.pdf': [[0x25, 0x50, 0x44, 0x46]],
+}
+
+function verifyMagicBytes(buffer: Buffer, expectedExtension: string): boolean {
+  const signatures = MAGIC_BYTES[expectedExtension]
+  if (!signatures) return true
+  for (const sig of signatures) {
+    if (sig.length > buffer.length) continue
+    let match = true
+    for (let i = 0; i < sig.length; i++) {
+      if (buffer[i] !== sig[i]) { match = false; break }
+    }
+    if (match) return true
+  }
+  return false
+}
+
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 }
@@ -67,6 +94,11 @@ attachmentRoutes.post('/:channelId', authMiddleware, async (c) => {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer())
+
+  if (!verifyMagicBytes(buffer, ext)) {
+    return c.json({ error: 'File content does not match its extension' }, 415)
+  }
+
   const storedFilename = `${uuidv4()}${ext}`
   const filepath = path.join(UPLOADS_DIR, storedFilename)
 

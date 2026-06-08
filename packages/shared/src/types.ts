@@ -188,3 +188,9 @@ export interface ServerInfo {
   customCss: string | null
   voiceBitrateKbps: number
 }
+
+export interface PoWChallenge {
+  challenge: string
+  difficulty: number
+  expiresAt: number
+}

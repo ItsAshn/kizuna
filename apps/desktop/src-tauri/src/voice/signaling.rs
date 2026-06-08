@@ -182,7 +182,8 @@ impl VoiceController {
 
         eprintln!("[VoiceNative] finish_join bitrate={voice_bitrate_kbps}kbps");
 
-        let encoder = encode::AudioEncoder::new(48000, 1)
+        let bitrate_bps = (voice_bitrate_kbps * 1000) as u32;
+        let encoder = encode::AudioEncoder::new(48000, 1, bitrate_bps)
             .map_err(|e| format!("Opus encoder: {e}"))?;
 
         let (pcm_tx, pcm_rx) = mpsc::unbounded_channel::<Vec<f32>>();
