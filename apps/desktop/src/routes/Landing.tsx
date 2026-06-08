@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FaWindows, FaLinux, FaApple, FaGithub, FaDocker } from 'react-icons/fa'
+import { FaWindows, FaLinux, FaGithub, FaDocker } from 'react-icons/fa'
 import { MessageCircle, Mic, Monitor, Lock, Code, Download, ExternalLink, ArrowRight, Server } from 'lucide-react'
 import '../styles/landing.css'
 
@@ -8,7 +8,7 @@ interface LandingProps {
   onEnterApp: () => void
 }
 
-const UNIX_CMD = 'curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install-desktop.sh | bash'
+const LINUX_CMD = 'curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install-desktop.sh | bash'
 const WIN_CMD = 'irm https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install-desktop.ps1 | iex'
 const DOCKER_COMPOSE = `git clone https://github.com/ItsAshn/kizuna.git
 cd kizuna
@@ -50,13 +50,13 @@ const FEATURES = [
 ]
 
 const STEPS = [
-  { step: '1', title: 'Deploy', desc: 'Run the server with Docker Compose on any Linux machine or VPS.' },
-  { step: '2', title: 'Configure', desc: 'Set your domain, admin credentials, and optional TURN server in the .env file.' },
-  { step: '3', title: 'Invite', desc: 'Share your server URL or create invite codes. Users connect via the desktop or web app.' },
+  { step: '1', title: 'Download', desc: 'Get the desktop app for Linux or Windows, or jump straight into the web app.' },
+  { step: '2', title: 'Connect', desc: 'Try the official test server at server.use-kizuna.com or connect to any self-hosted instance.' },
+  { step: '3', title: 'Chat & Voice', desc: 'Send messages, hop into voice channels, and share your screen with your community.' },
 ]
 
 export default function Landing({ onConnect, onEnterApp }: LandingProps) {
-  const [installTab, setInstallTab] = useState<'unix' | 'windows'>('unix')
+  const [installTab, setInstallTab] = useState<'linux' | 'windows'>('linux')
   const [copied, setCopied] = useState(false)
   const [dockerCopied, setDockerCopied] = useState(false)
 
@@ -126,7 +126,7 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
 
       <section className="landing-how" id="how-it-works">
         <h2 className="landing-section__title">How it works</h2>
-        <p className="landing-section__subtitle">Three steps to your own communication platform.</p>
+        <p className="landing-section__subtitle">Three steps to start chatting with your community.</p>
         <div className="landing-how__grid">
           {STEPS.map((s) => (
             <div key={s.step} className="landing-how-card">
@@ -140,16 +140,15 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
 
       <section className="landing-download" id="download">
         <h2 className="landing-section__title">Download the desktop app</h2>
-        <p className="landing-section__subtitle">Available for Linux, macOS, and Windows.</p>
+        <p className="landing-section__subtitle">Available for Linux and Windows.</p>
         <div className="landing-download__card">
           <div className="landing-download__tabs">
             <button
-              className={`landing-download__tab ${installTab === 'unix' ? 'landing-download__tab--active' : ''}`}
-              onClick={() => setInstallTab('unix')}
+              className={`landing-download__tab ${installTab === 'linux' ? 'landing-download__tab--active' : ''}`}
+              onClick={() => setInstallTab('linux')}
             >
               <FaLinux size={13} />
-              <FaApple size={13} />
-              <span>Linux / macOS</span>
+              <span>Linux</span>
             </button>
             <button
               className={`landing-download__tab ${installTab === 'windows' ? 'landing-download__tab--active' : ''}`}
@@ -160,10 +159,10 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
             </button>
           </div>
           <div className="landing-download__code">
-            <code className="landing-download__cmd">{installTab === 'unix' ? UNIX_CMD : WIN_CMD}</code>
+            <code className="landing-download__cmd">{installTab === 'linux' ? LINUX_CMD : WIN_CMD}</code>
             <button
               className="landing-download__copy"
-              onClick={() => handleCopy(installTab === 'unix' ? UNIX_CMD : WIN_CMD, setCopied)}
+              onClick={() => handleCopy(installTab === 'linux' ? LINUX_CMD : WIN_CMD, setCopied)}
             >
               {copied ? 'Copied!' : 'Copy'}
             </button>
@@ -205,21 +204,6 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
             Full documentation on GitHub
             <ExternalLink size={12} />
           </a>
-        </div>
-      </section>
-
-      <section className="landing-tech">
-        <h2 className="landing-section__title">Built with</h2>
-        <div className="landing-tech__tags">
-          <span className="landing-tech__tag">TypeScript</span>
-          <span className="landing-tech__tag">React</span>
-          <span className="landing-tech__tag">Tauri</span>
-          <span className="landing-tech__tag">WebRTC</span>
-          <span className="landing-tech__tag">mediasoup</span>
-          <span className="landing-tech__tag">Socket.IO</span>
-          <span className="landing-tech__tag">SQLite</span>
-          <span className="landing-tech__tag">Docker</span>
-          <span className="landing-tech__tag">Hono</span>
         </div>
       </section>
 

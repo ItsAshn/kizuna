@@ -2,6 +2,17 @@
    Landing Page
    ══════════════════════════════════════════════════════════════ */
 
+@keyframes landingFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .landing {
   flex: 1;
   overflow-y: auto;
@@ -238,14 +249,24 @@
 .landing-feature-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   padding: 28px 24px;
-  transition: border-color 0.2s ease, transform 0.2s ease;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, border-radius 0.2s ease;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  animation: landingFadeUp 0.5s ease both;
 }
+
+.landing-feature-card:nth-child(1) { animation-delay: 0.1s; }
+.landing-feature-card:nth-child(2) { animation-delay: 0.15s; }
+.landing-feature-card:nth-child(3) { animation-delay: 0.2s; }
+.landing-feature-card:nth-child(4) { animation-delay: 0.25s; }
+.landing-feature-card:nth-child(5) { animation-delay: 0.3s; }
+.landing-feature-card:nth-child(6) { animation-delay: 0.35s; }
 
 .landing-feature-card:hover {
   border-color: var(--brand);
   transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(76, 110, 245, 0.15), 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
 .landing-feature-card__icon {
@@ -256,8 +277,17 @@
   height: 44px;
   border-radius: var(--radius-md);
   background: var(--brand-dim);
+  border: 1px solid rgba(76, 110, 245, 0.2);
   color: var(--brand);
   margin-bottom: 16px;
+  transition: border-radius 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.landing-feature-card:hover .landing-feature-card__icon {
+  border-radius: var(--radius-sm);
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
 }
 
 .landing-feature-card__title {
@@ -335,10 +365,10 @@
 .landing-download__card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   overflow: hidden;
   margin-top: 32px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .landing-download__tabs {
@@ -443,10 +473,10 @@
 .landing-selfhost__card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   overflow: hidden;
   margin-top: 32px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .landing-selfhost__code {
@@ -522,37 +552,6 @@
 
 .landing-selfhost__link:hover {
   color: var(--brand);
-}
-
-/* ── Tech ─────────────────────────────────────────────────── */
-
-.landing-tech {
-  padding: 80px 24px 96px;
-  max-width: 700px;
-  margin: 0 auto;
-  border-top: 1px solid var(--border-color);
-}
-
-.landing-tech__tags {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 24px;
-}
-
-.landing-tech__tag {
-  padding: 6px 14px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-full);
-  font-size: 13px;
-  color: var(--text-secondary);
-  transition: border-color 0.15s ease;
-}
-
-.landing-tech__tag:hover {
-  border-color: var(--brand);
 }
 
 /* ── Footer ───────────────────────────────────────────────── */
@@ -690,10 +689,6 @@
   }
 
   .landing-selfhost {
-    padding: 56px 20px 64px;
-  }
-
-  .landing-tech {
     padding: 56px 20px 64px;
   }
 
