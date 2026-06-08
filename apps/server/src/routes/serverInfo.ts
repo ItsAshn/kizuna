@@ -45,8 +45,14 @@ function getServerInfo() {
     hasBackground,
     backgroundBlur: backgroundBlur?.value ? parseInt(backgroundBlur.value, 10) : 0,
     customCss: customCss?.value || null,
-    voiceBitrateKbps: voiceBitrateRow?.value ? parseInt(voiceBitrateRow.value, 10) || 64 : 64,
+    voiceBitrateKbps: voiceBitrateRow?.value ? parseInt(voiceBitrateRow.value, 10) || getEnvBitrate() : getEnvBitrate(),
   }
+}
+
+function getEnvBitrate(): number {
+  const envBitrate = parseInt(process.env.AUDIO_BITRATE_KBPS || '', 10)
+  if (!isNaN(envBitrate) && envBitrate >= 8 && envBitrate <= 512) return envBitrate
+  return 64
 }
 
 function generateInviteCode(serverUrl: string): string {

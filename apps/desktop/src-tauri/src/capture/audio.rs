@@ -219,7 +219,7 @@ pub fn start_capture(
     let config = cpal::StreamConfig {
         channels,
         sample_rate: target_sample_rate,
-        buffer_size: cpal::BufferSize::Default,
+        buffer_size: cpal::BufferSize::Fixed(960),
     };
     alog!(
         "start_capture: stream config: {}Hz {}ch buffer=Default targetFormat={:?}",
@@ -393,6 +393,4 @@ fn is_virtual_device_name(name: &str) -> bool {
         || lower.contains("upmix")
         || lower.contains("downmix")
         || (lower.contains("output") && !lower.contains("wave") && !lower.contains("usb"))
-        || lower.contains("pipewire sound server")
-        || lower.contains("pulseaudio sound server")
 }

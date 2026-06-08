@@ -49,31 +49,65 @@ pub fn start_native_audio_capture(
         }
     }
 
-    // Fall back to any available input device, skipping obvious non-microphones
-    let devices = host
+    // Fall back to any available input device, skipping obvious non-microphones.
+    // Collect devices first so we can try sound-server devices before raw hardware.
+    let devices: Vec<cpal::Device> = host
         .input_devices()
-        .map_err(|e| format!("Failed to enumerate input devices: {e}"))?;
+        .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
+        .collect();
 
-    for device in devices {
+    let mut sound_server_found = false;
+    let mut hardware_found = false;
+
+    // Pass 1: try sound server devices (pipewire, pulseaudio) — they may work
+    // even when the ALSA pipewire plugin is broken because they use different
+    // plugins (libasound_module_pcm_pulse.so etc.)
+    for device in &devices {
         let dname = device
             .description()
             .map(|d| d.name().to_string())
             .unwrap_or_else(|_| "unknown".into());
 
-        // Skip known non-microphone virtual/dummy devices
         let lower = dname.to_lowercase();
+        if lower.contains("pipewire sound server")
+            || lower.contains("pulseaudio sound server")
+        {
+            sound_server_found = true;
+            match open_device(device, sample_rate, channels, &pcm_tx, &cancel) {
+                Ok(stream) => {
+                    eprintln!("[AudioCapture] using sound server device: {dname}");
+                    return Ok(stream);
+                }
+                Err(e) => {
+                    eprintln!("[AudioCapture] sound server device '{dname}' failed: {e}");
+                }
+            }
+        }
+    }
+
+    // Pass 2: try remaining real hardware devices
+    for device in &devices {
+        let dname = device
+            .description()
+            .map(|d| d.name().to_string())
+            .unwrap_or_else(|_| "unknown".into());
+
+        let lower = dname.to_lowercase();
+        // Skip virtual dummy devices and already-tried sound server devices
         if lower.contains("discard") || lower.contains("rate converter")
             || lower.contains("plugin for") || lower.contains("jack audio")
             || lower.contains("open sound") || lower.contains("speex")
             || lower.contains("upmix") || lower.contains("downmix")
-            || lower.contains("output") || lower.contains("pipewire sound server")
+            || (lower.contains("output") && !lower.contains("wave") && !lower.contains("usb"))
+            || lower.contains("pipewire sound server")
             || lower.contains("pulseaudio sound server")
         {
             eprintln!("[AudioCapture] skipped virtual device: {dname}");
             continue;
         }
 
-        match open_device(&device, sample_rate, channels, &pcm_tx, &cancel) {
+        hardware_found = true;
+        match open_device(device, sample_rate, channels, &pcm_tx, &cancel) {
             Ok(stream) => {
                 eprintln!("[AudioCapture] using fallback device: {dname}");
                 return Ok(stream);
@@ -82,6 +116,10 @@ pub fn start_native_audio_capture(
                 eprintln!("[AudioCapture] trying next device '{dname}' (error: {e})");
             }
         }
+    }
+
+    if !sound_server_found && !hardware_found {
+        return Err("No audio input devices found".into());
     }
 
     Err("No working audio input device found".into())
@@ -102,7 +140,7 @@ fn open_device(
     let config = cpal::StreamConfig {
         channels,
         sample_rate,
-        buffer_size: cpal::BufferSize::Default,
+        buffer_size: cpal::BufferSize::Fixed(960),
     };
 
     let err_fn = |err| {

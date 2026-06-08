@@ -56,6 +56,8 @@ function getServerVoiceBitrateKbps(): number {
     const parsed = parseInt(row.value, 10)
     if (!isNaN(parsed) && parsed >= 8 && parsed <= 512) return parsed
   }
+  const envBitrate = parseInt(process.env.AUDIO_BITRATE_KBPS || '', 10)
+  if (!isNaN(envBitrate) && envBitrate >= 8 && envBitrate <= 512) return envBitrate
   return 64
 }
 
