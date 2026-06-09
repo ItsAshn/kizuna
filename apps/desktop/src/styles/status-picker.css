@@ -2,49 +2,44 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-}
-
-.status-picker__trigger {
-  width: 12px;
-  height: 12px;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-full);
-  border: 2px solid var(--bg-secondary);
+  border: 2px solid transparent;
   cursor: pointer;
-  padding: 0;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease;
 }
 
-.status-picker__trigger:hover {
-  transform: scale(1.15);
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.15);
+.status-picker:hover {
+  filter: brightness(1.1);
 }
 
-.status-picker__trigger--online {
-  background: var(--green);
+.status-picker--online {
+  border-color: var(--green);
 }
 
-.status-picker__trigger--idle {
-  background: var(--yellow);
+.status-picker--idle {
+  border-color: var(--yellow);
 }
 
-.status-picker__trigger--busy {
-  background: var(--red);
+.status-picker--busy {
+  border-color: var(--red);
 }
 
-.status-picker__trigger--offline {
-  background: var(--gray);
+.status-picker--offline {
+  border-color: var(--gray);
 }
 
 .status-picker__dropdown {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
+  position: fixed;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   padding: 4px;
   min-width: 140px;
-  z-index: 100;
+  z-index: 9999;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   animation: statusFadeIn 0.12s ease-out;
 }
@@ -52,7 +47,7 @@
 @keyframes statusFadeIn {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(-4px);
   }
   to {
     opacity: 1;
@@ -72,6 +67,7 @@
   font-size: 12px;
   cursor: pointer;
   border-radius: 4px;
+  text-align: left;
   transition: background 0.1s ease, color 0.1s ease;
 }
 

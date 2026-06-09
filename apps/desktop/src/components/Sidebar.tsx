@@ -83,12 +83,13 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
     <div className="sidebar">
       <div className="sidebar__header">
         <div className="sidebar__user-row">
-          <div className="sidebar__user-avatar">
-            {session?.user.avatar ? (
-              <img src={session.user.avatar} alt="" className="sidebar__user-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-            ) : session?.user.display_name?.[0]?.toUpperCase()}
-          </div>
-          <UserStatusPicker socketRef={socketRef} />
+          <UserStatusPicker socketRef={socketRef}>
+            <div className="sidebar__user-avatar">
+              {session?.user.avatar ? (
+                <img src={session.user.avatar} alt="" className="sidebar__user-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+              ) : session?.user.display_name?.[0]?.toUpperCase()}
+            </div>
+          </UserStatusPicker>
           <div className="sidebar__user-info">
             <p className="sidebar__user-displayname">{session?.user.display_name || session?.user.username}</p>
             <p className="sidebar__user-subtitle">@{session?.user.username}{isAdmin ? ' · admin' : ''}</p>
