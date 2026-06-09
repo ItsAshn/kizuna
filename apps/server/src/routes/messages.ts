@@ -55,7 +55,7 @@ messageRoutes.get('/:channelId', authMiddleware, (c) => {
 // POST /messages/:channelId — send message
 messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   const user = getAuth(c)
-  const channelId = c.req.param('channelId')
+  const channelId = c.req.param('channelId')!
 
   const userPerms = getUserPermissions(user.userId)
   if (!userPerms || !hasPermission(userPerms, 'send_messages')) {

@@ -139,7 +139,7 @@ channelRoutes.delete('/:id', authMiddleware, (c) => {
 // GET /channels/:id/permissions — check user's write permission for a channel
 channelRoutes.get('/:id/permissions', authMiddleware, (c) => {
   const user = getAuth(c)
-  const channelId = c.req.param('id')
+  const channelId = c.req.param('id')!
   const perms = getUserChannelPermissions(user.userId, channelId)
   return c.json(perms)
 })

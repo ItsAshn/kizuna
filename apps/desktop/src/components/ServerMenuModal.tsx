@@ -11,7 +11,6 @@ import {
   revokeInvite,
   setMemberRole,
   kickMember,
-  assignCustomRole,
   addMemberRole,
   removeMemberRole,
   fetchRoles,
@@ -350,6 +349,9 @@ export default function ServerMenuModal({ onClose }: Props) {
       setMembers(members.map(x => x.id === m.id ? { ...x, role: newRole } : x))
       setMemberMsg(prev => ({ ...prev, [m.id]: `role → ${newRole}` }))
       setTimeout(() => setMemberMsg(prev => { const n = { ...prev }; delete n[m.id]; return n }), 2000)
+      if (m.id === session?.user?.id) {
+        useServerStore.getState().setActiveSession({ ...session!, user: { ...session!.user, role: newRole } })
+      }
     } catch (err) {
       setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
     }
@@ -364,23 +366,6 @@ export default function ServerMenuModal({ onClose }: Props) {
     } catch (err) {
       setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
     }
-  }
-
-  const handleAssignCustomRole = async (userId: string, roleId: string | null) => {
-    if (!serverUrl || !token) return
-    setAssigningRole(prev => ({ ...prev, [userId]: true }))
-    try {
-      await assignCustomRole(serverUrl, token, userId, roleId)
-      setMembers(members.map(x =>
-        x.id === userId ? {
-          ...x,
-          custom_role_id: roleId,
-          custom_role_name: roles.find(r => r.id === roleId)?.name ?? null,
-          custom_role_color: roles.find(r => r.id === roleId)?.color ?? null,
-        } : x,
-      ))
-    } catch {}
-    setAssigningRole(prev => ({ ...prev, [userId]: false }))
   }
 
   const handleAddRole = async (userId: string, roleId: string) => {
@@ -490,9 +475,13 @@ export default function ServerMenuModal({ onClose }: Props) {
     try {
       const updated = await updateRole(serverUrl, token, id, editName, editColor, editPerms)
       setRoles(prev => prev.map(r => r.id === id ? updated : r))
-      setMembers(members.map(m =>
-        m.custom_role_id === id ? { ...m, custom_role_name: updated.name, custom_role_color: updated.color } : m,
-      ))
+      setMembers(members.map(m => ({
+        ...m,
+        custom_role_id: m.custom_role_id === id ? id : m.custom_role_id,
+        custom_role_name: m.custom_role_id === id ? updated.name : m.custom_role_name,
+        custom_role_color: m.custom_role_id === id ? updated.color : m.custom_role_color,
+        custom_roles: (m.custom_roles || []).map(r => r.id === id ? { ...r, name: updated.name, color: updated.color } : r),
+      })))
       setEditingRoleId(null)
     } catch {}
     setSavingRoleId(null)
@@ -504,7 +493,13 @@ export default function ServerMenuModal({ onClose }: Props) {
     try {
       await deleteRole(serverUrl, token, id)
       setRoles(prev => prev.filter(r => r.id !== id))
-      setMembers(members.map(m => m.custom_role_id === id ? { ...m, custom_role_id: null, custom_role_name: null, custom_role_color: null } : m))
+      setMembers(members.map(m => ({
+        ...m,
+        custom_role_id: m.custom_role_id === id ? null : m.custom_role_id,
+        custom_role_name: m.custom_role_id === id ? null : m.custom_role_name,
+        custom_role_color: m.custom_role_id === id ? null : m.custom_role_color,
+        custom_roles: (m.custom_roles || []).filter(r => r.id !== id),
+      })))
       if (editingRoleId === id) setEditingRoleId(null)
     } catch {}
   }
@@ -666,8 +661,8 @@ export default function ServerMenuModal({ onClose }: Props) {
                     <p className="server-menu__loading">no members</p>
                   ) : (
                     [...members].sort((a, b) => {
-                      const rankA = a.role === 'admin' ? 0 : a.custom_role_id ? 1 : 2
-                      const rankB = b.role === 'admin' ? 0 : b.custom_role_id ? 1 : 2
+                      const rankA = a.role === 'admin' ? 0 : (a.custom_roles || []).length > 0 ? 1 : 2
+                      const rankB = b.role === 'admin' ? 0 : (b.custom_roles || []).length > 0 ? 1 : 2
                       const r = rankA - rankB
                       if (r !== 0) return r
                       return a.username.localeCompare(b.username)
@@ -688,12 +683,6 @@ export default function ServerMenuModal({ onClose }: Props) {
                               <p className={`server-menu__member-role ${m.role === 'admin' ? 'server-menu__member-role--admin' : ''}`}>
                                 {m.role ?? 'member'}
                               </p>
-                              {m.custom_role_name && (
-                                <span className="server-menu__member-badge"
-                                  style={{ color: m.custom_role_color || '#5865f2', borderColor: (m.custom_role_color || '#5865f2') + '66', backgroundColor: (m.custom_role_color || '#5865f2') + '22' }}>
-                                  {m.custom_role_name}
-                                </span>
-                              )}
                               {(m.custom_roles || []).map((r) => (
                                 <span key={r.id} className="server-menu__member-badge"
                                   style={{ color: r.color || '#5865f2', borderColor: (r.color || '#5865f2') + '66', backgroundColor: (r.color || '#5865f2') + '22' }}>
@@ -711,46 +700,36 @@ export default function ServerMenuModal({ onClose }: Props) {
                             </div>
                           </div>
                           {memberMsg[m.id] && <span className="server-menu__member-msg">{memberMsg[m.id]}</span>}
-                          {!isSelf && (
-                            <div className="server-menu__member-actions">
-                              <div style={{ display: 'flex', gap: '4px' }}>
-                                <button onClick={() => handleToggleRole(m)} className="server-menu__member-action-btn">
-                                  {m.role === 'admin' ? 'demote' : 'promote'}
-                                </button>
+                          <div className="server-menu__member-actions">
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button onClick={() => handleToggleRole(m)} className="server-menu__member-action-btn">
+                                {m.role === 'admin' ? 'remove admin' : 'make admin'}
+                              </button>
+                              {!isSelf && (
                                 <button onClick={() => handleKick(m)} className="server-menu__member-action-btn server-menu__member-action-btn--danger">
                                   kick
                                 </button>
-                              </div>
-                              {roles.length > 0 && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-                                  <select
-                                    value=""
-                                    disabled={assigningRole[m.id]}
-                                    onChange={(e) => {
-                                      if (e.target.value) handleAddRole(m.id, e.target.value)
-                                      e.target.value = ''
-                                    }}
-                                    className="server-menu__select"
-                                    style={{ fontSize: '9px', padding: '2px 4px' }}
-                                  >
-                                    <option value="">+ role</option>
-                                    {roles.filter(r => !(m.custom_roles || []).some(cr => cr.id === r.id) && r.id !== m.custom_role_id)
-                                      .map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                                  </select>
-                                  <select
-                                    value={m.custom_role_id ?? ''}
-                                    disabled={assigningRole[m.id]}
-                                    onChange={(e) => handleAssignCustomRole(m.id, e.target.value || null)}
-                                    className="server-menu__select"
-                                    style={{ fontSize: '9px', padding: '2px 4px' }}
-                                  >
-                                    <option value="">no primary role</option>
-                                    {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                                  </select>
-                                </div>
                               )}
                             </div>
-                          )}
+                            {roles.length > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                <select
+                                  value=""
+                                  disabled={assigningRole[m.id]}
+                                  onChange={(e) => {
+                                    if (e.target.value) handleAddRole(m.id, e.target.value)
+                                    e.target.value = ''
+                                  }}
+                                  className="server-menu__select"
+                                  style={{ fontSize: '9px', padding: '2px 4px' }}
+                                >
+                                  <option value="">+ role</option>
+                                  {roles.filter(r => !(m.custom_roles || []).some(cr => cr.id === r.id))
+                                    .map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                </select>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )
                     })

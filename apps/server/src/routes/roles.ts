@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission, isUserAdmin } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
@@ -19,6 +19,7 @@ roleRoutes.get('/', authMiddleware, (c) => {
   const result = roles.map((r) => ({
     ...r,
     permissions: JSON.parse(r.permissions || '{}'),
+    is_admin: r.is_admin === 1,
     created_at: r.created_at ? r.created_at * 1000 : undefined,
   }))
   return c.json({ roles: result })
@@ -105,9 +106,11 @@ roleRoutes.delete('/:id', authMiddleware, (c) => {
   }
   const id = c.req.param('id')
   const db = getDb()
-  const existing = db.prepare('SELECT * FROM roles WHERE id = ?').get(id)
+  const existing = db.prepare('SELECT * FROM roles WHERE id = ?').get(id) as any
   if (!existing) return c.json({ error: 'Role not found' }, 404)
+  if (existing.is_admin === 1) return c.json({ error: 'Cannot delete the admin role' }, 403)
   db.prepare('UPDATE server_members SET custom_role_id = NULL WHERE custom_role_id = ?').run(id)
+  db.prepare('DELETE FROM member_roles WHERE role_id = ?').run(id)
   db.prepare('DELETE FROM roles WHERE id = ?').run(id)
   return c.json({ ok: true })
 })

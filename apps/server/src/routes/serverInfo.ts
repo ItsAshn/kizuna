@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, getUserInfo } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin } from '../middleware/auth'
 import { getAllPeers } from '../socket/voiceHandler'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
@@ -76,7 +76,7 @@ serverInfoRoutes.get('/info', (c) => {
 
 serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
   const user = getAuth(c)
-  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   const body = await c.req.json() as { name?: string; icon?: string | null; background_blur?: number; custom_css?: string | null; voice_bitrate_kbps?: number }
   const { name, icon, background_blur, custom_css, voice_bitrate_kbps } = body
@@ -136,7 +136,7 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
 
 serverInfoRoutes.post('/announce', authMiddleware, async (c) => {
   const user = getAuth(c)
-  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   const body = await c.req.json() as { title: string; body: string }
   const { title, body: announceBody } = body
@@ -293,7 +293,7 @@ serverInfoRoutes.get('/resolve/:code', (c) => {
 
 serverInfoRoutes.patch('/members/:userId/role', authMiddleware, async (c) => {
   const user = getAuth(c)
-  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   const targetUserId = c.req.param('userId') || ''
   if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
@@ -306,6 +306,13 @@ serverInfoRoutes.patch('/members/:userId/role', authMiddleware, async (c) => {
   if (!member) return c.json({ error: 'Member not found' }, 404)
 
   db.prepare('UPDATE server_members SET role = ? WHERE user_id = ?').run(role, targetUserId)
+
+  if (role === 'admin') {
+    db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(targetUserId, 'admin-role')
+  } else {
+    db.prepare('DELETE FROM member_roles WHERE user_id = ? AND role_id = ?').run(targetUserId, 'admin-role')
+  }
+
   return c.json({ ok: true })
 })
 
@@ -325,7 +332,7 @@ serverInfoRoutes.delete('/members/:userId', authMiddleware, (c) => {
   if (!member) return c.json({ error: 'Member not found' }, 404)
 
   const targetInfo = getUserInfo(targetUserId)
-  if (targetInfo && targetInfo.role === 'admin' && user.role !== 'admin') {
+  if (targetInfo && targetInfo.role === 'admin' && !isUserAdmin(user.userId)) {
     return c.json({ error: 'Cannot kick an admin' }, 403)
   }
 
@@ -335,7 +342,7 @@ serverInfoRoutes.delete('/members/:userId', authMiddleware, (c) => {
 
 serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, async (c) => {
   const user = getAuth(c)
-  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   const targetUserId = c.req.param('userId') || ''
   if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
@@ -357,7 +364,7 @@ serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, async (c)
 
 serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
   const user = getAuth(c)
-  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   const targetUserId = c.req.param('userId') || ''
   if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
@@ -378,7 +385,7 @@ serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
 
 serverInfoRoutes.delete('/members/:userId/roles/:roleId', authMiddleware, (c) => {
   const user = getAuth(c)
-  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   const targetUserId = c.req.param('userId') || ''
   const roleId = c.req.param('roleId') || ''
@@ -391,7 +398,7 @@ serverInfoRoutes.delete('/members/:userId/roles/:roleId', authMiddleware, (c) =>
 
 serverInfoRoutes.post('/members/:userId/generate-reset', authMiddleware, async (c) => {
   const user = getAuth(c)
-  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   const targetUserId = c.req.param('userId') || ''
   if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
@@ -417,7 +424,7 @@ serverInfoRoutes.post('/members/:userId/generate-reset', authMiddleware, async (
 // POST /background — upload background image (admin only)
 serverInfoRoutes.post('/background', authMiddleware, async (c) => {
   const user = getAuth(c)
-  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   const contentLength = parseInt(c.req.header('content-length') || '0', 10)
   if (contentLength > MAX_BACKGROUND_SIZE) {
@@ -494,7 +501,7 @@ serverInfoRoutes.get('/background', (c) => {
 // DELETE /background — remove background image (admin only)
 serverInfoRoutes.delete('/background', authMiddleware, (c) => {
   const user = getAuth(c)
-  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   try {
     const files = fs.readdirSync(BACKGROUNDS_DIR)

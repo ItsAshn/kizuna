@@ -120,6 +120,7 @@ export const SCHEMA_SQL = `
     name TEXT NOT NULL,
     color TEXT NOT NULL DEFAULT '#5865f2',
     permissions TEXT NOT NULL DEFAULT '{}',
+    is_admin INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER DEFAULT (unixepoch())
   );
 

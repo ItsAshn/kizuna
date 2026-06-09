@@ -391,8 +391,6 @@ export async function assignCustomRole(
 ): Promise<void> {
   if (roleId) {
     await client(serverUrl, token).post(`/api/server/members/${userId}/roles`, { roleId })
-  } else {
-    await client(serverUrl, token).delete(`/api/server/members/${userId}/roles`)
   }
 }
 

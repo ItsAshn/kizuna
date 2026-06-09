@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import bcrypt from 'bcryptjs'
 import { getDb } from '../db'
-import { signToken, authMiddleware } from '../middleware/auth'
+import { signToken, authMiddleware, isUserAdmin } from '../middleware/auth'
 import { generateChallenge, verifyPoW } from '../middleware/pow'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
@@ -64,9 +64,13 @@ authRoutes.post('/register', async (c) => {
     const userCount = db
       .prepare('SELECT COUNT(*) as n FROM server_members')
       .get() as { n: number }
-    const role = userCount.n === 0 ? 'admin' : 'member'
+    const isFirstUser = userCount.n === 0
 
-    db.prepare('INSERT INTO server_members (user_id, role) VALUES (?, ?)').run(id, role)
+    db.prepare('INSERT INTO server_members (user_id, role) VALUES (?, ?)').run(id, isFirstUser ? 'admin' : 'member')
+
+    if (isFirstUser) {
+      db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(id, 'admin-role')
+    }
 
     const user = db
       .prepare(
@@ -77,7 +81,7 @@ authRoutes.post('/register', async (c) => {
     return c.json(
       {
         token: signToken({ userId: user.id, username: user.username }),
-        user: { ...user, role },
+        user: { ...user, role: isFirstUser ? 'admin' : 'member' },
       },
       201,
     )
@@ -117,11 +121,14 @@ authRoutes.post('/login', async (c) => {
 
   if (!member) {
     const anyAdmin = db
-      .prepare("SELECT 1 FROM server_members WHERE role = 'admin'")
+      .prepare("SELECT 1 FROM member_roles mr JOIN roles r ON mr.role_id = r.id WHERE r.is_admin = 1")
       .get()
-    const role = anyAdmin ? 'member' : 'admin'
-    db.prepare('INSERT INTO server_members (user_id, role) VALUES (?, ?)').run(user.id, role)
-    member = { role }
+    const isFirstAdmin = !anyAdmin
+    db.prepare('INSERT INTO server_members (user_id, role) VALUES (?, ?)').run(user.id, isFirstAdmin ? 'admin' : 'member')
+    if (isFirstAdmin) {
+      db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(user.id, 'admin-role')
+    }
+    member = { role: isFirstAdmin ? 'admin' : 'member' }
   }
 
   return c.json({
@@ -151,11 +158,7 @@ authRoutes.get('/me', authMiddleware, (c) => {
     return c.json({ error: 'User not found' }, 404)
   }
 
-  const member = db
-    .prepare('SELECT role FROM server_members WHERE user_id = ?')
-    .get(auth.userId) as { role: string } | undefined
-
-  return c.json({ user: { ...user, role: member?.role || 'member' } })
+  return c.json({ user: { ...user, role: isUserAdmin(auth.userId) ? 'admin' : 'member' } })
 })
 
 authRoutes.patch('/profile', authMiddleware, async (c) => {
@@ -184,17 +187,13 @@ authRoutes.patch('/profile', authMiddleware, async (c) => {
     auth.userId,
   )
 
-  const member = db
-    .prepare('SELECT role FROM server_members WHERE user_id = ?')
-    .get(auth.userId) as { role: string }
-
   return c.json({
     user: {
       id: user.id,
       username: user.username,
       display_name: newName,
       avatar: newAvatar,
-      role: member?.role || 'member',
+      role: isUserAdmin(auth.userId) ? 'admin' : 'member',
     },
   })
 })
@@ -203,8 +202,7 @@ authRoutes.get('/users', authMiddleware, (c) => {
   const db = getDb()
   const users = db
     .prepare(
-      `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at,
-              COALESCE(sm.role, 'member') as role
+      `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at
        FROM users u
        LEFT JOIN server_members sm ON sm.user_id = u.id
        ORDER BY u.username`,
@@ -212,12 +210,12 @@ authRoutes.get('/users', authMiddleware, (c) => {
     .all() as any[]
 
   const memberRoles = db.prepare(`
-    SELECT mr.user_id, r.id, r.name, r.color, r.permissions
+    SELECT mr.user_id, r.id, r.name, r.color, r.permissions, r.is_admin
     FROM member_roles mr
     JOIN roles r ON mr.role_id = r.id
-  `).all() as { user_id: string; id: string; name: string; color: string; permissions: string }[]
+  `).all() as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number }[]
 
-  const rolesByUser: Record<string, { id: string; name: string; color: string; permissions: Record<string, boolean> }[]> = {}
+  const rolesByUser: Record<string, { id: string; name: string; color: string; permissions: Record<string, boolean>; is_admin: boolean }[]> = {}
   for (const row of memberRoles) {
     if (!rolesByUser[row.user_id]) rolesByUser[row.user_id] = []
     rolesByUser[row.user_id].push({
@@ -225,17 +223,18 @@ authRoutes.get('/users', authMiddleware, (c) => {
       name: row.name,
       color: row.color,
       permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
+      is_admin: row.is_admin === 1,
     })
   }
 
   // Also include legacy custom_role_id roles
   const legacyRoles = db.prepare(`
-    SELECT sm.user_id, r.id, r.name, r.color, r.permissions
+    SELECT sm.user_id, r.id, r.name, r.color, r.permissions, r.is_admin
     FROM server_members sm
     JOIN roles r ON sm.custom_role_id = r.id
     WHERE sm.custom_role_id IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = sm.user_id AND mr.role_id = sm.custom_role_id)
-  `).all() as { user_id: string; id: string; name: string; color: string; permissions: string }[]
+  `).all() as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number }[]
 
   for (const row of legacyRoles) {
     if (!rolesByUser[row.user_id]) rolesByUser[row.user_id] = []
@@ -245,15 +244,18 @@ authRoutes.get('/users', authMiddleware, (c) => {
         name: row.name,
         color: row.color,
         permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
+        is_admin: row.is_admin === 1,
       })
     }
   }
 
   const formatted = users.map((u: any) => {
     const userRoles = rolesByUser[u.id] || []
+    const isAdmin = userRoles.some(r => r.is_admin)
     return {
       ...u,
       last_seen_at: u.last_seen_at ? u.last_seen_at * 1000 : null,
+      role: isAdmin ? 'admin' : 'member',
       custom_roles: userRoles,
       custom_role_id: userRoles.length > 0 ? userRoles[0].id : null,
       custom_role_name: userRoles.length > 0 ? userRoles[0].name : null,

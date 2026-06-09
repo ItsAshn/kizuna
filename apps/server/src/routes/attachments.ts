@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb } from '../db'
-import { authMiddleware } from '../middleware/auth'
+import { authMiddleware, isUserAdmin } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
@@ -175,8 +175,7 @@ attachmentRoutes.delete('/:id', authMiddleware, (c) => {
   if (!attachment) return c.json({ error: 'Attachment not found' }, 404)
 
   if (!attachment.message_id) {
-    const member = db.prepare('SELECT role FROM server_members WHERE user_id = ?').get(user.userId) as { role: string } | undefined
-    if (member?.role !== 'admin') {
+    if (!isUserAdmin(user.userId)) {
       return c.json({ error: 'Cannot delete unattached files' }, 403)
     }
   } else {

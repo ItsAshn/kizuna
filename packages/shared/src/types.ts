@@ -75,6 +75,7 @@ export interface CustomRole {
   name: string
   color: string
   permissions: Partial<Record<Permission, boolean>>
+  is_admin?: boolean
   created_at?: number
 }
 

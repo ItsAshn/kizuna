@@ -112,6 +112,14 @@ function runMigrations(database: Database.Database): void {
     `ALTER TABLE channels ADD COLUMN write_role_id TEXT DEFAULT NULL`,
     `INSERT OR IGNORE INTO member_roles (user_id, role_id)
      SELECT user_id, custom_role_id FROM server_members WHERE custom_role_id IS NOT NULL`,
+    `ALTER TABLE roles ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`,
+    `INSERT OR IGNORE INTO roles (id, name, color, permissions, is_admin) VALUES
+     ('admin-role', 'Admin', '#f59e0b',
+      '{"send_messages":true,"manage_channels":true,"delete_messages":true,"kick_members":true,"manage_invites":true}',
+      1)`,
+    `INSERT OR IGNORE INTO member_roles (user_id, role_id)
+     SELECT user_id, 'admin-role' FROM server_members WHERE role = 'admin'
+       AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = server_members.user_id AND mr.role_id = 'admin-role')`,
   ]
 
   for (const sql of migrations) {

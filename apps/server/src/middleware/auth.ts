@@ -31,66 +31,80 @@ export function verifyToken(token: string): JwtPayload {
   return jwt.verify(token, getJwtSecret()) as JwtPayload
 }
 
+export function isUserAdmin(userId: string): boolean {
+  const db = getDb()
+  const row = db.prepare(`
+    SELECT 1 FROM member_roles mr
+    JOIN roles r ON mr.role_id = r.id
+    WHERE mr.user_id = ? AND r.is_admin = 1
+    UNION ALL
+    SELECT 1 FROM server_members sm
+    JOIN roles r ON sm.custom_role_id = r.id
+    WHERE sm.user_id = ? AND sm.custom_role_id IS NOT NULL AND r.is_admin = 1
+      AND NOT EXISTS (SELECT 1 FROM member_roles mr2 WHERE mr2.user_id = sm.user_id AND mr2.role_id = sm.custom_role_id)
+  `).get(userId, userId)
+  return !!row
+}
+
 export function getUserInfo(userId: string): AuthUser | null {
   const db = getDb()
   const user = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(userId) as { id: string; username: string; display_name: string } | undefined
   if (!user) return null
-  const member = db.prepare('SELECT role FROM server_members WHERE user_id = ?').get(userId) as { role: string } | undefined
   return {
     userId: user.id,
     username: user.username,
     displayName: user.display_name,
-    role: (member?.role as 'admin' | 'member') || 'member',
+    role: isUserAdmin(userId) ? 'admin' : 'member',
   }
 }
 
 export function getUserPermissions(userId: string): { role: string; permissions: Record<string, boolean> } | null {
   const db = getDb()
-  const member = db.prepare(`
-    SELECT sm.role
-    FROM server_members sm
-    WHERE sm.user_id = ?
-  `).get(userId) as { role: string } | undefined
-
+  const member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
   if (!member) return null
+
+  const userIsAdmin = isUserAdmin(userId)
+
+  if (userIsAdmin) {
+    return {
+      role: 'admin',
+      permissions: {
+        send_messages: true,
+        manage_channels: true,
+        delete_messages: true,
+        kick_members: true,
+        manage_invites: true,
+      },
+    }
+  }
 
   let permissions: Record<string, boolean> = {
     send_messages: true,
   }
 
-  if (member.role === 'admin') {
-    permissions = {
-      send_messages: true,
-      manage_channels: true,
-      delete_messages: true,
-      kick_members: true,
-      manage_invites: true,
-    }
-  } else {
-    const roles = db.prepare(`
-      SELECT r.permissions
-      FROM member_roles mr
-      JOIN roles r ON mr.role_id = r.id
-      WHERE mr.user_id = ?
-      UNION ALL
-      SELECT r.permissions
-      FROM server_members sm
-      JOIN roles r ON sm.custom_role_id = r.id
-      WHERE sm.user_id = ? AND sm.custom_role_id IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM member_roles mr2 WHERE mr2.user_id = sm.user_id AND mr2.role_id = sm.custom_role_id)
-    `).all(userId, userId) as { permissions: string }[]
+  const roles = db.prepare(`
+    SELECT r.permissions
+    FROM member_roles mr
+    JOIN roles r ON mr.role_id = r.id
+    WHERE mr.user_id = ?
+    UNION ALL
+    SELECT r.permissions
+    FROM server_members sm
+    JOIN roles r ON sm.custom_role_id = r.id
+    WHERE sm.user_id = ? AND sm.custom_role_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM member_roles mr2 WHERE mr2.user_id = sm.user_id AND mr2.role_id = sm.custom_role_id)
+  `).all(userId, userId) as { permissions: string }[]
 
-    for (const role of roles) {
-      try {
-        const rolePerms = JSON.parse(role.permissions || '{}')
-        for (const [key, value] of Object.entries(rolePerms)) {
-          if (value === true) permissions[key] = true
-        }
-      } catch { /* skip malformed JSON */ }
-    }
+  for (const role of roles) {
+    try {
+      const rolePerms = JSON.parse(role.permissions || '{}')
+      for (const [key, value] of Object.entries(rolePerms)) {
+        if (value === true) permissions[key] = true
+      }
+    } catch { /* skip malformed JSON */ }
   }
 
-  return { role: member.role, permissions }
+  return { role: 'member', permissions }
 }
 
 export function hasPermission(
@@ -101,14 +115,24 @@ export function hasPermission(
   return userInfo.permissions[permission] === true
 }
 
+export function hasPermissionForUser(
+  userId: string,
+  permission: string,
+): boolean {
+  if (isUserAdmin(userId)) return true
+  const info = getUserPermissions(userId)
+  if (!info) return false
+  return info.permissions[permission] === true
+}
+
 export function canWriteToChannel(userId: string, channelId: string): boolean {
   const db = getDb()
   const channel = db.prepare('SELECT locked, write_role_id FROM channels WHERE id = ?').get(channelId) as { locked: number; write_role_id: string | null } | undefined
   if (!channel || !channel.locked) return true
 
-  const member = db.prepare('SELECT role FROM server_members WHERE user_id = ?').get(userId) as { role: string } | undefined
-  if (!member) return false
-  if (member.role === 'admin') return true
+  const isMember = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
+  if (!isMember) return false
+  if (isUserAdmin(userId)) return true
 
   if (!channel.write_role_id) return false
 
@@ -127,9 +151,9 @@ export function getUserChannelPermissions(userId: string, channelId: string): { 
   const channel = db.prepare('SELECT locked, write_role_id FROM channels WHERE id = ?').get(channelId) as { locked: number; write_role_id: string | null } | undefined
   if (!channel || !channel.locked) return { can_write: true, locked: false, write_role_id: null, write_role_name: null }
 
-  const member = db.prepare('SELECT role FROM server_members WHERE user_id = ?').get(userId) as { role: string } | undefined
-  if (!member) return { can_write: false, locked: true, write_role_id: channel.write_role_id, write_role_name: null }
-  if (member.role === 'admin') return { can_write: true, locked: true, write_role_id: channel.write_role_id, write_role_name: null }
+  const isMember = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
+  if (!isMember) return { can_write: false, locked: true, write_role_id: channel.write_role_id, write_role_name: null }
+  if (isUserAdmin(userId)) return { can_write: true, locked: true, write_role_id: channel.write_role_id, write_role_name: null }
 
   let writeRoleName: string | null = null
   if (channel.write_role_id) {
@@ -178,7 +202,7 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
 
 export async function adminMiddleware(c: Context, next: Next): Promise<Response | void> {
   const user = c.get('auth' as never) as AuthUser | undefined
-  if (!user || user.role !== 'admin') {
+  if (!user || !isUserAdmin(user.userId)) {
     return c.json({ error: 'Admin access required' }, 403)
   }
   await next()
