@@ -338,12 +338,13 @@
 
 .sidebar__lock-icon {
   margin-left: auto;
-  font-size: 9px;
+  display: flex;
+  align-items: center;
   color: var(--yellow);
-  font-weight: 700;
-  padding: 1px 4px;
+  padding: 1px 3px;
   border-radius: 3px;
   background: rgba(250, 176, 5, 0.15);
+  flex-shrink: 0;
 }
 
 .sidebar__lock-btn {
@@ -351,12 +352,14 @@
   border: none;
   cursor: pointer;
   color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
   border-radius: 3px;
   margin-left: 2px;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .sidebar__lock-btn:hover {

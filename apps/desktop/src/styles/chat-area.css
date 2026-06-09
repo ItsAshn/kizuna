@@ -529,6 +529,13 @@
   color: var(--red);
   border: 1px solid var(--red-dim-border);
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-area__locked-badge-icon {
+  flex-shrink: 0;
 }
 
 .chat-area__locked-badge--can-write {

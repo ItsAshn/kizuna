@@ -6,6 +6,7 @@ import { useChatStore } from '../store/chatStore'
 import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, uploadAttachment, fetchChannelPermissions } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
+import { Lock } from 'lucide-react'
 import type { Message, Member } from '@kizuna/shared'
 import '../styles/chat-area.css'
 
@@ -394,7 +395,8 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
         )}
         {channelPerms?.locked && (
           <span className={`chat-area__locked-badge ${channelPerms.can_write ? 'chat-area__locked-badge--can-write' : ''}`}>
-            {channelPerms.can_write ? 'unlocked' : `locked (${channelPerms.write_role_name || 'no role'})`}
+            <Lock size={12} className="chat-area__locked-badge-icon" />
+            {channelPerms.can_write ? 'Locked' : `Locked to ${channelPerms.write_role_name || 'a role'}`}
           </span>
         )}
       </div>

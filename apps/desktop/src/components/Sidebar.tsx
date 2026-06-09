@@ -4,6 +4,7 @@ import { useChatStore } from '../store/chatStore'
 import { useNavigate } from 'react-router-dom'
 import { createChannel, lockChannel, fetchRoles } from '@kizuna/shared'
 import type { CustomRole } from '@kizuna/shared'
+import { Lock, Unlock } from 'lucide-react'
 import VoiceOverlay from './VoiceOverlay'
 import UserStatusPicker from './UserStatusPicker'
 import '../styles/sidebar.css'
@@ -117,9 +118,13 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
                     onClick={() => { setActiveChannel(ch.id); setLockMenuChannelId(null) }}
                     className={`sidebar__channel ${activeChannelId === ch.id ? 'sidebar__channel--active' : ''}`}
                   >
-                    <span className="sidebar__channel-icon">{ch.locked ? '#' : '#'}</span>
+                    <span className="sidebar__channel-icon">#</span>
                     <span className="sidebar__channel-name">{ch.name}</span>
-                    {ch.locked && <span className="sidebar__lock-icon" title={`Locked to role: ${ch.write_role_name || 'none'}`}>L</span>}
+                    {ch.locked && (
+                      <span className="sidebar__lock-icon" title={ch.write_role_name ? `Locked to ${ch.write_role_name}` : 'Locked'}>
+                        <Lock size={10} />
+                      </span>
+                    )}
                     {badge ? <span className="sidebar__unread-badge">{mentionCounts[ch.id] || unreadCounts[ch.id]}</span> : null}
                   </button>
                   {isAdmin && (
@@ -128,7 +133,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
                       className={`sidebar__lock-btn ${ch.locked ? 'sidebar__lock-btn--active' : ''}`}
                       title={ch.locked ? 'Unlock channel' : 'Lock channel'}
                     >
-                      {ch.locked ? 'U' : 'L'}
+                      {ch.locked ? <Lock size={12} /> : <Unlock size={12} />}
                     </button>
                   )}
                   {lockMenuChannelId === ch.id && (
