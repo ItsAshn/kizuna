@@ -7,7 +7,7 @@
 Self-hosted Discord alternative with text chat, voice channels, and screen sharing. You host the server, you own the data.
 
 > [!IMPORTANT]
-> The Linux client on arch currently does not support voice chat. If you have issues on another OS please give me feedback.
+> You might experience issues with voice transfer on Linux. If you have issues on another OS please give me feedback.
 
 ## Features
 
