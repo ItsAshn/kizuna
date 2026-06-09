@@ -520,29 +520,31 @@ export default function UserSettingsModal({ onClose }: Props) {
             </div>
           </section>
 
-          <section style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-            <p className="settings-modal__section-title">updates</p>
-            <div className="settings-modal__version-row">
-              <span className="settings-modal__version-text">Kizuna v{appVersion}{isDev ? ' (dev)' : ''}</span>
-              <button
-                onClick={() => checkForUpdates()}
-                disabled={updateState === 'checking' || updateState === 'downloading'}
-                className="settings-modal__check-btn"
-              >
-                {updateState === 'checking' ? 'checking...' : updateState === 'downloading' ? `${updateProgress}%` : 'check for updates'}
-              </button>
-            </div>
-            {updateState === 'ready' && (
-              <p className="settings-modal__alert settings-modal__alert--success">
-                update {updateVersion} ready — restart to apply
-              </p>
-            )}
-            {updateState === 'error' && (
-              <p className="settings-modal__alert settings-modal__alert--error">
-                {updateError || 'update check failed'}
-              </p>
-            )}
-          </section>
+          {isTauri() && (
+            <section style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+              <p className="settings-modal__section-title">updates</p>
+              <div className="settings-modal__version-row">
+                <span className="settings-modal__version-text">Kizuna v{appVersion}{isDev ? ' (dev)' : ''}</span>
+                <button
+                  onClick={() => checkForUpdates()}
+                  disabled={updateState === 'checking' || updateState === 'downloading'}
+                  className="settings-modal__check-btn"
+                >
+                  {updateState === 'checking' ? 'checking...' : updateState === 'downloading' ? `${updateProgress}%` : 'check for updates'}
+                </button>
+              </div>
+              {updateState === 'ready' && (
+                <p className="settings-modal__alert settings-modal__alert--success">
+                  update {updateVersion} ready — restart to apply
+                </p>
+              )}
+              {updateState === 'error' && (
+                <p className="settings-modal__alert settings-modal__alert--error">
+                  {updateError || 'update check failed'}
+                </p>
+              )}
+            </section>
+          )}
         </div>
 
         <div className="settings-modal__footer">
