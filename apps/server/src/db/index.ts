@@ -101,6 +101,17 @@ function runMigrations(database: Database.Database): void {
     `ALTER TABLE users ADD COLUMN reset_token TEXT DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN reset_token_expires_at INTEGER DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN token_invalidated_at INTEGER DEFAULT NULL`,
+    `CREATE TABLE IF NOT EXISTS member_roles (
+      user_id TEXT NOT NULL,
+      role_id TEXT NOT NULL,
+      PRIMARY KEY (user_id, role_id),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (role_id) REFERENCES roles(id)
+    )`,
+    `ALTER TABLE channels ADD COLUMN locked INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE channels ADD COLUMN write_role_id TEXT DEFAULT NULL`,
+    `INSERT OR IGNORE INTO member_roles (user_id, role_id)
+     SELECT user_id, custom_role_id FROM server_members WHERE custom_role_id IS NOT NULL`,
   ]
 
   for (const sql of migrations) {

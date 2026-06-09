@@ -262,12 +262,11 @@
   width: 100%;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 14px;
   outline: none;
-  font-family: var(--font-mono);
   transition: border-color 0.15s ease;
   cursor: pointer;
 }
@@ -906,4 +905,21 @@
   font-size: 9px;
   font-family: var(--font-mono);
   color: var(--text-muted);
+}
+
+.server-menu__role-remove-btn {
+  margin-left: 3px;
+  font-size: 8px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+  padding: 0 2px;
+  line-height: 1;
+  transition: opacity 0.15s ease;
+}
+
+.server-menu__role-remove-btn:hover {
+  opacity: 1;
 }

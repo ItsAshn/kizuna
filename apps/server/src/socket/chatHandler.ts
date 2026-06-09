@@ -1,7 +1,7 @@
 import type { Server, Socket } from 'socket.io'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
-import { getUserPermissions, hasPermission } from '../middleware/auth'
+import { getUserPermissions, hasPermission, canWriteToChannel } from '../middleware/auth'
 
 const socketRateLimits = new Map<string, { count: number; resetAt: number }>()
 
@@ -153,6 +153,11 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     const userInfo = getUserPermissions(userId)
     if (!userInfo || !hasPermission(userInfo, 'send_messages')) {
       socket.emit('error', { code: 'FORBIDDEN', message: 'You do not have permission to send messages' })
+      return
+    }
+
+    if (!canWriteToChannel(userId, channelId)) {
+      socket.emit('error', { code: 'LOCKED', message: 'This channel is locked' })
       return
     }
 

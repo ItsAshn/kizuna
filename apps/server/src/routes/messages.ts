@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission, canWriteToChannel } from '../middleware/auth'
 import { parseMentions, processMentions } from '../socket/chatHandler'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
@@ -55,12 +55,16 @@ messageRoutes.get('/:channelId', authMiddleware, (c) => {
 // POST /messages/:channelId — send message
 messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   const user = getAuth(c)
+  const channelId = c.req.param('channelId')
+
   const userPerms = getUserPermissions(user.userId)
   if (!userPerms || !hasPermission(userPerms, 'send_messages')) {
     return c.json({ error: 'Forbidden' }, 403)
   }
+  if (!canWriteToChannel(user.userId, channelId)) {
+    return c.json({ error: 'This channel is locked' }, 403)
+  }
 
-  const channelId = c.req.param('channelId')
   const body = await c.req.json() as { content: string }
   const { content } = body
   if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)

@@ -204,21 +204,62 @@ authRoutes.get('/users', authMiddleware, (c) => {
   const users = db
     .prepare(
       `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at,
-              COALESCE(sm.role, 'member') as role,
-              sm.custom_role_id,
-              r.name  AS custom_role_name,
-              r.color AS custom_role_color
+              COALESCE(sm.role, 'member') as role
        FROM users u
        LEFT JOIN server_members sm ON sm.user_id = u.id
-       LEFT JOIN roles r ON r.id = sm.custom_role_id
        ORDER BY u.username`,
     )
-    .all()
+    .all() as any[]
 
-  const formatted = users.map((u: any) => ({
-    ...u,
-    last_seen_at: u.last_seen_at ? u.last_seen_at * 1000 : null,
-  }))
+  const memberRoles = db.prepare(`
+    SELECT mr.user_id, r.id, r.name, r.color, r.permissions
+    FROM member_roles mr
+    JOIN roles r ON mr.role_id = r.id
+  `).all() as { user_id: string; id: string; name: string; color: string; permissions: string }[]
+
+  const rolesByUser: Record<string, { id: string; name: string; color: string; permissions: Record<string, boolean> }[]> = {}
+  for (const row of memberRoles) {
+    if (!rolesByUser[row.user_id]) rolesByUser[row.user_id] = []
+    rolesByUser[row.user_id].push({
+      id: row.id,
+      name: row.name,
+      color: row.color,
+      permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
+    })
+  }
+
+  // Also include legacy custom_role_id roles
+  const legacyRoles = db.prepare(`
+    SELECT sm.user_id, r.id, r.name, r.color, r.permissions
+    FROM server_members sm
+    JOIN roles r ON sm.custom_role_id = r.id
+    WHERE sm.custom_role_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = sm.user_id AND mr.role_id = sm.custom_role_id)
+  `).all() as { user_id: string; id: string; name: string; color: string; permissions: string }[]
+
+  for (const row of legacyRoles) {
+    if (!rolesByUser[row.user_id]) rolesByUser[row.user_id] = []
+    if (!rolesByUser[row.user_id].some(r => r.id === row.id)) {
+      rolesByUser[row.user_id].push({
+        id: row.id,
+        name: row.name,
+        color: row.color,
+        permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
+      })
+    }
+  }
+
+  const formatted = users.map((u: any) => {
+    const userRoles = rolesByUser[u.id] || []
+    return {
+      ...u,
+      last_seen_at: u.last_seen_at ? u.last_seen_at * 1000 : null,
+      custom_roles: userRoles,
+      custom_role_id: userRoles.length > 0 ? userRoles[0].id : null,
+      custom_role_name: userRoles.length > 0 ? userRoles[0].name : null,
+      custom_role_color: userRoles.length > 0 ? userRoles[0].color : null,
+    }
+  })
 
   return c.json({ users: formatted })
 })

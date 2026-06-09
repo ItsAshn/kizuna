@@ -59,11 +59,10 @@
   width: 100%;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
   color: var(--text-primary);
-  font-size: 11px;
-  font-family: var(--font-mono);
+  font-size: 14px;
   outline: none;
   cursor: pointer;
   transition: border-color 0.15s ease;

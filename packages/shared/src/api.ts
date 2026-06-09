@@ -164,8 +164,10 @@ export async function createChannel(
   token: string,
   name: string,
   type: 'text' | 'voice',
+  locked = false,
+  write_role_id?: string | null,
 ): Promise<Channel> {
-  const res = await client(serverUrl, token).post('/api/channels', { name, type })
+  const res = await client(serverUrl, token).post('/api/channels', { name, type, locked, write_role_id })
   return res.data.channel ?? res.data
 }
 
@@ -175,6 +177,26 @@ export async function deleteChannel(
   id: string,
 ): Promise<void> {
   await client(serverUrl, token).delete(`/api/channels/${id}`)
+}
+
+export async function lockChannel(
+  serverUrl: string,
+  token: string,
+  id: string,
+  locked: boolean,
+  write_role_id?: string | null,
+): Promise<Channel> {
+  const res = await client(serverUrl, token).patch(`/api/channels/${id}`, { locked, write_role_id })
+  return res.data.channel ?? res.data
+}
+
+export async function fetchChannelPermissions(
+  serverUrl: string,
+  token: string,
+  channelId: string,
+): Promise<{ can_write: boolean; locked: boolean; write_role_id: string | null; write_role_name: string | null }> {
+  const res = await client(serverUrl, token).get(`/api/channels/${channelId}/permissions`)
+  return res.data
 }
 
 // ─── Messages ─────────────────────────────────────────────
@@ -367,7 +389,29 @@ export async function assignCustomRole(
   userId: string,
   roleId: string | null,
 ): Promise<void> {
-  await client(serverUrl, token).patch(`/api/server/members/${userId}/custom-role`, { roleId })
+  if (roleId) {
+    await client(serverUrl, token).post(`/api/server/members/${userId}/roles`, { roleId })
+  } else {
+    await client(serverUrl, token).delete(`/api/server/members/${userId}/roles`)
+  }
+}
+
+export async function addMemberRole(
+  serverUrl: string,
+  token: string,
+  userId: string,
+  roleId: string,
+): Promise<void> {
+  await client(serverUrl, token).post(`/api/server/members/${userId}/roles`, { roleId })
+}
+
+export async function removeMemberRole(
+  serverUrl: string,
+  token: string,
+  userId: string,
+  roleId: string,
+): Promise<void> {
+  await client(serverUrl, token).delete(`/api/server/members/${userId}/roles/${roleId}`)
 }
 
 // ─── Roles ────────────────────────────────────────────────

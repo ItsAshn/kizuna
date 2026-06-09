@@ -27,12 +27,23 @@ export default function MemberList({ visible }: Props) {
 
   if (!visible && !closing) return null
 
-  const filtered = search.trim()
+  function memberRank(m: typeof members[number]): number {
+    if (m.role === 'admin') return 0
+    if (m.custom_role_id) return 1
+    return 2
+  }
+
+  const filtered = (search.trim()
     ? members.filter(m =>
         m.username.toLowerCase().includes(search.toLowerCase()) ||
         m.display_name.toLowerCase().includes(search.toLowerCase()),
       )
-    : members
+    : [...members]
+  ).sort((a, b) => {
+    const r = memberRank(a) - memberRank(b)
+    if (r !== 0) return r
+    return a.username.localeCompare(b.username)
+  })
 
   async function handleStartDM(userId: string) {
     if (!session) return

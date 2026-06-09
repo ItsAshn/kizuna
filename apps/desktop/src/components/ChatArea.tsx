@@ -3,7 +3,7 @@ import type { MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, uploadAttachment } from '@kizuna/shared'
+import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, uploadAttachment, fetchChannelPermissions } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
 import type { Message, Member } from '@kizuna/shared'
@@ -127,6 +127,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const [atIndex, setAtIndex] = useState(0)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [channelPerms, setChannelPerms] = useState<{ can_write: boolean; locked: boolean; write_role_name: string | null } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -176,9 +177,14 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   useEffect(() => {
     if (activeChannelId) {
       setLoading(true)
+      setChannelPerms(null)
       fetchMessages(session!.url, session!.token, activeChannelId)
         .then((msgs) => useChatStore.getState().setMessages(activeChannelId, msgs))
         .finally(() => setLoading(false))
+
+      fetchChannelPermissions(session!.url, session!.token, activeChannelId)
+        .then(setChannelPerms)
+        .catch(() => setChannelPerms(null))
 
       const store = useChatStore.getState()
       store.setUnreadCounts({ ...store.unreadCounts, [activeChannelId]: 0 })
@@ -371,6 +377,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
       : ''
   const dmHasKey = activeDMChannelId ? !!(activeDM?.other_public_key && getSecretKey()) : false
   const inputMaxLen = activeDMChannelId ? 2700 : 4000
+  const cantWrite = channelPerms?.locked && !channelPerms?.can_write
   return (
     <div className="chat-area">
       <div className="chat-area__header">
@@ -384,6 +391,11 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
         )}
         {activeChannel?.topic && (
           <span className="chat-area__header-topic">{activeChannel.topic}</span>
+        )}
+        {channelPerms?.locked && (
+          <span className={`chat-area__locked-badge ${channelPerms.can_write ? 'chat-area__locked-badge--can-write' : ''}`}>
+            {channelPerms.can_write ? 'unlocked' : `locked (${channelPerms.write_role_name || 'no role'})`}
+          </span>
         )}
       </div>
 
@@ -475,16 +487,17 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
           <button className="chat-area__attach-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="attach file">+</button>
           <textarea
             ref={inputRef}
-            className="chat-area__input"
+            className={`chat-area__input ${cantWrite ? 'chat-area__input--locked' : ''}`}
             rows={1}
             style={{ resize: 'none' }}
-            placeholder={`Message ${activeDMChannelId ? `@${activeDM?.other_display_name}` : `#${activeChannel?.name}`}`}
+            placeholder={cantWrite ? `Channel locked — you cannot send messages` : `Message ${activeDMChannelId ? `@${activeDM?.other_display_name}` : `#${activeChannel?.name}`}`}
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             maxLength={inputMaxLen}
+            disabled={cantWrite}
           />
-          <button className="chat-area__send-btn" onClick={handleSend} disabled={!input.trim() && !pendingFile}>
+          <button className="chat-area__send-btn" onClick={handleSend} disabled={!input.trim() && !pendingFile || cantWrite}>
             Send
           </button>
         </div>

@@ -12,6 +12,8 @@ import {
   setMemberRole,
   kickMember,
   assignCustomRole,
+  addMemberRole,
+  removeMemberRole,
   fetchRoles,
   createRole,
   updateRole,
@@ -381,6 +383,42 @@ export default function ServerMenuModal({ onClose }: Props) {
     setAssigningRole(prev => ({ ...prev, [userId]: false }))
   }
 
+  const handleAddRole = async (userId: string, roleId: string) => {
+    if (!serverUrl || !token) return
+    setAssigningRole(prev => ({ ...prev, [userId + roleId]: true }))
+    try {
+      await addMemberRole(serverUrl, token, userId, roleId)
+      const role = roles.find(r => r.id === roleId)
+      setMembers(members.map(m =>
+        m.id === userId ? {
+          ...m,
+          custom_roles: [...(m.custom_roles || []), {
+            id: roleId,
+            name: role?.name ?? roleId,
+            color: role?.color ?? '#5865f2',
+            permissions: role?.permissions ?? {},
+          }],
+        } : m,
+      ))
+    } catch {}
+    setAssigningRole(prev => ({ ...prev, [userId + roleId]: false }))
+  }
+
+  const handleRemoveRole = async (userId: string, roleId: string) => {
+    if (!serverUrl || !token) return
+    setAssigningRole(prev => ({ ...prev, [userId + roleId]: true }))
+    try {
+      await removeMemberRole(serverUrl, token, userId, roleId)
+      setMembers(members.map(m =>
+        m.id === userId ? {
+          ...m,
+          custom_roles: (m.custom_roles || []).filter(r => r.id !== roleId),
+        } : m,
+      ))
+    } catch {}
+    setAssigningRole(prev => ({ ...prev, [userId + roleId]: false }))
+  }
+
   // ─── Invite handlers ────────────────────────────────
   const handleCreateInvite = async () => {
     if (!serverUrl || !token) return
@@ -627,7 +665,13 @@ export default function ServerMenuModal({ onClose }: Props) {
                   ) : members.length === 0 ? (
                     <p className="server-menu__loading">no members</p>
                   ) : (
-                    members.map(m => {
+                    [...members].sort((a, b) => {
+                      const rankA = a.role === 'admin' ? 0 : a.custom_role_id ? 1 : 2
+                      const rankB = b.role === 'admin' ? 0 : b.custom_role_id ? 1 : 2
+                      const r = rankA - rankB
+                      if (r !== 0) return r
+                      return a.username.localeCompare(b.username)
+                    }).map(m => {
                       const isSelf = m.id === session?.user?.id
                       return (
                         <div key={m.id} className="server-menu__member">
@@ -650,6 +694,20 @@ export default function ServerMenuModal({ onClose }: Props) {
                                   {m.custom_role_name}
                                 </span>
                               )}
+                              {(m.custom_roles || []).map((r) => (
+                                <span key={r.id} className="server-menu__member-badge"
+                                  style={{ color: r.color || '#5865f2', borderColor: (r.color || '#5865f2') + '66', backgroundColor: (r.color || '#5865f2') + '22' }}>
+                                  {r.name}
+                                  <button
+                                    onClick={() => handleRemoveRole(m.id, r.id)}
+                                    disabled={assigningRole[m.id + r.id]}
+                                    className="server-menu__role-remove-btn"
+                                    title={`Remove ${r.name} role`}
+                                  >
+                                    x
+                                  </button>
+                                </span>
+                              ))}
                             </div>
                           </div>
                           {memberMsg[m.id] && <span className="server-menu__member-msg">{memberMsg[m.id]}</span>}
@@ -664,16 +722,32 @@ export default function ServerMenuModal({ onClose }: Props) {
                                 </button>
                               </div>
                               {roles.length > 0 && (
-                                <select
-                                  value={m.custom_role_id ?? ''}
-                                  disabled={assigningRole[m.id]}
-                                  onChange={(e) => handleAssignCustomRole(m.id, e.target.value || null)}
-                                  className="server-menu__select"
-                                  style={{ fontSize: '9px', padding: '2px 4px' }}
-                                >
-                                  <option value="">no role</option>
-                                  {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                                </select>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                  <select
+                                    value=""
+                                    disabled={assigningRole[m.id]}
+                                    onChange={(e) => {
+                                      if (e.target.value) handleAddRole(m.id, e.target.value)
+                                      e.target.value = ''
+                                    }}
+                                    className="server-menu__select"
+                                    style={{ fontSize: '9px', padding: '2px 4px' }}
+                                  >
+                                    <option value="">+ role</option>
+                                    {roles.filter(r => !(m.custom_roles || []).some(cr => cr.id === r.id) && r.id !== m.custom_role_id)
+                                      .map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                  </select>
+                                  <select
+                                    value={m.custom_role_id ?? ''}
+                                    disabled={assigningRole[m.id]}
+                                    onChange={(e) => handleAssignCustomRole(m.id, e.target.value || null)}
+                                    className="server-menu__select"
+                                    style={{ fontSize: '9px', padding: '2px 4px' }}
+                                  >
+                                    <option value="">no primary role</option>
+                                    {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                  </select>
+                                </div>
                               )}
                             </div>
                           )}

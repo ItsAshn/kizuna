@@ -19,6 +19,8 @@ export const SCHEMA_SQL = `
     type TEXT NOT NULL DEFAULT 'text',
     topic TEXT DEFAULT NULL,
     position INTEGER DEFAULT 0,
+    locked INTEGER NOT NULL DEFAULT 0,
+    write_role_id TEXT DEFAULT NULL,
     created_at INTEGER DEFAULT (unixepoch())
   );
 
@@ -62,6 +64,14 @@ export const SCHEMA_SQL = `
     custom_role_id TEXT DEFAULT NULL,
     joined_at INTEGER DEFAULT (unixepoch()),
     FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS member_roles (
+    user_id TEXT NOT NULL,
+    role_id TEXT NOT NULL,
+    PRIMARY KEY (user_id, role_id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (role_id) REFERENCES roles(id)
   );
 
   CREATE TABLE IF NOT EXISTS dm_channels (

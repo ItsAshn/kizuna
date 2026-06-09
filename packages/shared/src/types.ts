@@ -23,6 +23,9 @@ export interface Channel {
   type: 'text' | 'voice'
   topic?: string | null
   position: number
+  locked: boolean
+  write_role_id?: string | null
+  write_role_name?: string | null
   created_at: number
 }
 
@@ -54,6 +57,7 @@ export interface Member {
   display_name: string
   avatar?: string
   role?: 'admin' | 'member'
+  custom_roles?: CustomRole[]
   custom_role_id?: string | null
   custom_role_name?: string | null
   custom_role_color?: string | null

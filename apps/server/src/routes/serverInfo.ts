@@ -355,6 +355,40 @@ serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, async (c)
   return c.json({ ok: true })
 })
 
+serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+
+  const targetUserId = c.req.param('userId') || ''
+  if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
+  const body = await c.req.json() as { roleId: string }
+  const { roleId } = body
+  if (!roleId) return c.json({ error: 'roleId is required' }, 400)
+
+  const db = getDb()
+  const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId)
+  if (!member) return c.json({ error: 'Member not found' }, 404)
+
+  const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(roleId)
+  if (!role) return c.json({ error: 'Role not found' }, 404)
+
+  db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(targetUserId, roleId)
+  return c.json({ ok: true })
+})
+
+serverInfoRoutes.delete('/members/:userId/roles/:roleId', authMiddleware, (c) => {
+  const user = getAuth(c)
+  if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+
+  const targetUserId = c.req.param('userId') || ''
+  const roleId = c.req.param('roleId') || ''
+  if (!targetUserId || !roleId) return c.json({ error: 'Invalid user ID or role ID' }, 400)
+
+  const db = getDb()
+  db.prepare('DELETE FROM member_roles WHERE user_id = ? AND role_id = ?').run(targetUserId, roleId)
+  return c.json({ ok: true })
+})
+
 serverInfoRoutes.post('/members/:userId/generate-reset', authMiddleware, async (c) => {
   const user = getAuth(c)
   if (user.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useNavigate } from 'react-router-dom'
-import { createChannel } from '@kizuna/shared'
+import { createChannel, lockChannel, fetchRoles } from '@kizuna/shared'
+import type { CustomRole } from '@kizuna/shared'
 import VoiceOverlay from './VoiceOverlay'
 import '../styles/sidebar.css'
 
@@ -30,6 +31,9 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   const [newChannelName, setNewChannelName] = useState('')
   const [newChannelType, setNewChannelType] = useState<'text' | 'voice'>('text')
   const [creating, setCreating] = useState(false)
+  const [lockMenuChannelId, setLockMenuChannelId] = useState<string | null>(null)
+  const [roles, setRoles] = useState<CustomRole[]>([])
+  const [rolesLoaded, setRolesLoaded] = useState(false)
 
   function handleLogout() {
     setActiveSession(null)
@@ -51,6 +55,27 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
     } finally {
       setCreating(false)
     }
+  }
+
+  async function handleToggleLock(ch: typeof channels[0], locked: boolean, write_role_id?: string | null) {
+    if (!session) return
+    try {
+      const updated = await lockChannel(session.url, session.token, ch.id, locked, write_role_id ?? null)
+      setChannels(channels.map(c => c.id === ch.id ? updated : c))
+    } catch {}
+    setLockMenuChannelId(null)
+  }
+
+  async function openLockMenu(channelId: string) {
+    if (!session || !isAdmin) return
+    if (!rolesLoaded) {
+      try {
+        const r = await fetchRoles(session.url, session.token)
+        setRoles(r)
+        setRolesLoaded(true)
+      } catch {}
+    }
+    setLockMenuChannelId(lockMenuChannelId === channelId ? null : channelId)
   }
 
   return (
@@ -84,15 +109,56 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
             {textChannels.map((ch) => {
               const badge = mentionCounts[ch.id] || unreadCounts[ch.id]
               return (
-                <button
-                  key={ch.id}
-                  onClick={() => { setActiveChannel(ch.id) }}
-                  className={`sidebar__channel ${activeChannelId === ch.id ? 'sidebar__channel--active' : ''}`}
-                >
-                  <span className="sidebar__channel-icon">#</span>
-                  <span className="sidebar__channel-name">{ch.name}</span>
-                  {badge ? <span className="sidebar__unread-badge">{mentionCounts[ch.id] || unreadCounts[ch.id]}</span> : null}
-                </button>
+                <div key={ch.id} className="sidebar__channel-wrap">
+                  <button
+                    onClick={() => { setActiveChannel(ch.id); setLockMenuChannelId(null) }}
+                    className={`sidebar__channel ${activeChannelId === ch.id ? 'sidebar__channel--active' : ''}`}
+                  >
+                    <span className="sidebar__channel-icon">{ch.locked ? '#' : '#'}</span>
+                    <span className="sidebar__channel-name">{ch.name}</span>
+                    {ch.locked && <span className="sidebar__lock-icon" title={`Locked to role: ${ch.write_role_name || 'none'}`}>L</span>}
+                    {badge ? <span className="sidebar__unread-badge">{mentionCounts[ch.id] || unreadCounts[ch.id]}</span> : null}
+                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openLockMenu(ch.id) }}
+                      className={`sidebar__lock-btn ${ch.locked ? 'sidebar__lock-btn--active' : ''}`}
+                      title={ch.locked ? 'Unlock channel' : 'Lock channel'}
+                    >
+                      {ch.locked ? 'U' : 'L'}
+                    </button>
+                  )}
+                  {lockMenuChannelId === ch.id && (
+                    <div className="sidebar__lock-menu">
+                      {ch.locked ? (
+                        <>
+                          <span className="sidebar__lock-menu-label">Locked to: {ch.write_role_name || 'no role'}</span>
+                          <button onClick={() => handleToggleLock(ch, false, null)} className="sidebar__lock-menu-btn">Unlock</button>
+                          {roles.map(r => (
+                            <button
+                              key={r.id}
+                              onClick={() => handleToggleLock(ch, true, r.id)}
+                              className={`sidebar__lock-menu-btn ${ch.write_role_id === r.id ? 'sidebar__lock-menu-btn--active' : ''}`}
+                            >
+                              Change to {r.name}
+                            </button>
+                          ))}
+                        </>
+                      ) : (
+                        <>
+                          <span className="sidebar__lock-menu-label">Lock to role:</span>
+                          {roles.map(r => (
+                            <button key={r.id} onClick={() => handleToggleLock(ch, true, r.id)} className="sidebar__lock-menu-btn">
+                              {r.name}
+                            </button>
+                          ))}
+                          {roles.length === 0 && <span className="sidebar__lock-menu-label">No roles exist. Create one in server menu.</span>}
+                        </>
+                      )}
+                      <button onClick={() => setLockMenuChannelId(null)} className="sidebar__lock-menu-btn sidebar__lock-menu-btn--cancel">Cancel</button>
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>

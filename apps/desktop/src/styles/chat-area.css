@@ -516,3 +516,28 @@
 .chat-area__encrypted-badge--warn {
   opacity: 0.4;
 }
+
+/* ── Locked channel badge ────────────────────────────────────── */
+
+.chat-area__locked-badge {
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid var(--red-dim-border);
+  white-space: nowrap;
+}
+
+.chat-area__locked-badge--can-write {
+  background: var(--green-dim);
+  color: var(--green);
+  border-color: var(--green-dim-border);
+}
+
+.chat-area__input--locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
