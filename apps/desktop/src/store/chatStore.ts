@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Channel, Message, Member, DMChannelData, VoicePeer, ConnectionQuality, ScreenSharePeer, MonitorInfo } from '@kizuna/shared'
+import type { Channel, Message, Member, DMChannelData, VoicePeer, ConnectionQuality, ScreenSharePeer, MonitorInfo, UserStatus } from '@kizuna/shared'
 
 export type VoiceInputMode = 'voice-activity' | 'push-to-talk'
 
@@ -24,6 +24,8 @@ interface ChatState {
   audioOutputDeviceId: string | null
   voiceError: string | null
   typingUsers: Record<string, string[]>
+
+  userStatuses: Record<string, UserStatus>
 
   voiceInputMode: VoiceInputMode
   voiceGateThreshold: number
@@ -81,6 +83,8 @@ interface ChatState {
   setOutputVolume: (volume: number) => void
   setLiveAudioLevel: (level: number) => void
   setTypingUsers: (channelId: string, users: string[]) => void
+  setUserStatus: (userId: string, status: UserStatus) => void
+  setUserStatuses: (statuses: Record<string, UserStatus>) => void
   setScreenSharePeer: (peerId: string | null, username: string | null) => void
   clearScreenSharePeer: () => void
   setIsScreenSharing: (active: boolean) => void
@@ -115,6 +119,7 @@ export const useChatStore = create<ChatState>()(
       audioOutputDeviceId: null,
       voiceError: null,
       typingUsers: {},
+      userStatuses: {},
       voiceInputMode: 'voice-activity' as VoiceInputMode,
       voiceGateThreshold: 50,
       pushToTalkKey: 'AltLeft',
@@ -193,6 +198,14 @@ export const useChatStore = create<ChatState>()(
       setTypingUsers: (channelId, users) =>
         set((s) => ({
           typingUsers: { ...s.typingUsers, [channelId]: users },
+        })),
+      setUserStatus: (userId, status) =>
+        set((s) => ({
+          userStatuses: { ...s.userStatuses, [userId]: status },
+        })),
+      setUserStatuses: (statuses) =>
+        set((s) => ({
+          userStatuses: { ...s.userStatuses, ...statuses },
         })),
       setScreenSharePeer: (screenSharePeerId, screenShareUsername) =>
         set({ screenSharePeerId, screenShareUsername }),

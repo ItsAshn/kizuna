@@ -30,6 +30,11 @@ interface MentionResult {
   target: string | null
 }
 
+type UserStatus = 'online' | 'idle' | 'busy' | 'offline'
+
+const userConnections = new Map<string, Set<string>>()
+const userStatuses = new Map<string, UserStatus>()
+
 export function parseMentions(content: string): MentionResult[] {
   const results: MentionResult[] = []
   const seen = new Set<string>()
@@ -108,6 +113,11 @@ function getSocketUserId(socket: Socket): string {
 
 function getSocketUsername(socket: Socket): string {
   return socket.data.username || (socket as any).username || 'unknown'
+}
+
+function getSocketUsernameById(userId: string, db: ReturnType<typeof getDb>): string {
+  const row = db.prepare('SELECT username FROM users WHERE id = ?').get(userId) as { username: string } | undefined
+  return row?.username || 'unknown'
 }
 
 export function registerChatHandlers(io: Server, socket: Socket): void {
@@ -402,7 +412,24 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?').run(now, userId)
     } catch { /* ignore */ }
 
-    socket.broadcast.emit('user:online', { userId, username, socketId: socket.id })
+    if (!userConnections.has(userId)) {
+      userConnections.set(userId, new Set())
+    }
+    userConnections.get(userId)!.add(socket.id)
+
+    if (userConnections.get(userId)!.size === 1) {
+      userStatuses.set(userId, 'online')
+      io.emit('user:online', { userId, username, status: 'online' })
+    }
+
+    const onlineList: Record<string, { username: string; status: UserStatus }> = {}
+    for (const [uid, status] of userStatuses) {
+      onlineList[uid] = {
+        username: getSocketUsernameById(uid, db),
+        status,
+      }
+    }
+    socket.emit('users:online', onlineList)
   })
 
   socket.on('presence:heartbeat', () => {
@@ -414,9 +441,24 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     } catch { /* ignore */ }
   })
 
+  socket.on('user:status', ({ status }: { status: UserStatus }) => {
+    if (!userId) return
+    if (!['online', 'idle', 'busy'].includes(status)) return
+    userStatuses.set(userId, status)
+    io.emit('user:status', { userId, status })
+  })
+
   socket.on('disconnect', () => {
-    if (userId) {
-      socket.broadcast.emit('user:offline', { userId })
+    if (!userId) return
+
+    const socks = userConnections.get(userId)
+    if (socks) {
+      socks.delete(socket.id)
+      if (socks.size === 0) {
+        userConnections.delete(userId)
+        userStatuses.delete(userId)
+        io.emit('user:offline', { userId })
+      }
     }
   })
 }

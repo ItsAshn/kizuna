@@ -13,6 +13,7 @@ export default function MemberList({ visible }: Props) {
   const session = useServerStore((s) => s.activeSession)
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
   const dmChannels = useChatStore((s) => s.dmChannels)
+  const userStatuses = useChatStore((s) => s.userStatuses)
   const setDMChannels = useChatStore((s) => s.setDMChannels)
   const [search, setSearch] = useState('')
   const [closing, setClosing] = useState(false)
@@ -76,7 +77,7 @@ export default function MemberList({ visible }: Props) {
         )}
 
         {filtered.map((member) => {
-          const isOnline = true
+          const status = userStatuses[member.id] || 'offline'
           const dmExists = dmChannels.find(d => d.other_user_id === member.id)
           return (
             <button
@@ -99,7 +100,7 @@ export default function MemberList({ visible }: Props) {
                     <img src={member.avatar} alt="" className="member-list__member-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
                   ) : member.display_name?.[0]?.toUpperCase()}
                 </div>
-                {isOnline && <span className="member-list__online-dot" />}
+                {status !== 'offline' && <span className={`member-list__online-dot member-list__online-dot--${status}`} />}
               </div>
               <div className="member-list__member-info">
                 <div className="member-list__member-name">{member.display_name}</div>

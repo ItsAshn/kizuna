@@ -146,6 +146,22 @@
   border: 2px solid var(--bg-secondary);
 }
 
+.member-list__online-dot--online {
+  background: var(--green);
+}
+
+.member-list__online-dot--idle {
+  background: var(--yellow);
+}
+
+.member-list__online-dot--busy {
+  background: var(--red);
+}
+
+.member-list__online-dot--offline {
+  background: var(--gray);
+}
+
 .member-list__member-info {
   flex: 1;
   min-width: 0;

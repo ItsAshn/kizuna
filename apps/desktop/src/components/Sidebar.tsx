@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { createChannel, lockChannel, fetchRoles } from '@kizuna/shared'
 import type { CustomRole } from '@kizuna/shared'
 import VoiceOverlay from './VoiceOverlay'
+import UserStatusPicker from './UserStatusPicker'
 import '../styles/sidebar.css'
 
 interface SidebarProps {
@@ -87,6 +88,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
               <img src={session.user.avatar} alt="" className="sidebar__user-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
             ) : session?.user.display_name?.[0]?.toUpperCase()}
           </div>
+          <UserStatusPicker socketRef={socketRef} />
           <div className="sidebar__user-info">
             <p className="sidebar__user-displayname">{session?.user.display_name || session?.user.username}</p>
             <p className="sidebar__user-subtitle">@{session?.user.username}{isAdmin ? ' · admin' : ''}</p>

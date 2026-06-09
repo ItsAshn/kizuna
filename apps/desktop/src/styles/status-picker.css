@@ -1,0 +1,108 @@
+.status-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.status-picker__trigger {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--bg-secondary);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.status-picker__trigger:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.15);
+}
+
+.status-picker__trigger--online {
+  background: var(--green);
+}
+
+.status-picker__trigger--idle {
+  background: var(--yellow);
+}
+
+.status-picker__trigger--busy {
+  background: var(--red);
+}
+
+.status-picker__trigger--offline {
+  background: var(--gray);
+}
+
+.status-picker__dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  min-width: 140px;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  animation: statusFadeIn 0.12s ease-out;
+}
+
+@keyframes statusFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.status-picker__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.status-picker__option:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.status-picker__option--active {
+  color: var(--text-primary);
+}
+
+.status-picker__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.status-picker__dot--online {
+  background: var(--green);
+}
+
+.status-picker__dot--idle {
+  background: var(--yellow);
+}
+
+.status-picker__dot--busy {
+  background: var(--red);
+}
+
+.status-picker__dot--offline {
+  background: var(--gray);
+}

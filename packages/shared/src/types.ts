@@ -6,6 +6,8 @@ export interface SavedServer {
   addedAt: number
 }
 
+export type UserStatus = 'online' | 'idle' | 'busy' | 'offline'
+
 export interface User {
   id: string
   username: string
@@ -15,6 +17,7 @@ export interface User {
   role?: 'admin' | 'member'
   last_seen_at?: number | null
   public_key?: string | null
+  status?: UserStatus
 }
 
 export interface Channel {
@@ -61,6 +64,7 @@ export interface Member {
   custom_role_id?: string | null
   custom_role_name?: string | null
   custom_role_color?: string | null
+  status?: UserStatus
 }
 
 export type Permission =

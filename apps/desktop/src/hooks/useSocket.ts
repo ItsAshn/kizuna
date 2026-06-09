@@ -6,7 +6,7 @@ import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import type { Message, Channel, DMChannelData } from '@kizuna/shared'
+import type { Message, Channel, DMChannelData, UserStatus } from '@kizuna/shared'
 
 export function useSocket(): MutableRefObject<Socket | null> {
   const socketRef = useRef<Socket | null>(null)
@@ -134,15 +134,35 @@ export function useSocket(): MutableRefObject<Socket | null> {
       )
     })
 
-    socket.on('user:online', ({ userId }: { userId: string }) => {
-      // Could set online status in member list
+    socket.on('user:online', ({ userId, status }: { userId: string; status: UserStatus }) => {
+      useChatStore.getState().setUserStatus(userId, status)
     })
 
     socket.on('user:offline', ({ userId }: { userId: string }) => {
-      // Could set offline status in member list
+      useChatStore.getState().setUserStatus(userId, 'offline')
     })
 
+    socket.on('users:online', (onlineList: Record<string, { username: string; status: UserStatus }>) => {
+      const store = useChatStore.getState()
+      const statuses: Record<string, UserStatus> = {}
+      for (const [uid, info] of Object.entries(onlineList)) {
+        statuses[uid] = info.status
+      }
+      store.setUserStatuses(statuses)
+    })
+
+    socket.on('user:status', ({ userId, status }: { userId: string; status: UserStatus }) => {
+      useChatStore.getState().setUserStatus(userId, status)
+    })
+
+    const heartbeatInterval = setInterval(() => {
+      if (socket.connected) {
+        socket.emit('presence:heartbeat')
+      }
+    }, 30_000)
+
     return () => {
+      clearInterval(heartbeatInterval)
       typingTimers.current.forEach((t) => clearTimeout(t))
       typingTimers.current.clear()
       socket.disconnect()
