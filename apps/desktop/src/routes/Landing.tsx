@@ -45,7 +45,7 @@ const FEATURES = [
   {
     icon: Code,
     title: 'Open Source',
-    desc: 'MIT licensed. Audit the code, contribute, or fork it. No vendor lock-in, no telemetry.',
+    desc: 'AGPLv3 licensed. Audit the code, contribute, or fork it. No vendor lock-in, no telemetry.',
   },
 ]
 
@@ -220,7 +220,7 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
           </div>
         </div>
         <p className="landing-footer__copy">
-          Open source under <a href="https://github.com/ItsAshn/kizuna/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
+          Open source under <a href="https://github.com/ItsAshn/kizuna/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPLv3 License</a>
         </p>
       </footer>
 
