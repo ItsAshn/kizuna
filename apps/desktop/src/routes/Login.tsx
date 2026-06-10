@@ -13,6 +13,7 @@ export default function Login() {
   const navigate = useNavigate()
   const { servers, setActiveSession } = useServerStore()
   const server = servers.find((s) => s.id === serverId)
+  const serverUrl = server?.url || serverId || ''
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -25,14 +26,14 @@ export default function Login() {
   const [showBackupToken, setShowBackupToken] = useState<string | null>(null)
 
   useEffect(() => {
-    if (server) {
-      fetchServerInfo(server.url)
+    if (serverUrl) {
+      fetchServerInfo(serverUrl)
         .then(setServerInfo)
         .catch(() => setError('Could not reach server'))
     }
-  }, [server])
+  }, [serverUrl])
 
-  if (!server) {
+  if (!serverUrl) {
     return (
       <div className="login__not-found">
         <div>
@@ -50,14 +51,14 @@ export default function Login() {
     try {
       let result
       if (isRegister) {
-        const { challenge, difficulty } = await getChallenge(server!.url)
+        const { challenge, difficulty } = await getChallenge(serverUrl)
         const { nonce } = await solvePoW(challenge, difficulty)
-        const pubKey = await generateAndStoreKey(server!.url, password)
-        result = await register(server!.url, username.trim(), password, displayName || username, serverPassword || undefined, pubKey, challenge, nonce)
+        const pubKey = await generateAndStoreKey(serverUrl, password)
+        result = await register(serverUrl, username.trim(), password, displayName || username, serverPassword || undefined, pubKey, challenge, nonce)
 
         setActiveSession({
-          serverId: server!.id,
-          url: server!.url,
+          serverId: serverUrl,
+          url: serverUrl,
           token: result.token,
           user: result.user,
         })
@@ -68,16 +69,16 @@ export default function Login() {
           return
         }
       } else {
-        result = await login(server!.url, username.trim(), password)
-        await initializeCrypto(server!.url, result.token, password)
-        if (userNeedsKeyUpload(result.user.public_key, server!.url)) {
+        result = await login(serverUrl, username.trim(), password)
+        await initializeCrypto(serverUrl, result.token, password)
+        if (userNeedsKeyUpload(result.user.public_key, serverUrl)) {
           const pk = getPublicKey()
-          if (pk) await uploadPublicKey(server!.url, result.token, pk)
+          if (pk) await uploadPublicKey(serverUrl, result.token, pk)
         }
 
         setActiveSession({
-          serverId: server!.id,
-          url: server!.url,
+          serverId: serverUrl,
+          url: serverUrl,
           token: result.token,
           user: result.user,
         })
@@ -100,8 +101,8 @@ export default function Login() {
       )}
       <div className="login__card">
         <AuthForm
-          serverName={serverInfo?.name || server.name}
-          serverUrl={server.url}
+          serverName={serverInfo?.name || server?.name || serverUrl}
+          serverUrl={serverUrl}
           isRegister={isRegister}
           setIsRegister={setIsRegister}
           username={username}
@@ -118,7 +119,7 @@ export default function Login() {
           onSubmit={handleAuth}
           onBack={() => navigate('/')}
           backLabel="Back to servers"
-          onForgotPassword={() => navigate(`/reset-password/${server.id}`)}
+          onForgotPassword={() => navigate(`/reset-password/${encodeURIComponent(serverUrl)}`)}
         />
       </div>
     </div>

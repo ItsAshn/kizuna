@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
-import { requestPasswordReset, validateResetToken, resetPassword, resetWithBackupToken, getAdminList } from '@kizuna/shared'
+import { requestPasswordReset, validateResetToken, resetPassword, resetWithBackupToken, getAdminList, fetchServerInfo } from '@kizuna/shared'
 import type { AdminInfo } from '@kizuna/shared'
 import BackupTokenModal from '../components/BackupTokenModal'
 import '../styles/login.css'
@@ -14,6 +14,30 @@ export default function ResetPassword() {
   const navigate = useNavigate()
   const { servers } = useServerStore()
   const server = servers.find((s) => s.id === serverId)
+
+  const [resolvedServer, setResolvedServer] = useState<{ url: string; name: string } | null>(null)
+  const [resolvingServer, setResolvingServer] = useState(true)
+
+  useEffect(() => {
+    if (server) {
+      setResolvedServer({ url: server.url, name: server.name })
+      setResolvingServer(false)
+      return
+    }
+    if (!serverId) {
+      setResolvingServer(false)
+      return
+    }
+    setResolvingServer(true)
+    fetchServerInfo(serverId)
+      .then((info) => {
+        setResolvedServer({ url: serverId, name: info.name })
+      })
+      .catch(() => {
+        setResolvedServer(null)
+      })
+      .finally(() => setResolvingServer(false))
+  }, [server, serverId])
 
   const [phase, setPhase] = useState<Phase>('username')
   const [resetMethod, setResetMethod] = useState<ResetMethod>(null)
@@ -30,14 +54,24 @@ export default function ResetPassword() {
   const [newBackupToken, setNewBackupToken] = useState<string | null>(null)
 
   useEffect(() => {
-    if (server) {
-      getAdminList(server.url)
+    if (resolvedServer) {
+      getAdminList(resolvedServer.url)
         .then(setAdminList)
         .catch(() => {})
     }
-  }, [server])
+  }, [resolvedServer])
 
-  if (!server) {
+  if (resolvingServer) {
+    return (
+      <div className="login">
+        <div className="login__card">
+          <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>Loading server info...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!resolvedServer) {
     return (
       <div className="login">
         <div className="login__card">
@@ -55,7 +89,7 @@ export default function ResetPassword() {
     setError('')
     setSuccess('')
     try {
-      await requestPasswordReset(server!.url, username.trim())
+      await requestPasswordReset(resolvedServer.url, username.trim())
       setPhase('choice')
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Request failed')
@@ -77,7 +111,7 @@ export default function ResetPassword() {
     setLoading(true)
     setError('')
     try {
-      const result = await resetWithBackupToken(server!.url, username.trim(), backuptoken.trim(), newPassword)
+      const result = await resetWithBackupToken(resolvedServer.url, username.trim(), backuptoken.trim(), newPassword)
       setNewBackupToken(result.backuptoken)
       setPhase('done')
     } catch (err: any) {
@@ -93,7 +127,7 @@ export default function ResetPassword() {
     setError('')
     setSuccess('')
     try {
-      const res = await validateResetToken(server!.url, adminToken.trim())
+      const res = await validateResetToken(resolvedServer.url, adminToken.trim())
       setValidatedUsername(res.username)
       setResetMethod('admin')
       setPhase('newPassword')
@@ -118,8 +152,8 @@ export default function ResetPassword() {
     setError('')
     try {
       const result = resetMethod === 'admin'
-        ? await resetPassword(server!.url, adminToken.trim(), newPassword)
-        : await resetWithBackupToken(server!.url, validatedUsername || username.trim(), backuptoken.trim(), newPassword)
+        ? await resetPassword(resolvedServer.url, adminToken.trim(), newPassword)
+        : await resetWithBackupToken(resolvedServer.url, validatedUsername || username.trim(), backuptoken.trim(), newPassword)
 
       setNewBackupToken(result.backuptoken)
       setPhase('done')
@@ -138,7 +172,7 @@ export default function ResetPassword() {
         />
       )}
       <div className="login__card">
-        <h2 className="auth-form__server-name">{server.name}</h2>
+        <h2 className="auth-form__server-name">{resolvedServer.name}</h2>
 
         {phase === 'username' && (
           <form onSubmit={handleRequestReset} noValidate>
@@ -323,7 +357,7 @@ export default function ResetPassword() {
             <button
               className="btn-primary"
               style={{ width: '100%' }}
-              onClick={() => navigate(`/login/${server.id}`)}
+              onClick={() => navigate(`/login/${encodeURIComponent(resolvedServer.url)}`)}
             >
               Go to Login
             </button>
