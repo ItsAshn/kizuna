@@ -121,6 +121,7 @@ function runMigrations(database: Database.Database): void {
      SELECT user_id, 'admin-role' FROM server_members WHERE role = 'admin'
        AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = server_members.user_id AND mr.role_id = 'admin-role')`,
     `ALTER TABLE users ADD COLUMN reset_requested_at INTEGER DEFAULT NULL`,
+    `ALTER TABLE users ADD COLUMN backuptoken_hash TEXT DEFAULT NULL`,
   ]
 
   for (const sql of migrations) {

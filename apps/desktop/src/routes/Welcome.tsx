@@ -7,6 +7,7 @@ import { solvePoW } from '@kizuna/shared/pow'
 import { generateAndStoreKey, initializeCrypto, userNeedsKeyUpload, getPublicKey } from '../store/keyStore'
 import type { DMChannelData } from '@kizuna/shared'
 import AuthForm from '../components/AuthForm'
+import BackupTokenModal from '../components/BackupTokenModal'
 import Landing from './Landing'
 import '../styles/welcome.css'
 
@@ -41,6 +42,7 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
   const [loading, setLoading] = useState(false)
   const [serverInfo, setServerInfo] = useState<any>(null)
   const [connecting, setConnecting] = useState(false)
+  const [showBackupToken, setShowBackupToken] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadDMs() {
@@ -93,6 +95,31 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
         const { nonce } = await solvePoW(challenge, difficulty)
         const pubKey = await generateAndStoreKey(url.trim(), password)
         result = await register(url.trim(), username.trim(), password, displayName || username, serverPassword || undefined, pubKey, challenge, nonce)
+
+        const serverId = url.trim()
+        addServer({
+          id: serverId,
+          name: serverInfo?.name || url,
+          url: serverId,
+          icon: serverInfo?.icon || undefined,
+          addedAt: Date.now(),
+        })
+
+        setActiveSession({
+          serverId,
+          url: serverId,
+          token: result.token,
+          user: result.user,
+        })
+
+        if (result.backuptoken) {
+          setShowBackupToken(result.backuptoken)
+          setLoading(false)
+          return
+        }
+
+        navigate('/chat')
+        return
       } else {
         result = await login(url.trim(), username.trim(), password)
         await initializeCrypto(url.trim(), result.token, password)
@@ -100,25 +127,25 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
           const pk = getPublicKey()
           if (pk) await uploadPublicKey(url.trim(), result.token, pk)
         }
+
+        const serverId = url.trim()
+        addServer({
+          id: serverId,
+          name: serverInfo?.name || url,
+          url: serverId,
+          icon: serverInfo?.icon || undefined,
+          addedAt: Date.now(),
+        })
+
+        setActiveSession({
+          serverId,
+          url: serverId,
+          token: result.token,
+          user: result.user,
+        })
+
+        navigate('/chat')
       }
-
-      const serverId = url.trim()
-      addServer({
-        id: serverId,
-        name: serverInfo?.name || url,
-        url: serverId,
-        icon: serverInfo?.icon || undefined,
-        addedAt: Date.now(),
-      })
-
-      setActiveSession({
-        serverId,
-        url: serverId,
-        token: result.token,
-        user: result.user,
-      })
-
-      navigate('/chat')
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Authentication failed')
     }
@@ -130,6 +157,12 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
   if (showConnect && serverInfo) {
     return (
       <div className="welcome">
+        {showBackupToken && (
+          <BackupTokenModal
+            backuptoken={showBackupToken}
+            onComplete={() => navigate('/chat')}
+          />
+        )}
         <div className="welcome__container">
           <div className="welcome__branding">
             <img src="/Logo.svg" alt="Kizuna" className="welcome__logo" />

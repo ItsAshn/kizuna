@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
+import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { getDb } from '../db'
 import { signToken, authMiddleware, isUserAdmin } from '../middleware/auth'
@@ -54,12 +55,16 @@ authRoutes.post('/register', async (c) => {
 
   const db = getDb()
   try {
-    const hash = await bcrypt.hash(password, 12)
+    const backuptoken = randomBytes(32).toString('hex')
+    const [hash, backuptokenHash] = await Promise.all([
+      bcrypt.hash(password, 12),
+      bcrypt.hash(backuptoken, 12),
+    ])
     const id = uuidv4()
 
     db.prepare(
-      'INSERT INTO users (id, username, display_name, password_hash, public_key) VALUES (?, ?, ?, ?, ?)',
-    ).run(id, username.toLowerCase().trim(), display_name || username, hash, public_key?.trim() || null)
+      'INSERT INTO users (id, username, display_name, password_hash, public_key, backuptoken_hash) VALUES (?, ?, ?, ?, ?, ?)',
+    ).run(id, username.toLowerCase().trim(), display_name || username, hash, public_key?.trim() || null, backuptokenHash)
 
     const userCount = db
       .prepare('SELECT COUNT(*) as n FROM server_members')
@@ -82,6 +87,7 @@ authRoutes.post('/register', async (c) => {
       {
         token: signToken({ userId: user.id, username: user.username }),
         user: { ...user, role: isFirstUser ? 'admin' : 'member' },
+        backuptoken,
       },
       201,
     )
@@ -307,6 +313,47 @@ authRoutes.post('/request-reset', async (c) => {
   return c.json({ ok: true })
 })
 
+authRoutes.post('/reset-with-backuptoken', async (c) => {
+  const { username, backuptoken, new_password } = await c.req.json() as { username?: string; backuptoken?: string; new_password?: string }
+  if (!username || !backuptoken || !new_password) {
+    return c.json({ error: 'username, backuptoken, and new_password are required' }, 400)
+  }
+  if (new_password.length < 8) {
+    return c.json({ error: 'Password must be at least 8 characters' }, 400)
+  }
+
+  const db = getDb()
+  const user = db.prepare(
+    'SELECT id, backuptoken_hash FROM users WHERE username = ?',
+  ).get(username.toLowerCase().trim()) as { id: string; backuptoken_hash: string | null } | undefined
+
+  if (!user) {
+    return c.json({ error: 'User not found' }, 404)
+  }
+
+  if (!user.backuptoken_hash) {
+    return c.json({ error: 'No backup token set for this account. Contact an admin for password recovery.' }, 400)
+  }
+
+  const valid = await bcrypt.compare(backuptoken, user.backuptoken_hash)
+  if (!valid) {
+    return c.json({ error: 'Invalid backup token' }, 400)
+  }
+
+  const newBackuptoken = randomBytes(32).toString('hex')
+  const [hash, backuptokenHash] = await Promise.all([
+    bcrypt.hash(new_password, 12),
+    bcrypt.hash(newBackuptoken, 12),
+  ])
+
+  const now = Math.floor(Date.now() / 1000)
+  db.prepare(
+    'UPDATE users SET password_hash = ?, backuptoken_hash = ?, reset_requested_at = NULL, token_invalidated_at = ? WHERE id = ?',
+  ).run(hash, backuptokenHash, now, user.id)
+
+  return c.json({ ok: true, backuptoken: newBackuptoken })
+})
+
 authRoutes.get('/reset-password/:token', (c) => {
   const token = c.req.param('token') || ''
   if (!token) return c.json({ error: 'Invalid token' }, 400)
@@ -351,12 +398,17 @@ authRoutes.post('/reset-password/:token', async (c) => {
     return c.json({ error: 'Invalid or expired reset token' }, 400)
   }
 
-  const hash = await bcrypt.hash(password, 12)
-  db.prepare(
-    'UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires_at = NULL, reset_requested_at = NULL, token_invalidated_at = ? WHERE id = ?',
-  ).run(hash, Math.floor(Date.now() / 1000), user.id)
+  const newBackuptoken = randomBytes(32).toString('hex')
+  const [hash, backuptokenHash] = await Promise.all([
+    bcrypt.hash(password, 12),
+    bcrypt.hash(newBackuptoken, 12),
+  ])
 
-  return c.json({ ok: true })
+  db.prepare(
+    'UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires_at = NULL, reset_requested_at = NULL, backuptoken_hash = ?, token_invalidated_at = ? WHERE id = ?',
+  ).run(hash, backuptokenHash, now, user.id)
+
+  return c.json({ ok: true, backuptoken: newBackuptoken })
 })
 
 export default authRoutes

@@ -11,6 +11,7 @@ export const SCHEMA_SQL = `
     reset_token TEXT DEFAULT NULL,
     reset_token_expires_at INTEGER DEFAULT NULL,
     reset_requested_at INTEGER DEFAULT NULL,
+    backuptoken_hash TEXT DEFAULT NULL,
     created_at INTEGER DEFAULT (unixepoch())
   );
 

@@ -5,6 +5,7 @@ import { login, register, fetchServerInfo, uploadPublicKey, getChallenge } from 
 import { solvePoW } from '@kizuna/shared/pow'
 import { generateAndStoreKey, initializeCrypto, userNeedsKeyUpload, getPublicKey } from '../store/keyStore'
 import AuthForm from '../components/AuthForm'
+import BackupTokenModal from '../components/BackupTokenModal'
 import '../styles/login.css'
 
 export default function Login() {
@@ -21,6 +22,7 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [serverInfo, setServerInfo] = useState<any>(null)
+  const [showBackupToken, setShowBackupToken] = useState<string | null>(null)
 
   useEffect(() => {
     if (server) {
@@ -52,6 +54,19 @@ export default function Login() {
         const { nonce } = await solvePoW(challenge, difficulty)
         const pubKey = await generateAndStoreKey(server!.url, password)
         result = await register(server!.url, username.trim(), password, displayName || username, serverPassword || undefined, pubKey, challenge, nonce)
+
+        setActiveSession({
+          serverId: server!.id,
+          url: server!.url,
+          token: result.token,
+          user: result.user,
+        })
+
+        if (result.backuptoken) {
+          setShowBackupToken(result.backuptoken)
+          setLoading(false)
+          return
+        }
       } else {
         result = await login(server!.url, username.trim(), password)
         await initializeCrypto(server!.url, result.token, password)
@@ -59,14 +74,14 @@ export default function Login() {
           const pk = getPublicKey()
           if (pk) await uploadPublicKey(server!.url, result.token, pk)
         }
-      }
 
-      setActiveSession({
-        serverId: server!.id,
-        url: server!.url,
-        token: result.token,
-        user: result.user,
-      })
+        setActiveSession({
+          serverId: server!.id,
+          url: server!.url,
+          token: result.token,
+          user: result.user,
+        })
+      }
 
       navigate('/chat')
     } catch (err: any) {
@@ -77,6 +92,12 @@ export default function Login() {
 
   return (
     <div className="login">
+      {showBackupToken && (
+        <BackupTokenModal
+          backuptoken={showBackupToken}
+          onComplete={() => navigate('/chat')}
+        />
+      )}
       <div className="login__card">
         <AuthForm
           serverName={serverInfo?.name || server.name}

@@ -41,7 +41,7 @@ function getServerInfo() {
     description: description?.value || process.env.SERVER_DESCRIPTION || '',
     passwordProtected: !!(process.env.SERVER_PASSWORD && process.env.SERVER_PASSWORD.trim()),
     icon: icon?.value || null,
-    serverUrl: serverUrl?.value || null,
+    serverUrl: serverUrl?.value || process.env.SERVER_URL || null,
     hasBackground,
     backgroundBlur: backgroundBlur?.value ? parseInt(backgroundBlur.value, 10) : 0,
     customCss: customCss?.value || null,

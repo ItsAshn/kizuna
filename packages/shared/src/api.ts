@@ -43,7 +43,7 @@ export async function register(
   public_key?: string,
   challenge?: string,
   nonce?: string,
-): Promise<{ token: string; user: User }> {
+): Promise<{ token: string; user: User; backuptoken: string }> {
   const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/register`, {
     username,
     password,
@@ -111,8 +111,23 @@ export async function resetPassword(
   serverUrl: string,
   token: string,
   password: string,
-): Promise<void> {
-  await axios.post(`${normalizeUrl(serverUrl)}/api/auth/reset-password/${token}`, { password })
+): Promise<{ backuptoken: string }> {
+  const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/reset-password/${token}`, { password })
+  return res.data
+}
+
+export async function resetWithBackupToken(
+  serverUrl: string,
+  username: string,
+  backuptoken: string,
+  newPassword: string,
+): Promise<{ backuptoken: string }> {
+  const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/reset-with-backuptoken`, {
+    username,
+    backuptoken,
+    new_password: newPassword,
+  })
+  return res.data
 }
 
 export async function generatePasswordReset(
