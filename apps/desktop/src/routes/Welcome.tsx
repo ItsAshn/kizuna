@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import { fetchServerInfo, login, register, fetchDMChannels, resolveInviteCode, uploadPublicKey } from '@kizuna/shared'
+import { fetchServerInfo, login, register, fetchDMChannels, resolveInviteCode, uploadPublicKey, getChallenge } from '@kizuna/shared'
+import { solvePoW } from '@kizuna/shared/pow'
 import { generateAndStoreKey, initializeCrypto, userNeedsKeyUpload, getPublicKey } from '../store/keyStore'
 import type { DMChannelData } from '@kizuna/shared'
 import AuthForm from '../components/AuthForm'
@@ -88,8 +89,10 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
     try {
       let result
       if (isRegister) {
+        const { challenge, difficulty } = await getChallenge(url.trim())
+        const { nonce } = await solvePoW(challenge, difficulty)
         const pubKey = await generateAndStoreKey(url.trim(), password)
-        result = await register(url.trim(), username.trim(), password, displayName || username, serverPassword || undefined, pubKey)
+        result = await register(url.trim(), username.trim(), password, displayName || username, serverPassword || undefined, pubKey, challenge, nonce)
       } else {
         result = await login(url.trim(), username.trim(), password)
         await initializeCrypto(url.trim(), result.token, password)
@@ -154,6 +157,7 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
               onSubmit={handleAuth}
               onBack={() => { setShowConnect(false); setServerInfo(null); setError('') }}
               backLabel="Back to Dashboard"
+              onForgotPassword={() => navigate(`/reset-password/${encodeURIComponent(url)}`)}
             />
           </div>
         </div>

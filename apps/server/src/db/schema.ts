@@ -10,6 +10,7 @@ export const SCHEMA_SQL = `
     token_invalidated_at INTEGER DEFAULT NULL,
     reset_token TEXT DEFAULT NULL,
     reset_token_expires_at INTEGER DEFAULT NULL,
+    reset_requested_at INTEGER DEFAULT NULL,
     created_at INTEGER DEFAULT (unixepoch())
   );
 

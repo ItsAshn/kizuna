@@ -65,6 +65,12 @@ export interface Member {
   custom_role_name?: string | null
   custom_role_color?: string | null
   status?: UserStatus
+  reset_requested_at?: number | null
+}
+
+export interface AdminInfo {
+  username: string
+  display_name: string
 }
 
 export type Permission =

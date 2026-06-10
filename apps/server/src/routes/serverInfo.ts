@@ -74,6 +74,19 @@ serverInfoRoutes.get('/info', (c) => {
   return c.json(getServerInfo())
 })
 
+serverInfoRoutes.get('/admins', (c) => {
+  const db = getDb()
+  const admins = db.prepare(`
+    SELECT u.username, u.display_name
+    FROM users u
+    INNER JOIN server_members sm ON sm.user_id = u.id
+    WHERE sm.role = 'admin'
+    ORDER BY u.username
+  `).all() as { username: string; display_name: string }[]
+
+  return c.json({ admins })
+})
+
 serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
   const user = getAuth(c)
   if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
@@ -411,7 +424,7 @@ serverInfoRoutes.post('/members/:userId/generate-reset', authMiddleware, async (
   const expiresAt = Math.floor(Date.now() / 1000) + 86400
 
   db.prepare(
-    'UPDATE users SET reset_token = ?, reset_token_expires_at = ? WHERE id = ?',
+    'UPDATE users SET reset_token = ?, reset_token_expires_at = ?, reset_requested_at = NULL WHERE id = ?',
   ).run(token, expiresAt, targetUserId)
 
   return c.json({

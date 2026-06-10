@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
-import { login, register, fetchServerInfo, uploadPublicKey } from '@kizuna/shared'
+import { login, register, fetchServerInfo, uploadPublicKey, getChallenge } from '@kizuna/shared'
+import { solvePoW } from '@kizuna/shared/pow'
 import { generateAndStoreKey, initializeCrypto, userNeedsKeyUpload, getPublicKey } from '../store/keyStore'
 import AuthForm from '../components/AuthForm'
 import '../styles/login.css'
@@ -47,8 +48,10 @@ export default function Login() {
     try {
       let result
       if (isRegister) {
+        const { challenge, difficulty } = await getChallenge(server!.url)
+        const { nonce } = await solvePoW(challenge, difficulty)
         const pubKey = await generateAndStoreKey(server!.url, password)
-        result = await register(server!.url, username.trim(), password, displayName || username, serverPassword || undefined, pubKey)
+        result = await register(server!.url, username.trim(), password, displayName || username, serverPassword || undefined, pubKey, challenge, nonce)
       } else {
         result = await login(server!.url, username.trim(), password)
         await initializeCrypto(server!.url, result.token, password)
@@ -94,6 +97,7 @@ export default function Login() {
           onSubmit={handleAuth}
           onBack={() => navigate('/')}
           backLabel="Back to servers"
+          onForgotPassword={() => navigate(`/reset-password/${server.id}`)}
         />
       </div>
     </div>

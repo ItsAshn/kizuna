@@ -11,6 +11,7 @@ import type {
   FileAttachment,
   ServerInfo,
   PoWChallenge,
+  AdminInfo,
 } from './types'
 
 function normalizeUrl(url: string): string {
@@ -121,6 +122,20 @@ export async function generatePasswordReset(
 ): Promise<{ resetToken: string; username: string; expiresAt: number }> {
   const res = await client(serverUrl, authToken).post(`/api/server/members/${userId}/generate-reset`)
   return res.data
+}
+
+export async function requestPasswordReset(
+  serverUrl: string,
+  username: string,
+): Promise<void> {
+  await axios.post(`${normalizeUrl(serverUrl)}/api/auth/request-reset`, { username })
+}
+
+export async function getAdminList(
+  serverUrl: string,
+): Promise<AdminInfo[]> {
+  const res = await axios.get(`${normalizeUrl(serverUrl)}/api/server/admins`)
+  return res.data.admins ?? res.data
 }
 
 export async function fetchServerInfo(serverUrl: string): Promise<ServerInfo> {

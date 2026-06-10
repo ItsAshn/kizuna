@@ -21,6 +21,7 @@ interface AuthFormProps {
   onSubmit: () => void
   onBack: () => void
   backLabel: string
+  onForgotPassword?: () => void
 }
 
 export default function AuthForm({
@@ -42,6 +43,7 @@ export default function AuthForm({
   onSubmit,
   onBack,
   backLabel,
+  onForgotPassword,
 }: AuthFormProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [showServerPassword, setShowServerPassword] = useState(false)
@@ -146,6 +148,12 @@ export default function AuthForm({
           {loading && <Loader2 size={16} className="spinner-icon" />}
           {loading ? 'Please wait...' : isRegister ? 'Create Account' : 'Sign In'}
         </button>
+
+        {!isRegister && onForgotPassword && (
+          <button type="button" className="auth-form__forgot-btn" onClick={onForgotPassword}>
+            Forgot password?
+          </button>
+        )}
 
         <button type="button" className="auth-form__back-btn" onClick={onBack}>
           {backLabel}

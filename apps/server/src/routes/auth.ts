@@ -202,7 +202,7 @@ authRoutes.get('/users', authMiddleware, (c) => {
   const db = getDb()
   const users = db
     .prepare(
-      `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at
+      `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at, u.reset_requested_at
        FROM users u
        LEFT JOIN server_members sm ON sm.user_id = u.id
        ORDER BY u.username`,
@@ -287,6 +287,26 @@ authRoutes.get('/users/:userId/public-key', authMiddleware, (c) => {
   return c.json({ public_key: user.public_key || null })
 })
 
+authRoutes.post('/request-reset', async (c) => {
+  const { username } = await c.req.json()
+  if (!username || !username.trim()) {
+    return c.json({ error: 'Username is required' }, 400)
+  }
+
+  const db = getDb()
+  const user = db.prepare('SELECT id FROM users WHERE username = ?')
+    .get(username.toLowerCase().trim()) as { id: string } | undefined
+
+  if (!user) {
+    return c.json({ ok: true })
+  }
+
+  const now = Math.floor(Date.now() / 1000)
+  db.prepare('UPDATE users SET reset_requested_at = ? WHERE id = ?').run(now, user.id)
+
+  return c.json({ ok: true })
+})
+
 authRoutes.get('/reset-password/:token', (c) => {
   const token = c.req.param('token') || ''
   if (!token) return c.json({ error: 'Invalid token' }, 400)
@@ -333,7 +353,7 @@ authRoutes.post('/reset-password/:token', async (c) => {
 
   const hash = await bcrypt.hash(password, 12)
   db.prepare(
-    'UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires_at = NULL, token_invalidated_at = ? WHERE id = ?',
+    'UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires_at = NULL, reset_requested_at = NULL, token_invalidated_at = ? WHERE id = ?',
   ).run(hash, Math.floor(Date.now() / 1000), user.id)
 
   return c.json({ ok: true })

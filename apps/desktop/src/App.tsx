@@ -8,6 +8,7 @@ import { useBackgroundNotifications } from './hooks/useBackgroundNotifications'
 import Welcome from './routes/Welcome'
 import Chat from './routes/Chat'
 import Login from './routes/Login'
+import ResetPassword from './routes/ResetPassword'
 import ServerPanel from './components/ServerPanel'
 import SetupWizard from './components/SetupWizard'
 import './styles/global.css'
@@ -31,6 +32,7 @@ function AppContent() {
       <Routes>
         <Route path="/" element={activeSession ? <Navigate to="/chat" replace /> : <Welcome isLanding={__VERCEL__} />} />
         <Route path="/login/:serverId" element={<Login />} />
+        <Route path="/reset-password/:serverId" element={<ResetPassword />} />
         <Route path="/chat" element={activeSession ? <Chat /> : <Navigate to="/" replace />} />
       </Routes>
       {showWizard && <SetupWizard onClose={() => setShowWizard(false)} />}

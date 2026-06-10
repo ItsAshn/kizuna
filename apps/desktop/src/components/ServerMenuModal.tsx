@@ -20,6 +20,7 @@ import {
   uploadServerBackground,
   deleteServerBackground,
   fetchServerInfo,
+  generatePasswordReset,
 } from '@kizuna/shared'
 import type { Member, CustomRole, Permission } from '@kizuna/shared'
 import '../styles/server-menu.css'
@@ -167,6 +168,7 @@ export default function ServerMenuModal({ onClose }: Props) {
   // ─── Members ─────────────────────────────────────────
   const [membersLoading, setMembersLoading] = useState(false)
   const [memberMsg, setMemberMsg] = useState<Record<string, string>>({})
+  const [resetTokenData, setResetTokenData] = useState<{ userId: string; token: string; username: string } | null>(null)
 
   // ─── Invites ─────────────────────────────────────────
   const [invites, setInvites] = useState<any[]>([])
@@ -363,6 +365,16 @@ export default function ServerMenuModal({ onClose }: Props) {
     try {
       await kickMember(serverUrl, token, m.id)
       setMembers(members.filter(x => x.id !== m.id))
+    } catch (err) {
+      setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
+    }
+  }
+
+  const handleGenerateReset = async (m: Member) => {
+    if (!serverUrl || !token) return
+    try {
+      const result = await generatePasswordReset(serverUrl, token, m.id)
+      setResetTokenData({ userId: m.id, token: result.resetToken, username: result.username })
     } catch (err) {
       setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
     }
@@ -700,10 +712,18 @@ export default function ServerMenuModal({ onClose }: Props) {
                             </div>
                           </div>
                           {memberMsg[m.id] && <span className="server-menu__member-msg">{memberMsg[m.id]}</span>}
+                          {m.reset_requested_at && (
+                            <span className="server-menu__member-badge" style={{ color: '#fbbf24', borderColor: '#fbbf2466', backgroundColor: '#fbbf2422' }}>
+                              reset requested
+                            </span>
+                          )}
                           <div className="server-menu__member-actions">
                             <div style={{ display: 'flex', gap: '4px' }}>
                               <button onClick={() => handleToggleRole(m)} className="server-menu__member-action-btn">
                                 {m.role === 'admin' ? 'remove admin' : 'make admin'}
+                              </button>
+                              <button onClick={() => handleGenerateReset(m)} className="server-menu__member-action-btn">
+                                reset password
                               </button>
                               {!isSelf && (
                                 <button onClick={() => handleKick(m)} className="server-menu__member-action-btn server-menu__member-action-btn--danger">
@@ -727,6 +747,28 @@ export default function ServerMenuModal({ onClose }: Props) {
                                   {roles.filter(r => !(m.custom_roles || []).some(cr => cr.id === r.id))
                                     .map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                                 </select>
+                              </div>
+                            )}
+                            {resetTokenData?.userId === m.id && (
+                              <div style={{ marginTop: '6px', padding: '6px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', fontSize: '10px' }}>
+                                <p style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Reset token for {resetTokenData.username} (valid 24h):</p>
+                                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                  <code style={{ flex: 1, fontSize: '10px', color: 'var(--accent)', wordBreak: 'break-all', background: 'var(--bg-primary)', padding: '4px 6px', borderRadius: '4px' }}>{resetTokenData.token}</code>
+                                  <button
+                                    onClick={() => navigator.clipboard.writeText(resetTokenData.token)}
+                                    className="server-menu__member-action-btn"
+                                    style={{ flexShrink: 0 }}
+                                  >
+                                    copy
+                                  </button>
+                                  <button
+                                    onClick={() => setResetTokenData(null)}
+                                    className="server-menu__member-action-btn"
+                                    style={{ flexShrink: 0 }}
+                                  >
+                                    dismiss
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </div>
