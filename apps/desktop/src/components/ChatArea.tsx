@@ -41,7 +41,7 @@ function parseAttachments(content: string): { text: string; attachments: { url: 
   while ((match = markdownImageRegex.exec(content)) !== null) {
     const filename = match[1] || 'file'
     const url = match[2]
-    if (url.startsWith('/uploads/') || url.startsWith('http')) {
+    if (url.startsWith('/uploads/') || url.startsWith('/api/attachments/') || url.startsWith('http')) {
       attachments.push({ filename, url })
       text = text.replace(match[0], '')
     }

@@ -32,6 +32,10 @@ export function createApp(httpPort: number) {
   })
 
   app.use('*', async (c, next) => {
+    const path = new URL(c.req.url).pathname
+    if (path.startsWith('/api/attachments/') || path === '/api/server/background') {
+      return next()
+    }
     const contentLength = parseInt(c.req.header('content-length') || '0', 10)
     const maxBodySize = parseInt(process.env.MAX_BODY_SIZE || '1048576', 10)
     if (contentLength > maxBodySize) {

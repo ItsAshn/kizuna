@@ -108,7 +108,7 @@ attachmentRoutes.post('/:channelId', authMiddleware, async (c) => {
   const db = getDb()
   db.prepare(
     'INSERT INTO attachments (id, message_id, filename, url, size, content_type) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(id, '', file.name, `/uploads/${storedFilename}`, buffer.length, getContentType(file.name))
+  ).run(id, '', file.name, `/api/attachments/file/${storedFilename}`, buffer.length, getContentType(file.name))
 
   const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as any
   return c.json({
@@ -141,8 +141,8 @@ attachmentRoutes.get('/message/:messageId', authMiddleware, (c) => {
   return c.json({ attachments: result })
 })
 
-// GET /attachments/file/:filename — serve an uploaded file
-attachmentRoutes.get('/file/:filename', authMiddleware, (c) => {
+// GET /attachments/file/:filename — serve an uploaded file (public, for <img>/<video>/<audio> tags)
+attachmentRoutes.get('/file/:filename', (c) => {
   const filename = c.req.param('filename') || ''
   const sanitized = path.basename(filename)
   if (sanitized !== filename || filename.includes('..')) {
