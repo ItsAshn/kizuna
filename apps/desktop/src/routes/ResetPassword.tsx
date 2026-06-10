@@ -84,7 +84,7 @@ export default function ResetPassword() {
 
   async function handleRequestReset(e: React.FormEvent) {
     e.preventDefault()
-    if (!username.trim()) return
+    if (!username.trim() || !resolvedServer) return
     setLoading(true)
     setError('')
     setSuccess('')
@@ -99,7 +99,7 @@ export default function ResetPassword() {
 
   async function handleBackupTokenSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!backuptoken.trim() || !newPassword || !confirmPassword) return
+    if (!backuptoken.trim() || !newPassword || !confirmPassword || !resolvedServer) return
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match')
       return
@@ -122,7 +122,7 @@ export default function ResetPassword() {
 
   async function handleAdminTokenSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!adminToken.trim()) return
+    if (!adminToken.trim() || !resolvedServer) return
     setLoading(true)
     setError('')
     setSuccess('')
@@ -139,7 +139,7 @@ export default function ResetPassword() {
 
   async function handleSetPassword(e: React.FormEvent) {
     e.preventDefault()
-    if (!newPassword || !confirmPassword) return
+    if (!newPassword || !confirmPassword || !resolvedServer) return
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match')
       return
