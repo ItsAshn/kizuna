@@ -122,6 +122,20 @@ function runMigrations(database: Database.Database): void {
        AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = server_members.user_id AND mr.role_id = 'admin-role')`,
     `ALTER TABLE users ADD COLUMN reset_requested_at INTEGER DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN backuptoken_hash TEXT DEFAULT NULL`,
+    `CREATE TABLE IF NOT EXISTS attachments_new (
+      id TEXT PRIMARY KEY,
+      message_id TEXT,
+      filename TEXT NOT NULL,
+      url TEXT NOT NULL,
+      size INTEGER,
+      content_type TEXT,
+      created_at INTEGER DEFAULT (unixepoch())
+    )`,
+    `INSERT OR IGNORE INTO attachments_new (id, message_id, filename, url, size, content_type, created_at)
+     SELECT id, CASE WHEN message_id = '' THEN NULL ELSE message_id END, filename, url, size, content_type, created_at
+     FROM attachments`,
+    `DROP TABLE IF EXISTS attachments`,
+    `ALTER TABLE attachments_new RENAME TO attachments`,
   ]
 
   for (const sql of migrations) {
