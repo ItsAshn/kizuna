@@ -76,53 +76,58 @@ attachmentRoutes.post('/:channelId', uploadLimiter as never, authMiddleware, asy
   const user = getAuth(c)
   const channelId = c.req.param('channelId')
 
-  const contentLength = parseInt(c.req.header('content-length') || '0', 10)
-  if (contentLength > MAX_FILE_SIZE) {
-    return c.json({ error: `File too large. Maximum size is ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB` }, 413)
+  try {
+    const contentLength = parseInt(c.req.header('content-length') || '0', 10)
+    if (contentLength > MAX_FILE_SIZE) {
+      return c.json({ error: `File too large. Maximum size is ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB` }, 413)
+    }
+
+    const formData = await c.req.formData()
+    const file = formData.get('file') as File | null
+    if (!file) return c.json({ error: 'No file provided' }, 400)
+
+    const ext = path.extname(file.name).toLowerCase()
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      return c.json({ error: `File type not allowed. Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}` }, 415)
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return c.json({ error: `File too large. Maximum size is ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB` }, 413)
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer())
+
+    if (!verifyMagicBytes(buffer, ext)) {
+      return c.json({ error: 'File content does not match its extension' }, 415)
+    }
+
+    const storedFilename = `${uuidv4()}${ext}`
+    const filepath = path.join(UPLOADS_DIR, storedFilename)
+
+    fs.writeFileSync(filepath, buffer)
+
+    const id = uuidv4()
+    const db = getDb()
+    db.prepare(
+      'INSERT INTO attachments (id, message_id, filename, url, size, content_type) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(id, null, file.name, `/api/attachments/file/${storedFilename}`, buffer.length, getContentType(file.name))
+
+    const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as any
+    return c.json({
+      attachment: {
+        id: attachment.id,
+        message_id: attachment.message_id || null,
+        filename: attachment.filename,
+        url: attachment.url,
+        size: attachment.size,
+        content_type: attachment.content_type || getContentType(attachment.filename),
+        created_at: attachment.created_at * 1000,
+      },
+    }, 201)
+  } catch (err: any) {
+    console.error('[attachments] Upload failed:', err.message || err)
+    return c.json({ error: 'Upload failed' }, 500)
   }
-
-  const formData = await c.req.formData()
-  const file = formData.get('file') as File | null
-  if (!file) return c.json({ error: 'No file provided' }, 400)
-
-  const ext = path.extname(file.name).toLowerCase()
-  if (!ALLOWED_EXTENSIONS.includes(ext)) {
-    return c.json({ error: `File type not allowed. Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}` }, 415)
-  }
-
-  if (file.size > MAX_FILE_SIZE) {
-    return c.json({ error: `File too large. Maximum size is ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB` }, 413)
-  }
-
-  const buffer = Buffer.from(await file.arrayBuffer())
-
-  if (!verifyMagicBytes(buffer, ext)) {
-    return c.json({ error: 'File content does not match its extension' }, 415)
-  }
-
-  const storedFilename = `${uuidv4()}${ext}`
-  const filepath = path.join(UPLOADS_DIR, storedFilename)
-
-  fs.writeFileSync(filepath, buffer)
-
-  const id = uuidv4()
-  const db = getDb()
-  db.prepare(
-    'INSERT INTO attachments (id, message_id, filename, url, size, content_type) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(id, '', file.name, `/api/attachments/file/${storedFilename}`, buffer.length, getContentType(file.name))
-
-  const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as any
-  return c.json({
-    attachment: {
-      id: attachment.id,
-      message_id: attachment.message_id || null,
-      filename: attachment.filename,
-      url: attachment.url,
-      size: attachment.size,
-      content_type: attachment.content_type || getContentType(attachment.filename),
-      created_at: attachment.created_at * 1000,
-    },
-  }, 201)
 })
 
 // GET /attachments/message/:messageId

@@ -78,7 +78,7 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
 
   if (attachment_ids && attachment_ids.length > 0) {
     for (const attId of attachment_ids) {
-      db.prepare('UPDATE attachments SET message_id = ? WHERE id = ? AND message_id = ?').run(id, attId, '')
+      db.prepare('UPDATE attachments SET message_id = ? WHERE id = ? AND message_id IS NULL').run(id, attId)
     }
   }
 

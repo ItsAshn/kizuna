@@ -40,13 +40,12 @@ export const SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS attachments (
     id TEXT PRIMARY KEY,
-    message_id TEXT NOT NULL,
+    message_id TEXT,
     filename TEXT NOT NULL,
     url TEXT NOT NULL,
     size INTEGER,
     content_type TEXT,
-    created_at INTEGER DEFAULT (unixepoch()),
-    FOREIGN KEY (message_id) REFERENCES messages(id)
+    created_at INTEGER DEFAULT (unixepoch())
   );
 
   CREATE TABLE IF NOT EXISTS direct_messages (

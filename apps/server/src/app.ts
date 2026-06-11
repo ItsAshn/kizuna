@@ -73,6 +73,12 @@ export function createApp(httpPort: number) {
 
   app.route('/api/attachments', attachmentRoutes)
 
+  // Global error handler
+  app.onError((err, c) => {
+    console.error('[server] Unhandled error:', err.message || err)
+    return c.json({ error: 'Internal server error' }, 500)
+  })
+
   // Health check
   app.get('/health', (c) => {
     return c.json({
