@@ -28,7 +28,7 @@ export function createApp(httpPort: number) {
     c.res.headers.set('X-Frame-Options', 'DENY')
     c.res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
     c.res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
-    c.res.headers.set('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss:;")
+    c.res.headers.set('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' https: data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss:;")
   })
 
   app.use('*', async (c, next) => {
@@ -71,7 +71,6 @@ export function createApp(httpPort: number) {
   app.use('/api/dms/*', messageLimiter as never)
   app.route('/api/dms', dmRoutes)
 
-  app.use('/api/attachments/*', uploadLimiter as never)
   app.route('/api/attachments', attachmentRoutes)
 
   // Health check

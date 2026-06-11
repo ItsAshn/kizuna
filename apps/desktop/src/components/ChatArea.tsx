@@ -3,11 +3,12 @@ import type { MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, uploadAttachment, fetchChannelPermissions } from '@kizuna/shared'
+import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, uploadAttachment, fetchChannelPermissions } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import { Lock } from 'lucide-react'
+import { Lock, Paperclip, Send } from 'lucide-react'
 import type { Message, Member } from '@kizuna/shared'
+import MessageBubble from './MessageBubble'
 import '../styles/chat-area.css'
 
 interface ChatAreaProps {
@@ -20,99 +21,29 @@ function getAtQuery(text: string, cursor: number): string | null {
   return match ? match[1] : null
 }
 
-function isImageUrl(url: string): boolean {
-  return /\.(jpg|jpeg|png|gif|webp)$/i.test(url)
+function hasDeletePermission(members: Member[], currentUserId: string, currentUserRole?: string): boolean {
+  if (currentUserRole === 'admin') return true
+  const me = members.find(m => m.id === currentUserId)
+  if (!me) return false
+  return me.custom_roles?.some(r => r.permissions?.delete_messages === true || r.is_admin) ?? false
 }
 
-function isVideoUrl(url: string): boolean {
-  return /\.(mp4|webm)$/i.test(url)
-}
+function formatDateSeparator(date: Date): string {
+  const now = new Date()
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
 
-function isAudioUrl(url: string): boolean {
-  return /\.(mp3|ogg|wav)$/i.test(url)
-}
+  if (date.toDateString() === now.toDateString()) return 'Today'
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
 
-function parseAttachments(content: string): { text: string; attachments: { url: string; filename: string }[] } {
-  const attachments: { url: string; filename: string }[] = []
-  const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
-  let match
-  let text = content
-
-  while ((match = markdownImageRegex.exec(content)) !== null) {
-    const filename = match[1] || 'file'
-    const url = match[2]
-    if (url.startsWith('/uploads/') || url.startsWith('/api/attachments/') || url.startsWith('http')) {
-      attachments.push({ filename, url })
-      text = text.replace(match[0], '')
-    }
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+  if (diffDays < 7) {
+    return date.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })
   }
-
-  const urlRegex = /(https?:\/\/[^\s]+)/g
-  while ((match = urlRegex.exec(content)) !== null) {
-    const url = match[1]
-    if (isImageUrl(url) || isVideoUrl(url) || isAudioUrl(url) || url.endsWith('.pdf')) {
-      if (!attachments.some((a) => a.url === url)) {
-        attachments.push({ filename: url.split('/').pop() || 'file', url })
-      }
-    }
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
   }
-
-  return { text: text.trim(), attachments }
-}
-
-function renderMentions(content: string, members: Member[], currentUsername?: string) {
-  const parts = content.split(/(@(?:everyone|here|[\w.\-]+))/g)
-  return parts.map((part, i) => {
-    if (part.startsWith('@')) {
-      const tag = part.slice(1).toLowerCase()
-      const isMe = currentUsername && tag === currentUsername.toLowerCase()
-      const isGroup = tag === 'everyone' || tag === 'here'
-      const cls = isMe ? 'chat-area__mention--self' : isGroup ? 'chat-area__mention--group' : 'chat-area__mention--user'
-      return <span key={i} className={cls}>{part}</span>
-    }
-    return <span key={i}>{part}</span>
-  })
-}
-
-function AttachmentPreview({ url, filename }: { url: string; filename: string }) {
-  const [expanded, setExpanded] = useState(false)
-  const [loadError, setLoadError] = useState(false)
-
-  if (loadError) {
-    return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className="chat-area__attachment-link">
-        <span className="chat-area__attachment-filename">{filename}</span>
-      </a>
-    )
-  }
-
-  if (isImageUrl(url)) {
-    return (
-      <div className="chat-area__attachment-image-wrap" onClick={() => setExpanded(!expanded)}>
-        <img
-          src={url}
-          alt={filename}
-          className={`chat-area__attachment-image ${expanded ? 'chat-area__attachment-image--expanded' : ''}`}
-          onError={() => setLoadError(true)}
-        />
-        {!expanded && <div className="chat-area__attachment-expand-hint">expand</div>}
-      </div>
-    )
-  }
-
-  if (isVideoUrl(url)) {
-    return <video src={url} controls className="chat-area__attachment-video" onError={() => setLoadError(true)} />
-  }
-
-  if (isAudioUrl(url)) {
-    return <audio src={url} controls className="chat-area__attachment-audio" onError={() => setLoadError(true)} />
-  }
-
-  return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="chat-area__attachment-link">
-      <span className="chat-area__attachment-filename">{filename}</span>
-    </a>
-  )
+  return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 export default function ChatArea({ socketRef }: ChatAreaProps) {
@@ -124,10 +55,10 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [pendingAttachmentId, setPendingAttachmentId] = useState<string | null>(null)
   const [atQuery, setAtQuery] = useState<string | null>(null)
   const [atIndex, setAtIndex] = useState(0)
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [channelPerms, setChannelPerms] = useState<{ can_write: boolean; locked: boolean; write_role_name: string | null } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -144,25 +75,22 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     const activeDM = dmChannels.find((d) => d.id === msg.channel_id)
     const otherPubKey = activeDM?.other_public_key
     if (!otherPubKey) return { ...msg, content: '[Encrypted - missing recipient key]' }
-    const senderIsMe = msg.user_id === session?.user.id
-    let theirPubKey: string
-    if (senderIsMe) {
-      theirPubKey = otherPubKey
-    } else {
-      theirPubKey = otherPubKey
-    }
     try {
-      const decrypted = decryptDM(parsed, theirPubKey, secKey)
+      const decrypted = decryptDM(parsed, otherPubKey, secKey)
       return { ...msg, content: decrypted }
     } catch {
       return { ...msg, content: '[Encrypted - unable to decrypt]' }
     }
-  }, [dmChannels, session?.user.id])
+  }, [dmChannels])
 
   const activeChannel = channels.find((c) => c.id === activeChannelId)
   const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
   const channelMessages = messages[activeChannelId || ''] || []
   const dmMessages = messages[activeDMChannelId || ''] || []
+
+  const canDeleteAny = activeChannelId && session
+    ? hasDeletePermission(members, session.user.id, session.user.role)
+    : false
 
   const specialTargets = ['everyone', 'here']
   const allSuggestions = [...specialTargets, ...members.map(m => m.username)]
@@ -290,7 +218,9 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     try {
       let message: Message
       if (activeChannelId) {
-        message = await sendMessage(session.url, session.token, activeChannelId, input.trim())
+        const attIds = pendingAttachmentId ? [pendingAttachmentId] : undefined
+        message = await sendMessage(session.url, session.token, activeChannelId, input.trim(), attIds)
+        setPendingAttachmentId(null)
       } else if (activeDMChannelId) {
         const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
         const otherPubKey = activeDM?.other_public_key
@@ -329,24 +259,36 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   }
 
   const handleUpload = async () => {
-    if (!pendingFile || !session || !activeChannelId) return
+    if (!pendingFile || !session) return
+
+    if (!activeChannelId) {
+      setSendError('File uploads are only available in server channels, not DMs.')
+      setPendingFile(null)
+      return
+    }
+
     setUploading(true)
     setUploadProgress(0)
     try {
       const result = await uploadAttachment(session.url, session.token, activeChannelId, pendingFile, (pct) => setUploadProgress(pct))
+      setPendingAttachmentId(result.id)
       const attachmentText = `![${result.filename}](${result.url})`
       const text = input.trim()
+      const attIds = [result.id]
       const message = await sendMessage(
         session.url, session.token, activeChannelId,
         text ? text + '\n' + attachmentText : attachmentText,
+        attIds,
       )
       addMessage(message.channel_id, message)
       setInput('')
       setPendingFile(null)
+      setPendingAttachmentId(null)
       setSendError(null)
       if (inputRef.current) { inputRef.current.style.height = 'auto'; inputRef.current.focus() }
     } catch (err: any) {
-      setSendError(err?.response?.data?.error || 'Failed to upload file')
+      setSendError(err?.response?.data?.error || err?.message || 'Failed to upload file')
+      setPendingAttachmentId(null)
     }
     setUploading(false)
   }
@@ -358,6 +300,18 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     try {
       await deleteMessage(session.url, session.token, messageId)
       useChatStore.getState().removeMessage(channelId, messageId)
+    } catch { /* ignore */ }
+  }
+
+  const handleEditMessage = async (messageId: string, content: string) => {
+    if (!session) return
+    const channelId = activeChannelId || activeDMChannelId
+    if (!channelId) return
+    try {
+      const updated = await editMessage(session.url, session.token, messageId, content)
+      const store = useChatStore.getState()
+      const msgs = store.messages[channelId] || []
+      store.setMessages(channelId, msgs.map((m) => (m.id === messageId ? updated : m)))
     } catch { /* ignore */ }
   }
 
@@ -379,6 +333,49 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const dmHasKey = activeDMChannelId ? !!(activeDM?.other_public_key && getSecretKey()) : false
   const inputMaxLen = activeDMChannelId ? 2700 : 4000
   const cantWrite = channelPerms?.locked && !channelPerms?.can_write
+
+  const renderMessagesWithGroups = () => {
+    let lastDate = ''
+    let lastUserId = ''
+    const elements: React.ReactNode[] = []
+
+    displayMessages.forEach((msg, i) => {
+      const msgDate = new Date(msg.created_at).toDateString()
+      if (msgDate !== lastDate) {
+        lastDate = msgDate
+        elements.push(
+          <div key={`date-${msg.id}`} className="msg-bubble__date-separator">
+            <span className="msg-bubble__date-label">{formatDateSeparator(new Date(msg.created_at))}</span>
+          </div>
+        )
+      }
+
+      const isOwn = msg.user_id === session?.user.id
+      const isGrouped = msg.user_id === lastUserId && !isOwn
+      lastUserId = msg.user_id
+
+      const showProfile = !!channelPerms?.locked
+      const messageCanDelete = isOwn || canDeleteAny
+
+      elements.push(
+        <MessageBubble
+          key={msg.id}
+          message={msg}
+          isOwn={isOwn}
+          isGrouped={isGrouped}
+          members={members}
+          currentUsername={session?.user.username}
+          canDelete={messageCanDelete}
+          onDelete={handleDeleteMessage}
+          canEdit={isOwn}
+          onEdit={handleEditMessage}
+        />
+      )
+    })
+
+    return elements
+  }
+
   return (
     <div className="chat-area">
       <div className="chat-area__header">
@@ -406,42 +403,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
         {!loading && displayMessages.length === 0 && (
           <p className="chat-area__loading">No messages yet. Be the first to send one!</p>
         )}
-        {displayMessages.map((msg) => {
-          const isOwn = msg.user_id === session?.user.id
-          const displayName = msg.display_name || msg.username || 'Unknown'
-          const { text, attachments } = parseAttachments(msg.content)
-          const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          return (
-            <div key={msg.id} className={`chat-area__message-row ${isOwn ? 'chat-area__message-row--own' : ''}`}>
-              {!isOwn && (
-                <div className="chat-area__message-avatar">
-                  {msg.avatar ? (
-                    <img src={msg.avatar} alt="" className="chat-area__message-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                  ) : displayName[0]?.toUpperCase()}
-                </div>
-              )}
-              <div style={isOwn ? { alignItems: 'flex-end' } : {}} className={`chat-area__message-bubble ${isOwn ? 'chat-area__message-bubble--own' : 'chat-area__message-bubble--other'}`}>
-                {!isOwn && <p className="chat-area__message-author">{displayName}</p>}
-                {text && <p className="chat-area__message-text">{renderMentions(text, members, session?.user.username)}</p>}
-                {attachments.length > 0 && attachments.map((att, i) => (
-                  <AttachmentPreview key={i} url={att.url} filename={att.filename} />
-                ))}
-                <div className="chat-area__message-meta">
-                  <span className="chat-area__message-time">{time}</span>
-                  {msg.edited_at && <span className="chat-area__message-edited">(edited)</span>}
-                  {isOwn && confirmDeleteId === msg.id ? (
-                    <span className="chat-area__delete-confirm">
-                      <button className="chat-area__delete-confirm-btn chat-area__delete-confirm-btn--yes" onClick={() => { handleDeleteMessage(msg.id); setConfirmDeleteId(null) }}>confirm</button>
-                      <button className="chat-area__delete-confirm-btn chat-area__delete-confirm-btn--no" onClick={() => setConfirmDeleteId(null)}>cancel</button>
-                    </span>
-                  ) : isOwn ? (
-                    <button className="chat-area__message-delete" onClick={() => setConfirmDeleteId(msg.id)}>del</button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          )
-        })}
+        {renderMessagesWithGroups()}
         {typingText && <div className="chat-area__typing">{typingText}</div>}
         <div ref={messagesEndRef} />
       </div>
@@ -471,7 +433,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
               <p className="chat-area__upload-name">{pendingFile.name}</p>
               <p className="chat-area__upload-size">{formatFileSize(pendingFile.size)}</p>
             </div>
-            <button className="chat-area__upload-cancel" onClick={() => setPendingFile(null)} disabled={uploading}>cancel</button>
+            <button className="chat-area__upload-cancel" onClick={() => { setPendingFile(null); setPendingAttachmentId(null) }} disabled={uploading}>cancel</button>
             <button className="btn-primary" onClick={handleUpload} disabled={uploading} style={{ fontSize: '12px', padding: '4px 12px' }}>
               {uploadProgress > 0 && uploadProgress < 100 ? `${uploadProgress}%` : uploading ? 'uploading...' : 'upload'}
             </button>
@@ -486,7 +448,9 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
             onChange={handleFileSelect}
             accept="image/*,video/*,audio/*,.pdf,.txt,.json"
           />
-          <button className="chat-area__attach-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="attach file">+</button>
+          <button className="chat-area__attach-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading || !!activeDMChannelId} title={activeDMChannelId ? 'File upload not available in DMs' : 'Attach file'}>
+            <Paperclip size={16} />
+          </button>
           <textarea
             ref={inputRef}
             className={`chat-area__input ${cantWrite ? 'chat-area__input--locked' : ''}`}
@@ -499,14 +463,14 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
             maxLength={inputMaxLen}
             disabled={cantWrite}
           />
-          <button className="chat-area__send-btn" onClick={handleSend} disabled={!input.trim() && !pendingFile || cantWrite}>
-            Send
+          <button className="chat-area__send-btn" onClick={handleSend} disabled={(!input.trim() && !pendingFile) || cantWrite}>
+            <Send size={16} />
           </button>
         </div>
         {sendError ? (
           <p className="chat-area__input-hint chat-area__input-hint--error">{sendError}</p>
         ) : (
-          <p className="chat-area__input-hint">enter to send · shift+enter for new line · @ to mention · + for files</p>
+          <p className="chat-area__input-hint">enter to send · shift+enter for new line · @ to mention · paperclip for files</p>
         )}
       </div>
     </div>

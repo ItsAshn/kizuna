@@ -65,8 +65,8 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
     return c.json({ error: 'This channel is locked' }, 403)
   }
 
-  const body = await c.req.json() as { content: string }
-  const { content } = body
+  const body = await c.req.json() as { content: string; attachment_ids?: string[] }
+  const { content, attachment_ids } = body
   if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)
   if (content.length > 4000) return c.json({ error: 'Message too long (max 4000 chars)' }, 400)
 
@@ -75,6 +75,12 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   db.prepare(
     'INSERT INTO messages (id, channel_id, author_id, author_username, content) VALUES (?, ?, ?, ?, ?)'
   ).run(id, channelId, user.userId, user.username, content.trim())
+
+  if (attachment_ids && attachment_ids.length > 0) {
+    for (const attId of attachment_ids) {
+      db.prepare('UPDATE attachments SET message_id = ? WHERE id = ? AND message_id = ?').run(id, attId, '')
+    }
+  }
 
   const row = db.prepare(`
     SELECT m.*, u.display_name, u.avatar
@@ -133,8 +139,8 @@ messageRoutes.delete('/:messageId', authMiddleware, (c) => {
   try {
     const io: any = c.get('io' as never)
     if (io) {
-      io.to(message.channel_id).emit('message:deleted', { id: messageId, channelId: message.channel_id })
-      io.to('__notifications__').emit('message:deleted', { id: messageId, channelId: message.channel_id })
+      io.to(message.channel_id).emit('message:delete', { id: messageId, channel_id: message.channel_id })
+      io.to('__notifications__').emit('message:delete', { id: messageId, channel_id: message.channel_id })
     }
   } catch { /* best-effort */ }
 
@@ -173,8 +179,8 @@ messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
   try {
     const io: any = c.get('io' as never)
     if (io) {
-      io.to(message.channel_id).emit('message:updated', result)
-      io.to('__notifications__').emit('message:updated', result)
+      io.to(message.channel_id).emit('message:edit', result)
+      io.to('__notifications__').emit('message:edit', result)
     }
   } catch { /* best-effort */ }
 

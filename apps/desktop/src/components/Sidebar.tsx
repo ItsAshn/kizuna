@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useNavigate } from 'react-router-dom'
@@ -36,6 +36,27 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   const [lockMenuChannelId, setLockMenuChannelId] = useState<string | null>(null)
   const [roles, setRoles] = useState<CustomRole[]>([])
   const [rolesLoaded, setRolesLoaded] = useState(false)
+  const lockMenuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!lockMenuChannelId) return
+    function handleClickOutside(e: MouseEvent) {
+      if (lockMenuRef.current && !lockMenuRef.current.contains(e.target as Node)) {
+        setLockMenuChannelId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [lockMenuChannelId])
+
+  useEffect(() => {
+    if (!lockMenuChannelId) return
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setLockMenuChannelId(null)
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [lockMenuChannelId])
 
   function handleLogout() {
     setActiveSession(null)
@@ -120,11 +141,6 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
                   >
                     <span className="sidebar__channel-icon">#</span>
                     <span className="sidebar__channel-name">{ch.name}</span>
-                    {ch.locked && (
-                      <span className="sidebar__lock-icon" title={ch.write_role_name ? `Locked to ${ch.write_role_name}` : 'Locked'}>
-                        <Lock size={10} />
-                      </span>
-                    )}
                     {badge ? <span className="sidebar__unread-badge">{mentionCounts[ch.id] || unreadCounts[ch.id]}</span> : null}
                   </button>
                   {isAdmin && (
@@ -137,7 +153,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
                     </button>
                   )}
                   {lockMenuChannelId === ch.id && (
-                    <div className="sidebar__lock-menu">
+                    <div className="sidebar__lock-menu" ref={lockMenuRef}>
                       {ch.locked ? (
                         <>
                           <span className="sidebar__lock-menu-label">Locked to: {ch.write_role_name || 'no role'}</span>
@@ -163,7 +179,6 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
                           {roles.length === 0 && <span className="sidebar__lock-menu-label">No roles exist. Create one in server menu.</span>}
                         </>
                       )}
-                      <button onClick={() => setLockMenuChannelId(null)} className="sidebar__lock-menu-btn sidebar__lock-menu-btn--cancel">Cancel</button>
                     </div>
                   )}
                 </div>

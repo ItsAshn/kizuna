@@ -248,8 +248,12 @@ export async function sendMessage(
   token: string,
   channelId: string,
   content: string,
+  attachmentIds?: string[],
 ): Promise<Message> {
-  const res = await client(serverUrl, token).post(`/api/messages/${channelId}`, { content })
+  const res = await client(serverUrl, token).post(`/api/messages/${channelId}`, {
+    content,
+    ...(attachmentIds?.length ? { attachment_ids: attachmentIds } : {}),
+  })
   return res.data.message ?? res.data
 }
 
@@ -301,13 +305,19 @@ export async function updateProfile(
 export async function updateServerSettings(
   serverUrl: string,
   token: string,
-  name: string,
+  name?: string,
   icon?: string | null,
   background_blur?: number,
   customCss?: string | null,
   voiceBitrateKbps?: number,
 ): Promise<ServerInfo> {
-  const res = await client(serverUrl, token).patch('/api/server/settings', { name, icon, background_blur, custom_css: customCss, voice_bitrate_kbps: voiceBitrateKbps })
+  const body: Record<string, unknown> = {}
+  if (name !== undefined) body.name = name
+  if (icon !== undefined) body.icon = icon
+  if (background_blur !== undefined) body.background_blur = background_blur
+  if (customCss !== undefined) body.custom_css = customCss
+  if (voiceBitrateKbps !== undefined) body.voice_bitrate_kbps = voiceBitrateKbps
+  const res = await client(serverUrl, token).patch('/api/server/settings', body)
   return res.data as ServerInfo
 }
 

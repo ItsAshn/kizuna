@@ -336,17 +336,6 @@
   flex: 1;
 }
 
-.sidebar__lock-icon {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  color: var(--yellow);
-  padding: 1px 3px;
-  border-radius: 3px;
-  background: rgba(250, 176, 5, 0.15);
-  flex-shrink: 0;
-}
-
 .sidebar__lock-btn {
   background: none;
   border: none;
@@ -386,6 +375,7 @@
   flex-direction: column;
   gap: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  animation: lockMenuFadeIn 0.15s ease;
 }
 
 .sidebar__lock-menu-label {
@@ -415,7 +405,13 @@
   color: var(--brand);
 }
 
-.sidebar__lock-menu-btn--cancel {
-  color: var(--text-muted);
-  font-size: 10px;
+@keyframes lockMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

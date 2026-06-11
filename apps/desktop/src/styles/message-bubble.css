@@ -1,0 +1,474 @@
+/* ── Message row ──────────────────────────────────────────── */
+
+.msg-bubble__row {
+  display: flex;
+  gap: 12px;
+  padding: 0 16px;
+}
+
+.msg-bubble__row:first-child {
+  margin-top: 4px;
+}
+
+.msg-bubble__row--own {
+  justify-content: flex-end;
+}
+
+.msg-bubble__row--grouped {
+  margin-top: 2px;
+}
+
+/* ── Avatar ───────────────────────────────────────────────── */
+
+.msg-bubble__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+  margin-top: 2px;
+}
+
+.msg-bubble__avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.msg-bubble__avatar-spacer {
+  width: 36px;
+  height: 0;
+  flex-shrink: 0;
+}
+
+/* ── Date separator ───────────────────────────────────────── */
+
+.msg-bubble__date-separator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  margin: 8px 0;
+}
+
+.msg-bubble__date-separator::before,
+.msg-bubble__date-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.msg-bubble__date-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  padding: 2px 8px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+}
+
+/* ── Bubble ───────────────────────────────────────────────── */
+
+.msg-bubble__bubble {
+  max-width: 480px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  position: relative;
+  transition: box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.msg-bubble__bubble:hover {
+  filter: brightness(1.06);
+}
+
+.msg-bubble__bubble--other {
+  background: var(--bg-tertiary);
+  border-top-left-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.msg-bubble__bubble--other.msg-bubble__bubble--grouped {
+  border-top-left-radius: var(--radius-md);
+}
+
+.msg-bubble__bubble--own {
+  background: var(--brand);
+  border-top-right-radius: 4px;
+  box-shadow: 0 1px 2px rgba(76, 110, 245, 0.25);
+}
+
+/* ── Author ───────────────────────────────────────────────── */
+
+.msg-bubble__author {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand);
+  margin-bottom: 2px;
+  line-height: 1.3;
+}
+
+.msg-bubble__bubble--own .msg-bubble__author {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* ── Text ─────────────────────────────────────────────────── */
+
+.msg-bubble__text {
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-word;
+  line-height: 1.45;
+}
+
+/* ── Meta row ─────────────────────────────────────────────── */
+
+.msg-bubble__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.2s ease, margin-top 0.2s ease;
+}
+
+.msg-bubble__meta--visible {
+  max-height: 24px;
+  margin-top: 4px;
+}
+
+.msg-bubble__meta--editing {
+  max-height: 200px;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.msg-bubble__time {
+  font-size: 10px;
+  color: var(--text-secondary);
+  animation: msg-bubble-time-in 0.15s ease forwards;
+}
+
+@keyframes msg-bubble-time-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.msg-bubble__bubble--own .msg-bubble__time {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.msg-bubble__edited {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.msg-bubble__bubble--own .msg-bubble__edited {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Delete button ────────────────────────────────────────── */
+
+.msg-bubble__delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  padding: 2px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.msg-bubble__bubble:hover .msg-bubble__delete-btn {
+  opacity: 1;
+}
+
+.msg-bubble__delete-btn:hover {
+  color: var(--red);
+  background: var(--red-dim);
+}
+
+.msg-bubble__bubble--own .msg-bubble__delete-btn {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.msg-bubble__bubble--own .msg-bubble__delete-btn:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Delete confirm ───────────────────────────────────────── */
+
+.msg-bubble__delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.msg-bubble__delete-confirm-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.msg-bubble__delete-confirm-btn--yes {
+  background: var(--red-dim);
+  color: var(--red);
+}
+
+.msg-bubble__delete-confirm-btn--yes:hover {
+  background: rgba(255, 77, 77, 0.30);
+}
+
+.msg-bubble__delete-confirm-btn--no {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.msg-bubble__delete-confirm-btn--no:hover {
+  background: var(--bg-hover);
+}
+
+/* ── Edit button ──────────────────────────────────────────── */
+
+.msg-bubble__edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  padding: 2px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.msg-bubble__bubble:hover .msg-bubble__edit-btn {
+  opacity: 1;
+}
+
+.msg-bubble__edit-btn:hover {
+  color: var(--brand);
+  background: var(--brand-dim);
+}
+
+.msg-bubble__bubble--own .msg-bubble__edit-btn {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.msg-bubble__bubble--own .msg-bubble__edit-btn:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Edit input ───────────────────────────────────────────── */
+
+.msg-bubble__edit-input {
+  width: 100%;
+  min-height: 36px;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: inherit;
+  line-height: 1.45;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.msg-bubble__edit-input:focus {
+  border-color: var(--brand);
+}
+
+.msg-bubble__bubble--own .msg-bubble__edit-input {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.msg-bubble__bubble--own .msg-bubble__edit-input:focus {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Edit actions ─────────────────────────────────────────── */
+
+.msg-bubble__edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.msg-bubble__edit-action-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.msg-bubble__edit-action-btn--save {
+  background: var(--brand-dim);
+  color: var(--brand);
+}
+
+.msg-bubble__edit-action-btn--save:hover {
+  background: rgba(76, 110, 245, 0.25);
+}
+
+.msg-bubble__edit-action-btn--cancel {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.msg-bubble__edit-action-btn--cancel:hover {
+  background: var(--bg-hover);
+}
+
+.msg-bubble__bubble--own .msg-bubble__edit-action-btn--save {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.msg-bubble__bubble--own .msg-bubble__edit-action-btn--save:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.msg-bubble__bubble--own .msg-bubble__edit-action-btn--cancel {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.msg-bubble__bubble--own .msg-bubble__edit-action-btn--cancel:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ── Mention highlighting ─────────────────────────────────── */
+
+.msg-bubble__mention--self {
+  background: var(--brand-dim);
+  color: var(--brand);
+  border-radius: var(--radius-sm);
+  padding: 0 2px;
+  font-weight: 600;
+}
+
+.msg-bubble__mention--group {
+  background: rgba(250, 176, 5, 0.15);
+  color: var(--yellow);
+  border-radius: var(--radius-sm);
+  padding: 0 2px;
+  font-weight: 600;
+}
+
+.msg-bubble__mention--user {
+  background: var(--bg-hover);
+  border-radius: var(--radius-sm);
+  padding: 0 2px;
+}
+
+/* ── Attachment preview ───────────────────────────────────── */
+
+.msg-bubble__attachment-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-decoration: none;
+  margin-top: 6px;
+}
+
+.msg-bubble__attachment-link:hover {
+  background: var(--bg-active);
+}
+
+.msg-bubble__attachment-filename {
+  font-size: 12px;
+  color: var(--brand);
+}
+
+.msg-bubble__attachment-filename:hover {
+  text-decoration: underline;
+}
+
+.msg-bubble__attachment-image-wrap {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.msg-bubble__attachment-image {
+  max-width: 320px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  max-height: 200px;
+  object-fit: cover;
+  display: block;
+}
+
+.msg-bubble__attachment-image--expanded {
+  max-width: 100%;
+  max-height: none;
+}
+
+.msg-bubble__attachment-expand-hint {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.msg-bubble__attachment-image-wrap:hover .msg-bubble__attachment-expand-hint {
+  opacity: 1;
+}
+
+.msg-bubble__attachment-video {
+  margin-top: 6px;
+  max-width: 320px;
+  max-height: 200px;
+  border-radius: var(--radius-md);
+}
+
+.msg-bubble__attachment-audio {
+  margin-top: 6px;
+  max-width: 320px;
+}

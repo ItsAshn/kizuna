@@ -15,6 +15,7 @@ import UserSettingsModal from '../components/UserSettingsModal'
 import ServerMenuModal from '../components/ServerMenuModal'
 import EnvStatus from '../components/EnvStatus'
 import SetupWizard from '../components/SetupWizard'
+import LoginDialog from '../components/LoginDialog'
 import { useNavigate } from 'react-router-dom'
 import '../styles/chat.css'
 
@@ -22,7 +23,6 @@ export default function Chat() {
   const navigate = useNavigate()
   const session = useServerStore((s) => s.activeSession)
   const servers = useServerStore((s) => s.servers)
-  const setActiveSession = useServerStore((s) => s.setActiveSession)
   const { setChannels, setMembers, setDMChannels, activeChannelId, activeDMChannelId, setActiveChannel, setActiveDMChannel, serverBackgroundEnabled, customCssEnabled } = useChatStore()
   const socketRef = useSocket()
   const {
@@ -37,6 +37,7 @@ export default function Chat() {
   const [showSettings, setShowSettings] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   const [showEnvWizard, setShowEnvWizard] = useState(false)
+  const [loginForServerId, setLoginForServerId] = useState<string | null>(null)
   const [chatClosing, setChatClosing] = useState(false)
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [bgInfo, setBgInfo] = useState<{ hasBackground: boolean; backgroundBlur: number; customCss: string | null } | null>(null)
@@ -89,8 +90,9 @@ export default function Chat() {
         setDMChannels(dms)
         setBgInfo({ hasBackground: info.hasBackground, backgroundBlur: info.backgroundBlur, customCss: info.customCss })
       } catch {
-        setActiveSession(null)
-        navigate('/')
+        setChannels([])
+        setMembers([])
+        setDMChannels([])
       }
     }
     load()
@@ -131,7 +133,7 @@ export default function Chat() {
         '--bg-blur': `${bgInfo?.backgroundBlur ?? 0}px`,
       } as React.CSSProperties : undefined}
     >
-      {servers.length > 0 && <ServerPanel />}
+      {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} />}
       <Sidebar
         joinVoice={joinVoice}
         leaveVoice={leaveVoice}
@@ -171,6 +173,7 @@ export default function Chat() {
     {showSettings && <UserSettingsModal onClose={() => setShowSettings(false)} />}
     {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} />}
     {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
+    {loginForServerId && <LoginDialog serverId={loginForServerId} onClose={() => setLoginForServerId(null)} />}
     </>
   )
 }

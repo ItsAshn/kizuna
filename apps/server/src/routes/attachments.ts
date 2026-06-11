@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import { getDb } from '../db'
 import { authMiddleware, isUserAdmin } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
+import { uploadLimiter } from '../middleware/rateLimiter'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const attachmentRoutes = new Hono()
@@ -71,7 +72,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 }
 
 // POST /attachments/:channelId — upload file via multipart/form-data
-attachmentRoutes.post('/:channelId', authMiddleware, async (c) => {
+attachmentRoutes.post('/:channelId', uploadLimiter as never, authMiddleware, async (c) => {
   const user = getAuth(c)
   const channelId = c.req.param('channelId')
 

@@ -5,7 +5,11 @@ import { useChatStore } from '../store/chatStore'
 import ExportModal from './ExportModal'
 import '../styles/server-panel.css'
 
-export default function ServerPanel() {
+interface ServerPanelProps {
+  onLoginRequired?: (serverId: string) => void
+}
+
+export default function ServerPanel({ onLoginRequired }: ServerPanelProps) {
   const navigate = useNavigate()
   const {
     servers,
@@ -27,6 +31,8 @@ export default function ServerPanel() {
     if (sessions[serverId]) {
       setActiveServer(serverId)
       navigate('/chat')
+    } else if (onLoginRequired) {
+      onLoginRequired(serverId)
     } else {
       navigate('/login/' + encodeURIComponent(serverId))
     }

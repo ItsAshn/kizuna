@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
+import { MoreHorizontal } from 'lucide-react'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import QRCode from 'qrcode'
@@ -22,7 +23,7 @@ import {
   fetchServerInfo,
   generatePasswordReset,
 } from '@kizuna/shared'
-import type { Member, CustomRole, Permission } from '@kizuna/shared'
+import type { Member, CustomRole, Permission, UserStatus } from '@kizuna/shared'
 import '../styles/server-menu.css'
 
 interface Props {
@@ -63,12 +64,12 @@ function fileToDataUrl(file: File): Promise<string> {
 
 type AdminTab = 'settings' | 'members' | 'invites' | 'roles' | 'css'
 
-const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
-  { key: 'send_messages', label: 'send' },
-  { key: 'manage_channels', label: 'channels' },
-  { key: 'delete_messages', label: 'delete' },
-  { key: 'kick_members', label: 'kick' },
-  { key: 'manage_invites', label: 'invites' },
+const ALL_PERMISSIONS: { key: Permission; label: string; desc: string }[] = [
+  { key: 'send_messages', label: 'send', desc: 'Post messages in text channels' },
+  { key: 'manage_channels', label: 'channels', desc: 'Create, edit, and delete channels' },
+  { key: 'delete_messages', label: 'delete', desc: 'Remove messages from any user' },
+  { key: 'kick_members', label: 'kick', desc: 'Remove members from the server' },
+  { key: 'manage_invites', label: 'invites', desc: 'Create and revoke invite codes' },
 ]
 
 const EXPIRY_OPTIONS = [
@@ -82,16 +83,21 @@ const EXPIRY_OPTIONS = [
 
 export default function ServerMenuModal({ onClose }: Props) {
   const { activeSession: session, updateServerInfo, servers } = useServerStore()
-  const { members, setMembers } = useChatStore()
+  const { members, setMembers, userStatuses } = useChatStore()
   const serverUrl = session?.url
   const token = session?.token
   const isAdmin = session?.user?.role === 'admin'
   const [closing, setClosing] = useState(false)
+  const mountedRef = useRef(false)
+  mountedRef.current = true
+  useEffect(() => {
+    return () => { mountedRef.current = false }
+  }, [])
 
   const handleClose = useCallback(() => {
     if (closing) return
     setClosing(true)
-    setTimeout(() => onClose(), 200)
+    setTimeout(() => { if (mountedRef.current) onClose() }, 200)
   }, [closing, onClose])
 
   useEffect(() => {
@@ -114,7 +120,9 @@ export default function ServerMenuModal({ onClose }: Props) {
 
   // ─── Server settings ─────────────────────────────────
   const [serverName, setServerName] = useState(session ? servers.find(s => s.id === session.serverId)?.name ?? '' : '')
-  const [serverIconPreview, setServerIconPreview] = useState<string | null>(null)
+  const [serverIconPreview, setServerIconPreview] = useState<string | null>(
+    session ? servers.find(s => s.id === session.serverId)?.icon ?? null : null,
+  )
   const [serverIconChanged, setServerIconChanged] = useState(false)
   const [serverSaving, setServerSaving] = useState(false)
   const [serverMsg, setServerMsg] = useState<string | null>(null)
@@ -126,23 +134,41 @@ export default function ServerMenuModal({ onClose }: Props) {
   const [bgBlur, setBgBlur] = useState(0)
   const [bgPreviewTs, setBgPreviewTs] = useState(Date.now())
   const [bgUploading, setBgUploading] = useState(false)
-  const pendingBgFile = useRef<File | null>(null)
+  const bgFileRef = useRef<HTMLInputElement>(null)
 
   const [customCss, setCustomCss] = useState('')
   const [customCssSaving, setCustomCssSaving] = useState(false)
   const [customCssMsg, setCustomCssMsg] = useState<string | null>(null)
   const [voiceBitrateKbps, setVoiceBitrateKbps] = useState(64)
+  const [infoLoading, setInfoLoading] = useState(false)
+
+  const existingIcon = session ? servers.find(s => s.id === session.serverId)?.icon ?? null : null
+  const serverIconDisplay = serverIconPreview
 
   const bgPreviewUrl = serverUrl && bgHasImage ? `${serverUrl}/api/server/background?t=${bgPreviewTs}` : null
 
   useEffect(() => {
-    if (!serverUrl) return
+    if (!serverUrl) { setInfoLoading(false); return }
+
+    const delay = setTimeout(() => { if (mountedRef.current) setInfoLoading(true) }, 300)
+
     fetchServerInfo(serverUrl).then(info => {
+      if (!mountedRef.current) return
+      clearTimeout(delay)
       setBgHasImage(info.hasBackground)
       setBgBlur(info.backgroundBlur)
       setCustomCss(info.customCss || '')
       setVoiceBitrateKbps(info.voiceBitrateKbps ?? 64)
-    }).catch(() => {})
+      useChatStore.getState().setServerVoiceBitrateKbps(info.voiceBitrateKbps ?? 64)
+      setInfoLoading(false)
+    }).catch(() => {
+      if (mountedRef.current) {
+        clearTimeout(delay)
+        setInfoLoading(false)
+      }
+    })
+
+    return () => clearTimeout(delay)
   }, [serverUrl])
 
   useEffect(() => {
@@ -165,10 +191,56 @@ export default function ServerMenuModal({ onClose }: Props) {
     }
   }, [adminTab, customCss])
 
+  // auto-save voice bitrate on change
+  const voiceInitRef = useRef(true)
+  useEffect(() => {
+    if (voiceInitRef.current) { voiceInitRef.current = false; return }
+    if (!serverUrl || !token) return
+    const timer = setTimeout(async () => {
+      try {
+        await updateServerSettings(serverUrl, token, undefined, undefined, undefined, undefined, voiceBitrateKbps)
+        useChatStore.getState().setServerVoiceBitrateKbps(voiceBitrateKbps)
+      } catch {}
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [voiceBitrateKbps, serverUrl, token])
+
+  // auto-save background blur on change
+  const blurInitRef = useRef(true)
+  useEffect(() => {
+    if (blurInitRef.current) { blurInitRef.current = false; return }
+    if (!serverUrl || !token) return
+    const timer = setTimeout(async () => {
+      try {
+        await updateServerSettings(serverUrl, token, undefined, undefined, bgBlur)
+      } catch {}
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [bgBlur, serverUrl, token])
+
   // ─── Members ─────────────────────────────────────────
   const [membersLoading, setMembersLoading] = useState(false)
   const [memberMsg, setMemberMsg] = useState<Record<string, string>>({})
   const [resetTokenData, setResetTokenData] = useState<{ userId: string; token: string; username: string } | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set())
+  const [openOverflowMember, setOpenOverflowMember] = useState<string | null>(null)
+  const [kickConfirmMember, setKickConfirmMember] = useState<string | null>(null)
+  const [selfDemoteConfirm, setSelfDemoteConfirm] = useState(false)
+  const overflowRef = useRef<HTMLDivElement | null>(null)
+
+  // close overflow menu on outside click
+  useEffect(() => {
+    if (!openOverflowMember) return
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (overflowRef.current && !overflowRef.current.contains(target)) {
+        setOpenOverflowMember(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [openOverflowMember])
 
   // ─── Invites ─────────────────────────────────────────
   const [invites, setInvites] = useState<any[]>([])
@@ -191,12 +263,17 @@ export default function ServerMenuModal({ onClose }: Props) {
   const [editPerms, setEditPerms] = useState<Partial<Record<Permission, boolean>>>({})
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null)
   const [assigningRole, setAssigningRole] = useState<Record<string, boolean>>({})
+  const [showCreateRole, setShowCreateRole] = useState(false)
+
+  function memberRoleCount(roleId: string): number {
+    return members.filter(m => (m.custom_roles || []).some(r => r.id === roleId)).length
+  }
 
   useEffect(() => {
     if (!isAdmin || !serverUrl || !token) return
     if (adminTab === 'members') {
       setMembersLoading(true)
-      fetchMembers(serverUrl, token).then(setMembers).catch(console.error).finally(() => setMembersLoading(false))
+      fetchMembers(serverUrl, token).then(d => { if (mountedRef.current) setMembers(d) }).catch(console.error).finally(() => { if (mountedRef.current) setMembersLoading(false) })
       loadRoles()
     } else if (adminTab === 'invites') {
       loadInvites()
@@ -208,15 +285,15 @@ export default function ServerMenuModal({ onClose }: Props) {
   async function loadInvites() {
     if (!serverUrl || !token) return
     setInvitesLoading(true)
-    try { setInvites(await fetchInvites(serverUrl, token)) } catch {}
-    setInvitesLoading(false)
+    try { if (mountedRef.current) setInvites(await fetchInvites(serverUrl, token)) } catch {}
+    if (mountedRef.current) setInvitesLoading(false)
   }
 
   async function loadRoles() {
     if (!serverUrl || !token) return
     setRolesLoading(true)
-    try { setRoles(await fetchRoles(serverUrl, token)) } catch {}
-    setRolesLoading(false)
+    try { if (mountedRef.current) setRoles(await fetchRoles(serverUrl, token)) } catch {}
+    if (mountedRef.current) setRolesLoading(false)
   }
 
   // ─── Profile handlers ───────────────────────────────
@@ -251,6 +328,7 @@ export default function ServerMenuModal({ onClose }: Props) {
       setAvatarChanged(false)
       pendingAvatarFile.current = null
       setProfileMsg('saved')
+      setTimeout(() => setProfileMsg(null), 3000)
     } catch (err) {
       setProfileMsg(handleApiErr(err))
     }
@@ -286,8 +364,10 @@ export default function ServerMenuModal({ onClose }: Props) {
       const res = await updateServerSettings(serverUrl, token, serverName, iconPayload, bgBlur, undefined, voiceBitrateKbps)
       updateServerInfo(session.serverId, { name: res.name, icon: res.icon ?? undefined })
       setServerIconChanged(false)
+      setServerIconPreview(res.icon ?? null)
       pendingServerIconFile.current = null
       setServerMsg('saved')
+      setTimeout(() => setServerMsg(null), 3000)
     } catch (err) {
       setServerMsg(handleApiErr(err))
     }
@@ -300,11 +380,12 @@ export default function ServerMenuModal({ onClose }: Props) {
     setCustomCssMsg(null)
     try {
       const cssValue = customCss.trim() || null
-      await updateServerSettings(serverUrl, token, serverName, undefined, undefined, cssValue)
+      await updateServerSettings(serverUrl, token, undefined, undefined, undefined, cssValue)
       if (cssValue) {
         setCustomCss(cssValue)
       }
       setCustomCssMsg('saved')
+      setTimeout(() => setCustomCssMsg(null), 3000)
     } catch (err) {
       setCustomCssMsg(handleApiErr(err))
     }
@@ -322,6 +403,7 @@ export default function ServerMenuModal({ onClose }: Props) {
       setBgHasImage(true)
       setBgPreviewTs(Date.now())
       setServerMsg('background uploaded')
+      setTimeout(() => setServerMsg(null), 3000)
     } catch (err) {
       setServerMsg(handleApiErr(err))
     }
@@ -337,19 +419,38 @@ export default function ServerMenuModal({ onClose }: Props) {
       setBgHasImage(false)
       setBgPreviewTs(Date.now())
       setServerMsg('background removed')
+      setTimeout(() => setServerMsg(null), 3000)
     } catch (err) {
       setServerMsg(handleApiErr(err))
     }
   }
 
   // ─── Member handlers ────────────────────────────────
+  const toggleMemberSelect = (memberId: string) => {
+    setSelectedMembers(prev => {
+      const next = new Set(prev)
+      if (next.has(memberId)) next.delete(memberId)
+      else next.add(memberId)
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedMembers(new Set())
+
   const handleToggleRole = async (m: Member) => {
     if (!serverUrl || !token) return
     const newRole = m.role === 'admin' ? 'member' : 'admin'
+
+    if (newRole === 'member' && m.id === session?.user?.id && !selfDemoteConfirm) {
+      setSelfDemoteConfirm(true)
+      return
+    }
+    setSelfDemoteConfirm(false)
+
     try {
       await setMemberRole(serverUrl, token, m.id, newRole)
       setMembers(members.map(x => x.id === m.id ? { ...x, role: newRole } : x))
-      setMemberMsg(prev => ({ ...prev, [m.id]: `role → ${newRole}` }))
+      setMemberMsg(prev => ({ ...prev, [m.id]: `role \u2192 ${newRole}` }))
       setTimeout(() => setMemberMsg(prev => { const n = { ...prev }; delete n[m.id]; return n }), 2000)
       if (m.id === session?.user?.id) {
         useServerStore.getState().setActiveSession({ ...session!, user: { ...session!.user, role: newRole } })
@@ -360,11 +461,11 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   const handleKick = async (m: Member) => {
-    if (!confirm(`Kick ${m.display_name || m.username}? They can rejoin via invite.`)) return
     if (!serverUrl || !token) return
     try {
       await kickMember(serverUrl, token, m.id)
       setMembers(members.filter(x => x.id !== m.id))
+      setKickConfirmMember(null)
     } catch (err) {
       setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
     }
@@ -414,6 +515,74 @@ export default function ServerMenuModal({ onClose }: Props) {
       ))
     } catch {}
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: false }))
+  }
+
+  // ─── Bulk member handlers ───────────────────────────
+  const handleBulkToggleAdmin = async (makeAdmin: boolean) => {
+    if (!serverUrl || !token) return
+    const targetRole = makeAdmin ? 'admin' : 'member' as const
+    const targets = members.filter(m => selectedMembers.has(m.id) && m.role !== targetRole)
+
+    if (!makeAdmin && targets.some(m => m.id === session?.user?.id) && !selfDemoteConfirm) {
+      setSelfDemoteConfirm(true)
+      return
+    }
+    setSelfDemoteConfirm(false)
+
+    let updated = [...members]
+    for (const m of targets) {
+      try {
+        await setMemberRole(serverUrl, token, m.id, targetRole)
+        updated = updated.map(x => x.id === m.id ? { ...x, role: targetRole } : x)
+        if (m.id === session?.user?.id) {
+          useServerStore.getState().setActiveSession({ ...session!, user: { ...session!.user, role: targetRole } })
+        }
+      } catch {}
+    }
+    setMembers(updated)
+    clearSelection()
+  }
+
+  const handleBulkKick = async () => {
+    if (!serverUrl || !token) return
+    const targets = members.filter(m => selectedMembers.has(m.id) && m.id !== session?.user?.id)
+    let updated = [...members]
+    for (const m of targets) {
+      try {
+        await kickMember(serverUrl, token, m.id)
+        updated = updated.filter(x => x.id !== m.id)
+      } catch {}
+    }
+    setMembers(updated)
+    clearSelection()
+  }
+
+  const handleBulkAddRole = async (roleId: string) => {
+    if (!roleId || !serverUrl || !token) return
+    const targets = members.filter(m =>
+      selectedMembers.has(m.id) &&
+      !(m.custom_roles || []).some(r => r.id === roleId),
+    )
+    let updated = [...members]
+    for (const m of targets) {
+      try {
+        await addMemberRole(serverUrl, token, m.id, roleId)
+        const role = roles.find(r => r.id === roleId)
+        updated = updated.map(pm =>
+          pm.id === m.id ? {
+            ...pm,
+            custom_roles: [...(pm.custom_roles || []), {
+              id: roleId,
+              name: role?.name ?? roleId,
+              color: role?.color ?? '#5865f2',
+              permissions: role?.permissions ?? {},
+            }],
+          } : pm,
+        )
+      } catch {}
+    }
+    setMembers(updated)
+    clearSelection()
   }
 
   // ─── Invite handlers ────────────────────────────────
@@ -470,6 +639,7 @@ export default function ServerMenuModal({ onClose }: Props) {
       setNewRoleName('')
       setNewRoleColor('#5865f2')
       setNewRolePerms({})
+      setShowCreateRole(false)
     } catch {}
     setCreatingRole(false)
   }
@@ -500,7 +670,9 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   const handleDeleteRole = async (id: string) => {
-    if (!confirm('Delete this role? It will be unassigned from all members.')) return
+    const count = memberRoleCount(id)
+    const msg = `Delete this role? It will be unassigned from ${count} member${count !== 1 ? 's' : ''}.`
+    if (!confirm(msg)) return
     if (!serverUrl || !token) return
     try {
       await deleteRole(serverUrl, token, id)
@@ -515,6 +687,23 @@ export default function ServerMenuModal({ onClose }: Props) {
       if (editingRoleId === id) setEditingRoleId(null)
     } catch {}
   }
+
+  // ─── Filter / sort members ──────────────────────────
+  const filteredMembers = (searchQuery.trim()
+    ? members.filter(m =>
+        m.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        m.display_name.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    : [...members]
+  ).sort((a, b) => {
+    const rankA = a.role === 'admin' ? 0 : (a.custom_roles || []).length > 0 ? 1 : 2
+    const rankB = b.role === 'admin' ? 0 : (b.custom_roles || []).length > 0 ? 1 : 2
+    const r = rankA - rankB
+    if (r !== 0) return r
+    return a.username.localeCompare(b.username)
+  })
+
+  const statusFor = (memberId: string): UserStatus => userStatuses[memberId] || 'offline'
 
   return (
     <div className={`modal-overlay${closing ? ' modal-overlay--closing' : ''}`} onClick={handleClose}>
@@ -543,25 +732,33 @@ export default function ServerMenuModal({ onClose }: Props) {
             </div>
             <div className="server-menu__field" style={{ marginTop: '12px' }}>
               <label className="server-menu__label">display name</label>
-              <input className="server-menu__input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="display name" />
+              <input className="server-menu__input" maxLength={100} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="display name" />
             </div>
-            <div className="server-menu__field" style={{ marginTop: '12px' }}>
-              <label className="server-menu__label">show server background</label>
-              <button
-                onClick={() => useChatStore.getState().setServerBackgroundEnabled(!useChatStore.getState().serverBackgroundEnabled)}
-                className={`server-menu__toggle ${useChatStore(s => s.serverBackgroundEnabled) ? 'server-menu__toggle--on' : ''}`}
-              >
-                {useChatStore(s => s.serverBackgroundEnabled) ? 'enabled' : 'disabled'}
-              </button>
+            <div className="server-menu__toggle-row">
+              <label className="server-menu__label" style={{ margin: 0 }}>show server background</label>
+              <label className="server-menu__toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={useChatStore(s => s.serverBackgroundEnabled)}
+                  onChange={(e) => useChatStore.getState().setServerBackgroundEnabled(e.target.checked)}
+                />
+                <span className="server-menu__toggle-track">
+                  <span className="server-menu__toggle-thumb" />
+                </span>
+              </label>
             </div>
-            <div className="server-menu__field" style={{ marginTop: '12px' }}>
-              <label className="server-menu__label">enable custom css</label>
-              <button
-                onClick={() => useChatStore.getState().setCustomCssEnabled(!useChatStore.getState().customCssEnabled)}
-                className={`server-menu__toggle ${useChatStore(s => s.customCssEnabled) ? 'server-menu__toggle--on' : ''}`}
-              >
-                {useChatStore(s => s.customCssEnabled) ? 'enabled' : 'disabled'}
-              </button>
+            <div className="server-menu__toggle-row">
+              <label className="server-menu__label" style={{ margin: 0 }}>enable custom css</label>
+              <label className="server-menu__toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={useChatStore(s => s.customCssEnabled)}
+                  onChange={(e) => useChatStore.getState().setCustomCssEnabled(e.target.checked)}
+                />
+                <span className="server-menu__toggle-track">
+                  <span className="server-menu__toggle-thumb" />
+                </span>
+              </label>
             </div>
             <div className="server-menu__save-row">
               <button onClick={handleSaveProfile} disabled={profileSaving} className="server-menu__save-btn">
@@ -592,17 +789,18 @@ export default function ServerMenuModal({ onClose }: Props) {
               {/* Settings tab */}
               {adminTab === 'settings' && (
                 <div style={{ marginTop: '16px' }}>
+                  {infoLoading && <p className="server-menu__info-loading">loading server info...</p>}
                   <div className="server-menu__avatar-row">
                     <div className="server-menu__avatar" onClick={() => serverIconFileRef.current?.click()} title="click to change server icon">
                       <span>{(serverName || '?').slice(0, 2).toUpperCase()}</span>
-                      {(serverIconPreview !== null ? serverIconPreview : (session ? servers.find(s => s.id === session.serverId)?.icon : undefined)) && (
-                        <img src={serverIconPreview ?? session ? servers.find(s => s.id === session.serverId)?.icon : undefined} alt="" className="server-menu__avatar-img"
+                      {serverIconDisplay && (
+                        <img src={serverIconDisplay} alt="" className="server-menu__avatar-img"
                           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
                       )}
                     </div>
                     <div className="server-menu__avatar-actions">
                       <button onClick={() => serverIconFileRef.current?.click()} className="server-menu__upload-btn">upload icon</button>
-                      {serverIconPreview && (
+                      {(serverIconPreview) && (
                         <button onClick={() => { pendingServerIconFile.current = null; setServerIconPreview(null); setServerIconChanged(true) }}
                           className="server-menu__remove-btn">remove icon</button>
                       )}
@@ -611,7 +809,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                   </div>
                   <div className="server-menu__field" style={{ marginTop: '12px' }}>
                     <label className="server-menu__label">server name</label>
-                    <input className="server-menu__input" value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="server name" />
+                    <input className="server-menu__input" maxLength={100} value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="server name" />
                   </div>
                   <div className="server-menu__field" style={{ marginTop: '16px' }}>
                     <label className="server-menu__label">background image</label>
@@ -620,14 +818,14 @@ export default function ServerMenuModal({ onClose }: Props) {
                         <div className="server-menu__bg-preview" style={{ backgroundImage: `url(${bgPreviewUrl})` }} />
                       )}
                       <div className="server-menu__bg-actions">
-                        <button onClick={() => { const input = document.getElementById('bg-file-input') as HTMLInputElement; input?.click() }} disabled={bgUploading} className="server-menu__upload-btn">
+                        <button onClick={() => bgFileRef.current?.click()} disabled={bgUploading} className="server-menu__upload-btn">
                           {bgUploading ? 'uploading...' : 'upload background'}
                         </button>
                         {bgHasImage && (
                           <button onClick={handleRemoveBg} className="server-menu__remove-btn">remove background</button>
                         )}
                       </div>
-                      <input id="bg-file-input" type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgFile} />
+                      <input ref={bgFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgFile} />
                     </div>
                   </div>
                   <div className="server-menu__field" style={{ marginTop: '12px' }}>
@@ -656,7 +854,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                       {serverSaving ? '...' : 'save settings'}
                     </button>
                     {serverMsg && (
-                      <span className={`server-menu__save-msg ${serverMsg === 'saved' ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`}>
+                      <span className={`server-menu__save-msg ${serverMsg === 'saved' || serverMsg.startsWith('background') ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`}>
                         {serverMsg}
                       </span>
                     )}
@@ -667,111 +865,223 @@ export default function ServerMenuModal({ onClose }: Props) {
               {/* Members tab */}
               {adminTab === 'members' && (
                 <div style={{ marginTop: '16px' }}>
+                  <input
+                    className="server-menu__member-search"
+                    placeholder={`Search members (${filteredMembers.length})...`}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+
+                  {/* Bulk action bar */}
+                  {selectedMembers.size > 0 && (
+                    <div className="server-menu__bulk-bar">
+                      <span className="server-menu__bulk-bar-count">{selectedMembers.size} selected</span>
+                      <div className="server-menu__bulk-bar-actions">
+                        <button onClick={() => handleBulkToggleAdmin(true)} className="server-menu__bulk-bar-btn">make admin</button>
+                        <button onClick={() => handleBulkToggleAdmin(false)} className="server-menu__bulk-bar-btn">remove admin</button>
+                        <button onClick={handleBulkKick} className="server-menu__bulk-bar-btn server-menu__bulk-bar-btn--danger">kick</button>
+                        {roles.length > 0 && (
+                          <select
+                            value=""
+                            onChange={(e) => { if (e.target.value) handleBulkAddRole(e.target.value); e.target.value = '' }}
+                            className="server-menu__bulk-bar-btn"
+                            style={{ background: 'var(--bg-hover)', cursor: 'pointer', appearance: 'auto' } as React.CSSProperties}
+                          >
+                            <option value="">+ role</option>
+                            {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                          </select>
+                        )}
+                      </div>
+                      <button onClick={clearSelection} className="server-menu__confirm-cancel" style={{ marginLeft: 'auto' }}>clear</button>
+                    </div>
+                  )}
+                  {selfDemoteConfirm && selectedMembers.size > 0 && selectedMembers.has(session?.user?.id ?? '') && (
+                    <div className="server-menu__self-warn" style={{ marginBottom: '12px' }}>
+                      <p>This action will remove admin privileges from your own account. Are you sure?</p>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                        <button onClick={() => handleBulkToggleAdmin(false)} className="server-menu__confirm-btn">
+                          confirm demotion
+                        </button>
+                        <button onClick={() => setSelfDemoteConfirm(false)} className="server-menu__confirm-cancel">
+                          cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {membersLoading ? (
                     <p className="server-menu__loading">loading...</p>
-                  ) : members.length === 0 ? (
-                    <p className="server-menu__loading">no members</p>
+                  ) : filteredMembers.length === 0 ? (
+                    <p className="server-menu__loading">{searchQuery ? 'no members found' : 'no members'}</p>
                   ) : (
-                    [...members].sort((a, b) => {
-                      const rankA = a.role === 'admin' ? 0 : (a.custom_roles || []).length > 0 ? 1 : 2
-                      const rankB = b.role === 'admin' ? 0 : (b.custom_roles || []).length > 0 ? 1 : 2
-                      const r = rankA - rankB
-                      if (r !== 0) return r
-                      return a.username.localeCompare(b.username)
-                    }).map(m => {
+                    filteredMembers.map(m => {
                       const isSelf = m.id === session?.user?.id
+                      const status = statusFor(m.id)
+                      const isSelected = selectedMembers.has(m.id)
                       return (
-                        <div key={m.id} className="server-menu__member">
-                          <div className="server-menu__member-avatar">
-                            <span>{(m.display_name || m.username)[0]?.toUpperCase()}</span>
-                            {m.avatar && <img src={m.avatar} alt="" className="server-menu__member-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />}
-                          </div>
-                          <div className="server-menu__member-info">
-                            <p className="server-menu__member-name">
-                              {m.display_name || m.username}
-                              {isSelf && <span className="server-menu__member-self">(you)</span>}
-                            </p>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              <p className={`server-menu__member-role ${m.role === 'admin' ? 'server-menu__member-role--admin' : ''}`}>
-                                {m.role ?? 'member'}
-                              </p>
-                              {(m.custom_roles || []).map((r) => (
-                                <span key={r.id} className="server-menu__member-badge"
-                                  style={{ color: r.color || '#5865f2', borderColor: (r.color || '#5865f2') + '66', backgroundColor: (r.color || '#5865f2') + '22' }}>
-                                  {r.name}
-                                  <button
-                                    onClick={() => handleRemoveRole(m.id, r.id)}
-                                    disabled={assigningRole[m.id + r.id]}
-                                    className="server-menu__role-remove-btn"
-                                    title={`Remove ${r.name} role`}
-                                  >
-                                    x
-                                  </button>
-                                </span>
-                              ))}
+                        <div key={m.id}>
+                          <div className={`server-menu__member${isSelected ? ' server-menu__member--selected' : ''}`}>
+                            <label className="server-menu__member-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleMemberSelect(m.id)}
+                              />
+                              <span className="server-menu__member-checkbox-visual" />
+                            </label>
+                            <div className="server-menu__member-avatar-wrap">
+                              <div className="server-menu__member-avatar">
+                                <span>{(m.display_name || m.username)[0]?.toUpperCase()}</span>
+                                {m.avatar && <img src={m.avatar} alt="" className="server-menu__member-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />}
+                              </div>
+                              {status !== 'offline' && <span className={`server-menu__status-dot server-menu__status-dot--${status}`} />}
                             </div>
-                          </div>
-                          {memberMsg[m.id] && <span className="server-menu__member-msg">{memberMsg[m.id]}</span>}
-                          {m.reset_requested_at && (
-                            <span className="server-menu__member-badge" style={{ color: '#fbbf24', borderColor: '#fbbf2466', backgroundColor: '#fbbf2422' }}>
-                              reset requested
-                            </span>
-                          )}
-                          <div className="server-menu__member-actions">
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              <button onClick={() => handleToggleRole(m)} className="server-menu__member-action-btn">
-                                {m.role === 'admin' ? 'remove admin' : 'make admin'}
+                            <div className="server-menu__member-info">
+                              <p className="server-menu__member-name">
+                                {m.display_name || m.username}
+                                {isSelf && <span className="server-menu__member-self">(you)</span>}
+                              </p>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <p className={`server-menu__member-role ${m.role === 'admin' ? 'server-menu__member-role--admin' : ''}`}>
+                                  {m.role ?? 'member'}
+                                </p>
+                                {(m.custom_roles || []).map((r) => (
+                                  <span key={r.id} className="server-menu__member-badge"
+                                    style={{ color: r.color || '#5865f2', borderColor: (r.color || '#5865f2') + '66', backgroundColor: (r.color || '#5865f2') + '22' }}>
+                                    {r.name}
+                                    <button
+                                      onClick={() => handleRemoveRole(m.id, r.id)}
+                                      disabled={assigningRole[m.id + r.id]}
+                                      className="server-menu__role-remove-btn"
+                                      title={`Remove ${r.name} role`}
+                                    >
+                                      x
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            {memberMsg[m.id] && <span className="server-menu__member-msg">{memberMsg[m.id]}</span>}
+                            {m.reset_requested_at && (
+                              <span className="server-menu__member-badge" style={{ color: '#fbbf24', borderColor: '#fbbf2466', backgroundColor: '#fbbf2422' }}>
+                                reset
+                              </span>
+                            )}
+                            <div className="server-menu__member-overflow-wrap" ref={openOverflowMember === m.id ? overflowRef : undefined}>
+                              <button
+                                onClick={() => {
+                                  if (openOverflowMember === m.id) {
+                                    setOpenOverflowMember(null)
+                                    setSelfDemoteConfirm(false)
+                                  } else {
+                                    setOpenOverflowMember(m.id)
+                                    setSelfDemoteConfirm(false)
+                                  }
+                                }}
+                                className={`server-menu__member-overflow-btn${openOverflowMember === m.id ? ' server-menu__member-overflow-btn--active' : ''}`}
+                              >
+                                <MoreHorizontal size={14} />
                               </button>
-                              <button onClick={() => handleGenerateReset(m)} className="server-menu__member-action-btn">
-                                reset password
-                              </button>
-                              {!isSelf && (
-                                <button onClick={() => handleKick(m)} className="server-menu__member-action-btn server-menu__member-action-btn--danger">
-                                  kick
-                                </button>
+                              {openOverflowMember === m.id && (
+                                <div className="server-menu__overflow-menu">
+                                  {isSelf && selfDemoteConfirm && m.role === 'admin' ? (
+                                    <button
+                                      onClick={() => { setOpenOverflowMember(null); handleToggleRole(m) }}
+                                      className="server-menu__overflow-item server-menu__overflow-item--danger">
+                                      confirm demotion
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => {
+                                        if (isSelf && m.role === 'admin') {
+                                          setSelfDemoteConfirm(true)
+                                        } else {
+                                          setOpenOverflowMember(null)
+                                          handleToggleRole(m)
+                                        }
+                                      }}
+                                      className="server-menu__overflow-item">
+                                      {m.role === 'admin' ? 'remove admin' : 'make admin'}
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => { setOpenOverflowMember(null); handleGenerateReset(m) }}
+                                    className="server-menu__overflow-item">
+                                    reset password
+                                  </button>
+                                  {!isSelf && (
+                                    <button
+                                      onClick={() => { setOpenOverflowMember(null); setKickConfirmMember(m.id) }}
+                                      className="server-menu__overflow-item server-menu__overflow-item--danger">
+                                      kick
+                                    </button>
+                                  )}
+                                  {roles.length > 0 && (
+                                    <>
+                                      <div className="server-menu__overflow-divider" />
+                                      <span className="server-menu__overflow-section-title">assign roles</span>
+                                      {roles.map(r => {
+                                        const hasRole = (m.custom_roles || []).some(cr => cr.id === r.id)
+                                        return (
+                                          <button
+                                            key={r.id}
+                                            onClick={() => {
+                                              if (hasRole) handleRemoveRole(m.id, r.id)
+                                              else handleAddRole(m.id, r.id)
+                                              if (!assigningRole[m.id + r.id]) setOpenOverflowMember(null)
+                                            }}
+                                            disabled={assigningRole[m.id + r.id]}
+                                            className="server-menu__overflow-role-item"
+                                          >
+                                            <span className="server-menu__overflow-role-dot" style={{ backgroundColor: r.color }} />
+                                            {r.name}
+                                            {hasRole && <span className="server-menu__overflow-role-check">&#10003;</span>}
+                                          </button>
+                                        )
+                                      })}
+                                    </>
+                                  )}
+                                </div>
                               )}
                             </div>
-                            {roles.length > 0 && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-                                <select
-                                  value=""
-                                  disabled={assigningRole[m.id]}
-                                  onChange={(e) => {
-                                    if (e.target.value) handleAddRole(m.id, e.target.value)
-                                    e.target.value = ''
-                                  }}
-                                  className="server-menu__select"
-                                  style={{ fontSize: '9px', padding: '2px 4px' }}
-                                >
-                                  <option value="">+ role</option>
-                                  {roles.filter(r => !(m.custom_roles || []).some(cr => cr.id === r.id))
-                                    .map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                                </select>
-                              </div>
-                            )}
-                            {resetTokenData?.userId === m.id && (
-                              <div style={{ marginTop: '6px', padding: '6px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', fontSize: '10px' }}>
-                                <p style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Reset token for {resetTokenData.username} (valid 24h) — share this with the user:</p>
-                                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                  <code style={{ flex: 1, fontSize: '10px', color: 'var(--accent)', wordBreak: 'break-all', background: 'var(--bg-primary)', padding: '4px 6px', borderRadius: '4px' }}>{resetTokenData.token}</code>
-                                  <button
-                                    onClick={() => navigator.clipboard.writeText(resetTokenData.token)}
-                                    className="server-menu__member-action-btn"
-                                    style={{ flexShrink: 0 }}
-                                  >
-                                    copy
-                                  </button>
-                                  <button
-                                    onClick={() => setResetTokenData(null)}
-                                    className="server-menu__member-action-btn"
-                                    style={{ flexShrink: 0 }}
-                                  >
-                                    dismiss
-                                  </button>
-                                </div>
-                              </div>
-                            )}
                           </div>
+
+                          {/* Kick confirmation panel */}
+                          {kickConfirmMember === m.id && (
+                            <div className="server-menu__confirm-panel">
+                              <p className="server-menu__confirm-text">
+                                Kick {m.display_name || m.username}? They can rejoin via invite.
+                              </p>
+                              <div className="server-menu__confirm-actions">
+                                <button onClick={() => handleKick(m)} className="server-menu__confirm-btn">kick</button>
+                                <button onClick={() => setKickConfirmMember(null)} className="server-menu__confirm-cancel">cancel</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Reset token panel */}
+                          {resetTokenData?.userId === m.id && (
+                            <div style={{ marginTop: '6px', padding: '6px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', fontSize: '10px' }}>
+                              <p style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Reset token for {resetTokenData.username} (valid 24h) — share this with the user:</p>
+                              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                <code style={{ flex: 1, fontSize: '10px', color: 'var(--accent)', wordBreak: 'break-all', background: 'var(--bg-primary)', padding: '4px 6px', borderRadius: '4px' }}>{resetTokenData.token}</code>
+                                <button
+                                  onClick={() => navigator.clipboard.writeText(resetTokenData.token)}
+                                  className="server-menu__member-action-btn"
+                                  style={{ flexShrink: 0 }}
+                                >
+                                  copy
+                                </button>
+                                <button
+                                  onClick={() => setResetTokenData(null)}
+                                  className="server-menu__member-action-btn"
+                                  style={{ flexShrink: 0 }}
+                                >
+                                  dismiss
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )
                     })
@@ -791,7 +1101,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                       </div>
                       <div className="server-menu__field">
                         <label className="server-menu__label">expires after</label>
-                        <select className="server-menu__input" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)}>
+                        <select className="server-menu__select" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)}>
                           {EXPIRY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                       </div>
@@ -831,7 +1141,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                       <div key={inv.code} className="server-menu__invite-item">
                         <code className="server-menu__invite-code">{inv.code}</code>
                         <div className="server-menu__invite-stats">
-                          <div>{inv.uses}/{inv.max_uses ?? '∞'} uses</div>
+                          <div>{inv.uses}/{inv.max_uses ?? '\u221E'} uses</div>
                           <div>{inv.expires_at ? new Date(inv.expires_at * 1000).toLocaleDateString() : 'never'}</div>
                         </div>
                         <div className="server-menu__invite-actions">
@@ -849,81 +1159,105 @@ export default function ServerMenuModal({ onClose }: Props) {
               {/* Roles tab */}
               {adminTab === 'roles' && (
                 <div style={{ marginTop: '16px' }}>
-                  <div className="server-menu__role-create">
-                    <p className="server-menu__section-title" style={{ marginBottom: '8px' }}>create role</p>
-                    <div className="server-menu__role-create-row">
-                      <input className="server-menu__role-create-input" placeholder="role name" value={newRoleName} onChange={(e) => setNewRoleName(e.target.value)} />
-                      <input type="color" className="server-menu__color-input" value={newRoleColor} onChange={(e) => setNewRoleColor(e.target.value)} />
-                    </div>
-                    <div className="server-menu__perm-toggles">
-                      {ALL_PERMISSIONS.map(p => (
-                        <button key={p.key}
-                          onClick={() => setNewRolePerms(prev => ({ ...prev, [p.key]: !prev[p.key] }))}
-                          className={`server-menu__perm-toggle ${newRolePerms[p.key] ? 'server-menu__perm-toggle--on' : ''}`}>
-                          {p.label}
-                        </button>
-                      ))}
-                    </div>
-                    <button onClick={handleCreateRole} disabled={creatingRole || !newRoleName.trim()}
-                      className="server-menu__role-create-btn">
-                      {creatingRole ? '...' : 'create role'}
+                  {!showCreateRole ? (
+                    <button
+                      onClick={() => setShowCreateRole(true)}
+                      className="server-menu__role-create-btn"
+                      style={{ marginBottom: '16px' }}
+                    >
+                      + create role
                     </button>
-                  </div>
+                  ) : (
+                    <div className="server-menu__role-create">
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <p className="server-menu__section-title" style={{ margin: 0 }}>create role</p>
+                        <button onClick={() => setShowCreateRole(false)} className="server-menu__member-action-btn">cancel</button>
+                      </div>
+                      <div className="server-menu__role-create-row">
+                        <input className="server-menu__role-create-input" placeholder="role name" value={newRoleName} onChange={(e) => setNewRoleName(e.target.value)} maxLength={50} />
+                        <input type="color" className="server-menu__color-input" value={newRoleColor} onChange={(e) => setNewRoleColor(e.target.value)} />
+                      </div>
+                      <div className="server-menu__perm-toggles">
+                        {ALL_PERMISSIONS.map(p => (
+                          <button key={p.key}
+                            onClick={() => setNewRolePerms(prev => ({ ...prev, [p.key]: !prev[p.key] }))}
+                            className={`server-menu__perm-toggle ${newRolePerms[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
+                            title={p.desc}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                      <button onClick={handleCreateRole} disabled={creatingRole || !newRoleName.trim()}
+                        className="server-menu__role-create-btn">
+                        {creatingRole ? '...' : 'create role'}
+                      </button>
+                    </div>
+                  )}
 
                   {rolesLoading ? (
                     <p className="server-menu__loading">loading...</p>
                   ) : roles.length === 0 ? (
                     <p className="server-menu__loading">no custom roles</p>
                   ) : (
-                    roles.map(role => (
-                      <div key={role.id} className="server-menu__role-item">
-                        {editingRoleId === role.id ? (
-                          <div>
-                            <div className="server-menu__role-create-row">
-                              <input className="server-menu__role-create-input" value={editName} onChange={(e) => setEditName(e.target.value)} />
-                              <input type="color" className="server-menu__color-input" value={editColor} onChange={(e) => setEditColor(e.target.value)} />
-                            </div>
-                            <div className="server-menu__perm-toggles">
-                              {ALL_PERMISSIONS.map(p => (
-                                <button key={p.key}
-                                  onClick={() => setEditPerms(prev => ({ ...prev, [p.key]: !prev[p.key] }))}
-                                  className={`server-menu__perm-toggle ${editPerms[p.key] ? 'server-menu__perm-toggle--on' : ''}`}>
-                                  {p.label}
+                    roles.map(role => {
+                      const count = memberRoleCount(role.id)
+                      return (
+                        <div key={role.id} className="server-menu__role-item">
+                          {editingRoleId === role.id ? (
+                            <div>
+                              <div className="server-menu__role-create-row">
+                                <input className="server-menu__role-create-input" value={editName} onChange={(e) => setEditName(e.target.value)} maxLength={50} />
+                                <input type="color" className="server-menu__color-input" value={editColor} onChange={(e) => setEditColor(e.target.value)} />
+                              </div>
+                              <div className="server-menu__perm-toggles">
+                                {ALL_PERMISSIONS.map(p => (
+                                  <button key={p.key}
+                                    onClick={() => setEditPerms(prev => ({ ...prev, [p.key]: !prev[p.key] }))}
+                                    className={`server-menu__perm-toggle ${editPerms[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
+                                    title={p.desc}
+                                  >
+                                    {p.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button onClick={() => handleSaveRole(role.id)} disabled={savingRoleId === role.id}
+                                  className="server-menu__save-btn" style={{ fontSize: '10px' }}>
+                                  {savingRoleId === role.id ? '...' : 'save'}
                                 </button>
-                              ))}
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <button onClick={() => handleSaveRole(role.id)} disabled={savingRoleId === role.id}
-                                className="server-menu__save-btn" style={{ fontSize: '10px' }}>
-                                {savingRoleId === role.id ? '...' : 'save'}
-                              </button>
-                              <button onClick={() => setEditingRoleId(null)} className="server-menu__member-action-btn">
-                                cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            <div className="server-menu__role-header">
-                              <span className="server-menu__role-name" style={{ color: role.color }}>{role.name}</span>
-                              <div className="server-menu__role-actions">
-                                <button onClick={() => handleStartEditRole(role)} className="server-menu__role-action-btn">edit</button>
-                                <button onClick={() => handleDeleteRole(role.id)} className="server-menu__role-action-btn server-menu__role-action-btn--danger">delete</button>
+                                <button onClick={() => setEditingRoleId(null)} className="server-menu__member-action-btn">
+                                  cancel
+                                </button>
                               </div>
                             </div>
-                            <div className="server-menu__perm-toggles">
-                              {ALL_PERMISSIONS.map(p => (
-                                <span key={p.key}
-                                  className={`server-menu__perm-toggle ${(role.permissions as any)?.[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
-                                  style={{ cursor: 'default' }}>
-                                  {p.label}
-                                </span>
-                              ))}
+                          ) : (
+                            <div>
+                              <div className="server-menu__role-header">
+                                <span className="server-menu__role-color-dot" style={{ backgroundColor: role.color }} />
+                                <span className="server-menu__role-name" style={{ color: role.color }}>{role.name}</span>
+                                {count > 0 && <span className="server-menu__role-count">{count} member{count !== 1 ? 's' : ''}</span>}
+                                <div className="server-menu__role-actions">
+                                  <button onClick={() => handleStartEditRole(role)} className="server-menu__role-action-btn">edit</button>
+                                  <button onClick={() => handleDeleteRole(role.id)} className="server-menu__role-action-btn server-menu__role-action-btn--danger">delete</button>
+                                </div>
+                              </div>
+                              <div className="server-menu__perm-toggles">
+                                {ALL_PERMISSIONS.map(p => (
+                                  <span key={p.key}
+                                    className={`server-menu__perm-toggle ${(role.permissions as any)?.[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
+                                    style={{ cursor: 'default' }}
+                                    title={p.desc}
+                                  >
+                                    {p.label}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    ))
+                          )}
+                        </div>
+                      )
+                    })
                   )}
                 </div>
               )}
@@ -938,12 +1272,13 @@ export default function ServerMenuModal({ onClose }: Props) {
                   <textarea
                     className="server-menu__css-editor"
                     value={customCss}
-                    onChange={(e) => setCustomCss(e.target.value)}
+                    onChange={(e) => setCustomCss(e.target.value.slice(0, 50000))}
+                    maxLength={50000}
                     placeholder={`/* Kizuna Custom CSS — override any variable below */\n:root {\n  /* Backgrounds */\n  --bg-primary: #0a0a0a;\n  --bg-secondary: #111111;\n  --bg-tertiary: #1a1a1a;\n  --bg-hover: #262626;\n  --bg-active: #2d2d2d;\n\n  /* Text */\n  --text-primary: #ffffff;\n  --text-secondary: #a0a0a0;\n  --text-muted: #6b6b6b;\n\n  /* Borders */\n  --border-color: #2a2a2a;\n\n  /* Brand / Accent */\n  --brand: #4c6ef5;\n  --brand-hover: #4263eb;\n  --brand-dim: rgba(76, 110, 245, 0.15);\n  --accent-color: #6366f1;\n\n  /* Semantic colors */\n  --red: #ff4d4d;\n  --red-hover: #ff3333;\n  --red-dim: rgba(255, 77, 77, 0.15);\n  --red-dim-border: rgba(255, 77, 77, 0.30);\n  --green: #40c057;\n  --green-dim: rgba(64, 192, 87, 0.15);\n  --green-dim-border: rgba(64, 192, 87, 0.20);\n  --yellow: #fab005;\n\n  /* Border radius */\n  --radius-sm: 8px;\n  --radius-md: 12px;\n  --radius-lg: 16px;\n  --radius-xl: 24px;\n  --radius-full: 9999px;\n\n  /* Font */\n  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;\n}`}
                     spellCheck={false}
                   />
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                    <span className="server-menu__css-char-count">
+                    <span className={`server-menu__css-char-count${customCss.length > 45000 ? ' server-menu__css-char-count--warn' : ''}${customCss.length >= 50000 ? ' server-menu__css-char-count--over' : ''}`}>
                       {customCss.length} / 50000
                     </span>
                   </div>
