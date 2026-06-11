@@ -206,7 +206,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   }
 
   const handleSend = async () => {
-    if (!input.trim() || !session) return
+    if ((!input.trim() && !pendingFile) || !session) return
 
     if (pendingFile) { await handleUpload(); return }
 
@@ -433,10 +433,11 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
               <p className="chat-area__upload-name">{pendingFile.name}</p>
               <p className="chat-area__upload-size">{formatFileSize(pendingFile.size)}</p>
             </div>
-            <button className="chat-area__upload-cancel" onClick={() => { setPendingFile(null); setPendingAttachmentId(null) }} disabled={uploading}>cancel</button>
-            <button className="btn-primary" onClick={handleUpload} disabled={uploading} style={{ fontSize: '12px', padding: '4px 12px' }}>
-              {uploadProgress > 0 && uploadProgress < 100 ? `${uploadProgress}%` : uploading ? 'uploading...' : 'upload'}
-            </button>
+            {uploading ? (
+              <span className="chat-area__upload-progress">{uploadProgress > 0 && uploadProgress < 100 ? `${uploadProgress}%` : 'uploading...'}</span>
+            ) : (
+              <button className="chat-area__upload-cancel" onClick={() => { setPendingFile(null); setPendingAttachmentId(null) }}>cancel</button>
+            )}
           </div>
         )}
 
@@ -463,7 +464,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
             maxLength={inputMaxLen}
             disabled={cantWrite}
           />
-          <button className="chat-area__send-btn" onClick={handleSend} disabled={(!input.trim() && !pendingFile) || cantWrite}>
+          <button className="chat-area__send-btn" onClick={handleSend} disabled={((!input.trim() && !pendingFile) || uploading || cantWrite)}>
             <Send size={16} />
           </button>
         </div>
