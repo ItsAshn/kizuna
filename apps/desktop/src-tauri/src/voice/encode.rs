@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use opus::{Channels, Decoder as OpusDecoder, Encoder as OpusEncoder};
+use opus2::{Channels, Decoder as OpusDecoder, Encoder as OpusEncoder};
 use webrtc::media::Sample;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
@@ -214,11 +214,11 @@ impl AudioEncoder {
             Channels::Stereo
         };
 
-        let mut encoder = OpusEncoder::new(sample_rate, ch, opus::Application::Voip)
+        let mut encoder = OpusEncoder::new(sample_rate, ch, opus2::Application::Voip)
             .map_err(|e| format!("Failed to create Opus encoder: {e}"))?;
 
         encoder
-            .set_bitrate(opus::Bitrate::Bits(bitrate_bps as i32))
+            .set_bitrate(opus2::Bitrate::Bits(bitrate_bps as i32))
             .map_err(|e| format!("Failed to set Opus bitrate: {e}"))?;
 
         let frame_size = (sample_rate as usize * 20) / 1000;
