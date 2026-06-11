@@ -50,9 +50,6 @@ windows = { version = "0.62", features = [
   "Win32_System_Threading",
 ] }
 
-[patch.crates-io]
-audiopus_sys = { path = "patched/audiopus_sys" }
-
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

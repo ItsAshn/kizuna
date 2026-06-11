@@ -1,2 +1,3 @@
 [env]
-CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+CMAKE_x86_64-pc-windows-msvc = "scripts/cmake-wrapper.bat"
+CMAKE_x86_64_pc_windows_msvc = "scripts/cmake-wrapper.bat"
