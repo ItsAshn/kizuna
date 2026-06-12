@@ -671,7 +671,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
             socket!.emit('voice:consume', {
               channelId: channelIdRef.current,
               peerId: peer.peerId,
-              rtpCapabilities: { codecs: [{ mimeType: 'audio/opus', clockRate: 48000, channels: 1, parameters: { useinbandfec: 1, minptime: 10 }, rtcpFeedback: [] }], headerExtensions: [] },
+              rtpCapabilities: { codecs: [{ mimeType: 'audio/opus', clockRate: 48000, channels: 2, parameters: { useinbandfec: 1, minptime: 10 }, rtcpFeedback: [] }], headerExtensions: [] },
             }, resolve),
           )
           if (consumeResult?.error) {

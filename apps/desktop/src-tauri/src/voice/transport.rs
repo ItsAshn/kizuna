@@ -84,7 +84,7 @@ fn build_remote_sdp(transport_params: &Value) -> String {
          m=audio 9 UDP/TLS/RTP/SAVPF 111\r\n\
          c=IN IP4 0.0.0.0\r\n\
          a=mid:0\r\n\
-          a=rtpmap:111 opus/48000/1\r\n\
+          a=rtpmap:111 opus/48000/2\r\n\
           a=fmtp:111 minptime=10;useinbandfec=1\r\n\
          a=rtcp-mux\r\n\
          a=rtcp-rsize\r\n\
@@ -229,7 +229,7 @@ pub async fn create_transports(
         RTCRtpCodecCapability {
             mime_type: "audio/opus".to_string(),
             clock_rate: 48000,
-            channels: 1,
+            channels: 2,
             sdp_fmtp_line: "minptime=10;useinbandfec=1".to_string(),
             rtcp_feedback: vec![],
         },
