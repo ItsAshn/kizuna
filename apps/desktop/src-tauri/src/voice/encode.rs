@@ -18,20 +18,27 @@ pub fn start_native_audio_capture(
 ) -> Result<cpal::Stream, String> {
     let host = cpal::default_host();
 
-    // If a specific device was requested, try only that
+    // If a specific device was requested, try it. On Linux, devices listed by
+    // pactl/PipeWire (alsa_input/alsa_output prefix) can't be opened directly
+    // via ALSA because PipeWire holds them exclusively. Fall through to the
+    // sound-server/default path instead.
     if let Some(ref id) = device_id {
-        let device = host
-            .input_devices()
-            .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
-            .find(|d| {
-                d.id()
-                    .map(|i| i.to_string() == *id)
-                    .unwrap_or(false)
-            })
-            .ok_or_else(|| format!("Input device '{}' not found", id))?;
+        let is_pipewire_device = id.starts_with("alsa_input.") || id.starts_with("alsa_output.");
+        if !is_pipewire_device {
+            let device = host
+                .input_devices()
+                .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
+                .find(|d| {
+                    d.id()
+                        .map(|i| i.to_string() == *id)
+                        .unwrap_or(false)
+                })
+                .ok_or_else(|| format!("Input device '{}' not found", id))?;
 
-        return open_device(&device, sample_rate, channels, &pcm_tx, &cancel)
-            .map(|s| { eprintln!("[AudioCapture] using specific device: {id}"); s });
+            return open_device(&device, sample_rate, channels, &pcm_tx, &cancel)
+                .map(|s| { eprintln!("[AudioCapture] using specific device: {id}"); s });
+        }
+        eprintln!("[AudioCapture] PipeWire-managed device '{}' selected, falling back to sound server", id);
     }
 
     // On Linux/ALSA, sound server devices (PipeWire/PulseAudio) are far more

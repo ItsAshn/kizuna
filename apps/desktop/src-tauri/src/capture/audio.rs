@@ -224,15 +224,23 @@ pub fn start_capture(
     alog!("start_capture: cpal host={:?}", host.id());
 
     let device = if let Some(ref id_str) = device_id {
-        alog!("start_capture: searching for device '{}'", id_str);
-        host.input_devices()
-            .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
-            .find(|d| {
-                d.id()
-                    .map(|i| i.to_string() == *id_str)
-                    .unwrap_or(false)
-            })
-            .ok_or_else(|| format!("Input device '{}' not found", id_str))?
+        // PipeWire-managed devices (pactl format: alsa_input/alsa_output prefix)
+        // can't be opened directly via ALSA. Fall back to default device.
+        if id_str.starts_with("alsa_input.") || id_str.starts_with("alsa_output.") {
+            alog!("start_capture: PipeWire device '{}' selected, falling back to default", id_str);
+            host.default_input_device()
+                .ok_or("No input device found. Connect a microphone.")?
+        } else {
+            alog!("start_capture: searching for device '{}'", id_str);
+            host.input_devices()
+                .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
+                .find(|d| {
+                    d.id()
+                        .map(|i| i.to_string() == *id_str)
+                        .unwrap_or(false)
+                })
+                .ok_or_else(|| format!("Input device '{}' not found", id_str))?
+        }
     } else {
         alog!("start_capture: using default input device");
         host.default_input_device()
