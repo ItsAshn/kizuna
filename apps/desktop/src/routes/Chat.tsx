@@ -4,7 +4,7 @@ import { useChatStore } from '../store/chatStore'
 import { useSocket } from '../hooks/useSocket'
 import { useVoice } from '../hooks/useVoice'
 import { useScreenshare } from '../hooks/useScreenshare'
-import { fetchChannels, fetchMembers, fetchDMChannels, fetchServerInfo } from '@kizuna/shared'
+import { fetchChannels, fetchMembers, fetchDMChannels, fetchServerInfo, fetchChannelMutes } from '@kizuna/shared'
 import ServerPanel from '../components/ServerPanel'
 import UpdateBanner from '../components/UpdateBanner'
 import Sidebar from '../components/Sidebar'
@@ -16,6 +16,7 @@ import ServerMenuModal from '../components/ServerMenuModal'
 import EnvStatus from '../components/EnvStatus'
 import SetupWizard from '../components/SetupWizard'
 import LoginDialog from '../components/LoginDialog'
+import NotificationContainer from '../components/NotificationContainer'
 import { useNavigate } from 'react-router-dom'
 import '../styles/chat.css'
 
@@ -23,7 +24,7 @@ export default function Chat() {
   const navigate = useNavigate()
   const session = useServerStore((s) => s.activeSession)
   const servers = useServerStore((s) => s.servers)
-  const { setChannels, setMembers, setDMChannels, activeChannelId, activeDMChannelId, setActiveChannel, setActiveDMChannel, serverBackgroundEnabled, customCssEnabled } = useChatStore()
+  const { setChannels, setMembers, setDMChannels, activeChannelId, activeDMChannelId, setActiveChannel, setActiveDMChannel, serverBackgroundEnabled, customCssEnabled, setChannelMutes } = useChatStore()
   const socketRef = useSocket()
   const {
     joinVoice,
@@ -79,16 +80,22 @@ export default function Chat() {
 
     async function load() {
       try {
-        const [channels, members, dms, info] = await Promise.all([
+        const [channels, members, dms, info, mutes] = await Promise.all([
           fetchChannels(session!.url, session!.token),
           fetchMembers(session!.url, session!.token),
           fetchDMChannels(session!.url, session!.token),
           fetchServerInfo(session!.url),
+          fetchChannelMutes(session!.url, session!.token),
         ])
         setChannels(channels)
         setMembers(members)
         setDMChannels(dms)
         setBgInfo({ hasBackground: info.hasBackground, backgroundBlur: info.backgroundBlur, customCss: info.customCss })
+        const mutesMap: Record<string, number | null> = {}
+        for (const m of mutes) {
+          mutesMap[m.channel_id] = m.muted_until
+        }
+        setChannelMutes(mutesMap)
       } catch {
         setChannels([])
         setMembers([])
@@ -169,6 +176,7 @@ export default function Chat() {
         <EnvStatus onOpenWizard={() => setShowEnvWizard(true)} />
       </div>
       <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
+      <NotificationContainer />
     </div>
     {showSettings && <UserSettingsModal onClose={() => setShowSettings(false)} />}
     {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} />}

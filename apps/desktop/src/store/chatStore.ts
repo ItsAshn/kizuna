@@ -51,6 +51,8 @@ interface ChatState {
   updateVersion: string | null
   updateError: string | null
 
+  channelMutes: Record<string, number | null>
+
   setChannels: (channels: Channel[]) => void
   setDMChannels: (channels: DMChannelData[]) => void
   setMessages: (channelId: string, messages: Message[]) => void
@@ -96,6 +98,10 @@ interface ChatState {
   setUpdateProgress: (progress: number) => void
   setUpdateVersion: (version: string | null) => void
   setUpdateError: (error: string | null) => void
+
+  setChannelMutes: (mutes: Record<string, number | null>) => void
+  upsertChannelMute: (channelId: string, mutedUntil: number | null) => void
+  removeChannelMute: (channelId: string) => void
 }
 
 export const useChatStore = create<ChatState>()(
@@ -140,6 +146,7 @@ export const useChatStore = create<ChatState>()(
       updateProgress: 0,
       updateVersion: null,
       updateError: null,
+      channelMutes: {},
 
       setChannels: (channels) => set({ channels }),
       setDMChannels: (dmChannels) => set({ dmChannels }),
@@ -220,6 +227,16 @@ export const useChatStore = create<ChatState>()(
       setUpdateProgress: (updateProgress) => set({ updateProgress }),
       setUpdateVersion: (updateVersion) => set({ updateVersion }),
       setUpdateError: (updateError) => set({ updateError }),
+
+      setChannelMutes: (channelMutes) => set({ channelMutes }),
+      upsertChannelMute: (channelId, mutedUntil) =>
+        set((s) => ({ channelMutes: { ...s.channelMutes, [channelId]: mutedUntil } })),
+      removeChannelMute: (channelId) =>
+        set((s) => {
+          const next = { ...s.channelMutes }
+          delete next[channelId]
+          return { channelMutes: next }
+        }),
     }),
     {
       name: 'kizuna-voice-settings',

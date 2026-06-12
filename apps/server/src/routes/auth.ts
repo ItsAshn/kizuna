@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { getDb } from '../db'
-import { signToken, authMiddleware, isUserAdmin } from '../middleware/auth'
+import { signToken, authMiddleware, isUserAdmin, isUserHost } from '../middleware/auth'
 import { generateChallenge, verifyPoW } from '../middleware/pow'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
@@ -71,7 +71,7 @@ authRoutes.post('/register', async (c) => {
       .get() as { n: number }
     const isFirstUser = userCount.n === 0
 
-    db.prepare('INSERT INTO server_members (user_id, role) VALUES (?, ?)').run(id, isFirstUser ? 'admin' : 'member')
+    db.prepare('INSERT INTO server_members (user_id, role, is_host) VALUES (?, ?, ?)').run(id, isFirstUser ? 'admin' : 'member', isFirstUser ? 1 : 0)
 
     if (isFirstUser) {
       db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(id, 'admin-role')
@@ -86,7 +86,7 @@ authRoutes.post('/register', async (c) => {
     return c.json(
       {
         token: signToken({ userId: user.id, username: user.username }),
-        user: { ...user, role: isFirstUser ? 'admin' : 'member' },
+        user: { ...user, role: isFirstUser ? 'admin' : 'member', is_host: isFirstUser },
         backuptoken,
       },
       201,
@@ -122,19 +122,19 @@ authRoutes.post('/login', async (c) => {
   }
 
   let member = db
-    .prepare('SELECT role FROM server_members WHERE user_id = ?')
-    .get(user.id) as { role: string } | undefined
+    .prepare('SELECT role, is_host FROM server_members WHERE user_id = ?')
+    .get(user.id) as { role: string; is_host: number } | undefined
 
   if (!member) {
     const anyAdmin = db
       .prepare("SELECT 1 FROM member_roles mr JOIN roles r ON mr.role_id = r.id WHERE r.is_admin = 1")
       .get()
     const isFirstAdmin = !anyAdmin
-    db.prepare('INSERT INTO server_members (user_id, role) VALUES (?, ?)').run(user.id, isFirstAdmin ? 'admin' : 'member')
+    db.prepare('INSERT INTO server_members (user_id, role, is_host) VALUES (?, ?, 0)').run(user.id, isFirstAdmin ? 'admin' : 'member')
     if (isFirstAdmin) {
       db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(user.id, 'admin-role')
     }
-    member = { role: isFirstAdmin ? 'admin' : 'member' }
+    member = { role: isFirstAdmin ? 'admin' : 'member', is_host: 0 }
   }
 
   return c.json({
@@ -146,6 +146,7 @@ authRoutes.post('/login', async (c) => {
       avatar: user.avatar,
       public_key: user.public_key,
       role: member.role,
+      is_host: member.is_host === 1,
     },
   })
 })
@@ -156,15 +157,16 @@ authRoutes.get('/me', authMiddleware, (c) => {
 
   const user = db
     .prepare(
-      'SELECT id, username, display_name, avatar, public_key, created_at FROM users WHERE id = ?',
+      'SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.created_at, sm.is_host FROM users u LEFT JOIN server_members sm ON sm.user_id = u.id WHERE u.id = ?',
     )
-    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; public_key: string | null; created_at: number } | undefined
+    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; public_key: string | null; created_at: number; is_host: number | null } | undefined
 
   if (!user) {
     return c.json({ error: 'User not found' }, 404)
   }
 
-  return c.json({ user: { ...user, role: isUserAdmin(auth.userId) ? 'admin' : 'member' } })
+  const { is_host, ...userFields } = user
+  return c.json({ user: { ...userFields, role: isUserAdmin(auth.userId) ? 'admin' : 'member', is_host: is_host === 1 } })
 })
 
 authRoutes.patch('/profile', authMiddleware, async (c) => {
@@ -200,6 +202,7 @@ authRoutes.patch('/profile', authMiddleware, async (c) => {
       display_name: newName,
       avatar: newAvatar,
       role: isUserAdmin(auth.userId) ? 'admin' : 'member',
+      is_host: isUserHost(auth.userId),
     },
   })
 })
@@ -208,7 +211,7 @@ authRoutes.get('/users', authMiddleware, (c) => {
   const db = getDb()
   const users = db
     .prepare(
-      `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at, u.reset_requested_at
+      `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at, u.reset_requested_at, sm.is_host
        FROM users u
        LEFT JOIN server_members sm ON sm.user_id = u.id
        ORDER BY u.username`,
@@ -262,6 +265,7 @@ authRoutes.get('/users', authMiddleware, (c) => {
       ...u,
       last_seen_at: u.last_seen_at ? u.last_seen_at * 1000 : null,
       role: isAdmin ? 'admin' : 'member',
+      is_host: u.is_host === 1,
       custom_roles: userRoles,
       custom_role_id: userRoles.length > 0 ? userRoles[0].id : null,
       custom_role_name: userRoles.length > 0 ? userRoles[0].name : null,

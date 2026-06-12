@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin, isUserHost } from '../middleware/auth'
 import { getAllPeers } from '../socket/voiceHandler'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
@@ -318,6 +318,10 @@ serverInfoRoutes.patch('/members/:userId/role', authMiddleware, async (c) => {
   const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId)
   if (!member) return c.json({ error: 'Member not found' }, 404)
 
+  if (role === 'member' && isUserHost(targetUserId)) {
+    return c.json({ error: 'Cannot demote the server host' }, 403)
+  }
+
   db.prepare('UPDATE server_members SET role = ? WHERE user_id = ?').run(role, targetUserId)
 
   if (role === 'admin') {
@@ -345,6 +349,9 @@ serverInfoRoutes.delete('/members/:userId', authMiddleware, (c) => {
   if (!member) return c.json({ error: 'Member not found' }, 404)
 
   const targetInfo = getUserInfo(targetUserId)
+  if (isUserHost(targetUserId)) {
+    return c.json({ error: 'Cannot kick the server host' }, 403)
+  }
   if (targetInfo && targetInfo.role === 'admin' && !isUserAdmin(user.userId)) {
     return c.json({ error: 'Cannot kick an admin' }, 403)
   }
@@ -405,6 +412,9 @@ serverInfoRoutes.delete('/members/:userId/roles/:roleId', authMiddleware, (c) =>
   if (!targetUserId || !roleId) return c.json({ error: 'Invalid user ID or role ID' }, 400)
 
   const db = getDb()
+  if (roleId === 'admin-role' && isUserHost(targetUserId)) {
+    return c.json({ error: 'Cannot remove admin role from the server host' }, 403)
+  }
   db.prepare('DELETE FROM member_roles WHERE user_id = ? AND role_id = ?').run(targetUserId, roleId)
   return c.json({ ok: true })
 })

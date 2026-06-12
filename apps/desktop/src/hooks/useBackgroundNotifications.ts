@@ -4,6 +4,7 @@ import type { Socket } from 'socket.io-client'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import type { Message, Channel } from '@kizuna/shared'
+import { showNotification } from '../utils/showNotification'
 
 export function useBackgroundNotifications(): void {
   const servers = useServerStore((s) => s.servers)
@@ -32,6 +33,10 @@ export function useBackgroundNotifications(): void {
       socket.on('connect', () => {
         socket.emit('user:subscribe')
         socket.emit('notification:subscribe')
+        socket.emit('channel:mute:sync')
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission()
+        }
       })
 
       socket.on('message:new', (message: Message) => {
@@ -39,8 +44,10 @@ export function useBackgroundNotifications(): void {
         if (activeServerId === server.id) {
           store.addMessage(message.channel_id, message)
         }
-        if (document.visibilityState === 'hidden' || activeServerId !== server.id) {
-          tryShowNotification(message)
+        if (activeServerId !== server.id || message.channel_id !== store.activeChannelId) {
+          const sender = message.display_name || message.username || 'Someone'
+          const body = message.content.length > 100 ? message.content.slice(0, 100) + '...' : message.content
+          showNotification({ type: 'message', title: sender, body, channelId: message.channel_id })
         }
       })
 
@@ -50,12 +57,30 @@ export function useBackgroundNotifications(): void {
           ...store.mentionCounts,
           [mention.channel_id]: (store.mentionCounts[mention.channel_id] || 0) + 1,
         })
+        if (activeServerId !== server.id || mention.channel_id !== store.activeChannelId) {
+          showNotification({
+            type: 'mention',
+            title: mention.author_username || 'Someone',
+            body: mention.content?.length > 100 ? mention.content.slice(0, 100) + '...' : mention.content || '',
+            channelId: mention.channel_id,
+          })
+        }
       })
 
       socket.on('server:announce', ({ title, body }: { title: string; body: string }) => {
-        if (document.visibilityState === 'hidden') {
-          try { new Notification(title, { body, icon: '/Logo.webp' }) } catch { /* not supported */ }
-        }
+        showNotification({ type: 'announce', title, body })
+      })
+
+      socket.on('channel:mute', ({ channel_id, muted_until }: { channel_id: string; muted_until: number | null }) => {
+        useChatStore.getState().upsertChannelMute(channel_id, muted_until)
+      })
+
+      socket.on('channel:unmute', ({ channel_id }: { channel_id: string }) => {
+        useChatStore.getState().removeChannelMute(channel_id)
+      })
+
+      socket.on('channel:mute:sync', (mutes: Record<string, number | null>) => {
+        useChatStore.getState().setChannelMutes(mutes)
       })
 
       socket.on('channel:created', (channel: Channel) => {
@@ -87,13 +112,4 @@ export function useBackgroundNotifications(): void {
       // Don't disconnect on cleanup — leave persistent sockets alive
     }
   }, [servers, sessions, activeServerId])
-}
-
-function tryShowNotification(message: Message) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return
-  try {
-    const title = `${message.display_name || message.username || 'Someone'}`
-    const body = message.content.length > 100 ? message.content.slice(0, 100) + '...' : message.content
-    new Notification(title, { body, icon: '/Logo.webp' })
-  } catch { /* not supported */ }
 }

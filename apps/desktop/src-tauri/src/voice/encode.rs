@@ -391,12 +391,12 @@ impl AudioDecoder {
 
     pub fn decode(&mut self, opus_data: &[u8]) -> Result<Vec<f32>, String> {
         let frame_size = (self.sample_rate as usize * 60) / 1000;
-        let mut pcm = vec![0.0f32; frame_size * 2];
+        let mut pcm = vec![0.0f32; frame_size];
         let samples = self
             .decoder
             .decode_float(opus_data, &mut pcm, false)
             .map_err(|e| format!("Opus decode failed: {e}"))?;
-        pcm.truncate(samples * 2);
+        pcm.truncate(samples);
         Ok(pcm)
     }
 }
@@ -439,7 +439,7 @@ async fn run_audio_recv(
 ) {
     use tauri::Emitter;
 
-    let mut decoder = match AudioDecoder::new(48000, 2) {
+    let mut decoder = match AudioDecoder::new(48000, 1) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("[AudioRecv] Failed to create decoder: {e}");

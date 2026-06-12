@@ -129,6 +129,21 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     socket.join(NOTIFICATION_ROOM)
   })
 
+  socket.on('channel:mute:sync', () => {
+    if (!userId) return
+    const db = getDb()
+    const rows = db.prepare(
+      `SELECT channel_id, muted_until FROM channel_mutes
+       WHERE user_id = ? AND (muted_until IS NULL OR muted_until > unixepoch())`
+    ).all(userId) as { channel_id: string; muted_until: number | null }[]
+
+    const mutes: Record<string, number | null> = {}
+    for (const r of rows) {
+      mutes[r.channel_id] = r.muted_until ? r.muted_until * 1000 : null
+    }
+    socket.emit('channel:mute:sync', mutes)
+  })
+
   socket.on('user:subscribe', () => {
     if (userId) {
       socket.join(`user:${userId}`)

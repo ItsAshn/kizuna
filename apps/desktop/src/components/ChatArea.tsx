@@ -55,6 +55,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null)
   const [pendingAttachmentId, setPendingAttachmentId] = useState<string | null>(null)
   const [atQuery, setAtQuery] = useState<string | null>(null)
   const [atIndex, setAtIndex] = useState(0)
@@ -255,6 +256,9 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     const file = e.target.files?.[0]
     if (!file) return
     setPendingFile(file)
+    if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
+    const isImage = file.type.startsWith('image/')
+    setPendingPreviewUrl(isImage ? URL.createObjectURL(file) : null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -263,7 +267,9 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
 
     if (!activeChannelId) {
       setSendError('File uploads are only available in server channels, not DMs.')
+      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
       setPendingFile(null)
+      setPendingPreviewUrl(null)
       return
     }
 
@@ -282,12 +288,16 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
       )
       addMessage(message.channel_id, message)
       setInput('')
+      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
       setPendingFile(null)
+      setPendingPreviewUrl(null)
       setPendingAttachmentId(null)
       setSendError(null)
       if (inputRef.current) { inputRef.current.style.height = 'auto'; inputRef.current.focus() }
     } catch (err: any) {
       setSendError(err?.response?.data?.error || err?.message || 'Failed to upload file')
+      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
+      setPendingPreviewUrl(null)
       setPendingAttachmentId(null)
     }
     setUploading(false)
@@ -369,6 +379,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
           onDelete={handleDeleteMessage}
           canEdit={isOwn}
           onEdit={handleEditMessage}
+          serverUrl={session?.url}
         />
       )
     })
@@ -429,6 +440,9 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
 
         {pendingFile && (
           <div className="chat-area__upload-preview">
+            {pendingPreviewUrl && (
+              <img src={pendingPreviewUrl} alt="" className="chat-area__upload-thumbnail" />
+            )}
             <div className="chat-area__upload-info">
               <p className="chat-area__upload-name">{pendingFile.name}</p>
               <p className="chat-area__upload-size">{formatFileSize(pendingFile.size)}</p>
@@ -436,7 +450,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
             {uploading ? (
               <span className="chat-area__upload-progress">{uploadProgress > 0 && uploadProgress < 100 ? `${uploadProgress}%` : 'uploading...'}</span>
             ) : (
-              <button className="chat-area__upload-cancel" onClick={() => { setPendingFile(null); setPendingAttachmentId(null) }}>cancel</button>
+              <button className="chat-area__upload-cancel" onClick={() => { if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl); setPendingFile(null); setPendingPreviewUrl(null); setPendingAttachmentId(null) }}>cancel</button>
             )}
           </div>
         )}

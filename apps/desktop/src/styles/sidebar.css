@@ -118,6 +118,13 @@
   line-height: 1;
 }
 
+.sidebar__mute-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  opacity: 0.5;
+  margin-left: 2px;
+}
+
 .sidebar__voice-indicator {
   margin-left: auto;
   width: 8px;

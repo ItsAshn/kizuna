@@ -46,6 +46,12 @@ export function isUserAdmin(userId: string): boolean {
   return !!row
 }
 
+export function isUserHost(userId: string): boolean {
+  const db = getDb()
+  const row = db.prepare('SELECT 1 FROM server_members WHERE user_id = ? AND is_host = 1').get(userId)
+  return !!row
+}
+
 export function getUserInfo(userId: string): AuthUser | null {
   const db = getDb()
   const user = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(userId) as { id: string; username: string; display_name: string } | undefined
@@ -55,6 +61,7 @@ export function getUserInfo(userId: string): AuthUser | null {
     username: user.username,
     displayName: user.display_name,
     role: isUserAdmin(userId) ? 'admin' : 'member',
+    isHost: isUserHost(userId),
   }
 }
 

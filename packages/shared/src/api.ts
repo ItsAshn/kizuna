@@ -12,6 +12,7 @@ import type {
   ServerInfo,
   PoWChallenge,
   AdminInfo,
+  ChannelMute,
 } from './types'
 
 function normalizeUrl(url: string): string {
@@ -625,4 +626,32 @@ export async function fetchAttachments(
 ): Promise<FileAttachment[]> {
   const res = await client(serverUrl, token).get(`/api/attachments/message/${messageId}`)
   return res.data.attachments ?? res.data
+}
+
+// ─── Channel Mutes ─────────────────────────────────────────
+
+export async function fetchChannelMutes(
+  serverUrl: string,
+  token: string,
+): Promise<ChannelMute[]> {
+  const res = await client(serverUrl, token).get('/api/mutes')
+  return res.data.mutes ?? res.data
+}
+
+export async function setChannelMute(
+  serverUrl: string,
+  token: string,
+  channelId: string,
+  mutedUntil: number | null,
+): Promise<ChannelMute> {
+  const res = await client(serverUrl, token).put(`/api/mutes/${channelId}`, { muted_until: mutedUntil })
+  return res.data.mute ?? res.data
+}
+
+export async function deleteChannelMute(
+  serverUrl: string,
+  token: string,
+  channelId: string,
+): Promise<void> {
+  await client(serverUrl, token).delete(`/api/mutes/${channelId}`)
 }

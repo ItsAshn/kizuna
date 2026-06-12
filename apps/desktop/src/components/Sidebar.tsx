@@ -2,11 +2,12 @@ import { useState, useRef, useEffect } from 'react'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useNavigate } from 'react-router-dom'
-import { createChannel, lockChannel, fetchRoles } from '@kizuna/shared'
+import { createChannel, lockChannel, fetchRoles, setChannelMute, deleteChannelMute } from '@kizuna/shared'
 import type { CustomRole } from '@kizuna/shared'
-import { Lock, Unlock } from 'lucide-react'
+import { Lock, Unlock, BellOff } from 'lucide-react'
 import VoiceOverlay from './VoiceOverlay'
 import UserStatusPicker from './UserStatusPicker'
+import ContextMenu from './ContextMenu'
 import '../styles/sidebar.css'
 
 interface SidebarProps {
@@ -29,6 +30,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
     dmChannels, activeChannelId, activeDMChannelId,
     activeVoiceChannelId, unreadCounts, mentionCounts,
     setActiveChannel, setActiveDMChannel,
+    channelMutes,
   } = useChatStore()
   const [newChannelName, setNewChannelName] = useState('')
   const [newChannelType, setNewChannelType] = useState<'text' | 'voice'>('text')
@@ -36,6 +38,8 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   const [lockMenuChannelId, setLockMenuChannelId] = useState<string | null>(null)
   const [roles, setRoles] = useState<CustomRole[]>([])
   const [rolesLoaded, setRolesLoaded] = useState(false)
+  const [contextMenuChannelId, setContextMenuChannelId] = useState<string | null>(null)
+  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
   const lockMenuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -89,6 +93,30 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
     setLockMenuChannelId(null)
   }
 
+  function handleChannelContextMenu(e: React.MouseEvent, channelId: string) {
+    e.preventDefault()
+    setContextMenuPos({ x: e.clientX, y: e.clientY })
+    setContextMenuChannelId(channelId)
+  }
+
+  function getMuteMenuItems(channelId: string) {
+    const isMuted = channelMutes[channelId] !== undefined
+    if (isMuted) {
+      return [
+        { label: 'Unmute Channel', onClick: () => { if (session) deleteChannelMute(session.url, session.token, channelId).catch(() => {}) } },
+      ]
+    }
+    const now = Date.now()
+    return [
+      { label: 'Mute for 15 minutes', onClick: () => { if (session) setChannelMute(session.url, session.token, channelId, now + 15 * 60 * 1000).catch(() => {}) } },
+      { label: 'Mute for 1 hour', onClick: () => { if (session) setChannelMute(session.url, session.token, channelId, now + 60 * 60 * 1000).catch(() => {}) } },
+      { label: 'Mute for 3 hours', onClick: () => { if (session) setChannelMute(session.url, session.token, channelId, now + 3 * 60 * 60 * 1000).catch(() => {}) } },
+      { label: 'Mute for 8 hours', onClick: () => { if (session) setChannelMute(session.url, session.token, channelId, now + 8 * 60 * 60 * 1000).catch(() => {}) } },
+      { label: 'Mute for 24 hours', onClick: () => { if (session) setChannelMute(session.url, session.token, channelId, now + 24 * 60 * 60 * 1000).catch(() => {}) } },
+      { label: 'Mute forever', onClick: () => { if (session) setChannelMute(session.url, session.token, channelId, null).catch(() => {}) } },
+    ]
+  }
+
   async function openLockMenu(channelId: string) {
     if (!session || !isAdmin) return
     if (!rolesLoaded) {
@@ -137,10 +165,12 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
                 <div key={ch.id} className="sidebar__channel-wrap">
                   <button
                     onClick={() => { setActiveChannel(ch.id); setLockMenuChannelId(null) }}
+                    onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
                     className={`sidebar__channel ${activeChannelId === ch.id ? 'sidebar__channel--active' : ''}`}
                   >
                     <span className="sidebar__channel-icon">#</span>
                     <span className="sidebar__channel-name">{ch.name}</span>
+                    {channelMutes[ch.id] !== undefined && <BellOff size={10} className="sidebar__mute-icon" />}
                     {badge ? <span className="sidebar__unread-badge">{mentionCounts[ch.id] || unreadCounts[ch.id]}</span> : null}
                   </button>
                   {isAdmin && (
@@ -197,10 +227,12 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
                   if (activeVoiceChannelId === ch.id) { leaveVoice() }
                   else { if (activeVoiceChannelId) leaveVoice(); joinVoice(ch.id) }
                 }}
+                onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
                 className={`sidebar__channel ${activeVoiceChannelId === ch.id ? 'sidebar__channel--voice-active' : ''}`}
               >
                 <span className="sidebar__channel-icon">~</span>
                 <span className="sidebar__channel-name">{ch.name}</span>
+                {channelMutes[ch.id] !== undefined && <BellOff size={10} className="sidebar__mute-icon" />}
                 {activeVoiceChannelId === ch.id && <span className="sidebar__voice-indicator" />}
               </button>
             ))}
@@ -277,6 +309,15 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
         <button onClick={onOpenSettings} className="sidebar__logout">Settings</button>
         <button onClick={handleLogout} className="sidebar__logout">Disconnect</button>
       </div>
+
+      {contextMenuChannelId && (
+        <ContextMenu
+          x={contextMenuPos.x}
+          y={contextMenuPos.y}
+          items={getMuteMenuItems(contextMenuChannelId)}
+          onClose={() => setContextMenuChannelId(null)}
+        />
+      )}
     </div>
   )
 }

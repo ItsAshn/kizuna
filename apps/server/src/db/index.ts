@@ -122,6 +122,10 @@ function runMigrations(database: Database.Database): void {
        AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = server_members.user_id AND mr.role_id = 'admin-role')`,
     `ALTER TABLE users ADD COLUMN reset_requested_at INTEGER DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN backuptoken_hash TEXT DEFAULT NULL`,
+    `ALTER TABLE server_members ADD COLUMN is_host INTEGER NOT NULL DEFAULT 0`,
+    `UPDATE server_members SET is_host = 1 WHERE user_id = (
+       SELECT user_id FROM server_members ORDER BY joined_at ASC LIMIT 1
+     ) AND NOT EXISTS (SELECT 1 FROM server_members WHERE is_host = 1)`,
     `CREATE TABLE IF NOT EXISTS attachments_new (
       id TEXT PRIMARY KEY,
       message_id TEXT,
@@ -136,6 +140,14 @@ function runMigrations(database: Database.Database): void {
      FROM attachments`,
     `DROP TABLE IF EXISTS attachments`,
     `ALTER TABLE attachments_new RENAME TO attachments`,
+    `CREATE TABLE IF NOT EXISTS channel_mutes (
+      user_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      muted_until INTEGER DEFAULT NULL,
+      PRIMARY KEY (user_id, channel_id),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (channel_id) REFERENCES channels(id)
+    )`,
   ]
 
   for (const sql of migrations) {

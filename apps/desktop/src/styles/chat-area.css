@@ -219,6 +219,15 @@
   gap: 8px;
 }
 
+.chat-area__upload-thumbnail {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
 .chat-area__upload-info {
   flex: 1;
   min-width: 0;

@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Trash2, Pencil } from 'lucide-react'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import type { Message, Member } from '@kizuna/shared'
 import '../styles/message-bubble.css'
 
@@ -13,6 +15,7 @@ interface MessageBubbleProps {
   onDelete: (messageId: string) => void
   canEdit: boolean
   onEdit: (messageId: string, content: string) => void
+  serverUrl?: string
 }
 
 function isImageUrl(url: string): boolean {
@@ -55,27 +58,38 @@ function parseAttachments(content: string): { text: string; attachments: { url: 
   return { text: text.trim(), attachments }
 }
 
-function renderMentions(content: string, members: Member[], currentUsername?: string) {
-  const parts = content.split(/(@(?:everyone|here|[\w.\-]+))/g)
-  return parts.map((part, i) => {
-    if (part.startsWith('@')) {
-      const tag = part.slice(1).toLowerCase()
+function renderMessageHtml(content: string, currentUsername?: string): string {
+  if (!content) return ''
+
+  let html = content.replace(
+    /@(everyone|here|[\w.\-]+)/gi,
+    (match) => {
+      const tag = match.slice(1).toLowerCase()
       const isMe = currentUsername && tag === currentUsername.toLowerCase()
       const isGroup = tag === 'everyone' || tag === 'here'
       const cls = isMe ? 'msg-bubble__mention--self' : isGroup ? 'msg-bubble__mention--group' : 'msg-bubble__mention--user'
-      return <span key={i} className={cls}>{part}</span>
+      return `<span class="${cls}">${match}</span>`
     }
-    return <span key={i}>{part}</span>
+  )
+
+  const raw = marked.parse(html, { breaks: true, gfm: true }) as string
+
+  const clean = DOMPurify.sanitize(raw, {
+    ALLOWED_TAGS: ['span', 'strong', 'em', 'del', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'a', 'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr'],
+    ALLOWED_ATTR: ['class', 'href', 'target', 'rel'],
   })
+
+  return clean
 }
 
-function AttachmentPreview({ url, filename }: { url: string; filename: string }) {
+function AttachmentPreview({ url, filename, serverUrl }: { url: string; filename: string; serverUrl?: string }) {
+  const resolvedUrl = serverUrl && url.startsWith('/') ? `${serverUrl}${url}` : url
   const [expanded, setExpanded] = useState(false)
   const [loadError, setLoadError] = useState(false)
 
   if (loadError) {
     return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className="msg-bubble__attachment-link">
+      <a href={resolvedUrl} target="_blank" rel="noopener noreferrer" className="msg-bubble__attachment-link">
         <span className="msg-bubble__attachment-filename">{filename}</span>
       </a>
     )
@@ -85,7 +99,7 @@ function AttachmentPreview({ url, filename }: { url: string; filename: string })
     return (
       <div className="msg-bubble__attachment-image-wrap" onClick={() => setExpanded(!expanded)}>
         <img
-          src={url}
+          src={resolvedUrl}
           alt={filename}
           className={`msg-bubble__attachment-image ${expanded ? 'msg-bubble__attachment-image--expanded' : ''}`}
           onError={() => setLoadError(true)}
@@ -96,15 +110,15 @@ function AttachmentPreview({ url, filename }: { url: string; filename: string })
   }
 
   if (isVideoUrl(url)) {
-    return <video src={url} controls className="msg-bubble__attachment-video" onError={() => setLoadError(true)} />
+    return <video src={resolvedUrl} controls className="msg-bubble__attachment-video" onError={() => setLoadError(true)} />
   }
 
   if (isAudioUrl(url)) {
-    return <audio src={url} controls className="msg-bubble__attachment-audio" onError={() => setLoadError(true)} />
+    return <audio src={resolvedUrl} controls className="msg-bubble__attachment-audio" onError={() => setLoadError(true)} />
   }
 
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="msg-bubble__attachment-link">
+    <a href={resolvedUrl} target="_blank" rel="noopener noreferrer" className="msg-bubble__attachment-link">
       <span className="msg-bubble__attachment-filename">{filename}</span>
     </a>
   )
@@ -120,6 +134,7 @@ export default function MessageBubble({
   onDelete,
   canEdit,
   onEdit,
+  serverUrl,
 }: MessageBubbleProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [hovered, setHovered] = useState(false)
@@ -164,6 +179,13 @@ export default function MessageBubble({
   }
 
   useEffect(() => {
+    const el = editInputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 300)}px`
+  })
+
+  useEffect(() => {
     if (editing && editInputRef.current) {
       editInputRef.current.focus()
       editInputRef.current.setSelectionRange(editInputRef.current.value.length, editInputRef.current.value.length)
@@ -182,7 +204,7 @@ export default function MessageBubble({
       {!isOwn && isGrouped && <div className="msg-bubble__avatar-spacer" />}
 
       <div
-        className={`msg-bubble__bubble ${isOwn ? 'msg-bubble__bubble--own' : 'msg-bubble__bubble--other'} ${isGrouped && !isOwn ? 'msg-bubble__bubble--grouped' : ''}`}
+        className={`msg-bubble__bubble ${isOwn ? 'msg-bubble__bubble--own' : 'msg-bubble__bubble--other'} ${isGrouped && !isOwn ? 'msg-bubble__bubble--grouped' : ''} ${editing ? 'msg-bubble__bubble--editing' : ''}`}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
@@ -194,13 +216,12 @@ export default function MessageBubble({
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
             onKeyDown={handleEditKeyDown}
-            rows={3}
           />
         ) : (
-          text && <p className="msg-bubble__text">{renderMentions(text, members, currentUsername)}</p>
+          text && <div className="msg-bubble__text" dangerouslySetInnerHTML={{ __html: renderMessageHtml(text, currentUsername) }} />
         )}
         {attachments.length > 0 && attachments.map((att, i) => (
-          <AttachmentPreview key={i} url={att.url} filename={att.filename} />
+          <AttachmentPreview key={i} url={att.url} filename={att.filename} serverUrl={serverUrl} />
         ))}
         <div className={`msg-bubble__meta ${showMeta ? 'msg-bubble__meta--visible' : ''} ${editing ? 'msg-bubble__meta--editing' : ''}`}>
           {hovered && <span className="msg-bubble__time">{time}</span>}

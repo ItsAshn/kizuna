@@ -15,6 +15,7 @@ export interface User {
   avatar?: string
   created_at: number
   role?: 'admin' | 'member'
+  is_host?: boolean
   last_seen_at?: number | null
   public_key?: string | null
   status?: UserStatus
@@ -60,6 +61,7 @@ export interface Member {
   display_name: string
   avatar?: string
   role?: 'admin' | 'member'
+  is_host?: boolean
   custom_roles?: CustomRole[]
   custom_role_id?: string | null
   custom_role_name?: string | null
@@ -208,4 +210,9 @@ export interface PoWChallenge {
   challenge: string
   difficulty: number
   expiresAt: number
+}
+
+export interface ChannelMute {
+  channel_id: string
+  muted_until: number | null
 }

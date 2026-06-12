@@ -159,7 +159,7 @@ impl VoiceController {
                 "codecs": [{
                     "mimeType": "audio/opus",
                     "clockRate": 48000,
-                    "channels": 2,
+                "channels": 1,
                     "parameters": { "useinbandfec": 1, "minptime": 10 },
                     "rtcpFeedback": []
                 }],

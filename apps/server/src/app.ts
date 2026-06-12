@@ -14,6 +14,7 @@ import serverInfoRoutes from './routes/serverInfo'
 import roleRoutes from './routes/roles'
 import dmRoutes from './routes/dms'
 import attachmentRoutes from './routes/attachments'
+import mutesRoutes from './routes/mutes'
 import { authLimiter, messageLimiter, uploadLimiter, apiLimiter } from './middleware/rateLimiter'
 
 export function createApp(httpPort: number) {
@@ -27,7 +28,7 @@ export function createApp(httpPort: number) {
     c.res.headers.set('X-Content-Type-Options', 'nosniff')
     c.res.headers.set('X-Frame-Options', 'DENY')
     c.res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
-    c.res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    c.res.headers.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self)')
     c.res.headers.set('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' https: data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss:;")
   })
 
@@ -72,6 +73,9 @@ export function createApp(httpPort: number) {
   app.route('/api/dms', dmRoutes)
 
   app.route('/api/attachments', attachmentRoutes)
+
+  app.use('/api/mutes/*', apiLimiter as never)
+  app.route('/api/mutes', mutesRoutes)
 
   // Global error handler
   app.onError((err, c) => {

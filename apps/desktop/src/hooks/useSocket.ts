@@ -7,6 +7,7 @@ import { useChatStore } from '../store/chatStore'
 import { decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
 import type { Message, Channel, DMChannelData, UserStatus } from '@kizuna/shared'
+import { showNotification } from '../utils/showNotification'
 
 export function useSocket(): MutableRefObject<Socket | null> {
   const socketRef = useRef<Socket | null>(null)
@@ -31,6 +32,10 @@ export function useSocket(): MutableRefObject<Socket | null> {
       socket.emit('user:subscribe')
       socket.emit('notification:subscribe')
       socket.emit('user:joined')
+      socket.emit('channel:mute:sync')
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission()
+      }
     })
 
     socket.on('message:new', (message: Message) => {
@@ -88,6 +93,14 @@ export function useSocket(): MutableRefObject<Socket | null> {
         ...store.mentionCounts,
         [mention.channel_id]: (store.mentionCounts[mention.channel_id] || 0) + 1,
       })
+      if (mention.channel_id !== store.activeChannelId) {
+        showNotification({
+          type: 'mention',
+          title: mention.author_username || 'Someone',
+          body: mention.content?.length > 100 ? mention.content.slice(0, 100) + '...' : mention.content || '',
+          channelId: mention.channel_id,
+        })
+      }
     })
 
     socket.on('channel:created', (channel: Channel) => {
@@ -112,7 +125,19 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('server:announce', ({ title, body }: { title: string; body: string }) => {
-      // Announcement received — could show a toast/notification
+      showNotification({ type: 'announce', title, body })
+    })
+
+    socket.on('channel:mute', ({ channel_id, muted_until }: { channel_id: string; muted_until: number | null }) => {
+      useChatStore.getState().upsertChannelMute(channel_id, muted_until)
+    })
+
+    socket.on('channel:unmute', ({ channel_id }: { channel_id: string }) => {
+      useChatStore.getState().removeChannelMute(channel_id)
+    })
+
+    socket.on('channel:mute:sync', (mutes: Record<string, number | null>) => {
+      useChatStore.getState().setChannelMutes(mutes)
     })
 
     socket.on('typing:start', ({ username }: { username: string }) => {

@@ -78,26 +78,30 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
         .input_devices()
         .map_err(|e| format!("Failed to enumerate input devices: {e}"))?;
 
-    let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut result = Vec::new();
     while let Some(device) = devices.next() {
         let name = device
             .description()
             .map(|d| d.name().to_string())
             .unwrap_or_else(|_| "Unknown device".into());
-        let device_id = device
-            .id()
-            .map(|id| id.to_string())
-            .unwrap_or_else(|_| name.clone());
+
+        let device_id = match device.id() {
+            Ok(id) => id.to_string(),
+            Err(_) => {
+                alog!("  SKIP device with unreadable id: name='{}'", name);
+                continue;
+            }
+        };
         let is_default = device_id == default_device_id;
 
         let trim_name = name.trim().to_string();
-        if !seen_names.insert(trim_name.clone()) {
-            alog!("  SKIP duplicate: name='{}' id={}", trim_name, device_id);
+        if !seen_ids.insert(device_id.clone()) {
+            alog!("  SKIP duplicate id: name='{}' id={}", trim_name, device_id);
             continue;
         }
 
-        if is_virtual_device_name(&trim_name) {
+        if is_virtual_device_name(&trim_name, false) {
             alog!("  SKIP virtual: name='{}' id={}", trim_name, device_id);
             continue;
         }
@@ -137,7 +141,7 @@ pub fn list_output_devices() -> Result<Vec<AudioDeviceInfo>, String> {
         .output_devices()
         .map_err(|e| format!("Failed to enumerate output devices: {e}"))?;
 
-    let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut result = Vec::new();
     while let Some(device) = devices.next() {
         let name = device
@@ -145,18 +149,20 @@ pub fn list_output_devices() -> Result<Vec<AudioDeviceInfo>, String> {
             .map(|d| d.name().to_string())
             .unwrap_or_else(|_| "Unknown device".into());
 
-        let device_id = device
-            .id()
-            .map(|id| id.to_string())
-            .unwrap_or_else(|_| name.clone());
+        let device_id = match device.id() {
+            Ok(id) => id.to_string(),
+            Err(_) => {
+                continue;
+            }
+        };
         let is_default = device_id == default_device_id;
 
         let trim_name = name.trim().to_string();
-        if !seen_names.insert(trim_name.clone()) {
+        if !seen_ids.insert(device_id.clone()) {
             continue;
         }
 
-        if is_virtual_device_name(&trim_name) {
+        if is_virtual_device_name(&trim_name, true) {
             continue;
         }
 
@@ -382,9 +388,9 @@ pub fn start_capture(
     })
 }
 
-fn is_virtual_device_name(name: &str) -> bool {
+fn is_virtual_device_name(name: &str, is_output: bool) -> bool {
     let lower = name.to_lowercase();
-    lower.contains("discard")
+    if lower.contains("discard")
         || lower.contains("rate converter")
         || lower.contains("plugin for")
         || lower.contains("jack audio")
@@ -392,5 +398,14 @@ fn is_virtual_device_name(name: &str) -> bool {
         || lower.contains("speex")
         || lower.contains("upmix")
         || lower.contains("downmix")
-        || (lower.contains("output") && !lower.contains("wave") && !lower.contains("usb"))
+    {
+        return true;
+    }
+    if is_output && lower.contains("input") {
+        return true;
+    }
+    if !is_output && lower.contains("output") && !lower.contains("wave") && !lower.contains("usb") {
+        return true;
+    }
+    false
 }

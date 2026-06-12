@@ -62,6 +62,7 @@ export const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS server_members (
     user_id TEXT PRIMARY KEY,
     role TEXT NOT NULL DEFAULT 'member',
+    is_host INTEGER NOT NULL DEFAULT 0,
     custom_role_id TEXT DEFAULT NULL,
     joined_at INTEGER DEFAULT (unixepoch()),
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -151,6 +152,15 @@ export const SCHEMA_SQL = `
     edited_at INTEGER NOT NULL,
     FOREIGN KEY (message_id) REFERENCES messages(id),
     FOREIGN KEY (edited_by) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS channel_mutes (
+    user_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    muted_until INTEGER DEFAULT NULL,
+    PRIMARY KEY (user_id, channel_id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (channel_id) REFERENCES channels(id)
   );
 
   CREATE INDEX IF NOT EXISTS idx_messages_channel_created ON messages(channel_id, created_at);

@@ -6,6 +6,7 @@ export interface AuthUser {
   username: string
   displayName: string
   role: 'admin' | 'member'
+  isHost: boolean
 }
 
 export interface HonoEnv {

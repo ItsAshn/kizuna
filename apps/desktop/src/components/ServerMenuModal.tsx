@@ -922,11 +922,12 @@ export default function ServerMenuModal({ onClose }: Props) {
                         <div key={m.id}>
                           <div className={`server-menu__member${isSelected ? ' server-menu__member--selected' : ''}`}>
                             <label className="server-menu__member-checkbox">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleMemberSelect(m.id)}
-                              />
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => { if (!m.is_host) toggleMemberSelect(m.id) }}
+                      disabled={m.is_host}
+                    />
                               <span className="server-menu__member-checkbox-visual" />
                             </label>
                             <div className="server-menu__member-avatar-wrap">
@@ -940,6 +941,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                               <p className="server-menu__member-name">
                                 {m.display_name || m.username}
                                 {isSelf && <span className="server-menu__member-self">(you)</span>}
+                                {m.is_host && <span className="server-menu__member-badge" style={{ color: '#f59e0b', borderColor: '#f59e0b66', backgroundColor: '#f59e0b22', marginLeft: '4px' }}>host</span>}
                               </p>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                 <p className={`server-menu__member-role ${m.role === 'admin' ? 'server-menu__member-role--admin' : ''}`}>
@@ -949,6 +951,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                                   <span key={r.id} className="server-menu__member-badge"
                                     style={{ color: r.color || '#5865f2', borderColor: (r.color || '#5865f2') + '66', backgroundColor: (r.color || '#5865f2') + '22' }}>
                                     {r.name}
+                                    {!(m.is_host && r.id === 'admin-role') && (
                                     <button
                                       onClick={() => handleRemoveRole(m.id, r.id)}
                                       disabled={assigningRole[m.id + r.id]}
@@ -957,6 +960,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                                     >
                                       x
                                     </button>
+                                    )}
                                   </span>
                                 ))}
                               </div>
@@ -984,7 +988,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                               </button>
                               {openOverflowMember === m.id && (
                                 <div className="server-menu__overflow-menu">
-                                  {isSelf && selfDemoteConfirm && m.role === 'admin' ? (
+                                  {!m.is_host && (isSelf && selfDemoteConfirm && m.role === 'admin' ? (
                                     <button
                                       onClick={() => { setOpenOverflowMember(null); handleToggleRole(m) }}
                                       className="server-menu__overflow-item server-menu__overflow-item--danger">
@@ -1003,13 +1007,13 @@ export default function ServerMenuModal({ onClose }: Props) {
                                       className="server-menu__overflow-item">
                                       {m.role === 'admin' ? 'remove admin' : 'make admin'}
                                     </button>
-                                  )}
+                                  ))}
                                   <button
                                     onClick={() => { setOpenOverflowMember(null); handleGenerateReset(m) }}
                                     className="server-menu__overflow-item">
                                     reset password
                                   </button>
-                                  {!isSelf && (
+                                  {!isSelf && !m.is_host && (
                                     <button
                                       onClick={() => { setOpenOverflowMember(null); setKickConfirmMember(m.id) }}
                                       className="server-menu__overflow-item server-menu__overflow-item--danger">
