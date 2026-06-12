@@ -1,6 +1,6 @@
 {
   "name": "@kizuna/desktop",
-  "version": "0.17.7",
+  "version": "0.17.9",
   "private": true,
   "type": "module",
   "scripts": {
