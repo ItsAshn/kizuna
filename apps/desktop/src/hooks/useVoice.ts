@@ -212,7 +212,7 @@ function startRemoteSpeakingDetection(
   sharedCtx?: AudioContext,
 ): () => void {
   const ownsCtx = !sharedCtx
-  const ctx = sharedCtx ?? new AudioContext()
+  const ctx = sharedCtx ?? new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE })
   const stream = new MediaStream([track])
   const source = ctx.createMediaStreamSource(stream)
   const analyser = ctx.createAnalyser()
@@ -677,8 +677,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
           if (consumeResult?.error) {
             verr('nativePeer', `consume ${peer.peerId} failed: ${consumeResult.error}`)
           } else {
+            const ssrc = consumeResult?.rtpParameters?.encodings?.[0]?.ssrc ?? 0
             const { invoke: inv } = await import('@tauri-apps/api/core')
-            await inv('voice_add_peer', { peerId: peer.peerId })
+            await inv('voice_add_peer', { peerId: peer.peerId, ssrc })
             socket!.emit('voice:resumeConsumer', { channelId: channelIdRef.current, consumerId: consumeResult.id })
           }
         } catch (e) {
@@ -715,6 +716,14 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       vlog('joinVoiceNative', 'voice:join OK', { peers: joinResult?.peers?.length, bitrate: joinResult?.voiceBitrateKbps })
 
       setActiveVoiceChannel(channelId)
+
+      // Enable Socket.IO RTP forwarding as fallback for broken recv DTLS
+      socket!.emit('voice:enableSocketRtp')
+      vlog('joinVoiceNative', 'enabled socket RTP forwarding')
+      socket?.on('voice:socketRtp', async (data: { peerId: string; payload: number[] }) => {
+        const { invoke: inv } = await import('@tauri-apps/api/core')
+        inv('voice_inject_opus', { peerId: data.peerId, opusData: data.payload }).catch(() => {})
+      })
 
       const iceServers = joinResult.iceServers || []
       const voiceBitrateKbps = joinResult.voiceBitrateKbps ?? 64
@@ -781,7 +790,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       vlog('joinVoiceNative', 'produce OK', { producerId: produceResult?.id })
 
       // Step 8: start audio capture in Rust with DSP config
-      const gateDb = -(noiseGateThreshold * 0.6) // 0..100 -> -0..-60 dB
+      const gateDb = -(noiseGateThreshold * 0.5) - 25 // 0..100 -> -25..-75 dB
       const suppStrength = noiseSuppressionStrength / 100 // 0..100 -> 0.0..1.0
       await invoke('voice_finish_join', {
         voiceBitrateKbps,
@@ -814,12 +823,16 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
           if (consumeResult?.error) {
             verr('joinVoiceNative', `consume peer ${peer.id} failed: ${consumeResult.error}`)
           } else {
-            await invoke('voice_add_peer', { peerId: peer.id })
+            const ssrc = consumeResult?.rtpParameters?.encodings?.[0]?.ssrc ?? 0
+            await invoke('voice_add_peer', { peerId: peer.id, ssrc })
             socket!.emit('voice:resumeConsumer', { channelId, consumerId: consumeResult.id })
             vlog('joinVoiceNative', `consumed peer ${peer.id}`)
           }
         }
       }
+
+      await invoke('voice_flush_peers')
+      vlog('joinVoiceNative', 'flush_peers done')
 
       return null
     } catch (e: any) {
@@ -846,6 +859,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       socket.off('voice:newPeer')
       socket.off('voice:peerLeft')
       socket.off('voice:peerSpeaking')
+      socket.off('voice:socketRtp')
       nativePeerHandlersRef.current = false
     }
     nativeVoiceUnlistenRef.current?.()
@@ -1225,7 +1239,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     }
     vlog('browserMic', `getUserMedia OK | audioTracks=${stream.getAudioTracks().length} | track0=${stream.getAudioTracks()[0]?.label}`)
     micStreamRef.current = stream
-    const audioCtx = new AudioContext()
+    const audioCtx = new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE })
     audioCtxRef.current = audioCtx
     vlog('browserMic', `AudioContext created | state=${audioCtx.state} | sampleRate=${audioCtx.sampleRate}`)
     const source = audioCtx.createMediaStreamSource(stream)
@@ -1268,7 +1282,13 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     const producer = await sendTransport.produce({
       track: processedTrack,
       encodings: [{ maxBitrate: bitrateKbps * 1000 }],
-      codecOptions: { opusStereo: false, opusDtx: true },
+      codecOptions: {
+        opusStereo: false,
+        opusDtx: true,
+        opusFec: true,
+        opusMaxAverageBitrate: bitrateKbps * 1000,
+        opusMaxPlaybackRate: 48000,
+      },
     })
     producerRef.current = producer
     vlog('browserMic', `producer created | id=${producer.id} | kind=${producer.kind} | paused=${producer.paused}`)
@@ -1307,7 +1327,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     ])
     vlog('nativeMic', 'Tauri API modules imported')
 
-    const audioCtx = new AudioContext()
+    const audioCtx = new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE })
     audioCtxRef.current = audioCtx
     vlog('nativeMic', `AudioContext created | state=${audioCtx.state} | sampleRate=${audioCtx.sampleRate}`)
 
@@ -1432,7 +1452,13 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     const producer = await sendTransport.produce({
       track: processedTrack,
       encodings: [{ maxBitrate: bitrateKbps * 1000 }],
-      codecOptions: { opusStereo: false, opusDtx: true },
+      codecOptions: {
+        opusStereo: false,
+        opusDtx: true,
+        opusFec: true,
+        opusMaxAverageBitrate: bitrateKbps * 1000,
+        opusMaxPlaybackRate: 48000,
+      },
     })
     producerRef.current = producer
     vlog('nativeMic', `producer created | id=${producer.id} | kind=${producer.kind} | paused=${producer.paused} | closed=${producer.closed}`)

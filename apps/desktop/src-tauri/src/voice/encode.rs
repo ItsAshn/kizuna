@@ -275,6 +275,10 @@ impl AudioEncoder {
             .set_signal(opus2::Signal::Voice)
             .map_err(|e| format!("Failed to set Opus signal type: {e}"))?;
 
+        encoder
+            .set_max_bandwidth(opus2::Bandwidth::Fullband)
+            .map_err(|e| format!("Failed to set Opus max bandwidth: {e}"))?;
+
         let frame_size = (sample_rate as usize * 20) / 1000;
 
         Ok(Self {

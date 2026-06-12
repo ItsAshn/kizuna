@@ -14,6 +14,7 @@ use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
 use webrtc::rtp_transceiver::rtp_sender::RTCRtpSender;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 use webrtc::track::track_local::TrackLocal;
+use webrtc::track::track_remote::TrackRemote;
 
 pub struct TransportPair {
     pub send_pc: RTCPeerConnection,
@@ -22,6 +23,7 @@ pub struct TransportPair {
     pub audio_sender: Arc<RTCRtpSender>,
     pub video_track: Arc<TrackLocalStaticSample>,
     pub pending_recv: Arc<tokio::sync::Mutex<Vec<String>>>,
+    pub pending_tracks: Arc<tokio::sync::Mutex<Vec<Arc<TrackRemote>>>>,
 }
 
 fn build_ice_servers(ice_servers: &[Value]) -> Vec<RTCIceServer> {
@@ -79,19 +81,13 @@ fn build_remote_sdp(transport_params: &Value) -> String {
          o=- 0 0 IN IP4 0.0.0.0\r\n\
          s=-\r\n\
          t=0 0\r\n\
-         a=group:BUNDLE 0 1\r\n\
+         a=group:BUNDLE 0\r\n\
          a=ice-lite\r\n\
          m=audio 9 UDP/TLS/RTP/SAVPF 111\r\n\
          c=IN IP4 0.0.0.0\r\n\
          a=mid:0\r\n\
-          a=rtpmap:111 opus/48000/2\r\n\
-          a=fmtp:111 minptime=10;useinbandfec=1\r\n\
-         a=rtcp-mux\r\n\
-         a=rtcp-rsize\r\n\
-         m=video 9 UDP/TLS/RTP/SAVPF 101\r\n\
-         c=IN IP4 0.0.0.0\r\n\
-         a=mid:1\r\n\
-         a=rtpmap:101 VP8/90000\r\n\
+         a=rtpmap:111 opus/48000/2\r\n\
+         a=fmtp:111 minptime=10;useinbandfec=1\r\n\
          a=rtcp-mux\r\n\
          a=rtcp-rsize\r\n\
          a=ice-ufrag:{ufrag}\r\n\
@@ -141,22 +137,12 @@ fn build_remote_sdp(transport_params: &Value) -> String {
 
 pub fn extract_dtls_params_from_sdp(sdp_str: &str) -> Option<Value> {
     let mut fingerprint = None;
-    let mut setup = "active";
 
     for line in sdp_str.lines() {
         if let Some(fp_str) = line.strip_prefix("a=fingerprint:sha-256 ") {
             fingerprint = Some(fp_str.trim().to_string());
         }
-        if let Some(setup_val) = line.strip_prefix("a=setup:") {
-            setup = setup_val.trim();
-        }
     }
-
-    let role = match setup {
-        "active" => "client",
-        "passive" => "server",
-        _ => "auto",
-    };
 
     fingerprint.map(|fp| {
         serde_json::json!({
@@ -164,7 +150,7 @@ pub fn extract_dtls_params_from_sdp(sdp_str: &str) -> Option<Value> {
                 "algorithm": "sha-256",
                 "value": fp,
             }],
-            "role": role,
+            "role": "server",
         })
     })
 }
@@ -188,10 +174,15 @@ pub async fn create_transports(
         ..Default::default()
     };
 
-    let pending_tracks: Arc<tokio::sync::Mutex<Vec<String>>> =
+    let pending_peers: Arc<tokio::sync::Mutex<Vec<String>>> =
         Arc::new(tokio::sync::Mutex::new(Vec::new()));
 
-    let pending_tracks_clone = pending_tracks.clone();
+    let pending_peers_clone = pending_peers.clone();
+
+    let buffered_tracks: Arc<tokio::sync::Mutex<Vec<Arc<TrackRemote>>>> =
+        Arc::new(tokio::sync::Mutex::new(Vec::new()));
+
+    let buffered_tracks_clone = buffered_tracks.clone();
 
     let send_pc = api
         .new_peer_connection(config.clone())
@@ -229,7 +220,7 @@ pub async fn create_transports(
         RTCRtpCodecCapability {
             mime_type: "audio/opus".to_string(),
             clock_rate: 48000,
-            channels: 2,
+            channels: 1,
             sdp_fmtp_line: "minptime=10;useinbandfec=1".to_string(),
             rtcp_feedback: vec![],
         },
@@ -268,13 +259,13 @@ pub async fn create_transports(
         .await
         .map_err(|e| format!("Failed to set remote description (send): {e}"))?;
 
-    let answer = send_pc
+    let send_answer = send_pc
         .create_answer(None)
         .await
         .map_err(|e| format!("Failed to create answer (send): {e}"))?;
 
     send_pc
-        .set_local_description(answer)
+        .set_local_description(send_answer)
         .await
         .map_err(|e| format!("Failed to set local description (send): {e}"))?;
 
@@ -318,21 +309,56 @@ pub async fn create_transports(
         Box::pin(async {})
     }));
 
+    let recv_audio_track = Arc::new(TrackLocalStaticSample::new(
+        RTCRtpCodecCapability {
+            mime_type: "audio/opus".to_string(),
+            clock_rate: 48000,
+            channels: 1,
+            sdp_fmtp_line: "minptime=10;useinbandfec=1".to_string(),
+            rtcp_feedback: vec![],
+        },
+        "audio".to_string(),
+        "kizuna-recv".to_string(),
+    ));
+    let recv_audio_track_clone = recv_audio_track.clone();
+    recv_pc
+        .add_track(recv_audio_track as Arc<dyn TrackLocal + Send + Sync>)
+        .await
+        .map_err(|e| format!("Failed to add recv audio track: {e}"))?;
+
+    let recv_video_track = Arc::new(TrackLocalStaticSample::new(
+        RTCRtpCodecCapability {
+            mime_type: "video/VP8".to_string(),
+            clock_rate: 90000,
+            channels: 0,
+            sdp_fmtp_line: String::new(),
+            rtcp_feedback: vec![],
+        },
+        "video".to_string(),
+        "kizuna-recv-video".to_string(),
+    ));
+    recv_pc
+        .add_track(recv_video_track as Arc<dyn TrackLocal + Send + Sync>)
+        .await
+        .map_err(|e| format!("Failed to add recv video track: {e}"))?;
+
     let recv_app = app.clone();
     recv_pc.on_track(Box::new(
         move |track: Arc<webrtc::track::track_remote::TrackRemote>,
               _receiver: Arc<webrtc::rtp_transceiver::rtp_receiver::RTCRtpReceiver>,
               _transceiver: Arc<webrtc::rtp_transceiver::RTCRtpTransceiver>| {
-            let pending = pending_tracks_clone.clone();
+            let pending_peers = pending_peers_clone.clone();
+            let buffered = buffered_tracks_clone.clone();
             let app = recv_app.clone();
             Box::pin(async move {
                 let peer_id = {
-                    let mut pending = pending.lock().await;
-                    if pending.is_empty() {
-                        eprintln!("[RecvPC] on_track: no pending peer for track");
+                    let mut peers = pending_peers.lock().await;
+                    if peers.is_empty() {
+                        eprintln!("[RecvPC] on_track: no pending peer yet, buffering track");
+                        buffered.lock().await.push(track);
                         return;
                     }
-                    pending.remove(0)
+                    peers.remove(0)
                 };
                 eprintln!("[RecvPC] on_track: peer={peer_id}");
                 super::encode::AudioRecvSession::spawn(app, peer_id, track);
@@ -367,6 +393,25 @@ pub async fn create_transports(
     let recv_dtls = extract_dtls_params_from_sdp(&recv_local_sdp.sdp)
         .ok_or("Failed to extract DTLS params from recv local SDP")?;
 
+    // Kickstart DTLS by writing a minimal Opus silence frame
+    {
+        use webrtc::media::Sample;
+        let opus_silence = bytes::Bytes::from_static(&[0xf8, 0xff, 0xfe]);
+        let sample = Sample {
+            data: opus_silence,
+            timestamp: std::time::SystemTime::now(),
+            duration: std::time::Duration::from_millis(20),
+            packet_timestamp: 0,
+            prev_dropped_packets: 0,
+            prev_padding_packets: 0,
+        };
+        if let Err(e) = recv_audio_track_clone.write_sample(&sample).await {
+            eprintln!("[RecvPC] DTLS kickstart write failed: {e}");
+        } else {
+            eprintln!("[RecvPC] DTLS kickstart write OK");
+        }
+    }
+
     Ok((
         TransportPair {
             send_pc,
@@ -374,7 +419,8 @@ pub async fn create_transports(
             audio_track,
             audio_sender: rtp_sender,
             video_track,
-            pending_recv: pending_tracks,
+            pending_recv: pending_peers,
+            pending_tracks: buffered_tracks,
         },
         send_dtls,
         recv_dtls,

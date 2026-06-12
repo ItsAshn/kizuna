@@ -429,6 +429,7 @@ pub struct AudioProcessor {
     gate_enabled: bool,
     suppression_enabled: bool,
     agc_enabled: bool,
+    dc_removal_enabled: bool,
     sample_rate: u32,
     dc_state: f32,
 }
@@ -442,6 +443,7 @@ impl AudioProcessor {
             gate_enabled: true,
             suppression_enabled: false,
             agc_enabled: true,
+            dc_removal_enabled: false,
             sample_rate,
             dc_state: 0.0,
         }
@@ -472,6 +474,13 @@ impl AudioProcessor {
         self.spectral_gate.set_strength(strength);
     }
 
+    pub fn set_dc_removal_enabled(&mut self, enabled: bool) {
+        self.dc_removal_enabled = enabled;
+        if !enabled {
+            self.dc_state = 0.0;
+        }
+    }
+
     pub fn reset(&mut self) {
         self.noise_gate.reset();
         self.spectral_gate.reset();
@@ -482,12 +491,13 @@ impl AudioProcessor {
     /// Process a frame through the full DSP chain.
     /// Order: DC-removal HPF → noise_gate → spectral suppression → auto gain control.
     pub fn process_frame(&mut self, frame: &mut [f32]) {
-        // DC-removal high-pass filter at ~80Hz (single-pole)
-        let alpha = (-2.0 * PI * 80.0 / self.sample_rate as f32).exp();
-        for sample in frame.iter_mut() {
-            let out = *sample - self.dc_state;
-            self.dc_state = self.dc_state + alpha * out;
-            *sample = out;
+        if self.dc_removal_enabled {
+            let alpha = (-2.0 * PI * 25.0 / self.sample_rate as f32).exp();
+            for sample in frame.iter_mut() {
+                let out = *sample - self.dc_state;
+                self.dc_state = self.dc_state + alpha * out;
+                *sample = out;
+            }
         }
 
         if self.gate_enabled {

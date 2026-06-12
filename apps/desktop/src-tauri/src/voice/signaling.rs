@@ -5,7 +5,11 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
+use webrtc::rtp_transceiver::rtp_codec::RTPCodecType;
+use webrtc::rtp_transceiver::RTCRtpCodingParameters;
+use webrtc::rtp_transceiver::RTCRtpReceiveParameters;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
+use webrtc::track::track_remote::TrackRemote;
 
 use super::dsp::AudioProcessor;
 use super::encode::{self, AudioSendSession};
@@ -17,11 +21,13 @@ pub struct ActiveCall {
     pub send_pc: webrtc::peer_connection::RTCPeerConnection,
     pub recv_pc: webrtc::peer_connection::RTCPeerConnection,
     pub pending_recv: Arc<tokio::sync::Mutex<Vec<String>>>,
+    pub pending_tracks: Arc<tokio::sync::Mutex<Vec<Arc<TrackRemote>>>>,
     pub router_caps: Value,
     pub voice_bitrate_kbps: u64,
     pub audio_track: Option<Arc<TrackLocalStaticSample>>,
     pub audio_send: Option<AudioSendSession>,
     pub processor: Option<Arc<tokio::sync::Mutex<AudioProcessor>>>,
+    pub buffered_peers: Arc<tokio::sync::Mutex<Vec<(String, u32)>>>,
 }
 
 impl ActiveCall {
@@ -195,6 +201,7 @@ impl VoiceController {
             send_pc: transport_pair.send_pc,
             recv_pc: transport_pair.recv_pc,
             pending_recv: transport_pair.pending_recv,
+            pending_tracks: transport_pair.pending_tracks,
             router_caps: json!({
                 "codecs": [{
                     "mimeType": "audio/opus",
@@ -209,6 +216,7 @@ impl VoiceController {
             audio_track: Some(transport_pair.audio_track),
             audio_send: None,
             processor: None,
+            buffered_peers: Arc::new(tokio::sync::Mutex::new(Vec::new())),
         });
 
         eprintln!("[VoiceNative] begin_join OK: ssrc={ssrc}");
@@ -284,10 +292,104 @@ impl VoiceController {
     }
 
     /// Called after TypeScript has successfully consumed a peer.
-    pub async fn add_remote_peer(&self, peer_id: &str) {
+    /// Buffers the peer info. Call flush_peers() after all peers are buffered.
+    pub async fn add_remote_peer(&self, peer_id: &str, ssrc: u32) {
         if let Some(ref call) = self.active_call {
-            call.pending_recv.lock().await.push(peer_id.to_string());
-            eprintln!("[VoiceNative] add_remote_peer: {peer_id}");
+            call.buffered_peers.lock().await.push((peer_id.to_string(), ssrc));
+            eprintln!("[VoiceNative] add_remote_peer: {peer_id} ssrc={ssrc}");
+        }
+    }
+
+    /// Flushes buffered peers: waits for DTLS, calls receive() once with all SSRCs,
+    /// then spawns AudioRecvSession for each track.
+    pub async fn flush_peers(&self) {
+        let call = match self.active_call.as_ref() {
+            Some(c) => c,
+            None => return,
+        };
+
+        let buffered = {
+            let mut guard = call.buffered_peers.lock().await;
+            std::mem::take(&mut *guard)
+        };
+        if buffered.is_empty() {
+            return;
+        }
+
+        eprintln!("[VoiceNative] flush_peers: waiting for DTLS ({} peers buffered)", buffered.len());
+
+        let receiver = {
+            let transceivers = call.recv_pc.get_transceivers().await;
+            let mut found = None;
+            for t in &transceivers {
+                if t.kind() == RTPCodecType::Audio {
+                    found = Some(t.receiver().await);
+                    break;
+                }
+            }
+            match found {
+                Some(r) => r,
+                None => {
+                    eprintln!("[VoiceNative] flush_peers: no audio transceiver found");
+                    return;
+                }
+            }
+        };
+
+        let encodings: Vec<RTCRtpCodingParameters> = buffered
+            .iter()
+            .map(|(_, ssrc)| RTCRtpCodingParameters {
+                ssrc: *ssrc,
+                ..Default::default()
+            })
+            .collect();
+
+        let receive_params = RTCRtpReceiveParameters { encodings };
+
+        // Wait for ICE to connect and DTLS to start before calling receive()
+        for i in 0..40 {
+            let ice_state = call.recv_pc.ice_connection_state();
+            let connected = matches!(
+                ice_state,
+                webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::Connected
+                    | webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::Completed
+            );
+            if connected && i >= 5 {
+                // Give DTLS an extra half-second after ICE connects
+                eprintln!("[VoiceNative] flush_peers: ICE connected, waiting a bit more for DTLS...");
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                break;
+            }
+            if i == 0 {
+                eprintln!("[VoiceNative] flush_peers: waiting for ICE (state={:?})...", ice_state);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+
+        match receiver.receive(&receive_params).await {
+            Ok(()) => {
+                eprintln!("[VoiceNative] flush_peers: receive OK for {} peers", buffered.len());
+            }
+            Err(e) => {
+                eprintln!("[VoiceNative] flush_peers: receiver.receive failed: {e}");
+                return;
+            }
+        }
+
+        let tracks = receiver.tracks().await;
+        eprintln!("[VoiceNative] flush_peers: got {} tracks for {} peers", tracks.len(), buffered.len());
+
+        for (i, (pid, _)) in buffered.into_iter().enumerate() {
+            if i < tracks.len() {
+                eprintln!("[VoiceNative] flush_peers: spawning AudioRecvSession for peer={pid} track_index={i}");
+                let app = self.app.clone();
+                let track = tracks[i].clone();
+                tokio::spawn(async move {
+                    encode::AudioRecvSession::spawn(app, pid, track);
+                });
+            } else {
+                eprintln!("[VoiceNative] flush_peers: no track for peer={pid}");
+            }
         }
     }
 

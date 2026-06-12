@@ -13,6 +13,7 @@ static CAPTURE_SESSION: Mutex<Option<CaptureSession>> = Mutex::new(None);
 static AUDIO_SESSION: Mutex<Option<AudioCaptureSession>> = Mutex::new(None);
 static SESSION_TYPE: Mutex<Option<SessionType>> = Mutex::new(None);
 static VOICE_CONTROLLER: Mutex<Option<VoiceController>> = Mutex::new(None);
+static VOICE_DECODER: Mutex<Option<opus2::Decoder>> = Mutex::new(None);
 
 fn get_session_type() -> SessionType {
     let mut guard = SESSION_TYPE.lock().unwrap();
@@ -230,10 +231,52 @@ fn voice_set_auto_gain(enabled: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn voice_add_peer(peer_id: String) -> Result<(), String> {
+fn voice_flush_peers() -> Result<(), String> {
     let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
     if let Some(ref controller) = *guard {
-        tauri::async_runtime::block_on(controller.add_remote_peer(&peer_id));
+        tauri::async_runtime::block_on(controller.flush_peers());
+        Ok(())
+    } else {
+        Err("Voice not initialized".into())
+    }
+}
+
+#[tauri::command]
+fn voice_inject_opus(app: tauri::AppHandle, peer_id: String, opus_data: Vec<u8>) -> Result<(), String> {
+    use tauri::Emitter;
+    let mut guard = VOICE_DECODER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if guard.is_none() {
+        *guard = Some(
+            opus2::Decoder::new(48000, opus2::Channels::Mono)
+                .map_err(|e| format!("Opus decoder: {e}"))?,
+        );
+    }
+    let decoder = guard.as_mut().unwrap();
+
+    let frame_size = 48000 * 60 / 1000;
+    let mut pcm = vec![0.0f32; frame_size];
+    let samples = decoder
+        .decode_float(&opus_data, &mut pcm, false)
+        .map_err(|e| format!("Opus decode: {e}"))?;
+    pcm.truncate(samples);
+    pcm.shrink_to_fit();
+
+    let _ = app.emit(
+        "voice:remote_audio",
+        serde_json::json!({
+            "peerId": peer_id,
+            "samples": pcm,
+            "sampleRate": 48000,
+        }),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+fn voice_add_peer(peer_id: String, ssrc: u32) -> Result<(), String> {
+    let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref controller) = *guard {
+        tauri::async_runtime::block_on(controller.add_remote_peer(&peer_id, ssrc));
         Ok(())
     } else {
         Err("Voice not initialized".into())
@@ -331,6 +374,8 @@ pub fn run() {
             voice_begin,
             voice_finish_join,
             voice_add_peer,
+            voice_flush_peers,
+            voice_inject_opus,
             voice_leave,
             voice_drain_signals,
             voice_set_muted,

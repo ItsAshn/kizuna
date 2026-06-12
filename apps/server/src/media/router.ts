@@ -22,6 +22,13 @@ const MEDIA_CODECS: mediasoupTypes.RtpCodecCapability[] = [
     parameters: {
       'useinbandfec': 1,
       'minptime': 10,
+      'maxaveragebitrate': 256000,
+      'maxplaybackrate': 48000,
+      'sprop-maxcapturerate': 48000,
+      'sprop-stereo': 0,
+      'stereo': 0,
+      'usedtx': 1,
+      'cbr': 0,
     },
   },
   {

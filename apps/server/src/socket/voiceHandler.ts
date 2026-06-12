@@ -44,6 +44,7 @@ export interface PeerInfo {
 }
 
 const peers = new Map<string, PeerInfo>()
+const socketRtpEnabled = new Set<string>()
 
 export function getAllPeers(): PeerInfo[] {
   return Array.from(peers.values())
@@ -172,9 +173,11 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       peer.transports.set(transport.id, transport as any)
 
       const bitrateKbps = getServerVoiceBitrateKbps()
-      transport.setMaxIncomingBitrate(bitrateKbps * 1000).catch((e) => {
-        verr('createTransport', `setMaxIncomingBitrate failed`, e)
-      })
+      if (direction === 'send') {
+        transport.setMaxIncomingBitrate(bitrateKbps * 1000).catch((e) => {
+          verr('createTransport', `setMaxIncomingBitrate failed`, e)
+        })
+      }
 
       vlog('createTransport', `created | socketId=${socket.id} | dir=${direction} | transportId=${transport.id} | bitrate=${bitrateKbps}kbps | ms=${Date.now() - t0}`)
 
@@ -333,6 +336,20 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         socket.emit('voice:consumerClosed', { consumerId: consumer.id })
       })
 
+      if (socketRtpEnabled.has(socket.id) && consumer.kind === 'audio') {
+        const forwardingSocket = socket
+        const forwardingPeerId = peerId
+        consumer.on('rtp', (rtpPacket: Buffer) => {
+          const opusPayload = rtpPacket.subarray(12)
+          if (opusPayload.length > 0) {
+            forwardingSocket.emit('voice:socketRtp', {
+              peerId: forwardingPeerId,
+              payload: Array.from(opusPayload),
+            })
+          }
+        })
+      }
+
       if (typeof callback === 'function') {
         callback({
           id: consumer.id,
@@ -447,7 +464,33 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     if (typeof callback === 'function') callback({ channels })
   })
 
+  socket.on('voice:enableSocketRtp', () => {
+    vlog('socketRtp', `enabled | socketId=${socket.id}`)
+    socketRtpEnabled.add(socket.id)
+
+    const peer = peers.get(socket.id)
+    if (peer) {
+      let count = 0
+      for (const [, consumer] of peer.consumers) {
+        if (consumer.kind !== 'audio') continue
+        const forwardingSocket = socket
+        consumer.on('rtp', (rtpPacket: Buffer) => {
+          const opusPayload = rtpPacket.subarray(12)
+          if (opusPayload.length > 0) {
+            forwardingSocket.emit('voice:socketRtp', {
+              peerId: consumer.producerId,
+              payload: Array.from(opusPayload),
+            })
+          }
+        })
+        count++
+      }
+      vlog('socketRtp', `registered ${count} existing consumers | socketId=${socket.id}`)
+    }
+  })
+
   socket.on('disconnect', async () => {
+    socketRtpEnabled.delete(socket.id)
     for (const [sid, peer] of peers) {
       if (sid === socket.id) {
         vlog('disconnect', `socket disconnected | socketId=${socket.id} | user=${peer.username} | channelId=${peer.channelId}`)

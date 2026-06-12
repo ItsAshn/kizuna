@@ -140,7 +140,7 @@ export const useChatStore = create<ChatState>()(
       pushToTalkKey: 'AltLeft',
       noiseSuppression: false,
       autoGainControl: true,
-      noiseGateEnabled: true,
+      noiseGateEnabled: false,
       noiseGateThreshold: 30,
       noiseSuppressionStrength: 0,
       inputVolume: 100,
@@ -289,7 +289,7 @@ export const useChatStore = create<ChatState>()(
         })),
     }),
     {
-      name: 'kizuna-voice-settings',
+      name: 'kizuna-voice-settings-v2',
       partialize: (state) => ({
         audioInputDeviceId: state.audioInputDeviceId,
         audioOutputDeviceId: state.audioOutputDeviceId,
