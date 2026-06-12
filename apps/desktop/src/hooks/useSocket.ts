@@ -6,7 +6,7 @@ import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import type { Message, Channel, DMChannelData, UserStatus } from '@kizuna/shared'
+import type { Message, Channel, DMChannelData, UserStatus, MessageReaction } from '@kizuna/shared'
 import { showNotification } from '../utils/showNotification'
 
 export function useSocket(): MutableRefObject<Socket | null> {
@@ -157,6 +157,49 @@ export function useSocket(): MutableRefObject<Socket | null> {
         channelId,
         current.filter((u: string) => u !== username),
       )
+    })
+
+    socket.on('message:react:add', ({ messageId, channelId, reaction }: { messageId: string; channelId: string; reaction: { reaction_key: string; reaction_type: string; userId: string; username: string } }) => {
+      const store = useChatStore.getState()
+      const msgs = store.messages[channelId] || []
+      const msgIdx = msgs.findIndex(m => m.id === messageId)
+      if (msgIdx === -1) return
+      const msg = msgs[msgIdx]
+      const currentReactions = [...(msg.reactions || [])]
+      const existing = currentReactions.find(r => r.reaction_key === reaction.reaction_key && r.reaction_type === reaction.reaction_type)
+      if (existing) {
+        existing.count++
+        if (!existing.users.some(u => u.user_id === reaction.userId)) {
+          existing.users.push({ user_id: reaction.userId, username: reaction.username })
+        }
+      } else {
+        currentReactions.push({
+          reaction_key: reaction.reaction_key,
+          reaction_type: reaction.reaction_type as 'emoji' | 'sticker',
+          count: 1,
+          users: [{ user_id: reaction.userId, username: reaction.username }],
+        })
+      }
+      store.updateMessageReactions(channelId, messageId, currentReactions)
+    })
+
+    socket.on('message:react:remove', ({ messageId, channelId, reactionKey, userId }: { messageId: string; channelId: string; reactionKey: string; userId: string }) => {
+      const store = useChatStore.getState()
+      const msgs = store.messages[channelId] || []
+      const msgIdx = msgs.findIndex(m => m.id === messageId)
+      if (msgIdx === -1) return
+      const msg = msgs[msgIdx]
+      const currentReactions = (msg.reactions || [])
+        .map(r => {
+          if (r.reaction_key === reactionKey) {
+            const filtered = r.users.filter(u => u.user_id !== userId)
+            if (filtered.length === 0) return null
+            return { ...r, count: filtered.length, users: filtered }
+          }
+          return r
+        })
+        .filter(Boolean) as MessageReaction[]
+      store.updateMessageReactions(channelId, messageId, currentReactions)
     })
 
     socket.on('user:online', ({ userId, status }: { userId: string; status: UserStatus }) => {

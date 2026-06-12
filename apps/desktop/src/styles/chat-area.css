@@ -153,6 +153,26 @@
   cursor: not-allowed;
 }
 
+/* ── GIF button ───────────────────────────────────────────── */
+
+.chat-area__gif-btn {
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.chat-area__gif-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
 /* ── Mention autocomplete ──────────────────────────────────── */
 
 .chat-area__mention-suggestions {

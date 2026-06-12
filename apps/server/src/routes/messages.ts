@@ -21,7 +21,38 @@ function mapMessage(row: any) {
     content: row.content,
     edited_at: row.edited_at ? row.edited_at * 1000 : null,
     created_at: row.created_at * 1000,
+    reactions: row.reactions ? JSON.parse(row.reactions) : [],
   }
+}
+
+function fetchReactionsForMessages(db: any, messageIds: string[]): Record<string, any[]> {
+  if (messageIds.length === 0) return {}
+  const placeholders = messageIds.map(() => '?').join(',')
+  const rows = db.prepare(`
+    SELECT mr.message_id, mr.reaction_key, mr.reaction_type, mr.user_id, u.username
+    FROM message_reactions mr
+    LEFT JOIN users u ON mr.user_id = u.id
+    WHERE mr.message_id IN (${placeholders})
+    ORDER BY mr.created_at
+  `).all(...messageIds) as any[]
+
+  const map: Record<string, any[]> = {}
+  for (const r of rows) {
+    if (!map[r.message_id]) map[r.message_id] = []
+    const existing = map[r.message_id].find((e: any) => e.reaction_key === r.reaction_key && e.reaction_type === r.reaction_type)
+    if (existing) {
+      existing.count++
+      existing.users.push({ user_id: r.user_id, username: r.username })
+    } else {
+      map[r.message_id].push({
+        reaction_key: r.reaction_key,
+        reaction_type: r.reaction_type,
+        count: 1,
+        users: [{ user_id: r.user_id, username: r.username }],
+      })
+    }
+  }
+  return map
 }
 
 // GET /messages/:channelId — fetch messages with ?limit= and ?before= pagination
@@ -49,7 +80,14 @@ messageRoutes.get('/:channelId', authMiddleware, (c) => {
     rows = rows.reverse()
   }
 
-  return c.json({ messages: rows.map(mapMessage) })
+  const messages = rows.map(mapMessage)
+  const messageIds = messages.map(m => m.id)
+  const reactionsMap = fetchReactionsForMessages(db, messageIds)
+  for (const msg of messages) {
+    msg.reactions = reactionsMap[msg.id] || []
+  }
+
+  return c.json({ messages })
 })
 
 // POST /messages/:channelId — send message
@@ -90,6 +128,7 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   `).get(id) as any
 
   const message = mapMessage(row)
+  message.reactions = []
 
   try {
     const io: any = c.get('io' as never)
@@ -151,6 +190,7 @@ messageRoutes.delete('/:messageId', authMiddleware, (c) => {
 messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
   const user = getAuth(c)
   const messageId = c.req.param('messageId')
+  if (!messageId) return c.json({ error: 'Message ID is required' }, 400)
   const body = await c.req.json() as { content: string }
   const { content } = body
   if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)
@@ -175,6 +215,7 @@ messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
   `).get(messageId) as any
 
   const result = mapMessage(row)
+  result.reactions = fetchReactionsForMessages(db, [messageId])[messageId] || []
 
   try {
     const io: any = c.get('io' as never)

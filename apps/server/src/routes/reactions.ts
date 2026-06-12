@@ -1,0 +1,158 @@
+import { Hono } from 'hono'
+import { getDb } from '../db'
+import { authMiddleware } from '../middleware/auth'
+import type { AuthUser } from '../middleware/auth'
+function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
+
+const reactionRoutes = new Hono()
+
+const DEFAULT_EMOJIS = ['👍', '❤️', '😆', '😮', '😢']
+
+function getReactionsForMessage(db: any, messageId: string): any[] {
+  const rows = db.prepare(`
+    SELECT mr.reaction_key, mr.reaction_type, mr.user_id, u.username
+    FROM message_reactions mr
+    LEFT JOIN users u ON mr.user_id = u.id
+    WHERE mr.message_id = ?
+    ORDER BY mr.created_at
+  `).all(messageId) as any[]
+
+  const reactions: any[] = []
+  for (const r of rows) {
+    const existing = reactions.find(e => e.reaction_key === r.reaction_key && e.reaction_type === r.reaction_type)
+    if (existing) {
+      existing.count++
+      existing.users.push({ user_id: r.user_id, username: r.username })
+    } else {
+      reactions.push({
+        reaction_key: r.reaction_key,
+        reaction_type: r.reaction_type,
+        count: 1,
+        users: [{ user_id: r.user_id, username: r.username }],
+      })
+    }
+  }
+  return reactions
+}
+
+function findReaction(db: any, messageId: string, userId: string, reactionKey: string): any {
+  return db.prepare(
+    'SELECT * FROM message_reactions WHERE message_id = ? AND user_id = ? AND reaction_key = ?'
+  ).get(messageId, userId, reactionKey)
+}
+
+// POST /api/reactions/:messageId — add a reaction
+reactionRoutes.post('/:messageId', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  const messageId = c.req.param('messageId') || ''
+  const body = await c.req.json() as { reaction_key: string; reaction_type?: string }
+  const { reaction_key, reaction_type } = body
+  if (!reaction_key) return c.json({ error: 'reaction_key is required' }, 400)
+  if (!messageId) return c.json({ error: 'Message ID is required' }, 400)
+
+  const db = getDb()
+  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
+  if (!message) return c.json({ error: 'Message not found' }, 404)
+
+  const existing = findReaction(db, messageId, user.userId, reaction_key)
+  if (existing) return c.json({ error: 'Already reacted' }, 409)
+
+  const type = reaction_type || 'emoji'
+  db.prepare(
+    'INSERT INTO message_reactions (message_id, user_id, reaction_key, reaction_type) VALUES (?, ?, ?, ?)'
+  ).run(messageId, user.userId, reaction_key, type)
+
+  const reactions = getReactionsForMessage(db, messageId)
+
+  try {
+    const io: any = c.get('io' as never)
+    if (io) {
+      io.to(message.channel_id).emit('message:react:add', {
+        messageId,
+        channelId: message.channel_id,
+        reaction: { reaction_key, reaction_type: type, userId: user.userId, username: user.username },
+      })
+    }
+  } catch {}
+
+  return c.json({ reactions })
+})
+
+// DELETE /api/reactions/:messageId/:reactionKey — remove own reaction
+reactionRoutes.delete('/:messageId/:reactionKey', authMiddleware, (c) => {
+  const user = getAuth(c)
+  const messageId = c.req.param('messageId') || ''
+  const reactionKey = c.req.param('reactionKey') || ''
+  if (!messageId) return c.json({ error: 'Message ID is required' }, 400)
+  if (!reactionKey) return c.json({ error: 'Reaction key is required' }, 400)
+
+  const db = getDb()
+  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
+  if (!message) return c.json({ error: 'Message not found' }, 404)
+
+  const existing = findReaction(db, messageId, user.userId, reactionKey)
+  if (!existing) return c.json({ error: 'Reaction not found' }, 404)
+
+  db.prepare('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND reaction_key = ?')
+    .run(messageId, user.userId, reactionKey)
+
+  const reactions = getReactionsForMessage(db, messageId)
+
+  try {
+    const io: any = c.get('io' as never)
+    if (io) {
+      io.to(message.channel_id).emit('message:react:remove', {
+        messageId,
+        channelId: message.channel_id,
+        reactionKey,
+        userId: user.userId,
+      })
+    }
+  } catch {}
+
+  return c.json({ reactions })
+})
+
+// GET /api/reactions/popular — get user's top 5 emojis + server popular, and top stickers
+reactionRoutes.get('/popular', authMiddleware, (c) => {
+  const user = getAuth(c)
+  const db = getDb()
+
+  // Get user's top 5 emoji reactions
+  const userTop = db.prepare(`
+    SELECT reaction_key, COUNT(*) as cnt
+    FROM message_reactions
+    WHERE user_id = ? AND reaction_type = 'emoji'
+    GROUP BY reaction_key
+    ORDER BY cnt DESC, reaction_key
+    LIMIT 5
+  `).all(user.userId) as { reaction_key: string; cnt: number }[]
+
+  // Get user's top 3 sticker reactions
+  const userStickers = db.prepare(`
+    SELECT mr.reaction_key, COUNT(*) as cnt, g.stored_filename
+    FROM message_reactions mr
+    LEFT JOIN gifs g ON g.id = mr.reaction_key
+    WHERE mr.user_id = ? AND mr.reaction_type = 'sticker'
+    GROUP BY mr.reaction_key
+    ORDER BY cnt DESC
+    LIMIT 3
+  `).all(user.userId) as { reaction_key: string; cnt: number; stored_filename: string | null }[]
+
+  let emojis: string[] = userTop.map(r => r.reaction_key)
+  if (emojis.length < 5) {
+    for (const e of DEFAULT_EMOJIS) {
+      if (!emojis.includes(e)) emojis.push(e)
+      if (emojis.length >= 5) break
+    }
+  }
+
+  const stickers = userStickers.map(r => ({
+    id: r.reaction_key,
+    url: r.stored_filename ? `/api/gifs/${r.reaction_key}/file` : '',
+  }))
+
+  return c.json({ emojis, stickers })
+})
+
+export default reactionRoutes

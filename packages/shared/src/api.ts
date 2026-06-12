@@ -13,6 +13,7 @@ import type {
   PoWChallenge,
   AdminInfo,
   ChannelMute,
+  GifInfo,
 } from './types'
 
 function normalizeUrl(url: string): string {
@@ -654,4 +655,133 @@ export async function deleteChannelMute(
   channelId: string,
 ): Promise<void> {
   await client(serverUrl, token).delete(`/api/mutes/${channelId}`)
+}
+
+// ─── GIFs & Stickers ─────────────────────────────────────
+
+export async function fetchGifs(
+  serverUrl: string,
+  token: string,
+  params?: { type?: 'gif' | 'sticker'; category?: string; pack?: string; search?: string; limit?: number; offset?: number },
+): Promise<GifInfo[]> {
+  const res = await client(serverUrl, token).get('/api/gifs', { params })
+  return res.data.gifs ?? res.data
+}
+
+export async function fetchGifCategories(
+  serverUrl: string,
+  token: string,
+  type?: 'gif' | 'sticker',
+): Promise<string[]> {
+  const res = await client(serverUrl, token).get('/api/gifs/categories', { params: type ? { type } : {} })
+  return res.data.categories ?? res.data
+}
+
+export async function fetchStickerPacks(
+  serverUrl: string,
+  token: string,
+): Promise<string[]> {
+  const res = await client(serverUrl, token).get('/api/gifs/packs')
+  return res.data.packs ?? res.data
+}
+
+export async function uploadGif(
+  serverUrl: string,
+  token: string,
+  file: File,
+  displayName: string,
+  category?: string,
+  tags?: string,
+): Promise<GifInfo> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('display_name', displayName)
+  if (category) formData.append('category', category)
+  if (tags) formData.append('tags', tags)
+
+  const res = await client(serverUrl, token).post('/api/gifs/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export async function uploadGifPack(
+  serverUrl: string,
+  token: string,
+  file: File,
+): Promise<{ imported: number }> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await client(serverUrl, token).post('/api/gifs/pack', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export async function uploadStickerPack(
+  serverUrl: string,
+  token: string,
+  file: File,
+  packName: string,
+): Promise<{ imported: number }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('pack_name', packName)
+
+  const res = await client(serverUrl, token).post('/api/gifs/sticker-pack', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export async function deleteGif(
+  serverUrl: string,
+  token: string,
+  gifId: string,
+): Promise<void> {
+  await client(serverUrl, token).delete(`/api/gifs/${gifId}`)
+}
+
+export async function deleteStickerPack(
+  serverUrl: string,
+  token: string,
+  packName: string,
+): Promise<{ ok: boolean; deleted: number }> {
+  const res = await client(serverUrl, token).delete(`/api/gifs/pack/${encodeURIComponent(packName)}`)
+  return res.data
+}
+
+// ─── Reactions ─────────────────────────────────────────
+
+export async function reactToMessage(
+  serverUrl: string,
+  token: string,
+  messageId: string,
+  reactionKey: string,
+  reactionType: string = 'emoji',
+): Promise<{ reactions: import('./types').MessageReaction[] }> {
+  const res = await client(serverUrl, token).post(`/api/reactions/${messageId}`, {
+    reaction_key: reactionKey,
+    reaction_type: reactionType,
+  })
+  return res.data
+}
+
+export async function unreactToMessage(
+  serverUrl: string,
+  token: string,
+  messageId: string,
+  reactionKey: string,
+): Promise<{ reactions: import('./types').MessageReaction[] }> {
+  const res = await client(serverUrl, token).delete(`/api/reactions/${messageId}/${encodeURIComponent(reactionKey)}`)
+  return res.data
+}
+
+export async function fetchPopularReactions(
+  serverUrl: string,
+  token: string,
+): Promise<{ emojis: string[]; stickers: { id: string; url: string }[] }> {
+  const res = await client(serverUrl, token).get('/api/reactions/popular')
+  return res.data
 }

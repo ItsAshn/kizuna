@@ -6,9 +6,10 @@ import { useChatStore } from '../store/chatStore'
 import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, uploadAttachment, fetchChannelPermissions } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import { Lock, Paperclip, Send } from 'lucide-react'
+import { Lock, Paperclip, Send, Film } from 'lucide-react'
 import type { Message, Member } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
+import GifPicker from './GifPicker'
 import '../styles/chat-area.css'
 
 interface ChatAreaProps {
@@ -58,6 +59,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null)
   const [pendingAttachmentId, setPendingAttachmentId] = useState<string | null>(null)
   const [atQuery, setAtQuery] = useState<string | null>(null)
+  const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [atIndex, setAtIndex] = useState(0)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [channelPerms, setChannelPerms] = useState<{ can_write: boolean; locked: boolean; write_role_name: string | null } | null>(null)
@@ -131,6 +133,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   useEffect(() => {
     if (activeDMChannelId) {
       setLoading(true)
+      setChannelPerms(null)
       fetchDMMessages(session!.url, session!.token, activeDMChannelId)
         .then((msgs) => {
           const decrypted = msgs.map((m) => tryDecryptDM(m))
@@ -236,7 +239,9 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
           content = input.trim()
         }
         message = await sendDMMessage(session.url, session.token, activeDMChannelId, content, encrypted)
-        message = tryDecryptDM(message)
+        if (encrypted) {
+          message = { ...message, content: input.trim() }
+        }
       } else {
         return
       }
@@ -466,6 +471,9 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
           <button className="chat-area__attach-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading || !!activeDMChannelId} title={activeDMChannelId ? 'File upload not available in DMs' : 'Attach file'}>
             <Paperclip size={16} />
           </button>
+          <button className="chat-area__gif-btn" onClick={() => setGifPickerOpen(true)} title="GIFs & Stickers">
+            <Film size={16} />
+          </button>
           <textarea
             ref={inputRef}
             className={`chat-area__input ${cantWrite ? 'chat-area__input--locked' : ''}`}
@@ -486,6 +494,18 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
           <p className="chat-area__input-hint chat-area__input-hint--error">{sendError}</p>
         ) : (
           <p className="chat-area__input-hint">enter to send · shift+enter for new line · @ to mention · paperclip for files</p>
+        )}
+        {gifPickerOpen && session && (
+          <GifPicker
+            serverUrl={session.url}
+            token={session.token}
+            onSelect={(url, displayName) => {
+              setInput(prev => prev + `![${displayName}](${url})`)
+              setGifPickerOpen(false)
+              inputRef.current?.focus()
+            }}
+            onClose={() => setGifPickerOpen(false)}
+          />
         )}
       </div>
     </div>

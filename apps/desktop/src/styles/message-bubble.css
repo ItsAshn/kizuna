@@ -4,6 +4,7 @@
   display: flex;
   gap: 12px;
   padding: 0 16px;
+  margin-top: 12px;
 }
 
 .msg-bubble__row:first-child {
@@ -15,7 +16,7 @@
 }
 
 .msg-bubble__row--grouped {
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 /* ── Avatar ───────────────────────────────────────────────── */
@@ -582,6 +583,11 @@
   max-height: none;
 }
 
+.msg-bubble__attachment-image--sticker {
+  max-width: 100px;
+  max-height: 100px;
+}
+
 .msg-bubble__attachment-expand-hint {
   position: absolute;
   inset: 0;
@@ -610,4 +616,428 @@
 .msg-bubble__attachment-audio {
   margin-top: 6px;
   max-width: 320px;
+}
+
+/* ── Media-only (Discord-style: no bubble background) ─────── */
+
+.msg-bubble__row--media-only {
+  margin-top: 8px;
+}
+
+.msg-bubble__bubble--media-only {
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  max-width: 360px;
+}
+
+.msg-bubble__bubble--media-only:hover {
+  filter: none;
+}
+
+.msg-bubble__attachment-image-wrap--media-only {
+  cursor: default;
+  margin-top: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.msg-bubble__attachment-image--media-only {
+  max-width: 100%;
+  max-height: 280px;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+  cursor: default;
+  display: block;
+}
+
+.msg-bubble__attachment-image--media-only.msg-bubble__attachment-image--sticker {
+  max-width: 100px;
+  max-height: 100px;
+}
+
+.msg-bubble__attachment-video--media-only {
+  max-width: 360px;
+  max-height: 280px;
+  border-radius: var(--radius-sm);
+  margin-top: 0;
+}
+
+.msg-bubble__bubble--media-only .msg-bubble__meta {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
+  padding: 16px 8px 4px;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+.msg-bubble__bubble--media-only .msg-bubble__meta--visible {
+  max-height: 40px;
+  margin-top: 0;
+}
+
+.msg-bubble__bubble--media-only .msg-bubble__time {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.msg-bubble__bubble--media-only .msg-bubble__edited {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.msg-bubble__bubble--media-only .msg-bubble__delete-btn,
+.msg-bubble__bubble--media-only .msg-bubble__edit-btn {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.msg-bubble__bubble--media-only .msg-bubble__delete-btn:hover,
+.msg-bubble__bubble--media-only .msg-bubble__edit-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.msg-bubble__bubble--media-only .msg-bubble__delete-confirm-btn--yes {
+  background: rgba(255, 77, 77, 0.4);
+  color: #fff;
+}
+
+.msg-bubble__bubble--media-only .msg-bubble__delete-confirm-btn--no {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ── Sticker-only: meta below image, no overlay ─────────── */
+
+.msg-bubble__bubble--sticker-only .msg-bubble__meta {
+  position: static;
+  background: none;
+  padding: 2px 0 0;
+  border-radius: 0;
+}
+
+.msg-bubble__bubble--sticker-only .msg-bubble__meta--visible {
+  max-height: 24px;
+  margin-top: 2px;
+}
+
+.msg-bubble__bubble--sticker-only .msg-bubble__time {
+  color: var(--text-muted);
+}
+
+.msg-bubble__bubble--sticker-only .msg-bubble__edited {
+  color: var(--text-muted);
+}
+
+/* ── Bubble content wrapper ─────────────────────────────── */
+
+.msg-bubble__content {
+  position: relative;
+  max-width: 480px;
+}
+
+.msg-bubble__row--own .msg-bubble__content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.msg-bubble__row--media-only .msg-bubble__content {
+  max-width: 360px;
+}
+
+/* ── Reaction pills ─────────────────────────────────────── */
+
+.msg-bubble__reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.msg-bubble__row--own .msg-bubble__reactions {
+  justify-content: flex-end;
+}
+
+.msg-bubble__reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.msg-bubble__reaction:hover {
+  background: var(--bg-hover);
+  border-color: var(--brand);
+}
+
+.msg-bubble__reaction--active {
+  border-color: var(--brand);
+  background: var(--brand-dim);
+}
+
+.msg-bubble__reaction-emoji {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.msg-bubble__reaction-sticker {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.msg-bubble__reaction-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  min-width: 8px;
+  text-align: center;
+}
+
+/* ── Reaction bar (portal overlay) ────────────────────────── */
+
+.msg-bubble__react-bar {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.msg-bubble__react-bar--visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition-delay: 0.06s;
+}
+
+.msg-bubble__react-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 8px);
+  padding: 2px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.msg-bubble__react-quick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: background 0.1s, transform 0.1s;
+}
+
+.msg-bubble__react-quick:hover {
+  background: var(--bg-hover);
+  transform: scale(1.2);
+}
+
+.msg-bubble__react-quick--add {
+  color: var(--text-muted);
+}
+
+.msg-bubble__react-quick--add:hover {
+  color: var(--text-primary);
+}
+
+.msg-bubble__react-quick-sticker {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+/* ── Reaction picker popup ──────────────────────────────── */
+
+.reaction-picker__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+}
+
+.reaction-picker {
+  position: fixed;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  width: 312px;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 310;
+}
+
+.reaction-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 0;
+}
+
+.reaction-picker__tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.reaction-picker__tab {
+  padding: 4px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--radius-sm, 4px) var(--radius-sm, 4px) 0 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.reaction-picker__tab:hover {
+  color: var(--text-primary);
+}
+
+.reaction-picker__tab--active {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+.reaction-picker__close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+}
+
+.reaction-picker__close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.reaction-picker__emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.reaction-picker__emoji-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 18px;
+  transition: background 0.1s, transform 0.1s;
+}
+
+.reaction-picker__emoji-btn:hover {
+  background: var(--bg-hover);
+  transform: scale(1.15);
+}
+
+.reaction-picker__packs {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.reaction-picker__packs::-webkit-scrollbar {
+  height: 0;
+}
+
+.reaction-picker__pack-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 10px;
+  border-radius: var(--radius-full, 999px);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.reaction-picker__pack-btn:hover {
+  border-color: var(--brand);
+}
+
+.reaction-picker__pack-btn--active {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+
+.reaction-picker__sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+  align-content: start;
+}
+
+.reaction-picker__sticker-btn {
+  aspect-ratio: 1;
+  padding: 0;
+  border: none;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.1s;
+}
+
+.reaction-picker__sticker-btn:hover {
+  transform: scale(1.08);
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+.reaction-picker__sticker-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.reaction-picker__status {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 12px;
 }

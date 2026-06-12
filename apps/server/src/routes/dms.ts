@@ -85,7 +85,7 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
     const anchor = db.prepare('SELECT created_at FROM direct_messages WHERE id = ?').get(before) as { created_at: number } | undefined
     rows = anchor
       ? db.prepare(
-          `SELECT dm.*, u.display_name FROM direct_messages dm
+          `SELECT dm.*, u.display_name, u.avatar FROM direct_messages dm
            LEFT JOIN users u ON dm.from_id = u.id
            WHERE dm.channel_id = ? AND dm.created_at < ?
            ORDER BY dm.created_at DESC LIMIT ?`
@@ -94,7 +94,7 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
     rows = rows.reverse()
   } else {
     rows = db.prepare(
-      `SELECT dm.*, u.display_name FROM direct_messages dm
+      `SELECT dm.*, u.display_name, u.avatar FROM direct_messages dm
        LEFT JOIN users u ON dm.from_id = u.id
        WHERE dm.channel_id = ?
        ORDER BY dm.created_at DESC LIMIT ?`
@@ -108,6 +108,7 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
     user_id: row.from_id,
     username: row.from_username,
     display_name: row.display_name || row.from_username,
+    avatar: row.avatar || undefined,
     content: row.content,
     encrypted: row.encrypted,
     created_at: row.created_at * 1000,

@@ -163,6 +163,40 @@ export const SCHEMA_SQL = `
     FOREIGN KEY (channel_id) REFERENCES channels(id)
   );
 
+  CREATE TABLE IF NOT EXISTS gifs (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL DEFAULT 'gif',
+    display_name TEXT NOT NULL,
+    category TEXT DEFAULT 'uncategorized',
+    tags TEXT DEFAULT '',
+    pack_name TEXT DEFAULT NULL,
+    stored_filename TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    width INTEGER,
+    height INTEGER,
+    uploaded_by TEXT NOT NULL,
+    created_at INTEGER DEFAULT (unixepoch()),
+    FOREIGN KEY (uploaded_by) REFERENCES users(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_gifs_type ON gifs(type);
+  CREATE INDEX IF NOT EXISTS idx_gifs_category ON gifs(category);
+  CREATE INDEX IF NOT EXISTS idx_gifs_pack ON gifs(type, pack_name);
+  CREATE INDEX IF NOT EXISTS idx_gifs_name ON gifs(display_name);
+
+  CREATE TABLE IF NOT EXISTS message_reactions (
+    message_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    reaction_key TEXT NOT NULL,
+    reaction_type TEXT NOT NULL DEFAULT 'emoji',
+    created_at INTEGER DEFAULT (unixepoch()),
+    PRIMARY KEY (message_id, user_id, reaction_key),
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_msg_reactions_msg ON message_reactions(message_id);
+
   CREATE INDEX IF NOT EXISTS idx_messages_channel_created ON messages(channel_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_mentions_user_read ON mentions(mentioned_user_id, read);
   CREATE INDEX IF NOT EXISTS idx_direct_messages_channel ON direct_messages(channel_id);

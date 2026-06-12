@@ -1402,3 +1402,79 @@
   padding: 6px 10px;
   margin-top: 8px;
 }
+
+/* ─── GIF & Sticker management ────────────────────────── */
+
+.server-menu__gif-upload {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.server-menu__gif-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.server-menu__gif-item {
+  position: relative;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.server-menu__gif-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+
+.server-menu__gif-item-info {
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.server-menu__gif-item-name {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.server-menu__gif-item-cat {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.server-menu__gif-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.server-menu__gif-item:hover .server-menu__gif-delete {
+  opacity: 1;
+}
+
+.server-menu__gif-delete:hover {
+  background: var(--red);
+}

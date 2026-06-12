@@ -15,6 +15,8 @@ import roleRoutes from './routes/roles'
 import dmRoutes from './routes/dms'
 import attachmentRoutes from './routes/attachments'
 import mutesRoutes from './routes/mutes'
+import gifRoutes from './routes/gifs'
+import reactionRoutes from './routes/reactions'
 import { authLimiter, messageLimiter, uploadLimiter, apiLimiter } from './middleware/rateLimiter'
 
 export function createApp(httpPort: number) {
@@ -76,6 +78,11 @@ export function createApp(httpPort: number) {
 
   app.use('/api/mutes/*', apiLimiter as never)
   app.route('/api/mutes', mutesRoutes)
+
+  app.route('/api/gifs', gifRoutes)
+
+  app.use('/api/reactions/*', apiLimiter as never)
+  app.route('/api/reactions', reactionRoutes)
 
   // Global error handler
   app.onError((err, c) => {

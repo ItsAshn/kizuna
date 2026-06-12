@@ -396,21 +396,25 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     }
 
     const id = uuidv4()
-    db.prepare(
-      'INSERT INTO direct_messages (id, channel_id, from_id, from_username, to_id, content, encrypted) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, channel.id, userId, username, toUserId, content.trim(), encrypted ? 1 : 0)
-
     const now = Math.floor(Date.now() / 1000)
+    db.prepare(
+      'INSERT INTO direct_messages (id, channel_id, from_id, from_username, to_id, content, encrypted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, channel.id, userId, username, toUserId, content.trim(), encrypted ? 1 : 0, now)
+
     db.prepare('UPDATE dm_channels SET last_message_at = ? WHERE id = ?').run(now, channel.id)
+
+    const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as any
 
     const dm = {
       id,
       channel_id: channel.id,
       user_id: userId,
       username,
+      display_name: userRow?.display_name || username,
+      avatar: userRow?.avatar || undefined,
       content: content.trim(),
       encrypted: encrypted ? 1 : 0,
-      created_at: Date.now(),
+      created_at: now * 1000,
     }
     io.to(`dm:${toUserId}`).emit('dm:received', dm)
     socket.emit('dm:sent', dm)
@@ -475,5 +479,54 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
         io.emit('user:offline', { userId })
       }
     }
+  })
+
+  // ─── Reactions ───────────────────────────────────────
+  socket.on('message:react', ({ messageId, reactionKey, reactionType }: { messageId: string; reactionKey: string; reactionType?: string }) => {
+    if (!userId || !username) return
+    if (!checkSocketRateLimit(socket, 'react', 20, 10000)) return
+
+    const db = getDb()
+    const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
+    if (!message) return
+
+    const perms = getUserPermissions(userId)
+    if (!perms || !hasPermission(perms, 'send_messages')) return
+    if (!canWriteToChannel(userId, message.channel_id)) return
+
+    const existing = db.prepare(
+      'SELECT * FROM message_reactions WHERE message_id = ? AND user_id = ? AND reaction_key = ?'
+    ).get(messageId, userId, reactionKey)
+
+    if (existing) return
+
+    const type = reactionType || 'emoji'
+    db.prepare(
+      'INSERT INTO message_reactions (message_id, user_id, reaction_key, reaction_type) VALUES (?, ?, ?, ?)'
+    ).run(messageId, userId, reactionKey, type)
+
+    io.to(message.channel_id).emit('message:react:add', {
+      messageId,
+      channelId: message.channel_id,
+      reaction: { reaction_key: reactionKey, reaction_type: type, userId, username },
+    })
+  })
+
+  socket.on('message:unreact', ({ messageId, reactionKey }: { messageId: string; reactionKey: string }) => {
+    if (!userId) return
+
+    const db = getDb()
+    const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
+    if (!message) return
+
+    db.prepare('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND reaction_key = ?')
+      .run(messageId, userId, reactionKey)
+
+    io.to(message.channel_id).emit('message:react:remove', {
+      messageId,
+      channelId: message.channel_id,
+      reactionKey,
+      userId,
+    })
   })
 }

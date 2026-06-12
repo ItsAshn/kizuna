@@ -14,6 +14,7 @@
   "dependencies": {
     "@hono/node-server": "^1.12.0",
     "@kizuna/shared": "workspace:*",
+    "adm-zip": "^0.5.17",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^12.10.0",
     "cors": "^2.8.5",
@@ -27,6 +28,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/bcryptjs": "^2.4.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/cors": "^2.8.0",

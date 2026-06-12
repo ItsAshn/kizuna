@@ -22,8 +22,14 @@ import {
   deleteServerBackground,
   fetchServerInfo,
   generatePasswordReset,
+  uploadGif,
+  uploadGifPack,
+  uploadStickerPack,
+  fetchGifs,
+  deleteGif,
+  deleteStickerPack,
 } from '@kizuna/shared'
-import type { Member, CustomRole, Permission, UserStatus } from '@kizuna/shared'
+import type { Member, CustomRole, Permission, UserStatus, GifInfo } from '@kizuna/shared'
 import '../styles/server-menu.css'
 
 interface Props {
@@ -62,7 +68,7 @@ function fileToDataUrl(file: File): Promise<string> {
   })
 }
 
-type AdminTab = 'settings' | 'members' | 'invites' | 'roles' | 'css'
+type AdminTab = 'settings' | 'members' | 'invites' | 'roles' | 'css' | 'gifs'
 
 const ALL_PERMISSIONS: { key: Permission; label: string; desc: string }[] = [
   { key: 'send_messages', label: 'send', desc: 'Post messages in text channels' },
@@ -191,19 +197,21 @@ export default function ServerMenuModal({ onClose }: Props) {
     }
   }, [adminTab, customCss])
 
-  // auto-save voice bitrate on change
-  const voiceInitRef = useRef(true)
-  useEffect(() => {
-    if (voiceInitRef.current) { voiceInitRef.current = false; return }
-    if (!serverUrl || !token) return
-    const timer = setTimeout(async () => {
+  // auto-save voice bitrate on change (ref-based so it survives modal close)
+  const voiceBitrateSaveTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const saveVoiceBitrate = useCallback((kbps: number) => {
+    clearTimeout(voiceBitrateSaveTimerRef.current)
+    voiceBitrateSaveTimerRef.current = setTimeout(async () => {
+      const { activeSession } = useServerStore.getState()
+      const url = activeSession?.url
+      const tok = activeSession?.token
+      if (!url || !tok) return
       try {
-        await updateServerSettings(serverUrl, token, undefined, undefined, undefined, undefined, voiceBitrateKbps)
-        useChatStore.getState().setServerVoiceBitrateKbps(voiceBitrateKbps)
+        await updateServerSettings(url, tok, undefined, undefined, undefined, undefined, kbps)
+        useChatStore.getState().setServerVoiceBitrateKbps(kbps)
       } catch {}
     }, 300)
-    return () => clearTimeout(timer)
-  }, [voiceBitrateKbps, serverUrl, token])
+  }, [])
 
   // auto-save background blur on change
   const blurInitRef = useRef(true)
@@ -265,6 +273,19 @@ export default function ServerMenuModal({ onClose }: Props) {
   const [assigningRole, setAssigningRole] = useState<Record<string, boolean>>({})
   const [showCreateRole, setShowCreateRole] = useState(false)
 
+  // ─── GIFs & Stickers ────────────────────────────────
+  const [gifsList, setGifsList] = useState<GifInfo[]>([])
+  const [gifsLoading, setGifsLoading] = useState(false)
+  const [gifUploading, setGifUploading] = useState(false)
+  const [gifMsg, setGifMsg] = useState<string | null>(null)
+  const [gifTab, setGifTab] = useState<'gif' | 'sticker'>('gif')
+  const [gifName, setGifName] = useState('')
+  const [gifCategory, setGifCategory] = useState('')
+  const [gifTags, setGifTags] = useState('')
+  const gifFileRef = useRef<HTMLInputElement>(null)
+  const gifPackFileRef = useRef<HTMLInputElement>(null)
+  const stickerPackFileRef = useRef<HTMLInputElement>(null)
+
   function memberRoleCount(roleId: string): number {
     return members.filter(m => (m.custom_roles || []).some(r => r.id === roleId)).length
   }
@@ -279,6 +300,8 @@ export default function ServerMenuModal({ onClose }: Props) {
       loadInvites()
     } else if (adminTab === 'roles') {
       loadRoles()
+    } else if (adminTab === 'gifs') {
+      loadGifs()
     }
   }, [adminTab, isAdmin, serverUrl, token])
 
@@ -294,6 +317,16 @@ export default function ServerMenuModal({ onClose }: Props) {
     setRolesLoading(true)
     try { if (mountedRef.current) setRoles(await fetchRoles(serverUrl, token)) } catch {}
     if (mountedRef.current) setRolesLoading(false)
+  }
+
+  async function loadGifs() {
+    if (!serverUrl || !token) return
+    setGifsLoading(true)
+    try {
+      const gifs = await fetchGifs(serverUrl, token, { limit: 200 })
+      if (mountedRef.current) setGifsList(gifs)
+    } catch {}
+    if (mountedRef.current) setGifsLoading(false)
   }
 
   // ─── Profile handlers ───────────────────────────────
@@ -688,6 +721,82 @@ export default function ServerMenuModal({ onClose }: Props) {
     } catch {}
   }
 
+  // ─── GIF/sticker handlers ───────────────────────────
+  const handleGifFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !serverUrl || !token) return
+    const name = gifName.trim() || file.name.replace(/\.[^.]+$/, '')
+    setGifUploading(true)
+    setGifMsg(null)
+    try {
+      await uploadGif(serverUrl, token, file, name, gifCategory.trim() || undefined, gifTags.trim() || undefined)
+      setGifMsg('uploaded')
+      setGifName('')
+      setGifCategory('')
+      setGifTags('')
+      loadGifs()
+    } catch (err) {
+      setGifMsg(handleApiErr(err))
+    }
+    setGifUploading(false)
+    e.target.value = ''
+  }
+
+  const handleGifPackFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !serverUrl || !token) return
+    setGifUploading(true)
+    setGifMsg(null)
+    try {
+      const result = await uploadGifPack(serverUrl, token, file)
+      setGifMsg(`imported ${result.imported} GIFs`)
+      loadGifs()
+    } catch (err) {
+      setGifMsg(handleApiErr(err))
+    }
+    setGifUploading(false)
+    e.target.value = ''
+  }
+
+  const handleStickerPackFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !serverUrl || !token) return
+    const packName = prompt('Enter a name for this sticker pack:')
+    if (!packName?.trim()) return
+    setGifUploading(true)
+    setGifMsg(null)
+    try {
+      const result = await uploadStickerPack(serverUrl, token, file, packName.trim())
+      setGifMsg(`imported ${result.imported} stickers`)
+      loadGifs()
+    } catch (err) {
+      setGifMsg(handleApiErr(err))
+    }
+    setGifUploading(false)
+    e.target.value = ''
+  }
+
+  const handleDeleteGif = async (id: string) => {
+    if (!serverUrl || !token) return
+    try {
+      await deleteGif(serverUrl, token, id)
+      setGifsList(prev => prev.filter(g => g.id !== id))
+    } catch (err) {
+      setGifMsg(handleApiErr(err))
+    }
+  }
+
+  const handleDeleteStickerPack = async (packName: string) => {
+    if (!confirm(`Delete sticker pack "${packName}" and all its stickers?`)) return
+    if (!serverUrl || !token) return
+    try {
+      await deleteStickerPack(serverUrl, token, packName)
+      loadGifs()
+    } catch (err) {
+      setGifMsg(handleApiErr(err))
+    }
+  }
+
   // ─── Filter / sort members ──────────────────────────
   const filteredMembers = (searchQuery.trim()
     ? members.filter(m =>
@@ -778,7 +887,7 @@ export default function ServerMenuModal({ onClose }: Props) {
               <p className="server-menu__section-title">admin</p>
 
               <div className="server-menu__tab-bar">
-                {(['settings', 'members', 'invites', 'roles', 'css'] as AdminTab[]).map(t => (
+                {(['settings', 'members', 'invites', 'roles', 'css', 'gifs'] as AdminTab[]).map(t => (
                   <button key={t} onClick={() => setAdminTab(t)}
                     className={`server-menu__tab ${adminTab === t ? 'server-menu__tab--active' : ''}`}>
                     {t}
@@ -836,7 +945,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                     <label className="server-menu__label">voice bitrate</label>
                     <select
                       value={voiceBitrateKbps}
-                      onChange={(e) => setVoiceBitrateKbps(Number(e.target.value))}
+                      onChange={(e) => { const kbps = Number(e.target.value); setVoiceBitrateKbps(kbps); saveVoiceBitrate(kbps) }}
                       className="server-menu__select"
                     >
                       <option value={32}>32 kbps — low bandwidth</option>
@@ -1296,6 +1405,149 @@ export default function ServerMenuModal({ onClose }: Props) {
                       </span>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* GIFs & Stickers tab */}
+              {adminTab === 'gifs' && (
+                <div style={{ marginTop: '16px' }}>
+                  <p className="server-menu__section-title" style={{ marginBottom: '8px' }}>gifs & stickers</p>
+
+                  <div className="server-menu__tab-bar" style={{ marginBottom: '12px' }}>
+                    <button
+                      onClick={() => setGifTab('gif')}
+                      className={`server-menu__tab ${gifTab === 'gif' ? 'server-menu__tab--active' : ''}`}
+                    >
+                      gif
+                    </button>
+                    <button
+                      onClick={() => setGifTab('sticker')}
+                      className={`server-menu__tab ${gifTab === 'sticker' ? 'server-menu__tab--active' : ''}`}
+                    >
+                      sticker
+                    </button>
+                  </div>
+
+                  {gifTab === 'gif' && (
+                    <>
+                      <p className="server-menu__section-title" style={{ marginBottom: '6px', fontSize: '11px' }}>upload single gif</p>
+                      <div className="server-menu__gif-upload">
+                        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                          <div className="server-menu__field" style={{ flex: 1 }}>
+                            <label className="server-menu__label">name (optional)</label>
+                            <input className="server-menu__input" value={gifName} onChange={(e) => setGifName(e.target.value)} placeholder="display name" />
+                          </div>
+                          <div className="server-menu__field" style={{ flex: 1 }}>
+                            <label className="server-menu__label">category (optional)</label>
+                            <input className="server-menu__input" value={gifCategory} onChange={(e) => setGifCategory(e.target.value)} placeholder="e.g. memes" />
+                          </div>
+                        </div>
+                        <div className="server-menu__field" style={{ marginBottom: '8px' }}>
+                          <label className="server-menu__label">tags — comma separated (optional)</label>
+                          <input className="server-menu__input" value={gifTags} onChange={(e) => setGifTags(e.target.value)} placeholder="e.g. funny, cat" />
+                        </div>
+                        <button onClick={() => gifFileRef.current?.click()} disabled={gifUploading} className="server-menu__upload-btn">
+                          {gifUploading ? 'uploading...' : 'choose .gif file'}
+                        </button>
+                        <input ref={gifFileRef} type="file" accept=".gif" style={{ display: 'none' }} onChange={handleGifFile} />
+                      </div>
+
+                      <p className="server-menu__section-title" style={{ marginTop: '16px', marginBottom: '6px', fontSize: '11px' }}>upload gif pack (.zip)</p>
+                      <div className="server-menu__gif-upload" style={{ marginBottom: '16px' }}>
+                        <p className="server-menu__css-hint" style={{ marginBottom: '8px' }}>
+                          Upload a .zip of .gif files. Optionally include a pack.json manifest.
+                        </p>
+                        <button onClick={() => gifPackFileRef.current?.click()} disabled={gifUploading} className="server-menu__upload-btn">
+                          {gifUploading ? 'uploading...' : 'choose .zip file'}
+                        </button>
+                        <input ref={gifPackFileRef} type="file" accept=".zip" style={{ display: 'none' }} onChange={handleGifPackFile} />
+                      </div>
+
+                      {gifMsg && (
+                        <span className={`server-menu__save-msg ${gifMsg === 'uploaded' || gifMsg.startsWith('imported') ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`} style={{ marginBottom: '8px', display: 'block' }}>
+                          {gifMsg}
+                        </span>
+                      )}
+
+                      <p className="server-menu__section-title" style={{ marginBottom: '6px', fontSize: '11px' }}>gif library ({gifsList.filter(g => g.type === 'gif').length})</p>
+                      {gifsLoading ? (
+                        <p className="server-menu__loading">loading...</p>
+                      ) : gifsList.filter(g => g.type === 'gif').length === 0 ? (
+                        <p className="server-menu__loading">no gifs uploaded yet</p>
+                      ) : (
+                        <div className="server-menu__gif-grid">
+                          {gifsList.filter(g => g.type === 'gif').map(gif => {
+                            const resolvedUrl = gif.file_url.startsWith('/') ? `${serverUrl}${gif.file_url}` : gif.file_url
+                            return (
+                              <div key={gif.id} className="server-menu__gif-item">
+                                <img src={resolvedUrl} alt={gif.display_name} className="server-menu__gif-thumb" />
+                                <div className="server-menu__gif-item-info">
+                                  <span className="server-menu__gif-item-name">{gif.display_name}</span>
+                                  <span className="server-menu__gif-item-cat">{gif.category}</span>
+                                </div>
+                                <button
+                                  onClick={() => handleDeleteGif(gif.id)}
+                                  className="server-menu__gif-delete"
+                                  title="Delete GIF"
+                                >
+                                  x
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {gifTab === 'sticker' && (
+                    <>
+                      <p className="server-menu__section-title" style={{ marginBottom: '6px', fontSize: '11px' }}>upload sticker pack (.zip)</p>
+                      <div className="server-menu__gif-upload" style={{ marginBottom: '16px' }}>
+                        <p className="server-menu__css-hint" style={{ marginBottom: '8px' }}>
+                          Upload a .zip containing .gif, .png, or .webp stickers. Optionally include a pack.json manifest.
+                        </p>
+                        <button onClick={() => stickerPackFileRef.current?.click()} disabled={gifUploading} className="server-menu__upload-btn">
+                          {gifUploading ? 'uploading...' : 'choose .zip file'}
+                        </button>
+                        <input ref={stickerPackFileRef} type="file" accept=".zip" style={{ display: 'none' }} onChange={handleStickerPackFile} />
+                      </div>
+
+                      {gifMsg && (
+                        <span className={`server-menu__save-msg ${gifMsg === 'uploaded' || gifMsg.startsWith('imported') ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`} style={{ marginBottom: '8px', display: 'block' }}>
+                          {gifMsg}
+                        </span>
+                      )}
+
+                      <p className="server-menu__section-title" style={{ marginBottom: '6px', fontSize: '11px' }}>sticker packs</p>
+                      {gifsLoading ? (
+                        <p className="server-menu__loading">loading...</p>
+                      ) : (() => {
+                        const stickerPacks = [...new Set(gifsList.filter(g => g.type === 'sticker' && g.pack_name).map(g => g.pack_name!))]
+                        return stickerPacks.length === 0 ? (
+                          <p className="server-menu__loading">no sticker packs uploaded yet</p>
+                        ) : stickerPacks.map(pack => {
+                          const packCount = gifsList.filter(g => g.type === 'sticker' && g.pack_name === pack).length
+                          return (
+                            <div key={pack} className="server-menu__gif-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', marginBottom: '4px' }}>
+                              <div>
+                                <span style={{ fontWeight: 600, fontSize: '13px' }}>{pack}</span>
+                                <span style={{ color: 'var(--text-muted)', fontSize: '11px', marginLeft: '8px' }}>{packCount} sticker{packCount !== 1 ? 's' : ''}</span>
+                              </div>
+                              <button
+                                onClick={() => handleDeleteStickerPack(pack)}
+                                className="server-menu__gif-delete"
+                                style={{ position: 'static' }}
+                                title="Delete pack"
+                              >
+                                delete pack
+                              </button>
+                            </div>
+                          )
+                        })
+                      })()}
+                    </>
+                  )}
                 </div>
               )}
             </section>

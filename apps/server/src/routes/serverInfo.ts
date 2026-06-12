@@ -45,7 +45,14 @@ function getServerInfo() {
     hasBackground,
     backgroundBlur: backgroundBlur?.value ? parseInt(backgroundBlur.value, 10) : 0,
     customCss: customCss?.value || null,
-    voiceBitrateKbps: voiceBitrateRow?.value ? parseInt(voiceBitrateRow.value, 10) || getEnvBitrate() : getEnvBitrate(),
+    voiceBitrateKbps: (() => {
+      if (voiceBitrateRow?.value) {
+        const p = parseInt(voiceBitrateRow.value, 10)
+        if (!isNaN(p) && p >= 8 && p <= 512) return p
+      }
+      return getEnvBitrate()
+    })(),
+    gifsEnabled: true,
   }
 }
 

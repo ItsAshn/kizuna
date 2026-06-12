@@ -699,6 +699,11 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       socket.on('voice:peerSpeaking', ({ peerId, speaking }: { peerId: string; speaking: boolean }) => {
         updateVoicePeer(peerId, { speaking })
       })
+      socket.on('server:voiceBitrateChanged', ({ voiceBitrateKbps: newKbps }: { voiceBitrateKbps: number }) => {
+        vlog('bitrate', `server:voiceBitrateChanged -> ${newKbps} kbps`)
+        serverBitrateRef.current = newKbps
+        setServerVoiceBitrateKbps(newKbps)
+      })
     }
 
     try {
@@ -715,7 +720,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       setActiveVoiceChannel(channelId)
 
       const iceServers = joinResult.iceServers || []
-      const voiceBitrateKbps = joinResult.voiceBitrateKbps || 64
+      const voiceBitrateKbps = joinResult.voiceBitrateKbps ?? 64
+      serverBitrateRef.current = voiceBitrateKbps
+      setServerVoiceBitrateKbps(voiceBitrateKbps)
 
       // Step 2: create send transport via chat socket
       const sendParams: any = await new Promise((resolve) =>

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Channel, Message, Member, DMChannelData, VoicePeer, ConnectionQuality, ScreenSharePeer, MonitorInfo, UserStatus } from '@kizuna/shared'
+import type { Channel, Message, Member, DMChannelData, VoicePeer, ConnectionQuality, ScreenSharePeer, MonitorInfo, UserStatus, MessageReaction } from '@kizuna/shared'
 
 export type VoiceInputMode = 'voice-activity' | 'push-to-talk'
 
@@ -102,6 +102,8 @@ interface ChatState {
   setChannelMutes: (mutes: Record<string, number | null>) => void
   upsertChannelMute: (channelId: string, mutedUntil: number | null) => void
   removeChannelMute: (channelId: string) => void
+
+  updateMessageReactions: (channelId: string, messageId: string, reactions: MessageReaction[]) => void
 }
 
 export const useChatStore = create<ChatState>()(
@@ -237,6 +239,16 @@ export const useChatStore = create<ChatState>()(
           delete next[channelId]
           return { channelMutes: next }
         }),
+
+      updateMessageReactions: (channelId, messageId, reactions) =>
+        set((state) => ({
+          messages: {
+            ...state.messages,
+            [channelId]: (state.messages[channelId] || []).map((m) =>
+              m.id === messageId ? { ...m, reactions } : m,
+            ),
+          },
+        })),
     }),
     {
       name: 'kizuna-voice-settings',

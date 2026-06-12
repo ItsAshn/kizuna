@@ -45,6 +45,21 @@ export interface Message {
   created_at: number
   edited_at?: number | null
   updated_at?: number | null
+  reactions?: MessageReaction[]
+}
+
+export type ReactionType = 'emoji' | 'sticker'
+
+export interface ReactionUser {
+  user_id: string
+  username: string
+}
+
+export interface MessageReaction {
+  reaction_key: string
+  reaction_type: ReactionType
+  count: number
+  users: ReactionUser[]
 }
 
 export interface MessageEdit {
@@ -204,6 +219,23 @@ export interface ServerInfo {
   backgroundBlur: number
   customCss: string | null
   voiceBitrateKbps: number
+  gifsEnabled: boolean
+}
+
+export type GifType = 'gif' | 'sticker'
+
+export interface GifInfo {
+  id: string
+  type: GifType
+  display_name: string
+  category: string
+  tags: string
+  pack_name: string | null
+  file_url: string
+  file_size: number
+  width: number | null
+  height: number | null
+  created_at: number
 }
 
 export interface PoWChallenge {
