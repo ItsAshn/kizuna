@@ -84,8 +84,8 @@ fn build_remote_sdp(transport_params: &Value) -> String {
          m=audio 9 UDP/TLS/RTP/SAVPF 111\r\n\
          c=IN IP4 0.0.0.0\r\n\
          a=mid:0\r\n\
-         a=rtpmap:111 opus/48000/1\r\n\
-         a=fmtp:111 minptime=10;useinbandfec=1\r\n\
+          a=rtpmap:111 opus/48000/1\r\n\
+          a=fmtp:111 minptime=10;useinbandfec=1\r\n\
          a=rtcp-mux\r\n\
          a=rtcp-rsize\r\n\
          m=video 9 UDP/TLS/RTP/SAVPF 101\r\n\

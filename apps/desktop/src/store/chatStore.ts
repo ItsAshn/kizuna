@@ -28,14 +28,17 @@ interface ChatState {
   userStatuses: Record<string, UserStatus>
 
   voiceInputMode: VoiceInputMode
-  voiceGateThreshold: number
   pushToTalkKey: string
   noiseSuppression: boolean
-  echoCancellation: boolean
   autoGainControl: boolean
+  noiseGateEnabled: boolean
+  noiseGateThreshold: number
+  noiseSuppressionStrength: number
   inputVolume: number
   outputVolume: number
   liveAudioLevel: number
+
+  voiceChannelUsers: Record<string, { userId: string; username: string }[]>
 
   screenSharePeerId: string | null
   screenShareUsername: string | null
@@ -75,12 +78,16 @@ interface ChatState {
   setAudioInputDeviceId: (id: string | null) => void
   setAudioOutputDeviceId: (id: string | null) => void
   setVoiceError: (error: string | null) => void
+  setVoiceChannelUsers: (users: Record<string, { userId: string; username: string }[]>) => void
+  addVoiceChannelUser: (channelId: string, user: { userId: string; username: string }) => void
+  removeVoiceChannelUser: (channelId: string, userId: string) => void
   setVoiceInputMode: (mode: VoiceInputMode) => void
-  setVoiceGateThreshold: (threshold: number) => void
   setPushToTalkKey: (key: string) => void
   setNoiseSuppression: (enabled: boolean) => void
-  setEchoCancellation: (enabled: boolean) => void
   setAutoGainControl: (enabled: boolean) => void
+  setNoiseGateEnabled: (enabled: boolean) => void
+  setNoiseGateThreshold: (threshold: number) => void
+  setNoiseSuppressionStrength: (strength: number) => void
   setInputVolume: (volume: number) => void
   setOutputVolume: (volume: number) => void
   setLiveAudioLevel: (level: number) => void
@@ -126,14 +133,16 @@ export const useChatStore = create<ChatState>()(
       audioInputDeviceId: null,
       audioOutputDeviceId: null,
       voiceError: null,
+      voiceChannelUsers: {},
       typingUsers: {},
       userStatuses: {},
       voiceInputMode: 'voice-activity' as VoiceInputMode,
-      voiceGateThreshold: 50,
       pushToTalkKey: 'AltLeft',
       noiseSuppression: true,
-      echoCancellation: true,
       autoGainControl: true,
+      noiseGateEnabled: true,
+      noiseGateThreshold: 30,
+      noiseSuppressionStrength: 70,
       inputVolume: 100,
       outputVolume: 100,
       liveAudioLevel: 0,
@@ -195,12 +204,41 @@ export const useChatStore = create<ChatState>()(
       setAudioInputDeviceId: (audioInputDeviceId) => set({ audioInputDeviceId }),
       setAudioOutputDeviceId: (audioOutputDeviceId) => set({ audioOutputDeviceId }),
       setVoiceError: (voiceError) => set({ voiceError }),
+      setVoiceChannelUsers: (voiceChannelUsers) => set({ voiceChannelUsers }),
+      addVoiceChannelUser: (channelId, user) =>
+        set((s) => {
+          const current = s.voiceChannelUsers[channelId] || []
+          if (current.some((u) => u.userId === user.userId)) return s
+          return {
+            voiceChannelUsers: {
+              ...s.voiceChannelUsers,
+              [channelId]: [...current, user],
+            },
+          }
+        }),
+      removeVoiceChannelUser: (channelId, userId) =>
+        set((s) => {
+          const current = s.voiceChannelUsers[channelId] || []
+          const filtered = current.filter((u) => u.userId !== userId)
+          if (filtered.length === 0) {
+            const next = { ...s.voiceChannelUsers }
+            delete next[channelId]
+            return { voiceChannelUsers: next }
+          }
+          return {
+            voiceChannelUsers: {
+              ...s.voiceChannelUsers,
+              [channelId]: filtered,
+            },
+          }
+        }),
       setVoiceInputMode: (voiceInputMode) => set({ voiceInputMode }),
-      setVoiceGateThreshold: (voiceGateThreshold) => set({ voiceGateThreshold }),
       setPushToTalkKey: (pushToTalkKey) => set({ pushToTalkKey }),
       setNoiseSuppression: (noiseSuppression) => set({ noiseSuppression }),
-      setEchoCancellation: (echoCancellation) => set({ echoCancellation }),
       setAutoGainControl: (autoGainControl) => set({ autoGainControl }),
+      setNoiseGateEnabled: (noiseGateEnabled) => set({ noiseGateEnabled }),
+      setNoiseGateThreshold: (noiseGateThreshold) => set({ noiseGateThreshold }),
+      setNoiseSuppressionStrength: (noiseSuppressionStrength) => set({ noiseSuppressionStrength }),
       setInputVolume: (inputVolume) => set({ inputVolume }),
       setOutputVolume: (outputVolume) => set({ outputVolume }),
       setLiveAudioLevel: (liveAudioLevel) => set({ liveAudioLevel }),
@@ -257,11 +295,12 @@ export const useChatStore = create<ChatState>()(
         audioOutputDeviceId: state.audioOutputDeviceId,
         serverVoiceBitrateKbps: state.serverVoiceBitrateKbps,
         voiceInputMode: state.voiceInputMode,
-        voiceGateThreshold: state.voiceGateThreshold,
         pushToTalkKey: state.pushToTalkKey,
         noiseSuppression: state.noiseSuppression,
-        echoCancellation: state.echoCancellation,
         autoGainControl: state.autoGainControl,
+        noiseGateEnabled: state.noiseGateEnabled,
+        noiseGateThreshold: state.noiseGateThreshold,
+        noiseSuppressionStrength: state.noiseSuppressionStrength,
         inputVolume: state.inputVolume,
         outputVolume: state.outputVolume,
         serverBackgroundEnabled: state.serverBackgroundEnabled,

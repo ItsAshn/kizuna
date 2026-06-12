@@ -2,7 +2,7 @@
   background: var(--modal-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  width: 440px;
+  width: 560px;
   max-width: calc(100vw - 32px);
   max-height: 85vh;
   overflow-y: auto;
@@ -48,11 +48,17 @@
 .settings-modal__section-title {
   font-size: 10px;
   font-weight: 600;
-  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-family: var(--font-mono);
-  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.settings-modal__subsection-title {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.3px;
 }
 
 .settings-modal__select {

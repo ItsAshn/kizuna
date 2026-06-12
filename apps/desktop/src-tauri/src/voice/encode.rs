@@ -7,8 +7,10 @@ use opus2::{Channels, Decoder as OpusDecoder, Encoder as OpusEncoder};
 use webrtc::media::Sample;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
+use super::dsp::AudioProcessor;
+
 pub fn start_native_audio_capture(
-    device_name: Option<String>,
+    device_id: Option<String>,
     sample_rate: u32,
     channels: u16,
     pcm_tx: tokio::sync::mpsc::UnboundedSender<Vec<f32>>,
@@ -17,22 +19,58 @@ pub fn start_native_audio_capture(
     let host = cpal::default_host();
 
     // If a specific device was requested, try only that
-    if let Some(ref name) = device_name {
+    if let Some(ref id) = device_id {
         let device = host
             .input_devices()
             .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
             .find(|d| {
-                d.description()
-                    .map(|desc| desc.name() == *name)
+                d.id()
+                    .map(|i| i.to_string() == *id)
                     .unwrap_or(false)
             })
-            .ok_or_else(|| format!("Input device '{}' not found", name))?;
+            .ok_or_else(|| format!("Input device '{}' not found", id))?;
 
         return open_device(&device, sample_rate, channels, &pcm_tx, &cancel)
-            .map(|s| { eprintln!("[AudioCapture] using specific device: {name}"); s });
+            .map(|s| { eprintln!("[AudioCapture] using specific device: {id}"); s });
     }
 
-    // Try default device first
+    // On Linux/ALSA, sound server devices (PipeWire/PulseAudio) are far more
+    // reliable than the raw ALSA default device, which often opens successfully
+    // but produces silence through the dmix/dsnoop plugin chain. Try them first.
+    let host_id = host.id();
+    let is_alsa = format!("{:?}", host_id).to_lowercase().contains("alsa");
+
+    let devices: Vec<cpal::Device> = host
+        .input_devices()
+        .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
+        .collect();
+
+    // Pass 1 (Linux/ALSA only): try sound server devices first since they use
+    // proper audio routing through the system sound server.
+    if is_alsa {
+        for device in &devices {
+            let dname = device
+                .description()
+                .map(|d| d.name().to_string())
+                .unwrap_or_else(|_| "unknown".into());
+            let lower = dname.to_lowercase();
+            if lower.contains("pipewire sound server")
+                || lower.contains("pulseaudio sound server")
+            {
+                match open_device(device, sample_rate, channels, &pcm_tx, &cancel) {
+                    Ok(stream) => {
+                        eprintln!("[AudioCapture] using sound server device: {dname}");
+                        return Ok(stream);
+                    }
+                    Err(e) => {
+                        eprintln!("[AudioCapture] sound server device '{dname}' failed: {e}");
+                    }
+                }
+            }
+        }
+    }
+
+    // Try default device
     if let Some(default_device) = host.default_input_device() {
         match open_device(&default_device, sample_rate, channels, &pcm_tx, &cancel) {
             Ok(stream) => {
@@ -50,42 +88,38 @@ pub fn start_native_audio_capture(
     }
 
     // Fall back to any available input device, skipping obvious non-microphones.
-    // Collect devices first so we can try sound-server devices before raw hardware.
-    let devices: Vec<cpal::Device> = host
-        .input_devices()
-        .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
-        .collect();
-
     let mut sound_server_found = false;
     let mut hardware_found = false;
 
-    // Pass 1: try sound server devices (pipewire, pulseaudio) — they may work
+    // Pass 2: try sound server devices (pipewire, pulseaudio) — they may work
     // even when the ALSA pipewire plugin is broken because they use different
     // plugins (libasound_module_pcm_pulse.so etc.)
-    for device in &devices {
-        let dname = device
-            .description()
-            .map(|d| d.name().to_string())
-            .unwrap_or_else(|_| "unknown".into());
+    if !is_alsa {
+        for device in &devices {
+            let dname = device
+                .description()
+                .map(|d| d.name().to_string())
+                .unwrap_or_else(|_| "unknown".into());
 
-        let lower = dname.to_lowercase();
-        if lower.contains("pipewire sound server")
-            || lower.contains("pulseaudio sound server")
-        {
-            sound_server_found = true;
-            match open_device(device, sample_rate, channels, &pcm_tx, &cancel) {
-                Ok(stream) => {
-                    eprintln!("[AudioCapture] using sound server device: {dname}");
-                    return Ok(stream);
-                }
-                Err(e) => {
-                    eprintln!("[AudioCapture] sound server device '{dname}' failed: {e}");
+            let lower = dname.to_lowercase();
+            if lower.contains("pipewire sound server")
+                || lower.contains("pulseaudio sound server")
+            {
+                sound_server_found = true;
+                match open_device(device, sample_rate, channels, &pcm_tx, &cancel) {
+                    Ok(stream) => {
+                        eprintln!("[AudioCapture] using sound server device: {dname}");
+                        return Ok(stream);
+                    }
+                    Err(e) => {
+                        eprintln!("[AudioCapture] sound server device '{dname}' failed: {e}");
+                    }
                 }
             }
         }
     }
 
-    // Pass 2: try remaining real hardware devices
+    // Pass 3: try remaining real hardware devices
     for device in &devices {
         let dname = device
             .description()
@@ -221,6 +255,22 @@ impl AudioEncoder {
             .set_bitrate(opus2::Bitrate::Bits(bitrate_bps as i32))
             .map_err(|e| format!("Failed to set Opus bitrate: {e}"))?;
 
+        encoder
+            .set_inband_fec(true)
+            .map_err(|e| format!("Failed to enable Opus FEC: {e}"))?;
+
+        encoder
+            .set_dtx(true)
+            .map_err(|e| format!("Failed to enable Opus DTX: {e}"))?;
+
+        encoder
+            .set_complexity(9)
+            .map_err(|e| format!("Failed to set Opus complexity: {e}"))?;
+
+        encoder
+            .set_signal(opus2::Signal::Voice)
+            .map_err(|e| format!("Failed to set Opus signal type: {e}"))?;
+
         let frame_size = (sample_rate as usize * 20) / 1000;
 
         Ok(Self {
@@ -229,6 +279,12 @@ impl AudioEncoder {
             frame_size,
             running: Arc::new(AtomicBool::new(false)),
         })
+    }
+
+    pub fn update_bitrate(&mut self, bitrate_bps: u32) -> Result<(), String> {
+        self.encoder
+            .set_bitrate(opus2::Bitrate::Bits(bitrate_bps as i32))
+            .map_err(|e| format!("Failed to update Opus bitrate: {e}"))
     }
 
     pub fn encode_frame(&mut self, pcm: &[f32]) -> Result<Vec<u8>, String> {
@@ -251,6 +307,7 @@ pub struct AudioSendSession {
     cancel: Arc<AtomicBool>,
     handle: Option<tokio::task::JoinHandle<()>>,
     _stream: Option<cpal::Stream>,
+    processor: Arc<tokio::sync::Mutex<AudioProcessor>>,
 }
 
 impl AudioSendSession {
@@ -260,19 +317,27 @@ impl AudioSendSession {
         pcm_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<f32>>,
         cpal_stream: cpal::Stream,
         speaking_tx: tokio::sync::mpsc::UnboundedSender<bool>,
+        processor: AudioProcessor,
     ) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_clone = cancel.clone();
+        let processor = Arc::new(tokio::sync::Mutex::new(processor));
+        let processor_clone = processor.clone();
 
         let handle = tokio::spawn(async move {
-            let _ = run_audio_send(encoder, track, pcm_rx, cancel_clone, speaking_tx).await;
+            let _ = run_audio_send(encoder, track, pcm_rx, cancel_clone, speaking_tx, processor_clone).await;
         });
 
         Self {
             cancel,
             handle: Some(handle),
             _stream: Some(cpal_stream),
+            processor,
         }
+    }
+
+    pub fn processor(&self) -> Arc<tokio::sync::Mutex<AudioProcessor>> {
+        self.processor.clone()
     }
 
     pub fn stop(&mut self) {
@@ -288,6 +353,7 @@ async fn run_audio_send(
     mut pcm_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<f32>>,
     cancel: Arc<AtomicBool>,
     speaking_tx: tokio::sync::mpsc::UnboundedSender<bool>,
+    processor: Arc<tokio::sync::Mutex<AudioProcessor>>,
 ) -> Result<(), String> {
     let frame_duration =
         Duration::from_secs_f64(encoder.frame_size_samples() as f64 / encoder.sample_rate() as f64);
@@ -310,9 +376,15 @@ async fn run_audio_send(
                 pcm_buffer.extend_from_slice(&samples);
 
                 while pcm_buffer.len() >= frame_size {
-                    let frame: Vec<f32> = pcm_buffer.drain(..frame_size).collect();
+                    let mut frame: Vec<f32> = pcm_buffer.drain(..frame_size).collect();
 
-                    // VAD: compute RMS
+                    // Run DSP pipeline (noise gate + spectral suppression)
+                    {
+                        let mut proc = processor.lock().await;
+                        proc.process_frame(&mut frame);
+                    }
+
+                    // VAD: compute RMS on processed frame
                     let rms = (frame.iter().map(|s| s * s).sum::<f32>() / frame_size as f32).sqrt();
                     let speaking = rms > threshold;
 

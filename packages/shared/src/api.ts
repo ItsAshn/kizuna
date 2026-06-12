@@ -562,10 +562,11 @@ export async function sendDMMessage(
   channelId: string,
   content: string,
   encrypted?: boolean,
+  attachmentIds?: string[],
 ): Promise<Message> {
   const res = await client(serverUrl, token).post(
     `/api/dms/channel/${channelId}/messages`,
-    { content, encrypted: encrypted || false },
+    { content, encrypted: encrypted || false, ...(attachmentIds?.length ? { attachment_ids: attachmentIds } : {}) },
   )
   return res.data.message ?? res.data
 }

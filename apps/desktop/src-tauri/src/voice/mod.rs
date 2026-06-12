@@ -1,6 +1,7 @@
 mod signaling;
 pub mod transport;
 pub mod encode;
+pub mod dsp;
 
 use serde::Serialize;
 

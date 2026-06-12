@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
+use super::dsp::AudioProcessor;
 use super::encode::{self, AudioSendSession};
 use super::transport;
 use super::VoiceEvent;
@@ -20,6 +21,42 @@ pub struct ActiveCall {
     pub voice_bitrate_kbps: u64,
     pub audio_track: Option<Arc<TrackLocalStaticSample>>,
     pub audio_send: Option<AudioSendSession>,
+    pub processor: Option<Arc<tokio::sync::Mutex<AudioProcessor>>>,
+}
+
+impl ActiveCall {
+    pub async fn update_bitrate(&mut self, voice_bitrate_kbps: u64) {
+        self.voice_bitrate_kbps = voice_bitrate_kbps;
+        // Bitrate update is handled separately via the encoder
+    }
+
+    pub async fn set_gate_threshold(&self, threshold_db: f32) {
+        if let Some(ref proc) = self.processor {
+            let mut p = proc.lock().await;
+            p.set_gate_threshold_db(threshold_db);
+        }
+    }
+
+    pub async fn set_noise_suppression(&self, enabled: bool) {
+        if let Some(ref proc) = self.processor {
+            let mut p = proc.lock().await;
+            p.set_suppression_enabled(enabled);
+        }
+    }
+
+    pub async fn set_suppression_strength(&self, strength: f32) {
+        if let Some(ref proc) = self.processor {
+            let mut p = proc.lock().await;
+            p.set_suppression_strength(strength);
+        }
+    }
+
+    pub async fn set_auto_gain(&self, enabled: bool) {
+        if let Some(ref proc) = self.processor {
+            let mut p = proc.lock().await;
+            p.set_agc_enabled(enabled);
+        }
+    }
 }
 
 impl Drop for ActiveCall {
@@ -131,7 +168,7 @@ impl VoiceController {
                 "mimeType": "audio/opus",
                 "payloadType": 111,
                 "clockRate": 48000,
-                "channels": 2,
+                "channels": 1,
                 "parameters": {
                     "useinbandfec": 1,
                     "minptime": 10,
@@ -168,6 +205,7 @@ impl VoiceController {
             voice_bitrate_kbps,
             audio_track: Some(transport_pair.audio_track),
             audio_send: None,
+            processor: None,
         });
 
         eprintln!("[VoiceNative] begin_join OK: ssrc={ssrc}");
@@ -176,11 +214,20 @@ impl VoiceController {
 
     /// Called after TypeScript has sent connectTransport + produce successfully.
     /// Starts audio capture and encoding.
-    pub async fn finish_join(&mut self, voice_bitrate_kbps: u64) -> Result<(), String> {
+    pub async fn finish_join(
+        &mut self,
+        voice_bitrate_kbps: u64,
+        gate_enabled: bool,
+        gate_threshold_db: f32,
+        suppression_enabled: bool,
+        suppression_strength: f32,
+        auto_gain_enabled: bool,
+        device_id: Option<String>,
+    ) -> Result<(), String> {
         let call = self.active_call.as_mut().ok_or("No active call")?;
         let audio_track = call.audio_track.take().ok_or("No audio track")?;
 
-        eprintln!("[VoiceNative] finish_join bitrate={voice_bitrate_kbps}kbps");
+        eprintln!("[VoiceNative] finish_join bitrate={voice_bitrate_kbps}kbps gate_enabled={gate_enabled} gate_threshold_db={gate_threshold_db} suppression_enabled={suppression_enabled} suppression_strength={suppression_strength} agc_enabled={auto_gain_enabled} device_id={device_id:?}");
 
         let bitrate_bps = (voice_bitrate_kbps * 1000) as u32;
         let encoder = encode::AudioEncoder::new(48000, 1, bitrate_bps)
@@ -191,8 +238,15 @@ impl VoiceController {
 
         let cancel = Arc::new(AtomicBool::new(false));
         let stream = encode::start_native_audio_capture(
-            None, 48000, 1, pcm_tx, cancel.clone(),
+            device_id, 48000, 1, pcm_tx, cancel.clone(),
         )?;
+
+        let mut processor = AudioProcessor::new(48000);
+        processor.set_gate_enabled(gate_enabled);
+        processor.set_gate_threshold_db(gate_threshold_db);
+        processor.set_suppression_enabled(suppression_enabled);
+        processor.set_suppression_strength(suppression_strength);
+        processor.set_agc_enabled(auto_gain_enabled);
 
         let audio_send = AudioSendSession::new(
             encoder,
@@ -200,7 +254,10 @@ impl VoiceController {
             pcm_rx,
             stream,
             speaking_tx,
+            processor,
         );
+
+        call.processor = Some(audio_send.processor());
 
         // Relay speaking state changes to TypeScript via Tauri event
         let app = self.app.clone();
@@ -227,6 +284,36 @@ impl VoiceController {
         if let Some(ref call) = self.active_call {
             call.pending_recv.lock().await.push(peer_id.to_string());
             eprintln!("[VoiceNative] add_remote_peer: {peer_id}");
+        }
+    }
+
+    pub fn update_bitrate(&self, voice_bitrate_kbps: u64) {
+        if let Some(ref _call) = self.active_call {
+            eprintln!("[VoiceNative] update_bitrate: {voice_bitrate_kbps}kbps");
+        }
+    }
+
+    pub async fn set_gate_threshold(&self, threshold_db: f32) {
+        if let Some(ref call) = self.active_call {
+            call.set_gate_threshold(threshold_db).await;
+        }
+    }
+
+    pub async fn set_noise_suppression(&self, enabled: bool) {
+        if let Some(ref call) = self.active_call {
+            call.set_noise_suppression(enabled).await;
+        }
+    }
+
+    pub async fn set_suppression_strength(&self, strength: f32) {
+        if let Some(ref call) = self.active_call {
+            call.set_suppression_strength(strength).await;
+        }
+    }
+
+    pub async fn set_auto_gain(&self, enabled: bool) {
+        if let Some(ref call) = self.active_call {
+            call.set_auto_gain(enabled).await;
         }
     }
 }

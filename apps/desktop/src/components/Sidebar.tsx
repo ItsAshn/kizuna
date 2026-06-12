@@ -31,6 +31,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
     activeVoiceChannelId, unreadCounts, mentionCounts,
     setActiveChannel, setActiveDMChannel,
     channelMutes,
+    voiceChannelUsers, members,
   } = useChatStore()
   const [newChannelName, setNewChannelName] = useState('')
   const [newChannelType, setNewChannelType] = useState<'text' | 'voice'>('text')
@@ -218,22 +219,57 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
         {voiceChannels.length > 0 && (
           <div className="sidebar__section">
             <h3 className="sidebar__section-title">Voice Channels</h3>
-            {voiceChannels.map((ch) => (
-              <button
-                key={ch.id}
-                onClick={() => {
-                  if (activeVoiceChannelId === ch.id) { leaveVoice() }
-                  else { if (activeVoiceChannelId) leaveVoice(); joinVoice(ch.id) }
-                }}
-                onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
-                className={`sidebar__channel ${activeVoiceChannelId === ch.id ? 'sidebar__channel--voice-active' : ''}`}
-              >
-                <span className="sidebar__channel-icon">~</span>
-                <span className="sidebar__channel-name">{ch.name}</span>
-                {channelMutes[ch.id] !== undefined && <BellOff size={10} className="sidebar__mute-icon" />}
-                {activeVoiceChannelId === ch.id && <span className="sidebar__voice-indicator" />}
-              </button>
-            ))}
+            {voiceChannels.map((ch) => {
+              const voiceUsers = voiceChannelUsers[ch.id] || []
+              return (
+                <div key={ch.id} className="sidebar__channel-wrap">
+                  <button
+                    onClick={() => {
+                      if (activeVoiceChannelId === ch.id) { leaveVoice() }
+                      else { if (activeVoiceChannelId) leaveVoice(); joinVoice(ch.id) }
+                    }}
+                    onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
+                    className={`sidebar__channel ${activeVoiceChannelId === ch.id ? 'sidebar__channel--voice-active' : ''}`}
+                  >
+                    <span className="sidebar__channel-icon">~</span>
+                    <span className="sidebar__channel-name">{ch.name}</span>
+                    {channelMutes[ch.id] !== undefined && <BellOff size={10} className="sidebar__mute-icon" />}
+                    {activeVoiceChannelId === ch.id && <span className="sidebar__voice-indicator" />}
+                  </button>
+                  {voiceUsers.length > 0 && (
+                    <div className="sidebar__voice-users">
+                      {voiceUsers.slice(0, 5).map((u) => {
+                        const member = members.find((m) => m.id === u.userId)
+                        return (
+                          <div key={u.userId} className="sidebar__voice-user">
+                            <div className="sidebar__voice-user-avatar">
+                              {member?.avatar ? (
+                                <img
+                                  src={member.avatar}
+                                  alt=""
+                                  className="sidebar__voice-user-avatar-img"
+                                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                                />
+                              ) : (
+                                (member?.display_name || u.username)[0]?.toUpperCase()
+                              )}
+                            </div>
+                            <span className="sidebar__voice-user-name">
+                              {member?.display_name || u.username}
+                            </span>
+                          </div>
+                        )
+                      })}
+                      {voiceUsers.length > 5 && (
+                        <div className="sidebar__voice-user sidebar__voice-user--more">
+                          +{voiceUsers.length - 5} more
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 

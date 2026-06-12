@@ -24,14 +24,6 @@ const INPUT_MODES: { value: VoiceInputMode; label: string; desc: string }[] = [
   { value: 'push-to-talk', label: 'push to talk', desc: 'hold a key to transmit' },
 ]
 
-function thresholdToRms(value: number): number {
-  return Math.max(1, Math.round(50 * Math.exp(-value * 0.04)))
-}
-
-function rmsToLevel(rms: number): number {
-  return Math.min(100, Math.round((rms / 40) * 100))
-}
-
 function keyCodeToLabel(code: string): string {
   const map: Record<string, string> = {
     AltLeft: 'Left Alt',
@@ -67,11 +59,12 @@ export default function UserSettingsModal({ onClose }: Props) {
     audioInputDeviceId, setAudioInputDeviceId,
     audioOutputDeviceId, setAudioOutputDeviceId,
     voiceInputMode, setVoiceInputMode,
-    voiceGateThreshold, setVoiceGateThreshold,
     pushToTalkKey, setPushToTalkKey,
     noiseSuppression, setNoiseSuppression,
-    echoCancellation, setEchoCancellation,
     autoGainControl, setAutoGainControl,
+    noiseGateEnabled, setNoiseGateEnabled,
+    noiseGateThreshold, setNoiseGateThreshold,
+    noiseSuppressionStrength, setNoiseSuppressionStrength,
     inputVolume, setInputVolume,
     outputVolume, setOutputVolume,
     liveAudioLevel,
@@ -89,9 +82,7 @@ export default function UserSettingsModal({ onClose }: Props) {
   const [resetConfirm, setResetConfirm] = useState(false)
   const unmountedRef = useRef(false)
 
-  const rmsThreshold = thresholdToRms(voiceGateThreshold)
-  const meterLevel = rmsToLevel(liveAudioLevel)
-  const thresholdLevel = rmsToLevel(rmsThreshold)
+  const meterLevel = Math.min(100, Math.round((liveAudioLevel / 40) * 100))
 
   const handleKeyCapture = useCallback((e: KeyboardEvent) => {
     e.preventDefault()
@@ -345,46 +336,57 @@ export default function UserSettingsModal({ onClose }: Props) {
             </section>
           )}
 
-          {voiceInputMode === 'voice-activity' && (
-            <section>
-              <p className="settings-modal__section-title">voice activity sensitivity</p>
-              <div className="settings-modal__slider-section">
-                <div className="settings-modal__meter-bar">
-                  <div
-                    className={`settings-modal__meter-fill${meterLevel < thresholdLevel ? ' settings-modal__meter-fill--low' : meterLevel < thresholdLevel * 1.5 ? ' settings-modal__meter-fill--mid' : ' settings-modal__meter-fill--high'}`}
-                    style={{ width: `${meterLevel}%` }}
-                  />
-                  <div
-                    className="settings-modal__meter-threshold"
-                    style={{ left: `${thresholdLevel}%` }}
-                  />
-                </div>
-                <div className="settings-modal__slider-row">
-                  <input
-                    type="range"
-                    min={1}
-                    max={100}
-                    value={voiceGateThreshold}
-                    onChange={(e) => setVoiceGateThreshold(Number(e.target.value))}
-                    className="settings-modal__slider"
-                    style={{ '--slider-pct': `${voiceGateThreshold}%` } as React.CSSProperties}
-                  />
-                  <span className="settings-modal__slider-value">{voiceGateThreshold}%</span>
-                </div>
-                <p className="settings-modal__hint">
-                  higher = more sensitive. green bar = your current audio level
-                </p>
-              </div>
-            </section>
-          )}
-
           <hr className="settings-modal__section-divider" />
 
           <section>
             <p className="settings-modal__section-title">audio processing</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <p className="settings-modal__subsection-title">noise gate</p>
               <div className="settings-modal__toggle-row">
-                <span className="settings-modal__toggle-label">noise suppression</span>
+                <span className="settings-modal__toggle-label">enable noise gate</span>
+                <label className="settings-modal__toggle">
+                  <input
+                    type="checkbox"
+                    checked={noiseGateEnabled}
+                    onChange={(e) => setNoiseGateEnabled(e.target.checked)}
+                  />
+                  <span className="settings-modal__toggle-track">
+                    <span className="settings-modal__toggle-thumb" />
+                  </span>
+                </label>
+              </div>
+              <div style={{ marginTop: '6px' }}>
+                <div className="settings-modal__meter-bar">
+                  <div
+                    className={`settings-modal__meter-fill${meterLevel < noiseGateThreshold ? ' settings-modal__meter-fill--low' : meterLevel < noiseGateThreshold * 1.5 ? ' settings-modal__meter-fill--mid' : ' settings-modal__meter-fill--high'}`}
+                    style={{ width: `${meterLevel}%` }}
+                  />
+                  <div
+                    className="settings-modal__meter-threshold"
+                    style={{ left: `${noiseGateThreshold}%` }}
+                  />
+                </div>
+                <div className="settings-modal__slider-row">
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={noiseGateThreshold}
+                    onChange={(e) => setNoiseGateThreshold(Number(e.target.value))}
+                    className="settings-modal__slider"
+                    style={{ '--slider-pct': `${noiseGateThreshold}%` } as React.CSSProperties}
+                    disabled={!noiseGateEnabled}
+                  />
+                  <span className="settings-modal__slider-value">{noiseGateThreshold}%</span>
+                </div>
+              </div>
+              <p className="settings-modal__hint">
+                green bar = your current audio level. set the threshold above your background noise
+              </p>
+
+              <p className="settings-modal__subsection-title" style={{ marginTop: '8px' }}>noise suppression</p>
+              <div className="settings-modal__toggle-row">
+                <span className="settings-modal__toggle-label">enable suppression</span>
                 <label className="settings-modal__toggle">
                   <input
                     type="checkbox"
@@ -396,21 +398,29 @@ export default function UserSettingsModal({ onClose }: Props) {
                   </span>
                 </label>
               </div>
-              <div className="settings-modal__toggle-row">
-                <span className="settings-modal__toggle-label">echo cancellation</span>
-                <label className="settings-modal__toggle">
+              <div>
+                <p className="settings-modal__hint" style={{ marginBottom: '4px' }}>suppression strength</p>
+                <div className="settings-modal__slider-row">
                   <input
-                    type="checkbox"
-                    checked={echoCancellation}
-                    onChange={(e) => setEchoCancellation(e.target.checked)}
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={noiseSuppressionStrength}
+                    onChange={(e) => setNoiseSuppressionStrength(Number(e.target.value))}
+                    className="settings-modal__slider"
+                    style={{ '--slider-pct': `${noiseSuppressionStrength}%` } as React.CSSProperties}
+                    disabled={!noiseSuppression}
                   />
-                  <span className="settings-modal__toggle-track">
-                    <span className="settings-modal__toggle-thumb" />
-                  </span>
-                </label>
+                  <span className="settings-modal__slider-value">{noiseSuppressionStrength}%</span>
+                </div>
+                <p className="settings-modal__hint">
+                  higher = more aggressive noise reduction. reduces steady background noise like fans, hum
+                </p>
               </div>
+
+              <p className="settings-modal__subsection-title" style={{ marginTop: '8px' }}>auto gain control</p>
               <div className="settings-modal__toggle-row">
-                <span className="settings-modal__toggle-label">auto gain control</span>
+                <span className="settings-modal__toggle-label">enable auto gain</span>
                 <label className="settings-modal__toggle">
                   <input
                     type="checkbox"
@@ -422,11 +432,12 @@ export default function UserSettingsModal({ onClose }: Props) {
                   </span>
                 </label>
               </div>
+              <p className="settings-modal__hint">
+                automatically normalizes your microphone volume to a consistent level
+              </p>
             </div>
             <p className="settings-modal__hint" style={{ marginTop: '8px' }}>
-              {isTauri()
-                ? 'browser-based processing is not available with native audio capture'
-                : 'applied on next voice channel join'}
+              applied on next voice channel join
             </p>
           </section>
 

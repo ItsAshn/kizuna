@@ -33,6 +33,11 @@ export function useSocket(): MutableRefObject<Socket | null> {
       socket.emit('notification:subscribe')
       socket.emit('user:joined')
       socket.emit('channel:mute:sync')
+      socket.emit('voice:getOccupancy', (res: { channels: Record<string, { userId: string; username: string }[]> }) => {
+        if (res?.channels) {
+          useChatStore.getState().setVoiceChannelUsers(res.channels)
+        }
+      })
       if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission()
       }
@@ -268,6 +273,14 @@ export function useSocket(): MutableRefObject<Socket | null> {
     socket.on('member:removed', ({ userId }: { userId: string }) => {
       const store = useChatStore.getState()
       store.setMembers(store.members.filter(m => m.id !== userId))
+    })
+
+    socket.on('voice:userJoinedChannel', ({ channelId, userId, username }: { channelId: string; userId: string; username: string }) => {
+      useChatStore.getState().addVoiceChannelUser(channelId, { userId, username })
+    })
+
+    socket.on('voice:userLeftChannel', ({ channelId, userId }: { channelId: string; userId: string }) => {
+      useChatStore.getState().removeVoiceChannelUser(channelId, userId)
     })
 
     const heartbeatInterval = setInterval(() => {

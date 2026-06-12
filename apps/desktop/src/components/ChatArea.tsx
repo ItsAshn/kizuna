@@ -6,7 +6,7 @@ import { useChatStore } from '../store/chatStore'
 import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import { Lock, Paperclip, Send, Film } from 'lucide-react'
+import { Lock, Paperclip, Send, Sticker } from 'lucide-react'
 import type { Message, Member } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
@@ -270,28 +270,47 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const handleUpload = async () => {
     if (!pendingFile || !session) return
 
-    if (!activeChannelId) {
-      setSendError('File uploads are only available in server channels, not DMs.')
-      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
-      setPendingFile(null)
-      setPendingPreviewUrl(null)
-      return
-    }
+    const targetChannelId = activeChannelId || activeDMChannelId
+    if (!targetChannelId) return
 
     setUploading(true)
     setUploadProgress(0)
     try {
-      const result = await uploadAttachment(session.url, session.token, activeChannelId, pendingFile, (pct) => setUploadProgress(pct))
+      const result = await uploadAttachment(session.url, session.token, targetChannelId, pendingFile, (pct) => setUploadProgress(pct))
       setPendingAttachmentId(result.id)
       const attachmentText = `![${result.filename}](${result.url})`
       const text = input.trim()
       const attIds = [result.id]
-      const message = await sendMessage(
-        session.url, session.token, activeChannelId,
-        text ? text + '\n' + attachmentText : attachmentText,
-        attIds,
-      )
-      addMessage(message.channel_id, message)
+
+      let message: Message
+      if (activeChannelId) {
+        message = await sendMessage(
+          session.url, session.token, activeChannelId,
+          text ? text + '\n' + attachmentText : attachmentText,
+          attIds,
+        )
+      } else if (activeDMChannelId) {
+        const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
+        const otherPubKey = activeDM?.other_public_key
+        const secKey = getSecretKey()
+        const finalText = text ? text + '\n' + attachmentText : attachmentText
+        let content: string
+        let encrypted = false
+        if (otherPubKey && secKey) {
+          const enc = encryptDM(finalText, otherPubKey, secKey)
+          content = JSON.stringify(enc)
+          encrypted = true
+        } else {
+          content = finalText
+        }
+        message = await sendDMMessage(session.url, session.token, activeDMChannelId, content, encrypted, attIds)
+        if (encrypted) {
+          message = { ...message, content: finalText }
+        }
+      } else {
+        return
+      }
+      addMessage(message.channel_id || targetChannelId, message)
       setInput('')
       if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
       setPendingFile(null)
@@ -482,11 +501,11 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
             onChange={handleFileSelect}
             accept="image/*,video/*,audio/*,.pdf,.txt,.json"
           />
-          <button className="chat-area__attach-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading || !!activeDMChannelId} title={activeDMChannelId ? 'File upload not available in DMs' : 'Attach file'}>
+          <button className="chat-area__attach-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Attach file">
             <Paperclip size={16} />
           </button>
           <button className="chat-area__gif-btn" onClick={() => setGifPickerOpen(true)} title="GIFs & Stickers">
-            <Film size={16} />
+            <Sticker size={16} />
           </button>
           <textarea
             ref={inputRef}

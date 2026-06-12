@@ -3,6 +3,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: hidden;
 }
 
 .chat-area__empty {
@@ -53,6 +54,7 @@
 
 .chat-area__messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 8px 0 16px;
   display: flex;
@@ -68,6 +70,7 @@
 }
 
 .chat-area__input-bar {
+  flex-shrink: 0;
   padding: 0 16px 12px;
   border-top: 1px solid var(--border-color);
   background: var(--bg-secondary);

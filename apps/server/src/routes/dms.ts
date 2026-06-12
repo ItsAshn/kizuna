@@ -121,8 +121,8 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
 dmRoutes.post('/channel/:channelId/messages', authMiddleware, async (c) => {
   const user = getAuth(c)
   const channelId = c.req.param('channelId')
-  const body = await c.req.json() as { content: string; encrypted?: boolean }
-  const { content, encrypted } = body
+  const body = await c.req.json() as { content: string; encrypted?: boolean; attachment_ids?: string[] }
+  const { content, encrypted, attachment_ids } = body
   if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)
   const maxLen = encrypted ? 8000 : 4000
   if (content.length > maxLen) return c.json({ error: 'Message too long' }, 400)
@@ -142,6 +142,12 @@ dmRoutes.post('/channel/:channelId/messages', authMiddleware, async (c) => {
   db.prepare(
     'INSERT INTO direct_messages (id, channel_id, from_id, from_username, to_id, content, encrypted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(id, channelId, user.userId, user.username, toId, content.trim(), encrypted ? 1 : 0, now)
+
+  if (attachment_ids && attachment_ids.length > 0) {
+    for (const attId of attachment_ids) {
+      db.prepare('UPDATE attachments SET message_id = ? WHERE id = ? AND message_id IS NULL').run(id, attId)
+    }
+  }
 
   db.prepare('UPDATE dm_channels SET last_message_at = ? WHERE id = ?').run(now, channelId)
 

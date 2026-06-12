@@ -252,6 +252,11 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
           userId: peer.userId,
           username: peer.username,
         })
+        io.emit('voice:userJoinedChannel', {
+          channelId,
+          userId: peer.userId,
+          username: peer.username,
+        })
       }
 
       if (typeof callback === 'function') callback({ id: producer.id })
@@ -432,6 +437,16 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     }
   })
 
+  socket.on('voice:getOccupancy', (_, callback?: Function) => {
+    const channels: Record<string, { userId: string; username: string }[]> = {}
+    for (const [, peer] of peers) {
+      if (!peer.announced) continue
+      if (!channels[peer.channelId]) channels[peer.channelId] = []
+      channels[peer.channelId].push({ userId: peer.userId, username: peer.username })
+    }
+    if (typeof callback === 'function') callback({ channels })
+  })
+
   socket.on('disconnect', async () => {
     for (const [sid, peer] of peers) {
       if (sid === socket.id) {
@@ -463,6 +478,7 @@ function cleanupPeer(socketId: string, channelId: string, io: Server): void {
   peers.delete(socketId)
 
   io.to(channelId).emit('voice:peerLeft', { peerId: socketId })
+  io.emit('voice:userLeftChannel', { channelId, userId: peer.userId })
   if (wasSharing) {
     io.to(channelId).emit('screen:peerStopped', { peerId: socketId })
   }

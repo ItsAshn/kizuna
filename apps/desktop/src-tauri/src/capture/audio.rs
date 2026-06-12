@@ -107,9 +107,16 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
         }
 
         let default_config = device.default_input_config().ok();
-        let max_channels = default_config.as_ref().map(|c| c.channels()).unwrap_or(1);
-        let default_sample_rate =
-            default_config.map(|c| c.sample_rate()).unwrap_or(48000);
+        let Some(ref config) = default_config else {
+            alog!("  SKIP unavailable: name='{}' id={}", trim_name, device_id);
+            continue;
+        };
+        if config.channels() == 0 {
+            alog!("  SKIP zero-channel: name='{}' id={}", trim_name, device_id);
+            continue;
+        }
+        let max_channels = config.channels();
+        let default_sample_rate = config.sample_rate();
 
         alog!(
             "  device: name='{}' id={} default={} maxCh={} defSr={}Hz",
@@ -167,9 +174,14 @@ pub fn list_output_devices() -> Result<Vec<AudioDeviceInfo>, String> {
         }
 
         let default_config = device.default_output_config().ok();
-        let max_channels = default_config.as_ref().map(|c| c.channels()).unwrap_or(2);
-        let default_sample_rate =
-            default_config.map(|c| c.sample_rate()).unwrap_or(48000);
+        let Some(ref config) = default_config else {
+            continue;
+        };
+        if config.channels() == 0 {
+            continue;
+        }
+        let max_channels = config.channels();
+        let default_sample_rate = config.sample_rate();
 
         result.push(AudioDeviceInfo {
             name: trim_name,

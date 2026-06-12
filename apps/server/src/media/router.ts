@@ -18,7 +18,11 @@ const MEDIA_CODECS: mediasoupTypes.RtpCodecCapability[] = [
     mimeType: 'audio/opus',
     clockRate: 48000,
     channels: 2,
-    preferredPayloadType: 100,
+    preferredPayloadType: 111,
+    parameters: {
+      'useinbandfec': 1,
+      'minptime': 10,
+    },
   },
   {
     kind: 'video',

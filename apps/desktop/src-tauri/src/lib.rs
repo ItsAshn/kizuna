@@ -163,10 +163,70 @@ fn voice_begin(
 }
 
 #[tauri::command]
-fn voice_finish_join(voice_bitrate_kbps: u64) -> Result<(), String> {
+fn voice_finish_join(
+    voice_bitrate_kbps: u64,
+    gate_enabled: bool,
+    gate_threshold_db: f32,
+    suppression_enabled: bool,
+    suppression_strength: f32,
+    auto_gain_enabled: bool,
+    device_name: Option<String>,
+) -> Result<(), String> {
     let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
     let controller = guard.as_mut().ok_or("Voice not initialized")?;
-    tauri::async_runtime::block_on(controller.finish_join(voice_bitrate_kbps))
+    tauri::async_runtime::block_on(controller.finish_join(
+        voice_bitrate_kbps,
+        gate_enabled,
+        gate_threshold_db,
+        suppression_enabled,
+        suppression_strength,
+        auto_gain_enabled,
+        device_name,
+    ))
+}
+
+#[tauri::command]
+fn voice_set_gate(threshold_db: f32) -> Result<(), String> {
+    let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref controller) = *guard {
+        tauri::async_runtime::block_on(controller.set_gate_threshold(threshold_db));
+        Ok(())
+    } else {
+        Err("Voice not initialized".into())
+    }
+}
+
+#[tauri::command]
+fn voice_set_noise_suppression(enabled: bool) -> Result<(), String> {
+    let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref controller) = *guard {
+        tauri::async_runtime::block_on(controller.set_noise_suppression(enabled));
+        Ok(())
+    } else {
+        Err("Voice not initialized".into())
+    }
+}
+
+#[tauri::command]
+fn voice_set_suppression_strength(strength: f32) -> Result<(), String> {
+    let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref controller) = *guard {
+        tauri::async_runtime::block_on(controller.set_suppression_strength(strength));
+        Ok(())
+    } else {
+        Err("Voice not initialized".into())
+    }
+}
+
+#[tauri::command]
+fn voice_set_auto_gain(enabled: bool) -> Result<(), String> {
+    let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref controller) = *guard {
+        tauri::async_runtime::block_on(controller.set_auto_gain(enabled));
+        Ok(())
+    } else {
+        Err("Voice not initialized".into())
+    }
 }
 
 #[tauri::command]
@@ -205,6 +265,17 @@ fn voice_drain_signals() -> Result<Vec<(String, serde_json::Value)>, String> {
 fn voice_set_muted(muted: bool) -> Result<(), String> {
     eprintln!("[Voice] voice_set_muted: muted={muted}");
     Ok(())
+}
+
+#[tauri::command]
+fn voice_update_bitrate(voice_bitrate_kbps: u64) -> Result<(), String> {
+    let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref controller) = *guard {
+        controller.update_bitrate(voice_bitrate_kbps);
+        Ok(())
+    } else {
+        Err("Voice not initialized".into())
+    }
 }
 
 #[tauri::command]
@@ -263,6 +334,11 @@ pub fn run() {
             voice_leave,
             voice_drain_signals,
             voice_set_muted,
+            voice_update_bitrate,
+            voice_set_gate,
+            voice_set_noise_suppression,
+            voice_set_suppression_strength,
+            voice_set_auto_gain,
             voice_screen_share_start,
             voice_screen_share_stop,
         ])

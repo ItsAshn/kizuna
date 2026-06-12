@@ -6,14 +6,10 @@ import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import type { ConnectionQuality } from '@kizuna/shared'
 
-const REMOTE_SPEAKING_THRESHOLD = 15
-
-function thresholdToRms(value: number): number {
-  return Math.max(1, Math.round(50 * Math.exp(-value * 0.04)))
-}
-
+const SPEAKING_RMS_THRESHOLD = 8
 const SPEAKING_POLL_MS = 80
 const SPEAKING_HOLD_MS = 600
+const REMOTE_SPEAKING_THRESHOLD = 15
 const QUALITY_POLL_MS = 3000
 const RECONNECT_DELAY_MS = 1000
 const MAX_RECONNECT_ATTEMPTS = 5
@@ -82,7 +78,6 @@ function computeQualityFromStats(report: RTCStatsReport): ConnectionQuality {
 function startSpeakingDetection(
   stream: MediaStream,
   onSpeaking: (speaking: boolean) => void,
-  thresholdRef: { current: number },
   onLevel?: (level: number) => void,
   gainNode?: GainNode,
   audioCtx?: AudioContext,
@@ -120,8 +115,7 @@ function startSpeakingDetection(
     }
     const rms = Math.sqrt(squareSum / buf.length)
     onLevel?.(rms)
-    const threshold = thresholdRef.current
-    const nowSpeaking = rms > threshold
+    const nowSpeaking = rms > SPEAKING_RMS_THRESHOLD
     if (nowSpeaking) {
       if (holdTimer !== null) {
         clearTimeout(holdTimer)
@@ -156,7 +150,6 @@ function startSpeakingDetection(
 function startNativeSpeakingDetection(
   pcmRingBuffer: Float32Array[],
   onSpeaking: (speaking: boolean) => void,
-  thresholdRef: { current: number },
   onLevel?: (level: number) => void,
 ): () => void {
   let speaking = false
@@ -184,8 +177,7 @@ function startNativeSpeakingDetection(
     const rms = Math.sqrt(squareSum / sampleCount)
     onLevel?.(rms)
 
-    const threshold = thresholdRef.current
-    const nowSpeaking = rms > threshold
+    const nowSpeaking = rms > SPEAKING_RMS_THRESHOLD
     if (nowSpeaking) {
       if (holdTimer !== null) {
         clearTimeout(holdTimer)
@@ -297,7 +289,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const gainNodeRef = useRef<GainNode | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
   const pttCleanupRef = useRef<(() => void) | null>(null)
-  const thresholdRef = useRef<number>(8)
   const pttPressedRef = useRef<boolean>(false)
   const nativeAudioUnlistenRef = useRef<(() => void) | null>(null)
   const scriptNodeRef = useRef<ScriptProcessorNode | null>(null)
@@ -315,9 +306,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setAudioInputDeviceId,
     setVoiceError,
     setScreenSharePeer, clearScreenSharePeer,
-    voiceInputMode, voiceGateThreshold,
+    voiceInputMode,
     pushToTalkKey,
-    noiseSuppression, echoCancellation, autoGainControl,
+    noiseSuppression, autoGainControl,
+    noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
     inputVolume, outputVolume,
     setLiveAudioLevel,
   } = useChatStore()
@@ -679,7 +671,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
             socket!.emit('voice:consume', {
               channelId: channelIdRef.current,
               peerId: peer.peerId,
-              rtpCapabilities: { codecs: [{ mimeType: 'audio/opus', clockRate: 48000, channels: 2, parameters: {}, rtcpFeedback: [] }], headerExtensions: [] },
+              rtpCapabilities: { codecs: [{ mimeType: 'audio/opus', clockRate: 48000, channels: 1, parameters: { useinbandfec: 1, minptime: 10 }, rtcpFeedback: [] }], headerExtensions: [] },
             }, resolve),
           )
           if (consumeResult?.error) {
@@ -703,6 +695,11 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         vlog('bitrate', `server:voiceBitrateChanged -> ${newKbps} kbps`)
         serverBitrateRef.current = newKbps
         setServerVoiceBitrateKbps(newKbps)
+        import('@tauri-apps/api/core').then(({ invoke }) =>
+          invoke('voice_update_bitrate', { voiceBitrateKbps: newKbps }).catch((e) =>
+            verr('bitrate', 'voice_update_bitrate failed', e)
+          )
+        )
       })
     }
 
@@ -783,13 +780,30 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       if (produceResult?.error) throw new Error(`produce: ${produceResult.error}`)
       vlog('joinVoiceNative', 'produce OK', { producerId: produceResult?.id })
 
-      // Step 8: start audio capture in Rust
-      await invoke('voice_finish_join', { voiceBitrateKbps })
+      // Step 8: start audio capture in Rust with DSP config
+      const gateDb = -(noiseGateThreshold * 0.6) // 0..100 -> -0..-60 dB
+      const suppStrength = noiseSuppressionStrength / 100 // 0..100 -> 0.0..1.0
+      await invoke('voice_finish_join', {
+        voiceBitrateKbps,
+        gateEnabled: noiseGateEnabled,
+        gateThresholdDb: gateDb,
+        suppressionEnabled: noiseSuppression,
+        suppressionStrength: suppStrength,
+        autoGainEnabled: autoGainControl,
+        deviceName: audioInputDeviceId || null,
+      })
       vlog('joinVoiceNative', 'finish_join OK')
 
       // Step 9: consume existing peers
       if (joinResult.peers) {
         for (const peer of joinResult.peers) {
+          addVoicePeer({
+            id: peer.id,
+            userId: peer.userId,
+            username: peer.username,
+            speaking: false,
+            muted: false,
+          })
           const consumeResult: any = await new Promise((resolve) =>
             socket!.emit('voice:consume', {
               channelId,
@@ -817,7 +831,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       channelIdRef.current = null
       return err
     }
-  }, [socketRef, session, cleanupVoice, setVoiceError, initNativeVoice, setupNativeVoiceListeners, setActiveVoiceChannel])
+  }, [socketRef, session, cleanupVoice, setVoiceError, initNativeVoice, setupNativeVoiceListeners, setActiveVoiceChannel, addVoicePeer, audioInputDeviceId, noiseGateEnabled, noiseGateThreshold, noiseSuppression, noiseSuppressionStrength])
 
   const leaveVoiceNative = useCallback(async () => {
     try {
@@ -1160,8 +1174,9 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     setLocalConnectionQuality, serverVoiceBitrateKbps, setServerVoiceBitrateKbps,
     audioInputDeviceId, audioOutputDeviceId, setVoiceError, consumePeer,
     consumeScreenShare, stopScreenConsume, setScreenSharePeer,
-    setLiveAudioLevel, voiceGateThreshold, voiceInputMode,
-    pushToTalkKey, noiseSuppression, echoCancellation, autoGainControl,
+    setLiveAudioLevel, voiceInputMode,
+    pushToTalkKey, noiseSuppression, autoGainControl,
+    noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
     inputVolume,
   ])
 
@@ -1171,18 +1186,14 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     sendTransport: Transport,
     bitrateKbps: number,
   ) => {
-    vlog('browserMic', `starting | inputDeviceId=${audioInputDeviceId} | inputVolume=${inputVolume} | noiseSupp=${noiseSuppression} | echoCanc=${echoCancellation} | autoGain=${autoGainControl} | bitrate=${bitrateKbps}`)
+    vlog('browserMic', `starting | inputDeviceId=${audioInputDeviceId} | inputVolume=${inputVolume} | noiseSupp=${noiseSuppression} | agc=${autoGainControl} | bitrate=${bitrateKbps}`)
     const micConstraints: MediaTrackConstraints = audioInputDeviceId
       ? {
           deviceId: { exact: audioInputDeviceId },
           noiseSuppression: { ideal: noiseSuppression },
-          echoCancellation: { ideal: echoCancellation },
-          autoGainControl: { ideal: autoGainControl },
         }
       : {
           noiseSuppression: { ideal: noiseSuppression },
-          echoCancellation: { ideal: echoCancellation },
-          autoGainControl: { ideal: autoGainControl },
         }
 
     vlog('browserMic', 'calling getUserMedia')
@@ -1202,8 +1213,6 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
           navigator.mediaDevices.getUserMedia({
             audio: {
               noiseSuppression: { ideal: noiseSuppression },
-              echoCancellation: { ideal: echoCancellation },
-              autoGainControl: { ideal: autoGainControl },
             },
           }),
           new Promise<MediaStream>((_, reject) =>
@@ -1224,7 +1233,34 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     gainNode.gain.value = inputVolume / 100
     gainNodeRef.current = gainNode
     const destination = audioCtx.createMediaStreamDestination()
-    source.connect(gainNode)
+
+    // Load AudioWorklet for DSP (noise gate + spectral suppression)
+    let workletNode: AudioWorkletNode | null = null
+    const workletRef = { current: null as AudioWorkletNode | null }
+    try {
+      await audioCtx.audioWorklet.addModule('/audio-processor.js')
+      workletNode = new AudioWorkletNode(audioCtx, 'audio-processor', {
+        parameterData: {
+          gateEnabled: noiseGateEnabled ? 1 : 0,
+          gateThresholdDb: -(noiseGateThreshold * 0.6),
+          suppressionEnabled: noiseSuppression ? 1 : 0,
+          suppressionStrength: noiseSuppressionStrength / 100,
+          agcEnabled: autoGainControl ? 1 : 0,
+        },
+      })
+      workletRef.current = workletNode
+      vlog('browserMic', 'AudioWorklet loaded and node created')
+    } catch (e) {
+      vlog('browserMic', `AudioWorklet unavailable, DSP disabled: ${String(e)}`)
+    }
+
+    // Audio graph: source -> worklet -> gain -> destination
+    if (workletNode) {
+      source.connect(workletNode)
+      workletNode.connect(gainNode)
+    } else {
+      source.connect(gainNode)
+    }
     gainNode.connect(destination)
 
     const processedTrack = destination.stream.getAudioTracks()[0]
@@ -1237,8 +1273,6 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     producerRef.current = producer
     vlog('browserMic', `producer created | id=${producer.id} | kind=${producer.kind} | paused=${producer.paused}`)
 
-    thresholdRef.current = thresholdToRms(voiceGateThreshold)
-
     localSpeakingCleanupRef.current?.()
     localSpeakingCleanupRef.current = startSpeakingDetection(
       stream,
@@ -1247,7 +1281,6 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         setIsSpeaking(speaking)
         socket.emit('voice:speaking', { channelId, speaking })
       },
-      thresholdRef,
       (level) => setLiveAudioLevel(level),
       gainNode,
       audioCtx,
@@ -1256,9 +1289,10 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     if (voiceInputMode === 'push-to-talk') {
       setupPushToTalk(socket, channelId, producer)
     }
-  }, [audioInputDeviceId, noiseSuppression, echoCancellation, autoGainControl,
-      inputVolume, voiceGateThreshold, voiceInputMode,
-      setLiveAudioLevel, setIsSpeaking, pushToTalkKey])
+  }, [audioInputDeviceId, noiseSuppression, autoGainControl,
+      noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
+      inputVolume, voiceInputMode,
+      setLiveAudioLevel, setIsSpeaking, pushToTalkKey, setAudioInputDeviceId])
 
   const setupNativeMicrophone = useCallback(async (
     socket: Socket,
@@ -1403,8 +1437,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     producerRef.current = producer
     vlog('nativeMic', `producer created | id=${producer.id} | kind=${producer.kind} | paused=${producer.paused} | closed=${producer.closed}`)
 
-    thresholdRef.current = thresholdToRms(voiceGateThreshold)
-    vlog('nativeMic', `starting native speaking detection | gateThreshold=${voiceGateThreshold} | rmsThreshold=${thresholdRef.current} | inputMode=${voiceInputMode}`)
+    vlog('nativeMic', `starting native speaking detection | inputMode=${voiceInputMode}`)
 
     localSpeakingCleanupRef.current?.()
     localSpeakingCleanupRef.current = startNativeSpeakingDetection(
@@ -1414,14 +1447,13 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         setIsSpeaking(speaking)
         socket.emit('voice:speaking', { channelId, speaking })
       },
-      thresholdRef,
       (level) => setLiveAudioLevel(level),
     )
 
     if (voiceInputMode === 'push-to-talk') {
       setupPushToTalk(socket, channelId, producer)
     }
-  }, [audioInputDeviceId, inputVolume, voiceGateThreshold,
+  }, [audioInputDeviceId, inputVolume,
       voiceInputMode, setLiveAudioLevel, setIsSpeaking, pushToTalkKey])
 
   const setupPushToTalk = useCallback((
@@ -1529,7 +1561,6 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
   useEffect(() => {
     let prevInputVolume = inputVolume
     let prevOutputVolume = outputVolume
-    let prevThreshold = voiceGateThreshold
 
     const unsub = useChatStore.subscribe((state) => {
       if (state.inputVolume !== prevInputVolume) {
@@ -1543,10 +1574,6 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         audioElemsRef.current.forEach((el) => {
           el.volume = state.outputVolume / 100
         })
-      }
-      if (state.voiceGateThreshold !== prevThreshold) {
-        prevThreshold = state.voiceGateThreshold
-        thresholdRef.current = thresholdToRms(state.voiceGateThreshold)
       }
     })
     return unsub
