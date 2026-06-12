@@ -6,7 +6,6 @@ import DOMPurify from 'dompurify'
 import type { Message, Member } from '@kizuna/shared'
 import { reactToMessage, unreactToMessage } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
-import { useChatStore } from '../store/chatStore'
 import ReactionPills from './ReactionPills'
 import ReactionBar from './ReactionBar'
 import ReactionPicker from './ReactionPicker'
@@ -109,6 +108,8 @@ function AttachmentPreview({ url, filename, serverUrl, isMediaOnly }: { url: str
         <img
           src={resolvedUrl}
           alt={filename}
+          loading="lazy"
+          decoding="async"
           className={`msg-bubble__attachment-image ${expanded ? 'msg-bubble__attachment-image--expanded' : ''} ${isMediaOnly ? 'msg-bubble__attachment-image--media-only' : ''} ${isGifUrl ? 'msg-bubble__attachment-image--sticker' : ''}`}
           onError={() => setLoadError(true)}
         />
@@ -194,18 +195,18 @@ export default function MessageBubble({
   const handleToggleReaction = useCallback(async (reactionKey: string, reactionType: string) => {
     if (!session) return
     try {
-      let res: { reactions: any[] }
       const reactions = message.reactions || []
       const existing = reactions.find(r => r.reaction_key === reactionKey && r.reaction_type === reactionType)
       const hasReacted = existing?.users.some(u => u.user_id === session.user.id)
 
       if (hasReacted) {
-        res = await unreactToMessage(session.url, session.token, message.id, reactionKey)
+        await unreactToMessage(session.url, session.token, message.id, reactionKey)
       } else {
-        res = await reactToMessage(session.url, session.token, message.id, reactionKey, reactionType)
+        await reactToMessage(session.url, session.token, message.id, reactionKey, reactionType)
       }
-      useChatStore.getState().updateMessageReactions(message.channel_id, message.id, res.reactions)
-    } catch {}
+    } catch (err) {
+      console.error('Reaction toggle failed:', err)
+    }
   }, [session, message.id, message.reactions, message.channel_id])
 
   const startEdit = () => {

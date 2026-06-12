@@ -6,7 +6,7 @@ import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import type { Message, Channel, DMChannelData, UserStatus, MessageReaction } from '@kizuna/shared'
+import type { Message, Channel, DMChannelData, UserStatus, MessageReaction, Member } from '@kizuna/shared'
 import { showNotification } from '../utils/showNotification'
 
 export function useSocket(): MutableRefObject<Socket | null> {
@@ -85,6 +85,33 @@ export function useSocket(): MutableRefObject<Socket | null> {
           [message.channel_id]: (store.unreadCounts[message.channel_id] || 0) + 1,
         })
       }
+    })
+
+    socket.on('dm:edit', (message: Message) => {
+      const store = useChatStore.getState()
+      let decrypted = message
+      if (message.encrypted) {
+        const parsed = isEncryptedContent(message.content)
+        if (parsed) {
+          const secKey = getSecretKey()
+          if (secKey) {
+            const dm = store.dmChannels.find((d: DMChannelData) => d.id === message.channel_id)
+            const otherPubKey = dm?.other_public_key
+            if (otherPubKey) {
+              try {
+                decrypted = { ...message, content: decryptDM(parsed, otherPubKey, secKey) }
+              } catch { /* leave as-is on failure */ }
+            }
+          }
+        }
+      }
+      const channelMessages = store.messages[message.channel_id] || []
+      const updated = channelMessages.map((m) => (m.id === message.id ? decrypted : m))
+      store.setMessages(message.channel_id, updated)
+    })
+
+    socket.on('dm:delete', ({ id, channel_id }: { id: string; channel_id: string }) => {
+      useChatStore.getState().removeMessage(channel_id, id)
     })
 
     socket.on('message:mention', (mention: any) => {
@@ -221,6 +248,26 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     socket.on('user:status', ({ userId, status }: { userId: string; status: UserStatus }) => {
       useChatStore.getState().setUserStatus(userId, status)
+    })
+
+    socket.on('member:updated', (updatedMember: Member) => {
+      const store = useChatStore.getState()
+      store.setMembers(store.members.map(m => m.id === updatedMember.id ? updatedMember : m))
+      const serverStore = useServerStore.getState()
+      if (serverStore.activeSession && updatedMember.id === serverStore.activeSession.user.id) {
+        serverStore.setActiveSession({
+          ...serverStore.activeSession,
+          user: {
+            ...serverStore.activeSession.user,
+            role: updatedMember.role,
+          },
+        })
+      }
+    })
+
+    socket.on('member:removed', ({ userId }: { userId: string }) => {
+      const store = useChatStore.getState()
+      store.setMembers(store.members.filter(m => m.id !== userId))
     })
 
     const heartbeatInterval = setInterval(() => {

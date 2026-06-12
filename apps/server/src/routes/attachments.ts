@@ -6,6 +6,7 @@ import { getDb } from '../db'
 import { authMiddleware, isUserAdmin } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 import { uploadLimiter } from '../middleware/rateLimiter'
+import { processImage, shouldProcessImage } from '../media/imageProcessor'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const attachmentRoutes = new Hono()
@@ -101,16 +102,26 @@ attachmentRoutes.post('/:channelId', uploadLimiter as never, authMiddleware, asy
       return c.json({ error: 'File content does not match its extension' }, 415)
     }
 
-    const storedFilename = `${uuidv4()}${ext}`
-    const filepath = path.join(UPLOADS_DIR, storedFilename)
+    let storedBuffer: Uint8Array = buffer
+    let storedFilename = `${uuidv4()}${ext}`
+    if (shouldProcessImage(file.name)) {
+      try {
+        const processed = await processImage(buffer, file.name)
+        storedBuffer = processed.buffer
+        storedFilename = `${uuidv4()}${path.extname(processed.filename)}`
+      } catch (imgErr: any) {
+        console.error('[attachments] Image processing failed, storing original:', imgErr.message)
+      }
+    }
 
-    fs.writeFileSync(filepath, buffer)
+    const filepath = path.join(UPLOADS_DIR, storedFilename)
+    fs.writeFileSync(filepath, storedBuffer)
 
     const id = uuidv4()
     const db = getDb()
     db.prepare(
       'INSERT INTO attachments (id, message_id, filename, url, size, content_type) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(id, null, file.name, `/api/attachments/file/${storedFilename}`, buffer.length, getContentType(file.name))
+    ).run(id, null, file.name, `/api/attachments/file/${storedFilename}`, storedBuffer.length, getContentType(storedFilename))
 
     const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as any
     return c.json({
@@ -165,11 +176,22 @@ attachmentRoutes.get('/file/:filename', (c) => {
     return c.json({ error: 'File not found' }, 404)
   }
 
+  const stat = fs.statSync(filepath)
+  const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}"`
+  const ifNoneMatch = c.req.header('if-none-match')
+  if (ifNoneMatch && ifNoneMatch === etag) {
+    return new Response(null, { status: 304, headers: { ETag: etag } })
+  }
+
   const contentType = getContentType(sanitized)
   const content = fs.readFileSync(filepath)
   return new Response(content, {
     status: 200,
-    headers: { 'Content-Type': contentType },
+    headers: {
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=86400, immutable',
+      'ETag': etag,
+    },
   })
 })
 

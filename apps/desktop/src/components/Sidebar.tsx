@@ -26,7 +26,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   const session = useServerStore((s) => s.activeSession)
   const setActiveSession = useServerStore((s) => s.setActiveSession)
   const {
-    channels, setChannels,
+    channels,
     dmChannels, activeChannelId, activeDMChannelId,
     activeVoiceChannelId, unreadCounts, mentionCounts,
     setActiveChannel, setActiveDMChannel,
@@ -76,8 +76,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
     if (!newChannelName.trim() || !session) return
     setCreating(true)
     try {
-      const ch = await createChannel(session.url, session.token, newChannelName.trim(), newChannelType)
-      setChannels([...channels, ch])
+      await createChannel(session.url, session.token, newChannelName.trim(), newChannelType)
       setNewChannelName('')
     } finally {
       setCreating(false)
@@ -87,8 +86,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   async function handleToggleLock(ch: typeof channels[0], locked: boolean, write_role_id?: string | null) {
     if (!session) return
     try {
-      const updated = await lockChannel(session.url, session.token, ch.id, locked, write_role_id ?? null)
-      setChannels(channels.map(c => c.id === ch.id ? updated : c))
+      await lockChannel(session.url, session.token, ch.id, locked, write_role_id ?? null)
     } catch {}
     setLockMenuChannelId(null)
   }

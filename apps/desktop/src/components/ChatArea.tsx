@@ -3,7 +3,7 @@ import type { MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, uploadAttachment, fetchChannelPermissions } from '@kizuna/shared'
+import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
 import { Lock, Paperclip, Send, Film } from 'lucide-react'
@@ -313,8 +313,11 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     const channelId = activeChannelId || activeDMChannelId
     if (!channelId) return
     try {
-      await deleteMessage(session.url, session.token, messageId)
-      useChatStore.getState().removeMessage(channelId, messageId)
+      if (activeDMChannelId) {
+        await deleteDMMessage(session.url, session.token, messageId)
+      } else {
+        await deleteMessage(session.url, session.token, messageId)
+      }
     } catch { /* ignore */ }
   }
 
@@ -323,10 +326,21 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     const channelId = activeChannelId || activeDMChannelId
     if (!channelId) return
     try {
-      const updated = await editMessage(session.url, session.token, messageId, content)
-      const store = useChatStore.getState()
-      const msgs = store.messages[channelId] || []
-      store.setMessages(channelId, msgs.map((m) => (m.id === messageId ? updated : m)))
+      if (activeDMChannelId) {
+        const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
+        const otherPubKey = activeDM?.other_public_key
+        const secKey = getSecretKey()
+        let sendContent = content
+        let encrypted = false
+        if (otherPubKey && secKey) {
+          const enc = encryptDM(content, otherPubKey, secKey)
+          sendContent = JSON.stringify(enc)
+          encrypted = true
+        }
+        await editDMMessage(session.url, session.token, messageId, sendContent, encrypted)
+      } else {
+        await editMessage(session.url, session.token, messageId, content)
+      }
     } catch { /* ignore */ }
   }
 

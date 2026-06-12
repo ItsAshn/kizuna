@@ -165,7 +165,6 @@ export default function ServerMenuModal({ onClose }: Props) {
       setBgBlur(info.backgroundBlur)
       setCustomCss(info.customCss || '')
       setVoiceBitrateKbps(info.voiceBitrateKbps ?? 64)
-      useChatStore.getState().setServerVoiceBitrateKbps(info.voiceBitrateKbps ?? 64)
       setInfoLoading(false)
     }).catch(() => {
       if (mountedRef.current) {
@@ -208,7 +207,6 @@ export default function ServerMenuModal({ onClose }: Props) {
       if (!url || !tok) return
       try {
         await updateServerSettings(url, tok, undefined, undefined, undefined, undefined, kbps)
-        useChatStore.getState().setServerVoiceBitrateKbps(kbps)
       } catch {}
     }, 300)
   }, [])
@@ -482,12 +480,8 @@ export default function ServerMenuModal({ onClose }: Props) {
 
     try {
       await setMemberRole(serverUrl, token, m.id, newRole)
-      setMembers(members.map(x => x.id === m.id ? { ...x, role: newRole } : x))
       setMemberMsg(prev => ({ ...prev, [m.id]: `role \u2192 ${newRole}` }))
       setTimeout(() => setMemberMsg(prev => { const n = { ...prev }; delete n[m.id]; return n }), 2000)
-      if (m.id === session?.user?.id) {
-        useServerStore.getState().setActiveSession({ ...session!, user: { ...session!.user, role: newRole } })
-      }
     } catch (err) {
       setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
     }
@@ -497,7 +491,6 @@ export default function ServerMenuModal({ onClose }: Props) {
     if (!serverUrl || !token) return
     try {
       await kickMember(serverUrl, token, m.id)
-      setMembers(members.filter(x => x.id !== m.id))
       setKickConfirmMember(null)
     } catch (err) {
       setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
@@ -519,18 +512,6 @@ export default function ServerMenuModal({ onClose }: Props) {
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: true }))
     try {
       await addMemberRole(serverUrl, token, userId, roleId)
-      const role = roles.find(r => r.id === roleId)
-      setMembers(members.map(m =>
-        m.id === userId ? {
-          ...m,
-          custom_roles: [...(m.custom_roles || []), {
-            id: roleId,
-            name: role?.name ?? roleId,
-            color: role?.color ?? '#5865f2',
-            permissions: role?.permissions ?? {},
-          }],
-        } : m,
-      ))
     } catch {}
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: false }))
   }
@@ -540,12 +521,6 @@ export default function ServerMenuModal({ onClose }: Props) {
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: true }))
     try {
       await removeMemberRole(serverUrl, token, userId, roleId)
-      setMembers(members.map(m =>
-        m.id === userId ? {
-          ...m,
-          custom_roles: (m.custom_roles || []).filter(r => r.id !== roleId),
-        } : m,
-      ))
     } catch {}
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: false }))
   }
@@ -562,31 +537,22 @@ export default function ServerMenuModal({ onClose }: Props) {
     }
     setSelfDemoteConfirm(false)
 
-    let updated = [...members]
     for (const m of targets) {
       try {
         await setMemberRole(serverUrl, token, m.id, targetRole)
-        updated = updated.map(x => x.id === m.id ? { ...x, role: targetRole } : x)
-        if (m.id === session?.user?.id) {
-          useServerStore.getState().setActiveSession({ ...session!, user: { ...session!.user, role: targetRole } })
-        }
       } catch {}
     }
-    setMembers(updated)
     clearSelection()
   }
 
   const handleBulkKick = async () => {
     if (!serverUrl || !token) return
     const targets = members.filter(m => selectedMembers.has(m.id) && m.id !== session?.user?.id)
-    let updated = [...members]
     for (const m of targets) {
       try {
         await kickMember(serverUrl, token, m.id)
-        updated = updated.filter(x => x.id !== m.id)
       } catch {}
     }
-    setMembers(updated)
     clearSelection()
   }
 
@@ -596,25 +562,11 @@ export default function ServerMenuModal({ onClose }: Props) {
       selectedMembers.has(m.id) &&
       !(m.custom_roles || []).some(r => r.id === roleId),
     )
-    let updated = [...members]
     for (const m of targets) {
       try {
         await addMemberRole(serverUrl, token, m.id, roleId)
-        const role = roles.find(r => r.id === roleId)
-        updated = updated.map(pm =>
-          pm.id === m.id ? {
-            ...pm,
-            custom_roles: [...(pm.custom_roles || []), {
-              id: roleId,
-              name: role?.name ?? roleId,
-              color: role?.color ?? '#5865f2',
-              permissions: role?.permissions ?? {},
-            }],
-          } : pm,
-        )
       } catch {}
     }
-    setMembers(updated)
     clearSelection()
   }
 

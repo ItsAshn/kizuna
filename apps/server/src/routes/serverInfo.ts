@@ -10,6 +10,71 @@ import { getAllPeers } from '../socket/voiceHandler'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
+function getMemberById(userId: string) {
+  const db = getDb()
+  const user = db.prepare(`
+    SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at, u.reset_requested_at, sm.is_host
+    FROM users u
+    LEFT JOIN server_members sm ON sm.user_id = u.id
+    WHERE u.id = ?
+  `).get(userId) as any
+  if (!user) return null
+
+  const memberRoles = db.prepare(`
+    SELECT mr.user_id, r.id, r.name, r.color, r.permissions, r.is_admin
+    FROM member_roles mr
+    JOIN roles r ON mr.role_id = r.id
+    WHERE mr.user_id = ?
+  `).all(userId) as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number }[]
+
+  const rolesByUser: { id: string; name: string; color: string; permissions: Record<string, boolean>; is_admin: boolean }[] = []
+  for (const row of memberRoles) {
+    rolesByUser.push({
+      id: row.id,
+      name: row.name,
+      color: row.color,
+      permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
+      is_admin: row.is_admin === 1,
+    })
+  }
+
+  const legacyRoles = db.prepare(`
+    SELECT r.id, r.name, r.color, r.permissions, r.is_admin
+    FROM server_members sm
+    JOIN roles r ON sm.custom_role_id = r.id
+    WHERE sm.user_id = ?
+      AND sm.custom_role_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = sm.user_id AND mr.role_id = sm.custom_role_id)
+  `).all(userId) as { id: string; name: string; color: string; permissions: string; is_admin: number }[]
+
+  for (const row of legacyRoles) {
+    if (!rolesByUser.some(r => r.id === row.id)) {
+      rolesByUser.push({
+        id: row.id,
+        name: row.name,
+        color: row.color,
+        permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
+        is_admin: row.is_admin === 1,
+      })
+    }
+  }
+
+  const isAdmin = rolesByUser.some(r => r.is_admin)
+  return {
+    id: user.id,
+    username: user.username,
+    display_name: user.display_name,
+    avatar: user.avatar,
+    last_seen_at: user.last_seen_at ? user.last_seen_at * 1000 : null,
+    role: isAdmin ? 'admin' : 'member',
+    is_host: user.is_host === 1,
+    custom_roles: rolesByUser,
+    custom_role_id: rolesByUser.length > 0 ? rolesByUser[0].id : null,
+    custom_role_name: rolesByUser.length > 0 ? rolesByUser[0].name : null,
+    custom_role_color: rolesByUser.length > 0 ? rolesByUser[0].color : null,
+  }
+}
+
 const serverInfoRoutes = new Hono()
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
@@ -337,6 +402,11 @@ serverInfoRoutes.patch('/members/:userId/role', authMiddleware, async (c) => {
     db.prepare('DELETE FROM member_roles WHERE user_id = ? AND role_id = ?').run(targetUserId, 'admin-role')
   }
 
+  const updatedMember = getMemberById(targetUserId)
+  if (updatedMember) {
+    try { const io: any = c.get('io' as never); if (io) io.emit('member:updated', updatedMember) } catch {}
+  }
+
   return c.json({ ok: true })
 })
 
@@ -364,6 +434,7 @@ serverInfoRoutes.delete('/members/:userId', authMiddleware, (c) => {
   }
 
   db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
+  try { const io: any = c.get('io' as never); if (io) io.emit('member:removed', { userId: targetUserId }) } catch {}
   return c.json({ ok: true })
 })
 
@@ -386,6 +457,10 @@ serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, async (c)
   }
 
   db.prepare('UPDATE server_members SET custom_role_id = ? WHERE user_id = ?').run(roleId, targetUserId)
+  const updatedMember = getMemberById(targetUserId)
+  if (updatedMember) {
+    try { const io: any = c.get('io' as never); if (io) io.emit('member:updated', updatedMember) } catch {}
+  }
   return c.json({ ok: true })
 })
 
@@ -407,6 +482,10 @@ serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
   if (!role) return c.json({ error: 'Role not found' }, 404)
 
   db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(targetUserId, roleId)
+  const updatedMember = getMemberById(targetUserId)
+  if (updatedMember) {
+    try { const io: any = c.get('io' as never); if (io) io.emit('member:updated', updatedMember) } catch {}
+  }
   return c.json({ ok: true })
 })
 
@@ -423,6 +502,10 @@ serverInfoRoutes.delete('/members/:userId/roles/:roleId', authMiddleware, (c) =>
     return c.json({ error: 'Cannot remove admin role from the server host' }, 403)
   }
   db.prepare('DELETE FROM member_roles WHERE user_id = ? AND role_id = ?').run(targetUserId, roleId)
+  const updatedMember = getMemberById(targetUserId)
+  if (updatedMember) {
+    try { const io: any = c.get('io' as never); if (io) io.emit('member:updated', updatedMember) } catch {}
+  }
   return c.json({ ok: true })
 })
 

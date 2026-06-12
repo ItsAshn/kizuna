@@ -6,13 +6,14 @@ import AdmZip from 'adm-zip'
 import { getDb } from '../db'
 import { authMiddleware, isUserAdmin } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
+import { processImage, shouldProcessImage } from '../media/imageProcessor'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const gifRoutes = new Hono()
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
 const GIFS_DIR = process.env.GIFS_DIR || path.join(UPLOADS_DIR, 'gifs')
-const MAX_GIF_SIZE = parseInt(process.env.MAX_GIF_SIZE || '5242880', 10)
+const MAX_GIF_SIZE = parseInt(process.env.MAX_GIF_SIZE || '15728640', 10)
 const MAX_PACK_SIZE = parseInt(process.env.MAX_PACK_SIZE || '15728640', 10) // 15 MB
 
 const ALLOWED_GIF_EXTS = ['.gif']
@@ -65,13 +66,25 @@ function gifRowToResponse(row: any): Record<string, unknown> {
   }
 }
 
-function saveFile(buffer: Buffer, originalFilename: string, allowedExts: string[]): { storedFilename: string; ext: string } | null {
+async function saveFile(buffer: Buffer, originalFilename: string, allowedExts: string[]): Promise<{ storedFilename: string; ext: string; size: number } | null> {
   const ext = path.extname(originalFilename).toLowerCase()
   if (!allowedExts.includes(ext)) return null
   if (!verifyMagicBytes(buffer, ext)) return null
+
+  if (shouldProcessImage(originalFilename)) {
+    try {
+      const processed = await processImage(buffer, originalFilename)
+      const storedFilename = `${uuidv4()}${path.extname(processed.filename)}`
+      fs.writeFileSync(path.join(GIFS_DIR, storedFilename), processed.buffer)
+      return { storedFilename, ext: path.extname(processed.filename), size: processed.buffer.length }
+    } catch (imgErr: any) {
+      console.error('[gifs] Image processing failed, storing original:', imgErr.message)
+    }
+  }
+
   const storedFilename = `${uuidv4()}${ext}`
   fs.writeFileSync(path.join(GIFS_DIR, storedFilename), buffer)
-  return { storedFilename, ext }
+  return { storedFilename, ext, size: buffer.length }
 }
 
 // GET /api/gifs — list gifs/stickers with optional filters
@@ -164,7 +177,7 @@ gifRoutes.post('/upload', authMiddleware, async (c) => {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer())
-  const result = saveFile(buffer, file.name, ALLOWED_GIF_EXTS)
+  const result = await saveFile(buffer, file.name, ALLOWED_GIF_EXTS)
   if (!result) return c.json({ error: 'Invalid file. Only .gif files are allowed for single GIF uploads.' }, 415)
 
   const id = uuidv4()
@@ -172,7 +185,7 @@ gifRoutes.post('/upload', authMiddleware, async (c) => {
   db.prepare(
     `INSERT INTO gifs (id, type, display_name, category, tags, pack_name, stored_filename, original_filename, file_size, uploaded_by)
      VALUES (?, 'gif', ?, ?, ?, NULL, ?, ?, ?, ?)`
-  ).run(id, displayName, category, tags, result.storedFilename, file.name, file.size, user.userId)
+  ).run(id, displayName, category, tags, result.storedFilename, file.name, result.size, user.userId)
 
   const row = db.prepare('SELECT * FROM gifs WHERE id = ?').get(id) as any
   return c.json(gifRowToResponse(row), 201)
@@ -231,6 +244,28 @@ gifRoutes.post('/pack', authMiddleware, async (c) => {
     const data = entry.getData()
     if (data.length > MAX_GIF_SIZE) continue
     if (!verifyMagicBytes(data, ext)) continue
+
+    if (shouldProcessImage(name)) {
+      try {
+        const processed = await processImage(data, name)
+        const storedFilename = `${uuidv4()}${path.extname(processed.filename)}`
+        fs.writeFileSync(path.join(GIFS_DIR, storedFilename), processed.buffer)
+
+        const configEntry = packConfig?.gifs?.find(g => g.filename === entry.entryName)
+        const displayName = configEntry?.display_name || path.basename(name, ext)
+        const tags = configEntry?.tags || ''
+
+        const id = uuidv4()
+        db.prepare(
+          `INSERT INTO gifs (id, type, display_name, category, tags, pack_name, stored_filename, original_filename, file_size, uploaded_by)
+           VALUES (?, 'gif', ?, ?, ?, NULL, ?, ?, ?, ?)`
+        ).run(id, displayName, category, tags, storedFilename, name, processed.buffer.length, user.userId)
+        imported++
+        continue
+      } catch (imgErr: any) {
+        console.error('[gifs] Pack GIF processing failed, storing original:', imgErr.message)
+      }
+    }
 
     const storedFilename = `${uuidv4()}${ext}`
     fs.writeFileSync(path.join(GIFS_DIR, storedFilename), data)
@@ -311,6 +346,27 @@ gifRoutes.post('/sticker-pack', authMiddleware, async (c) => {
     if (data.length > MAX_GIF_SIZE) continue
     if (!verifyMagicBytes(data, ext)) continue
 
+    if (shouldProcessImage(name)) {
+      try {
+        const processed = await processImage(data, name)
+        const storedFilename = `${uuidv4()}${path.extname(processed.filename)}`
+        fs.writeFileSync(path.join(GIFS_DIR, storedFilename), processed.buffer)
+
+        const configEntry = packConfig?.stickers?.find(s => s.filename === entry.entryName)
+        const displayName = configEntry?.display_name || path.basename(name, ext)
+
+        const id = uuidv4()
+        db.prepare(
+          `INSERT INTO gifs (id, type, display_name, category, tags, pack_name, stored_filename, original_filename, file_size, uploaded_by)
+           VALUES (?, 'sticker', ?, '', '', ?, ?, ?, ?, ?)`
+        ).run(id, displayName, packName.trim(), storedFilename, name, processed.buffer.length, user.userId)
+        imported++
+        continue
+      } catch (imgErr: any) {
+        console.error('[gifs] Sticker processing failed, storing original:', imgErr.message)
+      }
+    }
+
     const storedFilename = `${uuidv4()}${ext}`
     fs.writeFileSync(path.join(GIFS_DIR, storedFilename), data)
 
@@ -381,6 +437,13 @@ gifRoutes.get('/:id/file', (c) => {
   const filePath = path.join(GIFS_DIR, row.stored_filename)
   if (!fs.existsSync(filePath)) return c.json({ error: 'File not found' }, 404)
 
+  const stat = fs.statSync(filePath)
+  const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}"`
+  const ifNoneMatch = c.req.header('if-none-match')
+  if (ifNoneMatch && ifNoneMatch === etag) {
+    return new Response(null, { status: 304, headers: { ETag: etag } })
+  }
+
   const content = fs.readFileSync(filePath)
   const contentType = getContentType(row.stored_filename)
 
@@ -389,6 +452,7 @@ gifRoutes.get('/:id/file', (c) => {
     headers: {
       'Content-Type': contentType,
       'Cache-Control': 'public, max-age=86400, immutable',
+      'ETag': etag,
     },
   })
 })

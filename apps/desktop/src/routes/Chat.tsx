@@ -24,6 +24,7 @@ import '../styles/chat.css'
 export default function Chat() {
   const navigate = useNavigate()
   const session = useServerStore((s) => s.activeSession)
+  const refreshSessionUser = useServerStore((s) => s.refreshSessionUser)
   const servers = useServerStore((s) => s.servers)
   const { setChannels, setMembers, setDMChannels, activeChannelId, activeDMChannelId, setActiveChannel, setActiveDMChannel, serverBackgroundEnabled, customCssEnabled, setChannelMutes } = useChatStore()
   const socketRef = useSocket()
@@ -83,6 +84,7 @@ export default function Chat() {
 
     async function load() {
       try {
+        await refreshSessionUser()
         const [channels, members, dms, info, mutes] = await Promise.all([
           fetchChannels(session!.url, session!.token),
           fetchMembers(session!.url, session!.token),

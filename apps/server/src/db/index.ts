@@ -99,6 +99,7 @@ function runMigrations(database: Database.Database): void {
     `ALTER TABLE users ADD COLUMN public_key TEXT DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN key_salt TEXT DEFAULT NULL`,
     `ALTER TABLE direct_messages ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE direct_messages ADD COLUMN edited_at INTEGER DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN reset_token TEXT DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN reset_token_expires_at INTEGER DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN token_invalidated_at INTEGER DEFAULT NULL`,

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { User, SavedServer } from '@kizuna/shared'
+import { getMe } from '@kizuna/shared'
 
 interface ServerSession {
   serverId: string
@@ -19,6 +20,7 @@ interface ServerState {
   setActiveSession: (session: ServerSession | null) => void
   setActiveServer: (serverId: string | null) => void
   updateServerInfo: (id: string, updates: Partial<SavedServer>) => void
+  refreshSessionUser: () => Promise<void>
 }
 
 export const useServerStore = create<ServerState>()(
@@ -69,6 +71,23 @@ export const useServerStore = create<ServerState>()(
         set((state) => ({
           servers: state.servers.map((s) => (s.id === id ? { ...s, ...updates } : s)),
         })),
+
+      refreshSessionUser: async () => {
+        const { activeSession } = get()
+        if (!activeSession) return
+        try {
+          const user = await getMe(activeSession.url, activeSession.token)
+          set((state) => {
+            const session = { ...activeSession, user }
+            return {
+              activeSession: session,
+              sessions: { ...state.sessions, [session.serverId]: session },
+            }
+          })
+        } catch {
+          // token may be expired — auth middleware handles this elsewhere
+        }
+      },
     }),
     {
       name: 'kizuna-servers',

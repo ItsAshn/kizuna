@@ -752,8 +752,8 @@
 .msg-bubble__reactions {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: 6px;
 }
 
 .msg-bubble__row--own .msg-bubble__reactions {
@@ -763,14 +763,14 @@
 .msg-bubble__reaction {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
+  gap: 5px;
+  padding: 4px 10px;
   border-radius: var(--radius-sm, 6px);
   border: 1px solid var(--border-color);
   background: var(--bg-tertiary);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.2;
 }
 
@@ -785,22 +785,48 @@
 }
 
 .msg-bubble__reaction-emoji {
-  font-size: 14px;
+  font-size: 18px;
   line-height: 1;
 }
 
 .msg-bubble__reaction-sticker {
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
 }
 
 .msg-bubble__reaction-count {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-secondary);
   font-weight: 500;
   min-width: 8px;
   text-align: center;
+}
+
+/* ── Reaction overflow pill ────────────────────────────── */
+
+.msg-bubble__reaction--overflow {
+  border-style: dashed;
+  opacity: 0.7;
+  min-width: 36px;
+  justify-content: center;
+}
+
+.msg-bubble__reaction--overflow:hover {
+  opacity: 1;
+  border-style: solid;
+}
+
+.msg-bubble__reaction--overflow-expanded {
+  opacity: 0.5;
+}
+
+.msg-bubble__reaction--overflow-expanded:hover {
+  opacity: 0.8;
+}
+
+.msg-bubble__reaction--overflow .msg-bubble__reaction-emoji {
+  font-size: 15px;
 }
 
 /* ── Reaction bar (portal overlay) ────────────────────────── */

@@ -167,4 +167,81 @@ dmRoutes.post('/channel/:channelId/messages', authMiddleware, async (c) => {
   return c.json({ message }, 201)
 })
 
+// DELETE /dms/messages/:messageId — delete DM message
+dmRoutes.delete('/messages/:messageId', authMiddleware, (c) => {
+  const user = getAuth(c)
+  const messageId = c.req.param('messageId')
+  const db = getDb()
+
+  const dm = db.prepare(`
+    SELECT dm.*, dc.user1_id, dc.user2_id
+    FROM direct_messages dm
+    JOIN dm_channels dc ON dc.id = dm.channel_id
+    WHERE dm.id = ?
+  `).get(messageId) as any
+  if (!dm) return c.json({ error: 'Message not found' }, 404)
+  if (dm.from_id !== user.userId) return c.json({ error: 'Forbidden' }, 403)
+
+  db.prepare('DELETE FROM message_reactions WHERE message_id = ?').run(messageId)
+  db.prepare('DELETE FROM direct_messages WHERE id = ?').run(messageId)
+
+  try {
+    const io: any = c.get('io' as never)
+    if (io) {
+      const toId = dm.user1_id === user.userId ? dm.user2_id : dm.user1_id
+      io.to(`dm:${toId}`).emit('dm:delete', { id: messageId, channel_id: dm.channel_id })
+      io.to(`user:${user.userId}`).emit('dm:delete', { id: messageId, channel_id: dm.channel_id })
+    }
+  } catch { /* best-effort */ }
+
+  return c.json({ ok: true })
+})
+
+// PATCH /dms/messages/:messageId — edit DM message
+dmRoutes.patch('/messages/:messageId', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  const messageId = c.req.param('messageId')
+  const body = await c.req.json() as { content: string; encrypted?: boolean }
+  const { content, encrypted } = body
+  if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)
+  const maxLen = encrypted ? 8000 : 4000
+  if (content.length > maxLen) return c.json({ error: 'Message too long' }, 400)
+
+  const db = getDb()
+  const dm = db.prepare(`
+    SELECT dm.*, dc.user1_id, dc.user2_id
+    FROM direct_messages dm
+    JOIN dm_channels dc ON dc.id = dm.channel_id
+    WHERE dm.id = ?
+  `).get(messageId) as any
+  if (!dm) return c.json({ error: 'Message not found' }, 404)
+  if (dm.from_id !== user.userId) return c.json({ error: 'Forbidden' }, 403)
+
+  const now = Math.floor(Date.now() / 1000)
+  db.prepare('UPDATE direct_messages SET content = ?, edited_at = ? WHERE id = ?').run(content.trim(), now, messageId)
+
+  const message = {
+    id: dm.id,
+    channel_id: dm.channel_id,
+    user_id: dm.from_id,
+    username: dm.from_username,
+    display_name: user.displayName,
+    content: content.trim(),
+    encrypted: encrypted ? 1 : 0,
+    edited_at: now * 1000,
+    created_at: dm.created_at * 1000,
+  }
+
+  try {
+    const io: any = c.get('io' as never)
+    if (io) {
+      const toId = dm.user1_id === user.userId ? dm.user2_id : dm.user1_id
+      io.to(`dm:${toId}`).emit('dm:edit', message)
+      io.to(`user:${user.userId}`).emit('dm:edit', message)
+    }
+  } catch { /* best-effort */ }
+
+  return c.json({ message })
+})
+
 export default dmRoutes

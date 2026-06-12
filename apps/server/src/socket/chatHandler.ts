@@ -420,6 +420,67 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     socket.emit('dm:sent', dm)
   })
 
+  socket.on('dm:edit', ({ messageId, content }: {
+    messageId: string
+    content: string
+  }) => {
+    if (!checkSocketRateLimit(socket, 'dm:edit', 20, 10_000)) return
+    if (!messageId || !content?.trim() || !userId) return
+    if (content.length > 2700) return
+
+    const db = getDb()
+    const dm = db.prepare(`
+      SELECT dm.*, dc.user1_id, dc.user2_id
+      FROM direct_messages dm
+      JOIN dm_channels dc ON dc.id = dm.channel_id
+      WHERE dm.id = ? AND dm.from_id = ?
+    `).get(messageId, userId) as any
+    if (!dm) {
+      socket.emit('error', { code: 'FORBIDDEN', message: 'Cannot edit this message' })
+      return
+    }
+
+    const now = Math.floor(Date.now() / 1000)
+    db.prepare('UPDATE direct_messages SET content = ?, edited_at = ? WHERE id = ?').run(content.trim(), now, messageId)
+
+    const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as any
+    const edited = {
+      id: dm.id,
+      channel_id: dm.channel_id,
+      user_id: dm.from_id,
+      username: dm.from_username,
+      display_name: userRow?.display_name || dm.from_username,
+      avatar: userRow?.avatar || undefined,
+      content: content.trim(),
+      encrypted: dm.encrypted,
+      edited_at: now * 1000,
+      created_at: dm.created_at * 1000,
+    }
+
+    const toId = dm.user1_id === userId ? dm.user2_id : dm.user1_id
+    io.to(`dm:${toId}`).emit('dm:edit', edited)
+    socket.emit('dm:edit', edited)
+  })
+
+  socket.on('dm:delete', ({ messageId }: { messageId: string }) => {
+    if (!userId) return
+    const db = getDb()
+    const dm = db.prepare(`
+      SELECT dm.*, dc.user1_id, dc.user2_id
+      FROM direct_messages dm
+      JOIN dm_channels dc ON dc.id = dm.channel_id
+      WHERE dm.id = ? AND dm.from_id = ?
+    `).get(messageId, userId) as any
+    if (!dm) return
+
+    db.prepare('DELETE FROM message_reactions WHERE message_id = ?').run(messageId)
+    db.prepare('DELETE FROM direct_messages WHERE id = ?').run(messageId)
+
+    const toId = dm.user1_id === userId ? dm.user2_id : dm.user1_id
+    io.to(`dm:${toId}`).emit('dm:delete', { id: messageId, channel_id: dm.channel_id })
+    socket.emit('dm:delete', { id: messageId, channel_id: dm.channel_id })
+  })
+
   socket.on('user:joined', () => {
     if (!userId) return
     ;(socket as any).userId = userId

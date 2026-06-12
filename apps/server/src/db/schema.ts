@@ -57,6 +57,7 @@ export const SCHEMA_SQL = `
     to_id TEXT NOT NULL,
     content TEXT NOT NULL,
     encrypted INTEGER NOT NULL DEFAULT 0,
+    edited_at INTEGER DEFAULT NULL,
     created_at INTEGER DEFAULT (unixepoch())
   );
 

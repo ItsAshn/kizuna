@@ -83,7 +83,7 @@ export async function getMe(serverUrl: string, token: string): Promise<User> {
   const res = await axios.get(`${normalizeUrl(serverUrl)}/api/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  return res.data
+  return res.data.user
 }
 
 export async function uploadPublicKey(
@@ -568,6 +568,25 @@ export async function sendDMMessage(
     { content, encrypted: encrypted || false },
   )
   return res.data.message ?? res.data
+}
+
+export async function editDMMessage(
+  serverUrl: string,
+  token: string,
+  messageId: string,
+  content: string,
+  encrypted?: boolean,
+): Promise<Message> {
+  const res = await client(serverUrl, token).patch(`/api/dms/messages/${messageId}`, { content, encrypted: encrypted || false })
+  return res.data.message ?? res.data
+}
+
+export async function deleteDMMessage(
+  serverUrl: string,
+  token: string,
+  messageId: string,
+): Promise<void> {
+  await client(serverUrl, token).delete(`/api/dms/messages/${messageId}`)
 }
 
 // ─── Attachments ──────────────────────────────────────────

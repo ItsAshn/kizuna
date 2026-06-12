@@ -23,6 +23,11 @@ const envSchema = z.object({
   IP_CHECK_INTERVAL: z.coerce.number().int().positive().default(300),
   IS_PUBLIC: z.coerce.boolean().default(false),
   UPLOADS_DIR: z.string().optional().default(''),
+  GIFS_DIR: z.string().optional().default(''),
+  MAX_FILE_SIZE: z.coerce.number().int().positive().default(10485760),
+  MAX_GIF_SIZE: z.coerce.number().int().positive().default(15728640),
+  MAX_PACK_SIZE: z.coerce.number().int().positive().default(15728640),
+  MAX_BODY_SIZE: z.coerce.number().int().positive().default(1048576),
 })
 
 export type EnvConfig = z.infer<typeof envSchema>
