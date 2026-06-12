@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use serde_json::Value;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use webrtc::api::media_engine::MediaEngine;
 use webrtc::api::APIBuilder;
 use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
@@ -189,26 +189,9 @@ pub async fn create_transports(
         .await
         .map_err(|e| format!("Failed to create send PC: {e}"))?;
 
-    let send_app = app.clone();
     send_pc.on_peer_connection_state_change(Box::new(move |state: RTCPeerConnectionState| {
-        let app = send_app.clone();
-        Box::pin(async move {
-            eprintln!("[SendPC] state: {state:?}");
-            if state == RTCPeerConnectionState::Failed
-                || state == RTCPeerConnectionState::Disconnected
-            {
-                let _ = app.emit(
-                    "voice:event",
-                    serde_json::json!({
-                        "type": "State",
-                        "data": {
-                            "state": "failed",
-                            "error": format!("Send connection {state:?}")
-                        }
-                    }),
-                );
-            }
-        })
+        eprintln!("[SendPC] state: {state:?}");
+        Box::pin(async {})
     }));
 
     send_pc.on_ice_connection_state_change(Box::new(move |state: RTCIceConnectionState| {
@@ -282,26 +265,9 @@ pub async fn create_transports(
         .await
         .map_err(|e| format!("Failed to create recv PC: {e}"))?;
 
-    let recv_app = app.clone();
     recv_pc.on_peer_connection_state_change(Box::new(move |state: RTCPeerConnectionState| {
-        let app = recv_app.clone();
-        Box::pin(async move {
-            eprintln!("[RecvPC] state: {state:?}");
-            if state == RTCPeerConnectionState::Failed
-                || state == RTCPeerConnectionState::Disconnected
-            {
-                let _ = app.emit(
-                    "voice:event",
-                    serde_json::json!({
-                        "type": "State",
-                        "data": {
-                            "state": "failed",
-                            "error": format!("Recv connection {state:?}")
-                        }
-                    }),
-                );
-            }
-        })
+        eprintln!("[RecvPC] state: {state:?}");
+        Box::pin(async {})
     }));
 
     recv_pc.on_ice_connection_state_change(Box::new(move |state: RTCIceConnectionState| {
