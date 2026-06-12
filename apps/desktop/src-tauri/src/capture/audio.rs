@@ -7,6 +7,9 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use serde::Serialize;
 use tauri::Emitter;
 
+#[cfg(target_os = "linux")]
+use std::process::Command;
+
 #[allow(unused)]
 macro_rules! alog {
     ($($arg:tt)*) => {
@@ -64,6 +67,14 @@ impl Drop for AudioCaptureSession {
 }
 
 pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
+    #[cfg(target_os = "linux")]
+    if let Ok(devices) = try_list_pipewire_devices(true) {
+        if !devices.is_empty() {
+            alog!("list_input_devices: using PipeWire, found {} device(s)", devices.len());
+            return Ok(devices);
+        }
+    }
+
     let host = cpal::default_host();
     let host_id = host.id();
     alog!("list_input_devices: host={:?}", host_id);
@@ -137,6 +148,13 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
 }
 
 pub fn list_output_devices() -> Result<Vec<AudioDeviceInfo>, String> {
+    #[cfg(target_os = "linux")]
+    if let Ok(devices) = try_list_pipewire_devices(false) {
+        if !devices.is_empty() {
+            return Ok(devices);
+        }
+    }
+
     let host = cpal::default_host();
     let default_device_id = host
         .default_output_device()
@@ -420,4 +438,85 @@ fn is_virtual_device_name(name: &str, is_output: bool) -> bool {
         return true;
     }
     false
+}
+
+#[cfg(target_os = "linux")]
+fn try_list_pipewire_devices(is_input: bool) -> Result<Vec<AudioDeviceInfo>, String> {
+    let output = if is_input {
+        Command::new("pactl")
+            .args(["list", "sources", "short"])
+            .output()
+    } else {
+        Command::new("pactl")
+            .args(["list", "sinks", "short"])
+            .output()
+    }
+    .map_err(|e| format!("Failed to run pactl: {e}"))?;
+
+    if !output.status.success() {
+        return Err("pactl command failed".into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut devices = Vec::new();
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        // pactl format: <id>\t<name>\t<module>\t<sample_format> <channels>ch <rate>Hz
+        // Example: 56  alsa_input.usb-Elgato...mono-fallback  PipeWire  s24le 1ch 48000Hz
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() < 2 {
+            continue;
+        }
+
+        // Skip monitor sources (output monitors)
+        let name = parts[1].trim();
+        if is_input && name.contains(".monitor") {
+            continue;
+        }
+        if name.contains("monitor") || name.is_empty() {
+            continue;
+        }
+
+        // Extract channel count and sample rate from the last column
+        let mut channels: u16 = 2;
+        let mut sample_rate: u32 = 48000;
+
+        if let Some(last) = parts.last() {
+            let info = last.trim();
+            if let Some(ch_pos) = info.find("ch") {
+                if let Ok(ch) = info[..ch_pos].trim().parse::<u16>() {
+                    channels = ch;
+                }
+            }
+            if let Some(hz_pos) = info.find("Hz") {
+                let rate_str = &info[..hz_pos];
+                if let Some(space_pos) = rate_str.rfind(' ') {
+                    if let Ok(rate) = rate_str[space_pos + 1..].trim().parse::<u32>() {
+                        sample_rate = rate;
+                    }
+                }
+            }
+        }
+
+        devices.push(AudioDeviceInfo {
+            name: name.to_string(),
+            device_id: name.to_string(),
+            is_default: false,
+            max_channels: channels,
+            default_sample_rate: sample_rate,
+        });
+
+    }
+
+    if !devices.is_empty() {
+        // Mark the first device as default (pactl lists default first)
+        devices[0].is_default = true;
+    }
+
+    Ok(devices)
 }

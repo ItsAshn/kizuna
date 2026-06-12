@@ -37,7 +37,7 @@ export interface PeerInfo {
   username: string
   channelId: string
   router: mediasoupTypes.Router
-  transports: Map<string, (mediasoupTypes.WebRtcTransport & { _direction?: string })>
+  transports: Map<string, any>
   producers: Map<string, mediasoupTypes.Producer>
   consumers: Map<string, mediasoupTypes.Consumer>
   announced: boolean
@@ -199,6 +199,35 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       }
     } catch (err: any) {
       verr('createTransport', `failed | socketId=${socket.id} | dir=${direction}`, err)
+      if (typeof callback === 'function') callback({ error: err.message })
+    }
+  })
+
+  socket.on('voice:createDirectTransport', async ({ channelId }: {
+    channelId: string
+  }, callback?: Function) => {
+    try {
+      const peer = peers.get(socket.id)
+      if (!peer) {
+        if (typeof callback === 'function') callback({ error: 'Not in a voice channel' })
+        return
+      }
+
+      const transport = await peer.router.createDirectTransport({
+        maxMessageSize: 262144,
+      } as any);
+      (transport as any)._direction = 'recv'
+      peer.transports.set(transport.id, transport)
+
+      transport.on('rtcp', () => {})
+
+      vlog('createDirectTransport', `created | socketId=${socket.id} | transportId=${transport.id}`)
+
+      if (typeof callback === 'function') {
+        callback({ id: transport.id })
+      }
+    } catch (err: any) {
+      verr('createDirectTransport', `failed | socketId=${socket.id}`, err)
       if (typeof callback === 'function') callback({ error: err.message })
     }
   })
@@ -473,12 +502,21 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       let count = 0
       for (const [, consumer] of peer.consumers) {
         if (consumer.kind !== 'audio') continue
+        // Find which peer owns this producer to get the correct socket ID
+        let producerPeerId = consumer.producerId
+        for (const [sid, p] of peers) {
+          if (p.producers.has(consumer.producerId)) {
+            producerPeerId = sid
+            break
+          }
+        }
         const forwardingSocket = socket
+        const forwardingPeerId = producerPeerId
         consumer.on('rtp', (rtpPacket: Buffer) => {
           const opusPayload = rtpPacket.subarray(12)
           if (opusPayload.length > 0) {
             forwardingSocket.emit('voice:socketRtp', {
-              peerId: consumer.producerId,
+              peerId: forwardingPeerId,
               payload: Array.from(opusPayload),
             })
           }

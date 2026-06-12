@@ -737,16 +737,16 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       if (sendParams?.error) throw new Error(`send transport create: ${sendParams.error}`)
       vlog('joinVoiceNative', 'send transport created', { id: sendParams?.id })
 
-      // Step 3: create recv transport via chat socket
+      // Step 3: create DirectTransport for recv (no ICE/DTLS needed)
       const recvParams: any = await new Promise((resolve) =>
-        socket!.emit('voice:createTransport', { channelId, direction: 'recv' }, resolve),
+        socket!.emit('voice:createDirectTransport', { channelId }, resolve),
       )
-      if (recvParams?.error) throw new Error(`recv transport create: ${recvParams.error}`)
-      vlog('joinVoiceNative', 'recv transport created', { id: recvParams?.id })
+      if (recvParams?.error) throw new Error(`recv direct transport create: ${recvParams.error}`)
+      vlog('joinVoiceNative', 'recv direct transport created', { id: recvParams?.id })
 
-      // Step 4: create WebRTC transports in Rust
+      // Step 4: create WebRTC send transport in Rust (recv uses DirectTransport, no Rust PC needed)
       vlog('joinVoiceNative', 'calling voice_begin')
-      const [sendDtls, recvDtls, rtpParams] = await invoke('voice_begin', {
+      const [sendDtls, _recvDtls, rtpParams] = await invoke('voice_begin', {
         channelId,
         iceServers,
         sendParams,
@@ -765,17 +765,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       )
       if (sendConnectResult?.error) throw new Error(`send connectTransport: ${sendConnectResult.error}`)
       vlog('joinVoiceNative', 'send connectTransport OK')
-
-      // Step 6: connect recv transport
-      const recvConnectResult: any = await new Promise((resolve) =>
-        socket!.emit('voice:connectTransport', {
-          channelId,
-          transportId: recvParams.id,
-          dtlsParameters: recvDtls,
-        }, resolve),
-      )
-      if (recvConnectResult?.error) throw new Error(`recv connectTransport: ${recvConnectResult.error}`)
-      vlog('joinVoiceNative', 'recv connectTransport OK')
 
       // Step 7: produce
       const produceResult: any = await new Promise((resolve) =>
