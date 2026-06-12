@@ -18,6 +18,7 @@ export interface User {
   is_host?: boolean
   last_seen_at?: number | null
   public_key?: string | null
+  key_salt?: string | null
   status?: UserStatus
 }
 

@@ -93,8 +93,8 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
       if (isRegister) {
         const { challenge, difficulty } = await getChallenge(url.trim())
         const { nonce } = await solvePoW(challenge, difficulty)
-        const pubKey = await generateAndStoreKey(url.trim(), password)
-        result = await register(url.trim(), username.trim(), password, displayName || username, serverPassword || undefined, pubKey, challenge, nonce)
+        const { publicKey, salt } = await generateAndStoreKey(url.trim(), password)
+        result = await register(url.trim(), username.trim(), password, displayName || username, serverPassword || undefined, publicKey, JSON.stringify(salt), challenge, nonce)
 
         const serverId = url.trim()
         addServer({
@@ -122,10 +122,10 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
         return
       } else {
         result = await login(url.trim(), username.trim(), password)
-        await initializeCrypto(url.trim(), result.token, password)
+        const serverSalt = result.user.key_salt ? JSON.parse(result.user.key_salt) : null
+        const { publicKey, salt } = await initializeCrypto(url.trim(), result.token, password, serverSalt, result.user.public_key)
         if (userNeedsKeyUpload(result.user.public_key, url.trim())) {
-          const pk = getPublicKey()
-          if (pk) await uploadPublicKey(url.trim(), result.token, pk)
+          await uploadPublicKey(url.trim(), result.token, publicKey, salt)
         }
 
         const serverId = url.trim()

@@ -7,6 +7,7 @@ export const SCHEMA_SQL = `
     avatar TEXT DEFAULT NULL,
     last_seen_at INTEGER DEFAULT NULL,
     public_key TEXT DEFAULT NULL,
+    key_salt TEXT DEFAULT NULL,
     token_invalidated_at INTEGER DEFAULT NULL,
     reset_token TEXT DEFAULT NULL,
     reset_token_expires_at INTEGER DEFAULT NULL,
@@ -192,7 +193,6 @@ export const SCHEMA_SQL = `
     reaction_type TEXT NOT NULL DEFAULT 'emoji',
     created_at INTEGER DEFAULT (unixepoch()),
     PRIMARY KEY (message_id, user_id, reaction_key),
-    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
   CREATE INDEX IF NOT EXISTS idx_msg_reactions_msg ON message_reactions(message_id);

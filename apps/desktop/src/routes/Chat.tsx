@@ -5,6 +5,7 @@ import { useSocket } from '../hooks/useSocket'
 import { useVoice } from '../hooks/useVoice'
 import { useScreenshare } from '../hooks/useScreenshare'
 import { fetchChannels, fetchMembers, fetchDMChannels, fetchServerInfo, fetchChannelMutes } from '@kizuna/shared'
+import { restoreFromSession } from '../store/keyStore'
 import ServerPanel from '../components/ServerPanel'
 import UpdateBanner from '../components/UpdateBanner'
 import Sidebar from '../components/Sidebar'
@@ -77,6 +78,8 @@ export default function Chat() {
       navigate('/')
       return
     }
+
+    restoreFromSession(session.url)
 
     async function load() {
       try {

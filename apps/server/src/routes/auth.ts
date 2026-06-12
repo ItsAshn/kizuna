@@ -20,7 +20,7 @@ authRoutes.get('/challenge', (c) => {
 })
 
 authRoutes.post('/register', async (c) => {
-  const { username, password, display_name, serverPassword, public_key, challenge, nonce } = await c.req.json()
+  const { username, password, display_name, serverPassword, public_key, key_salt, challenge, nonce } = await c.req.json()
 
   if (!username || !password) {
     return c.json({ error: 'username and password required' }, 400)
@@ -63,8 +63,8 @@ authRoutes.post('/register', async (c) => {
     const id = uuidv4()
 
     db.prepare(
-      'INSERT INTO users (id, username, display_name, password_hash, public_key, backuptoken_hash) VALUES (?, ?, ?, ?, ?, ?)',
-    ).run(id, username.toLowerCase().trim(), display_name || username, hash, public_key?.trim() || null, backuptokenHash)
+      'INSERT INTO users (id, username, display_name, password_hash, public_key, key_salt, backuptoken_hash) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run(id, username.toLowerCase().trim(), display_name || username, hash, public_key?.trim() || null, key_salt?.trim() || null, backuptokenHash)
 
     const userCount = db
       .prepare('SELECT COUNT(*) as n FROM server_members')
@@ -79,9 +79,9 @@ authRoutes.post('/register', async (c) => {
 
     const user = db
       .prepare(
-        'SELECT id, username, display_name, avatar, public_key, created_at FROM users WHERE id = ?',
+        'SELECT id, username, display_name, avatar, public_key, key_salt, created_at FROM users WHERE id = ?',
       )
-      .get(id) as { id: string; username: string; display_name: string; avatar: string | null; public_key: string | null; created_at: number }
+      .get(id) as { id: string; username: string; display_name: string; avatar: string | null; public_key: string | null; key_salt: string | null; created_at: number }
 
     return c.json(
       {
@@ -145,6 +145,7 @@ authRoutes.post('/login', async (c) => {
       display_name: user.display_name,
       avatar: user.avatar,
       public_key: user.public_key,
+      key_salt: user.key_salt,
       role: member.role,
       is_host: member.is_host === 1,
     },
@@ -157,9 +158,9 @@ authRoutes.get('/me', authMiddleware, (c) => {
 
   const user = db
     .prepare(
-      'SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.created_at, sm.is_host FROM users u LEFT JOIN server_members sm ON sm.user_id = u.id WHERE u.id = ?',
+      'SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.key_salt, u.created_at, sm.is_host FROM users u LEFT JOIN server_members sm ON sm.user_id = u.id WHERE u.id = ?',
     )
-    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; public_key: string | null; created_at: number; is_host: number | null } | undefined
+    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; public_key: string | null; key_salt: string | null; created_at: number; is_host: number | null } | undefined
 
   if (!user) {
     return c.json({ error: 'User not found' }, 404)
@@ -278,11 +279,11 @@ authRoutes.get('/users', authMiddleware, (c) => {
 
 authRoutes.put('/public-key', authMiddleware, async (c) => {
   const auth = getAuth(c)
-  const { public_key } = await c.req.json() as { public_key: string }
+  const { public_key, key_salt } = await c.req.json() as { public_key: string; key_salt?: string }
   if (!public_key?.trim()) return c.json({ error: 'public_key is required' }, 400)
 
   const db = getDb()
-  db.prepare('UPDATE users SET public_key = ? WHERE id = ?').run(public_key.trim(), auth.userId)
+  db.prepare('UPDATE users SET public_key = ?, key_salt = COALESCE(?, key_salt) WHERE id = ?').run(public_key.trim(), key_salt?.trim() || null, auth.userId)
   return c.json({ ok: true })
 })
 

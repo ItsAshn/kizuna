@@ -482,17 +482,43 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
   })
 
   // ─── Reactions ───────────────────────────────────────
+  function getMessageInfo(db: ReturnType<typeof getDb>, messageId: string): { channel_id: string; isDM: boolean; participants?: { user1_id: string; user2_id: string } } | null {
+    const msg = db.prepare('SELECT channel_id FROM messages WHERE id = ?').get(messageId) as any
+    if (msg) return { channel_id: msg.channel_id, isDM: false }
+
+    const dm = db.prepare(`
+      SELECT dm.channel_id, dc.user1_id, dc.user2_id
+      FROM direct_messages dm
+      JOIN dm_channels dc ON dc.id = dm.channel_id
+      WHERE dm.id = ?
+    `).get(messageId) as any
+    if (dm) return { channel_id: dm.channel_id, isDM: true, participants: { user1_id: dm.user1_id, user2_id: dm.user2_id } }
+
+    return null
+  }
+
+  function broadcastReaction(io: Server, msgInfo: { channel_id: string; isDM: boolean; participants?: { user1_id: string; user2_id: string } }, event: string, payload: any) {
+    if (msgInfo.isDM && msgInfo.participants) {
+      io.to(`dm:${msgInfo.participants.user1_id}`).emit(event, payload)
+      io.to(`dm:${msgInfo.participants.user2_id}`).emit(event, payload)
+    } else {
+      io.to(msgInfo.channel_id).emit(event, payload)
+    }
+  }
+
   socket.on('message:react', ({ messageId, reactionKey, reactionType }: { messageId: string; reactionKey: string; reactionType?: string }) => {
     if (!userId || !username) return
     if (!checkSocketRateLimit(socket, 'react', 20, 10000)) return
 
     const db = getDb()
-    const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
-    if (!message) return
+    const msgInfo = getMessageInfo(db, messageId)
+    if (!msgInfo) return
 
-    const perms = getUserPermissions(userId)
-    if (!perms || !hasPermission(perms, 'send_messages')) return
-    if (!canWriteToChannel(userId, message.channel_id)) return
+    if (!msgInfo.isDM) {
+      const perms = getUserPermissions(userId)
+      if (!perms || !hasPermission(perms, 'send_messages')) return
+      if (!canWriteToChannel(userId, msgInfo.channel_id)) return
+    }
 
     const existing = db.prepare(
       'SELECT * FROM message_reactions WHERE message_id = ? AND user_id = ? AND reaction_key = ?'
@@ -505,9 +531,9 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       'INSERT INTO message_reactions (message_id, user_id, reaction_key, reaction_type) VALUES (?, ?, ?, ?)'
     ).run(messageId, userId, reactionKey, type)
 
-    io.to(message.channel_id).emit('message:react:add', {
+    broadcastReaction(io, msgInfo, 'message:react:add', {
       messageId,
-      channelId: message.channel_id,
+      channelId: msgInfo.channel_id,
       reaction: { reaction_key: reactionKey, reaction_type: type, userId, username },
     })
   })
@@ -516,15 +542,15 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     if (!userId) return
 
     const db = getDb()
-    const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
-    if (!message) return
+    const msgInfo = getMessageInfo(db, messageId)
+    if (!msgInfo) return
 
     db.prepare('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND reaction_key = ?')
       .run(messageId, userId, reactionKey)
 
-    io.to(message.channel_id).emit('message:react:remove', {
+    broadcastReaction(io, msgInfo, 'message:react:remove', {
       messageId,
-      channelId: message.channel_id,
+      channelId: msgInfo.channel_id,
       reactionKey,
       userId,
     })

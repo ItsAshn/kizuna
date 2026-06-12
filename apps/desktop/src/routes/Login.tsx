@@ -53,8 +53,11 @@ export default function Login() {
       if (isRegister) {
         const { challenge, difficulty } = await getChallenge(serverUrl)
         const { nonce } = await solvePoW(challenge, difficulty)
-        const pubKey = await generateAndStoreKey(serverUrl, password)
-        result = await register(serverUrl, username.trim(), password, displayName || username, serverPassword || undefined, pubKey, challenge, nonce)
+        const { publicKey, salt } = await generateAndStoreKey(serverUrl, password)
+        result = await register(
+          serverUrl, username.trim(), password, displayName || username,
+          serverPassword || undefined, publicKey, JSON.stringify(salt), challenge, nonce,
+        )
 
         setActiveSession({
           serverId: serverUrl,
@@ -70,10 +73,10 @@ export default function Login() {
         }
       } else {
         result = await login(serverUrl, username.trim(), password)
-        await initializeCrypto(serverUrl, result.token, password)
+        const serverSalt = result.user.key_salt ? JSON.parse(result.user.key_salt) : null
+        const { publicKey, salt } = await initializeCrypto(serverUrl, result.token, password, serverSalt, result.user.public_key)
         if (userNeedsKeyUpload(result.user.public_key, serverUrl)) {
-          const pk = getPublicKey()
-          if (pk) await uploadPublicKey(serverUrl, result.token, pk)
+          await uploadPublicKey(serverUrl, result.token, publicKey, salt)
         }
 
         setActiveSession({

@@ -8,6 +8,21 @@ const reactionRoutes = new Hono()
 
 const DEFAULT_EMOJIS = ['👍', '❤️', '😆', '😮', '😢']
 
+function getMessageInfo(db: any, messageId: string): { channel_id: string; isDM: boolean; participants?: { user1_id: string; user2_id: string } } | null {
+  const msg = db.prepare('SELECT channel_id FROM messages WHERE id = ?').get(messageId) as any
+  if (msg) return { channel_id: msg.channel_id, isDM: false }
+
+  const dm = db.prepare(`
+    SELECT dm.channel_id, dc.user1_id, dc.user2_id
+    FROM direct_messages dm
+    JOIN dm_channels dc ON dc.id = dm.channel_id
+    WHERE dm.id = ?
+  `).get(messageId) as any
+  if (dm) return { channel_id: dm.channel_id, isDM: true, participants: { user1_id: dm.user1_id, user2_id: dm.user2_id } }
+
+  return null
+}
+
 function getReactionsForMessage(db: any, messageId: string): any[] {
   const rows = db.prepare(`
     SELECT mr.reaction_key, mr.reaction_type, mr.user_id, u.username
@@ -51,8 +66,8 @@ reactionRoutes.post('/:messageId', authMiddleware, async (c) => {
   if (!messageId) return c.json({ error: 'Message ID is required' }, 400)
 
   const db = getDb()
-  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
-  if (!message) return c.json({ error: 'Message not found' }, 404)
+  const msgInfo = getMessageInfo(db, messageId)
+  if (!msgInfo) return c.json({ error: 'Message not found' }, 404)
 
   const existing = findReaction(db, messageId, user.userId, reaction_key)
   if (existing) return c.json({ error: 'Already reacted' }, 409)
@@ -67,11 +82,17 @@ reactionRoutes.post('/:messageId', authMiddleware, async (c) => {
   try {
     const io: any = c.get('io' as never)
     if (io) {
-      io.to(message.channel_id).emit('message:react:add', {
+      const payload = {
         messageId,
-        channelId: message.channel_id,
+        channelId: msgInfo.channel_id,
         reaction: { reaction_key, reaction_type: type, userId: user.userId, username: user.username },
-      })
+      }
+      if (msgInfo.isDM && msgInfo.participants) {
+        io.to(`dm:${msgInfo.participants.user1_id}`).emit('message:react:add', payload)
+        io.to(`dm:${msgInfo.participants.user2_id}`).emit('message:react:add', payload)
+      } else {
+        io.to(msgInfo.channel_id).emit('message:react:add', payload)
+      }
     }
   } catch {}
 
@@ -87,8 +108,8 @@ reactionRoutes.delete('/:messageId/:reactionKey', authMiddleware, (c) => {
   if (!reactionKey) return c.json({ error: 'Reaction key is required' }, 400)
 
   const db = getDb()
-  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
-  if (!message) return c.json({ error: 'Message not found' }, 404)
+  const msgInfo = getMessageInfo(db, messageId)
+  if (!msgInfo) return c.json({ error: 'Message not found' }, 404)
 
   const existing = findReaction(db, messageId, user.userId, reactionKey)
   if (!existing) return c.json({ error: 'Reaction not found' }, 404)
@@ -101,12 +122,18 @@ reactionRoutes.delete('/:messageId/:reactionKey', authMiddleware, (c) => {
   try {
     const io: any = c.get('io' as never)
     if (io) {
-      io.to(message.channel_id).emit('message:react:remove', {
+      const payload = {
         messageId,
-        channelId: message.channel_id,
+        channelId: msgInfo.channel_id,
         reactionKey,
         userId: user.userId,
-      })
+      }
+      if (msgInfo.isDM && msgInfo.participants) {
+        io.to(`dm:${msgInfo.participants.user1_id}`).emit('message:react:remove', payload)
+        io.to(`dm:${msgInfo.participants.user2_id}`).emit('message:react:remove', payload)
+      } else {
+        io.to(msgInfo.channel_id).emit('message:react:remove', payload)
+      }
     }
   } catch {}
 

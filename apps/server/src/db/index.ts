@@ -97,6 +97,7 @@ function runMigrations(database: Database.Database): void {
     `CREATE INDEX IF NOT EXISTS idx_direct_messages_channel ON direct_messages(channel_id)`,
     `CREATE INDEX IF NOT EXISTS idx_message_edits_message ON message_edits(message_id)`,
     `ALTER TABLE users ADD COLUMN public_key TEXT DEFAULT NULL`,
+    `ALTER TABLE users ADD COLUMN key_salt TEXT DEFAULT NULL`,
     `ALTER TABLE direct_messages ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE users ADD COLUMN reset_token TEXT DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN reset_token_expires_at INTEGER DEFAULT NULL`,
@@ -178,6 +179,20 @@ function runMigrations(database: Database.Database): void {
       FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id)
     )`,
+    `CREATE INDEX IF NOT EXISTS idx_msg_reactions_msg ON message_reactions(message_id)`,
+    `CREATE TABLE IF NOT EXISTS message_reactions_new (
+      message_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      reaction_key TEXT NOT NULL,
+      reaction_type TEXT NOT NULL DEFAULT 'emoji',
+      created_at INTEGER DEFAULT (unixepoch()),
+      PRIMARY KEY (message_id, user_id, reaction_key),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )`,
+    `INSERT INTO message_reactions_new (message_id, user_id, reaction_key, reaction_type, created_at)
+     SELECT message_id, user_id, reaction_key, reaction_type, created_at FROM message_reactions`,
+    `DROP TABLE IF EXISTS message_reactions`,
+    `ALTER TABLE message_reactions_new RENAME TO message_reactions`,
     `CREATE INDEX IF NOT EXISTS idx_msg_reactions_msg ON message_reactions(message_id)`,
   ]
 

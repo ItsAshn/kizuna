@@ -43,6 +43,7 @@ export async function register(
   display_name?: string,
   serverPassword?: string,
   public_key?: string,
+  key_salt?: string,
   challenge?: string,
   nonce?: string,
 ): Promise<{ token: string; user: User; backuptoken: string }> {
@@ -52,6 +53,7 @@ export async function register(
     display_name: display_name || username,
     ...(serverPassword ? { serverPassword } : {}),
     ...(public_key ? { public_key } : {}),
+    ...(key_salt ? { key_salt } : {}),
     ...(challenge ? { challenge } : {}),
     ...(nonce ? { nonce } : {}),
   })
@@ -88,8 +90,12 @@ export async function uploadPublicKey(
   serverUrl: string,
   token: string,
   publicKey: string,
+  keySalt?: number[],
 ): Promise<void> {
-  await client(serverUrl, token).put('/api/auth/public-key', { public_key: publicKey })
+  await client(serverUrl, token).put('/api/auth/public-key', {
+    public_key: publicKey,
+    key_salt: keySalt != null ? JSON.stringify(keySalt) : undefined,
+  })
 }
 
 export async function getUserPublicKey(

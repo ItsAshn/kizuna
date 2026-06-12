@@ -38,6 +38,19 @@ export function generateKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Arra
   }
 }
 
+export async function deriveKeyPair(
+  password: string,
+  salt: number[],
+): Promise<{ publicKey: Uint8Array; secretKey: Uint8Array; publicKeyString: string }> {
+  const seed = await deriveKey(password, salt)
+  const kp = nacl.box.keyPair.fromSecretKey(seed)
+  return {
+    publicKey: kp.publicKey,
+    secretKey: kp.secretKey,
+    publicKeyString: encodeBase64(kp.publicKey),
+  }
+}
+
 export function encryptDM(
   plaintext: string,
   theirPublicKeyB64: string,
