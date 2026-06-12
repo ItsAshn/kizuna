@@ -6,8 +6,8 @@ class AudioProcessorWorklet extends AudioWorkletProcessor {
     return [
       { name: 'gateEnabled', defaultValue: 1, minValue: 0, maxValue: 1 },
       { name: 'gateThresholdDb', defaultValue: -40, minValue: -80, maxValue: 0 },
-      { name: 'suppressionEnabled', defaultValue: 1, minValue: 0, maxValue: 1 },
-      { name: 'suppressionStrength', defaultValue: 0.7, minValue: 0, maxValue: 1 },
+      { name: 'suppressionEnabled', defaultValue: 0, minValue: 0, maxValue: 1 },
+      { name: 'suppressionStrength', defaultValue: 0, minValue: 0, maxValue: 1 },
       { name: 'agcEnabled', defaultValue: 1, minValue: 0, maxValue: 1 },
     ];
   }
@@ -32,11 +32,11 @@ class AudioProcessorWorklet extends AudioWorkletProcessor {
 
     // Auto gain control state
     this.agcGain = 1.0;
-    this.agcTargetRms = Math.pow(10, -18 / 20); // -18dBFS
-    this.agcMaxGain = Math.pow(10, 20 / 20); // +20dB
-    this.agcMaxAtten = Math.pow(10, -20 / 20); // -20dB
-    this.agcAttackCoeff = Math.exp(-1 / (0.050 * sampleRate)); // 50ms
-    this.agcReleaseCoeff = Math.exp(-1 / (0.200 * sampleRate)); // 200ms
+    this.agcTargetRms = Math.pow(10, -12 / 20); // -12dBFS
+    this.agcMaxGain = Math.pow(10, 6 / 20); // +6dB
+    this.agcMaxAtten = Math.pow(10, -12 / 20); // -12dB
+    this.agcAttackCoeff = Math.exp(-1 / (0.100 * sampleRate)); // 100ms
+    this.agcReleaseCoeff = Math.exp(-1 / (0.500 * sampleRate)); // 500ms
   }
 
   _createCrossoverFilters() {

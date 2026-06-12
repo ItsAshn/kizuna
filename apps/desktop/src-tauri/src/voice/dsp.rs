@@ -350,9 +350,9 @@ impl SpectralGate {
 
 pub struct AutoGain {
     enabled: bool,
-    target_rms: f32,       // Target RMS level (linear, e.g., 0.125 = -18dB)
-    max_gain: f32,         // Maximum boost (e.g., 10.0 = +20dB)
-    max_attenuation: f32,  // Maximum cut (e.g., 0.1 = -20dB)
+    target_rms: f32,       // Target RMS level (linear, e.g., 0.25 = -12dB)
+    max_gain: f32,         // Maximum boost (e.g., 2.0 = +6dB)
+    max_attenuation: f32,  // Maximum cut (e.g., 0.25 = -12dB)
     attack_coeff: f32,
     release_coeff: f32,
     current_gain: f32,
@@ -361,15 +361,15 @@ pub struct AutoGain {
 
 impl AutoGain {
     pub fn new(sample_rate: u32) -> Self {
-        let target_db = -18.0;
+        let target_db = -12.0;
         let target_rms = 10.0_f32.powf(target_db / 20.0);
-        let attack_coeff = (-1.0 / (0.050 * sample_rate as f32)).exp(); // 50ms
-        let release_coeff = (-1.0 / (0.200 * sample_rate as f32)).exp(); // 200ms
+        let attack_coeff = (-1.0 / (0.100 * sample_rate as f32)).exp(); // 100ms
+        let release_coeff = (-1.0 / (0.500 * sample_rate as f32)).exp(); // 500ms
         Self {
             enabled: false,
             target_rms,
-            max_gain: 10.0_f32.powf(20.0 / 20.0), // +20dB
-            max_attenuation: 10.0_f32.powf(-20.0 / 20.0), // -20dB
+            max_gain: 10.0_f32.powf(6.0 / 20.0), // +6dB
+            max_attenuation: 10.0_f32.powf(-12.0 / 20.0), // -12dB
             attack_coeff,
             release_coeff,
             current_gain: 1.0,
@@ -429,6 +429,8 @@ pub struct AudioProcessor {
     gate_enabled: bool,
     suppression_enabled: bool,
     agc_enabled: bool,
+    sample_rate: u32,
+    dc_state: f32,
 }
 
 impl AudioProcessor {
@@ -438,8 +440,10 @@ impl AudioProcessor {
             spectral_gate: SpectralGate::new(sample_rate),
             auto_gain: AutoGain::new(sample_rate),
             gate_enabled: true,
-            suppression_enabled: true,
+            suppression_enabled: false,
             agc_enabled: true,
+            sample_rate,
+            dc_state: 0.0,
         }
     }
 
@@ -472,11 +476,20 @@ impl AudioProcessor {
         self.noise_gate.reset();
         self.spectral_gate.reset();
         self.auto_gain.reset();
+        self.dc_state = 0.0;
     }
 
     /// Process a frame through the full DSP chain.
-    /// Order: noise_gate → spectral suppression → auto gain control.
+    /// Order: DC-removal HPF → noise_gate → spectral suppression → auto gain control.
     pub fn process_frame(&mut self, frame: &mut [f32]) {
+        // DC-removal high-pass filter at ~80Hz (single-pole)
+        let alpha = (-2.0 * PI * 80.0 / self.sample_rate as f32).exp();
+        for sample in frame.iter_mut() {
+            let out = *sample - self.dc_state;
+            self.dc_state = self.dc_state + alpha * out;
+            *sample = out;
+        }
+
         if self.gate_enabled {
             self.noise_gate.process_frame(frame);
         }

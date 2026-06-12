@@ -99,14 +99,19 @@ export async function initializeCrypto(
       state.secretKey = kp.secretKey
       state.initialized = true
       if (serverPublicKey !== kp.publicKeyString) {
-        await uploadPublicKey(serverUrl, token, kp.publicKeyString, serverSalt)
+        try {
+          await uploadPublicKey(serverUrl, token, kp.publicKeyString, serverSalt)
+        } catch {
+          console.warn('[Crypto] Failed to upload updated public key')
+        }
       }
       return { publicKey: kp.publicKeyString, salt: serverSalt }
     } catch {
-      // Fall through to generate new key
+      console.warn('[Crypto] Failed to derive key from server salt, generating new key')
     }
   }
 
+  console.warn('[Crypto] No server salt available, generating new key pair (old account)')
   return generateAndStoreKey(serverUrl, password)
 }
 

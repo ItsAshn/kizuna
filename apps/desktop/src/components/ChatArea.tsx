@@ -3,11 +3,11 @@ import type { MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions } from '@kizuna/shared'
+import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
 import { Lock, Paperclip, Send, Sticker } from 'lucide-react'
-import type { Message, Member } from '@kizuna/shared'
+import type { Message, Member, DMChannelData } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
 import '../styles/chat-area.css'
@@ -77,7 +77,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     if (!secKey) return { ...msg, content: '[Encrypted - no key available]' }
     const activeDM = dmChannels.find((d) => d.id === msg.channel_id)
     const otherPubKey = activeDM?.other_public_key
-    if (!otherPubKey) return { ...msg, content: '[Encrypted - missing recipient key]' }
+    if (!otherPubKey) return { ...msg, content: '[Encrypted - missing sender key]' }
     try {
       const decrypted = decryptDM(parsed, otherPubKey, secKey)
       return { ...msg, content: decrypted }
@@ -85,6 +85,15 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
       return { ...msg, content: '[Encrypted - unable to decrypt]' }
     }
   }, [dmChannels])
+
+  const resolveRecipientPublicKey = useCallback(async (dm: DMChannelData | undefined): Promise<string | null> => {
+    if (!dm || !session) return null
+    try {
+      const freshKey = await getUserPublicKey(session.url, session.token, dm.other_user_id)
+      if (freshKey) return freshKey
+    } catch { /* fall through to cached key */ }
+    return dm.other_public_key ?? null
+  }, [session])
 
   const activeChannel = channels.find((c) => c.id === activeChannelId)
   const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
@@ -150,6 +159,18 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
       return () => { socketRef.current?.emit('channel:leave', activeDMChannelId) }
     }
   }, [activeDMChannelId, tryDecryptDM])
+
+  useEffect(() => {
+    if (!activeDMChannelId) return
+    const store = useChatStore.getState()
+    const msgs = store.messages[activeDMChannelId]
+    if (!msgs || msgs.length === 0) return
+    const decrypted = msgs.map((m) => tryDecryptDM(m))
+    const needsUpdate = decrypted.some((d, i) => d.content !== msgs[i].content)
+    if (needsUpdate) {
+      store.setMessages(activeDMChannelId, decrypted)
+    }
+  }, [dmChannels, tryDecryptDM, activeDMChannelId])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -227,7 +248,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
         setPendingAttachmentId(null)
       } else if (activeDMChannelId) {
         const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
-        const otherPubKey = activeDM?.other_public_key
+        const otherPubKey = await resolveRecipientPublicKey(activeDM)
         const secKey = getSecretKey()
         let content: string
         let encrypted = false
@@ -291,7 +312,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
         )
       } else if (activeDMChannelId) {
         const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
-        const otherPubKey = activeDM?.other_public_key
+        const otherPubKey = await resolveRecipientPublicKey(activeDM)
         const secKey = getSecretKey()
         const finalText = text ? text + '\n' + attachmentText : attachmentText
         let content: string
@@ -347,7 +368,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     try {
       if (activeDMChannelId) {
         const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
-        const otherPubKey = activeDM?.other_public_key
+        const otherPubKey = await resolveRecipientPublicKey(activeDM)
         const secKey = getSecretKey()
         let sendContent = content
         let encrypted = false

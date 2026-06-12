@@ -269,8 +269,8 @@ fn voice_set_muted(muted: bool) -> Result<(), String> {
 
 #[tauri::command]
 fn voice_update_bitrate(voice_bitrate_kbps: u64) -> Result<(), String> {
-    let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if let Some(ref controller) = *guard {
+    let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref mut controller) = *guard {
         controller.update_bitrate(voice_bitrate_kbps);
         Ok(())
     } else {

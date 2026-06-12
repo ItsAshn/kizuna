@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -264,8 +264,12 @@ impl AudioEncoder {
             .map_err(|e| format!("Failed to enable Opus DTX: {e}"))?;
 
         encoder
-            .set_complexity(9)
+            .set_complexity(10)
             .map_err(|e| format!("Failed to set Opus complexity: {e}"))?;
+
+        encoder
+            .set_packet_loss_perc(5)
+            .map_err(|e| format!("Failed to set Opus packet loss perc: {e}"))?;
 
         encoder
             .set_signal(opus2::Signal::Voice)
@@ -308,6 +312,7 @@ pub struct AudioSendSession {
     handle: Option<tokio::task::JoinHandle<()>>,
     _stream: Option<cpal::Stream>,
     processor: Arc<tokio::sync::Mutex<AudioProcessor>>,
+    desired_bitrate: Arc<AtomicU32>,
 }
 
 impl AudioSendSession {
@@ -318,14 +323,17 @@ impl AudioSendSession {
         cpal_stream: cpal::Stream,
         speaking_tx: tokio::sync::mpsc::UnboundedSender<bool>,
         processor: AudioProcessor,
+        initial_bitrate_bps: u32,
     ) -> Self {
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_clone = cancel.clone();
         let processor = Arc::new(tokio::sync::Mutex::new(processor));
         let processor_clone = processor.clone();
+        let desired_bitrate = Arc::new(AtomicU32::new(initial_bitrate_bps));
+        let desired_bitrate_clone = desired_bitrate.clone();
 
         let handle = tokio::spawn(async move {
-            let _ = run_audio_send(encoder, track, pcm_rx, cancel_clone, speaking_tx, processor_clone).await;
+            let _ = run_audio_send(encoder, track, pcm_rx, cancel_clone, speaking_tx, processor_clone, desired_bitrate_clone).await;
         });
 
         Self {
@@ -333,11 +341,16 @@ impl AudioSendSession {
             handle: Some(handle),
             _stream: Some(cpal_stream),
             processor,
+            desired_bitrate,
         }
     }
 
     pub fn processor(&self) -> Arc<tokio::sync::Mutex<AudioProcessor>> {
         self.processor.clone()
+    }
+
+    pub fn update_bitrate(&self, bitrate_bps: u32) {
+        self.desired_bitrate.store(bitrate_bps, Ordering::SeqCst);
     }
 
     pub fn stop(&mut self) {
@@ -354,6 +367,7 @@ async fn run_audio_send(
     cancel: Arc<AtomicBool>,
     speaking_tx: tokio::sync::mpsc::UnboundedSender<bool>,
     processor: Arc<tokio::sync::Mutex<AudioProcessor>>,
+    desired_bitrate: Arc<AtomicU32>,
 ) -> Result<(), String> {
     let frame_duration =
         Duration::from_secs_f64(encoder.frame_size_samples() as f64 / encoder.sample_rate() as f64);
@@ -365,6 +379,7 @@ async fn run_audio_send(
     let mut silence_frames = 0u32;
     let hold_frames = 30u32; // ~600ms at 20ms frames
     let threshold = 0.01f32; // RMS threshold for speaking
+    let mut last_bitrate = desired_bitrate.load(Ordering::SeqCst);
 
     loop {
         if cancel.load(Ordering::SeqCst) {
@@ -399,6 +414,16 @@ async fn run_audio_send(
                         if silence_frames >= hold_frames {
                             is_speaking = false;
                             let _ = speaking_tx.send(false);
+                        }
+                    }
+
+                    let current_bitrate = desired_bitrate.load(Ordering::SeqCst);
+                    if current_bitrate != last_bitrate {
+                        if let Err(e) = encoder.update_bitrate(current_bitrate) {
+                            eprintln!("[AudioSend] Failed to update bitrate to {current_bitrate}: {e}");
+                        } else {
+                            eprintln!("[AudioSend] Bitrate updated: {last_bitrate} -> {current_bitrate} bps");
+                            last_bitrate = current_bitrate;
                         }
                     }
 

@@ -1230,7 +1230,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     vlog('browserMic', `AudioContext created | state=${audioCtx.state} | sampleRate=${audioCtx.sampleRate}`)
     const source = audioCtx.createMediaStreamSource(stream)
     const gainNode = audioCtx.createGain()
-    gainNode.gain.value = inputVolume / 100
+    gainNode.gain.value = Math.min(1.0, Math.max(0, inputVolume / 100))
     gainNodeRef.current = gainNode
     const destination = audioCtx.createMediaStreamDestination()
 
@@ -1328,7 +1328,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     vlog('nativeMic', `ScriptProcessorNode created | bufferSize=${SCRIPT_PROCESSOR_BUFFER_SIZE}`)
 
     const gainNode = audioCtx.createGain()
-    gainNode.gain.value = inputVolume / 100
+    gainNode.gain.value = Math.min(1.0, Math.max(0, inputVolume / 100))
     gainNodeRef.current = gainNode
 
     const destination = audioCtx.createMediaStreamDestination()
@@ -1566,13 +1566,13 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       if (state.inputVolume !== prevInputVolume) {
         prevInputVolume = state.inputVolume
         if (gainNodeRef.current) {
-          gainNodeRef.current.gain.value = state.inputVolume / 100
+          gainNodeRef.current.gain.value = Math.min(1.0, Math.max(0, state.inputVolume / 100))
         }
       }
       if (state.outputVolume !== prevOutputVolume) {
         prevOutputVolume = state.outputVolume
         audioElemsRef.current.forEach((el) => {
-          el.volume = state.outputVolume / 100
+          el.volume = Math.min(1.0, Math.max(0, state.outputVolume / 100))
         })
       }
     })

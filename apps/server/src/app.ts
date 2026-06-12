@@ -36,7 +36,7 @@ export function createApp(httpPort: number) {
 
   app.use('*', async (c, next) => {
     const path = new URL(c.req.url).pathname
-    if (path.startsWith('/api/attachments/') || path === '/api/server/background' || path === '/api/gifs/pack' || path === '/api/gifs/sticker-pack') {
+    if (path.startsWith('/api/attachments/') || path === '/api/server/background' || path === '/api/gifs/upload' || path === '/api/gifs/pack' || path === '/api/gifs/sticker-pack') {
       return next()
     }
     const contentLength = parseInt(c.req.header('content-length') || '0', 10)

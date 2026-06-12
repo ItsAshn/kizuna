@@ -9,6 +9,23 @@ import { getSecretKey } from '../store/keyStore'
 import type { Message, Channel, DMChannelData, UserStatus, MessageReaction, Member } from '@kizuna/shared'
 import { showNotification } from '../utils/showNotification'
 
+function tryDecryptSocketDM(message: Message): Message {
+  if (!message.encrypted) return message
+  const parsed = isEncryptedContent(message.content)
+  if (!parsed) return message
+  const secKey = getSecretKey()
+  if (!secKey) return { ...message, content: '[Encrypted - no key available]' }
+  const dm = useChatStore.getState().dmChannels.find((d) => d.id === message.channel_id)
+  const otherPubKey = dm?.other_public_key
+  if (!otherPubKey) return { ...message, content: '[Encrypted - missing sender key]' }
+  try {
+    const decrypted = decryptDM(parsed, otherPubKey, secKey)
+    return { ...message, content: decrypted }
+  } catch {
+    return { ...message, content: '[Encrypted - unable to decrypt]' }
+  }
+}
+
 export function useSocket(): MutableRefObject<Socket | null> {
   const socketRef = useRef<Socket | null>(null)
   const session = useServerStore((s) => s.activeSession)
@@ -67,22 +84,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     socket.on('dm:received', (message: Message) => {
       const store = useChatStore.getState()
-      let decrypted = message
-      if (message.encrypted) {
-        const parsed = isEncryptedContent(message.content)
-        if (parsed) {
-          const secKey = getSecretKey()
-          if (secKey) {
-            const dm = store.dmChannels.find((d: DMChannelData) => d.id === message.channel_id)
-            const otherPubKey = dm?.other_public_key
-            if (otherPubKey) {
-              try {
-                decrypted = { ...message, content: decryptDM(parsed, otherPubKey, secKey) }
-              } catch { /* leave as-is on failure */ }
-            }
-          }
-        }
-      }
+      const decrypted = tryDecryptSocketDM(message)
       store.addMessage(message.channel_id, decrypted)
       if (message.channel_id !== store.activeDMChannelId) {
         store.setUnreadCounts({
@@ -94,22 +96,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     socket.on('dm:edit', (message: Message) => {
       const store = useChatStore.getState()
-      let decrypted = message
-      if (message.encrypted) {
-        const parsed = isEncryptedContent(message.content)
-        if (parsed) {
-          const secKey = getSecretKey()
-          if (secKey) {
-            const dm = store.dmChannels.find((d: DMChannelData) => d.id === message.channel_id)
-            const otherPubKey = dm?.other_public_key
-            if (otherPubKey) {
-              try {
-                decrypted = { ...message, content: decryptDM(parsed, otherPubKey, secKey) }
-              } catch { /* leave as-is on failure */ }
-            }
-          }
-        }
-      }
+      const decrypted = tryDecryptSocketDM(message)
       const channelMessages = store.messages[message.channel_id] || []
       const updated = channelMessages.map((m) => (m.id === message.id ? decrypted : m))
       store.setMessages(message.channel_id, updated)

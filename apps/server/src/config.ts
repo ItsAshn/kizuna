@@ -25,7 +25,7 @@ const envSchema = z.object({
   UPLOADS_DIR: z.string().optional().default(''),
   GIFS_DIR: z.string().optional().default(''),
   MAX_FILE_SIZE: z.coerce.number().int().positive().default(10485760),
-  MAX_GIF_SIZE: z.coerce.number().int().positive().default(15728640),
+  MAX_GIF_SIZE: z.coerce.number().int().positive().default(52428800),
   MAX_PACK_SIZE: z.coerce.number().int().positive().default(15728640),
   MAX_BODY_SIZE: z.coerce.number().int().positive().default(1048576),
 })

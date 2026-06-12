@@ -27,7 +27,10 @@ pub struct ActiveCall {
 impl ActiveCall {
     pub async fn update_bitrate(&mut self, voice_bitrate_kbps: u64) {
         self.voice_bitrate_kbps = voice_bitrate_kbps;
-        // Bitrate update is handled separately via the encoder
+        let bitrate_bps = (voice_bitrate_kbps * 1000) as u32;
+        if let Some(ref audio_send) = self.audio_send {
+            audio_send.update_bitrate(bitrate_bps);
+        }
     }
 
     pub async fn set_gate_threshold(&self, threshold_db: f32) {
@@ -255,6 +258,7 @@ impl VoiceController {
             stream,
             speaking_tx,
             processor,
+            bitrate_bps,
         );
 
         call.processor = Some(audio_send.processor());
@@ -287,8 +291,13 @@ impl VoiceController {
         }
     }
 
-    pub fn update_bitrate(&self, voice_bitrate_kbps: u64) {
-        if let Some(ref _call) = self.active_call {
+    pub fn update_bitrate(&mut self, voice_bitrate_kbps: u64) {
+        if let Some(ref mut call) = self.active_call {
+            call.voice_bitrate_kbps = voice_bitrate_kbps;
+            let bitrate_bps = (voice_bitrate_kbps * 1000) as u32;
+            if let Some(ref audio_send) = call.audio_send {
+                audio_send.update_bitrate(bitrate_bps);
+            }
             eprintln!("[VoiceNative] update_bitrate: {voice_bitrate_kbps}kbps");
         }
     }

@@ -13,7 +13,7 @@ const gifRoutes = new Hono()
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
 const GIFS_DIR = process.env.GIFS_DIR || path.join(UPLOADS_DIR, 'gifs')
-const MAX_GIF_SIZE = parseInt(process.env.MAX_GIF_SIZE || '15728640', 10)
+const MAX_GIF_SIZE = parseInt(process.env.MAX_GIF_SIZE || '52428800', 10)
 const MAX_PACK_SIZE = parseInt(process.env.MAX_PACK_SIZE || '15728640', 10) // 15 MB
 
 const ALLOWED_GIF_EXTS = ['.gif']
