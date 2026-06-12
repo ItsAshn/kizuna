@@ -13,6 +13,7 @@ const gifRoutes = new Hono()
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
 const GIFS_DIR = process.env.GIFS_DIR || path.join(UPLOADS_DIR, 'gifs')
 const MAX_GIF_SIZE = parseInt(process.env.MAX_GIF_SIZE || '5242880', 10)
+const MAX_PACK_SIZE = parseInt(process.env.MAX_PACK_SIZE || '15728640', 10) // 15 MB
 
 const ALLOWED_GIF_EXTS = ['.gif']
 const ALLOWED_STICKER_EXTS = ['.gif', '.png', '.webp']
@@ -182,6 +183,11 @@ gifRoutes.post('/pack', authMiddleware, async (c) => {
   const user = getAuth(c)
   if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
+  const contentLength = parseInt(c.req.header('content-length') || '0', 10)
+  if (contentLength > MAX_PACK_SIZE) {
+    return c.json({ error: `Pack too large. Maximum size is ${MAX_PACK_SIZE} bytes` }, 413)
+  }
+
   const formData = await c.req.formData()
   const file = formData.get('file') as File | null
   if (!file) return c.json({ error: 'No file provided' }, 400)
@@ -248,6 +254,11 @@ gifRoutes.post('/pack', authMiddleware, async (c) => {
 gifRoutes.post('/sticker-pack', authMiddleware, async (c) => {
   const user = getAuth(c)
   if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+
+  const contentLength = parseInt(c.req.header('content-length') || '0', 10)
+  if (contentLength > MAX_PACK_SIZE) {
+    return c.json({ error: `Pack too large. Maximum size is ${MAX_PACK_SIZE} bytes` }, 413)
+  }
 
   const formData = await c.req.formData()
   const file = formData.get('file') as File | null
