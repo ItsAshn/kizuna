@@ -13,8 +13,6 @@ const REMOTE_SPEAKING_THRESHOLD = 15
 const QUALITY_POLL_MS = 3000
 const RECONNECT_DELAY_MS = 1000
 const MAX_RECONNECT_ATTEMPTS = 5
-const PCM_BUFFER_MAX_CHUNKS = 100
-const SCRIPT_PROCESSOR_BUFFER_SIZE = 480
 const AUDIO_SAMPLE_RATE = 48000
 
 let __voiceSeq = 0
@@ -37,12 +35,6 @@ function vlog(tag: string, msg: string, data?: unknown) {
 function verr(tag: string, msg: string, err?: unknown) {
   const detail = err instanceof Error ? `${err.message} (${err.name})` : String(err ?? '')
   voiceLog('err', tag, msg, ` | ${detail}`)
-}
-
-interface AudioDataPayload {
-  samples_f32: number[]
-  sample_rate: number
-  channels: number
 }
 
 function isTauri(): boolean {
@@ -290,9 +282,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const micStreamRef = useRef<MediaStream | null>(null)
   const pttCleanupRef = useRef<(() => void) | null>(null)
   const pttPressedRef = useRef<boolean>(false)
-  const nativeAudioUnlistenRef = useRef<(() => void) | null>(null)
-  const scriptNodeRef = useRef<ScriptProcessorNode | null>(null)
-  const pcmRingBufferRef = useRef<Float32Array[]>([])
   const serverBitrateRef = useRef<number>(64)
   const iceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -331,23 +320,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     remoteSpeakingCleanupsRef.current.forEach((cleanup) => cleanup())
     remoteSpeakingCleanupsRef.current.clear()
 
-    nativeAudioUnlistenRef.current?.()
-    nativeAudioUnlistenRef.current = null
     nativeVoiceUnlistenRef.current?.()
     nativeVoiceUnlistenRef.current = null
     nativeRemoteAudioUnlistenRef.current?.()
     nativeRemoteAudioUnlistenRef.current = null
-
-    if (isTauri()) {
-      vlog('cleanup', 'stopping native audio capture')
-      import('@tauri-apps/api/core').then(({ invoke }) =>
-        invoke('stop_audio_capture').then(() => vlog('cleanup', 'stop_audio_capture OK')).catch((e) => verr('cleanup', 'stop_audio_capture failed', e))
-      )
-    }
-
-    scriptNodeRef.current?.disconnect()
-    scriptNodeRef.current = null
-    pcmRingBufferRef.current = []
 
     if (iceTimerRef.current) {
       clearTimeout(iceTimerRef.current)
@@ -518,6 +494,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const nativeSpeakingUnlistenRef = useRef<(() => void) | null>(null)
   const nativeAudioCtxRef = useRef<AudioContext | null>(null)
   const nativeAudioNextTimeRef = useRef<number>(0)
+  const nativeJitterBufferRef = useRef<{ samples: number[]; sampleRate: number }[]>([])
+  const nativeJitterReadyRef = useRef(false)
   const nativeInitializedRef = useRef(false)
   const nativePeerHandlersRef = useRef<boolean>(false)
 
@@ -598,32 +576,44 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
           const { samples, sampleRate } = event.payload
           if (!samples || samples.length === 0) return
 
-          if (!nativeAudioCtxRef.current) {
+          const audioCtx = nativeAudioCtxRef.current
+          if (!audioCtx) {
             nativeAudioCtxRef.current = new AudioContext()
             nativeAudioNextTimeRef.current = 0
+            nativeJitterBufferRef.current = []
+            nativeJitterReadyRef.current = false
+            return
           }
 
-          const audioCtx = nativeAudioCtxRef.current!
-          const sampleCount = samples.length
-          const dataSampleRate = sampleRate || 48000
+          // Jitter buffer: accumulate up to 3 frames (60ms) before starting playback
+          nativeJitterBufferRef.current.push({ samples, sampleRate: sampleRate || 48000 })
 
-          // Create buffer at the data's sample rate; Web Audio API
-          // automatically resamples to the context's rate on playback.
-          const buffer = audioCtx.createBuffer(1, sampleCount, dataSampleRate)
-          buffer.copyToChannel(new Float32Array(samples), 0)
-
-          const source = audioCtx.createBufferSource()
-          source.buffer = buffer
-          source.connect(audioCtx.destination)
-
-          let startTime = nativeAudioNextTimeRef.current
-          const now = audioCtx.currentTime
-          if (startTime < now) {
-            startTime = now
+          if (!nativeJitterReadyRef.current) {
+            if (nativeJitterBufferRef.current.length < 3) return
+            nativeJitterReadyRef.current = true
           }
-          source.start(startTime)
 
-          nativeAudioNextTimeRef.current = startTime + sampleCount / dataSampleRate
+          // Drain buffered frames into scheduling queue
+          while (nativeJitterBufferRef.current.length > 0) {
+            const frame = nativeJitterBufferRef.current.shift()!
+            const sampleCount = frame.samples.length
+            const dataSampleRate = frame.sampleRate || 48000
+
+            const buffer = audioCtx.createBuffer(1, sampleCount, dataSampleRate)
+            buffer.copyToChannel(new Float32Array(frame.samples), 0)
+
+            const source = audioCtx.createBufferSource()
+            source.buffer = buffer
+            source.connect(audioCtx.destination)
+
+            let startTime = nativeAudioNextTimeRef.current
+            const now = audioCtx.currentTime
+            if (startTime < now) {
+              startTime = now
+            }
+            source.start(startTime)
+            nativeAudioNextTimeRef.current = startTime + sampleCount / dataSampleRate
+          }
         }).then((unlisten) => {
           nativeRemoteAudioUnlistenRef.current = unlisten
         }),
@@ -725,9 +715,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       // Enable Socket.IO RTP forwarding as fallback for broken recv DTLS
       socket!.emit('voice:enableSocketRtp')
       vlog('joinVoiceNative', 'enabled socket RTP forwarding')
-      socket?.on('voice:socketRtp', async (data: { peerId: string; payload: number[] }) => {
+      socket?.on('voice:socketRtp', async (payload: ArrayBuffer, peerId: string) => {
         const { invoke: inv } = await import('@tauri-apps/api/core')
-        inv('voice_inject_opus', { peerId: data.peerId, opusData: data.payload }).catch(() => {})
+        inv('voice_inject_opus', { peerId, opusData: Array.from(new Uint8Array(payload)) }).catch(() => {})
       })
 
       const iceServers = joinResult.iceServers || []
@@ -864,6 +854,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     nativeSpeakingUnlistenRef.current = null
     nativeAudioCtxRef.current?.close()
     nativeAudioCtxRef.current = null
+    nativeJitterBufferRef.current = []
+    nativeJitterReadyRef.current = false
     channelIdRef.current = null
     setVoicePeers([])
     setIsSpeaking(false)
@@ -1128,13 +1120,8 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     })
 
     try {
-      if (isTauri()) {
-        vlog('mic', 'taking NATIVE microphone path')
-        await setupNativeMicrophone(socket, channelId, sendTransport, voiceBitrateKbps)
-      } else {
-        vlog('mic', 'taking BROWSER microphone path')
-        await setupBrowserMicrophone(socket, channelId, sendTransport, voiceBitrateKbps)
-      }
+      vlog('mic', 'taking BROWSER microphone path')
+      await setupBrowserMicrophone(socket, channelId, sendTransport, voiceBitrateKbps)
       vlog('joinVoice', 'microphone setup complete - voice joined successfully')
     } catch (err: any) {
       verr('joinVoice', `microphone setup FAILED (isTauri=${isTauri()})`, err)
@@ -1308,173 +1295,6 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       inputVolume, voiceInputMode,
       setLiveAudioLevel, setIsSpeaking, pushToTalkKey, setAudioInputDeviceId])
 
-  const setupNativeMicrophone = useCallback(async (
-    socket: Socket,
-    channelId: string,
-    sendTransport: Transport,
-    bitrateKbps: number,
-  ) => {
-    vlog('nativeMic', `starting | inputDeviceId=${audioInputDeviceId} | inputVolume=${inputVolume} | bitrate=${bitrateKbps}`)
-    const [{ invoke }, { listen }] = await Promise.all([
-      import('@tauri-apps/api/core'),
-      import('@tauri-apps/api/event'),
-    ])
-    vlog('nativeMic', 'Tauri API modules imported')
-
-    const audioCtx = new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE })
-    audioCtxRef.current = audioCtx
-    vlog('nativeMic', `AudioContext created | state=${audioCtx.state} | sampleRate=${audioCtx.sampleRate}`)
-
-    if (audioCtx.state === 'suspended') {
-      vlog('nativeMic', 'AudioContext is suspended - attempting resume')
-      try {
-        await audioCtx.resume()
-        vlog('nativeMic', `AudioContext resumed -> state=${audioCtx.state}`)
-      } catch (e) {
-        verr('nativeMic', 'AudioContext resume failed', e)
-      }
-    }
-
-    const scriptNode = audioCtx.createScriptProcessor(
-      SCRIPT_PROCESSOR_BUFFER_SIZE, 1, 1
-    )
-    scriptNodeRef.current = scriptNode
-    vlog('nativeMic', `ScriptProcessorNode created | bufferSize=${SCRIPT_PROCESSOR_BUFFER_SIZE}`)
-
-    const gainNode = audioCtx.createGain()
-    gainNode.gain.value = Math.min(1.0, Math.max(0, inputVolume / 100))
-    gainNodeRef.current = gainNode
-
-    const destination = audioCtx.createMediaStreamDestination()
-    scriptNode.connect(gainNode)
-    gainNode.connect(destination)
-    vlog('nativeMic', 'audio graph: scriptNode -> gainNode -> destination connected')
-    vlog('nativeMic', `destination stream tracks=${destination.stream.getAudioTracks().length}`)
-
-    const pcmBuffer: Float32Array[] = []
-    let pcmOffset = 0
-    pcmRingBufferRef.current = pcmBuffer
-
-    let scriptFired = false
-    let scriptFireCount = 0
-    scriptNode.onaudioprocess = (e) => {
-      if (!scriptFired) {
-        scriptFired = true
-        vlog('nativeMic', 'onaudioprocess first fire!')
-      }
-      scriptFireCount++
-      if (scriptFireCount % 100 === 0) {
-        vlog('nativeMic', `onaudioprocess fired ${scriptFireCount} times | pcmBuffer.length=${pcmBuffer.length} | offset=${pcmOffset}`)
-      }
-      const output = e.outputBuffer.getChannelData(0)
-      const needed = output.length
-      let written = 0
-
-      while (written < needed && pcmBuffer.length > 0) {
-        const chunk = pcmBuffer[0]
-        const remaining = chunk.length - pcmOffset
-        const toCopy = Math.min(needed - written, remaining)
-        output.set(chunk.subarray(pcmOffset, pcmOffset + toCopy), written)
-        written += toCopy
-        pcmOffset += toCopy
-        if (pcmOffset >= chunk.length) {
-          pcmBuffer.shift()
-          pcmOffset = 0
-        }
-      }
-
-      if (written < needed) {
-        output.fill(0, written)
-      }
-    }
-
-    let audioDataCount = 0
-    let audioDataFirstTs = 0
-    const unlisten = await listen<AudioDataPayload>('audio:data', (event) => {
-      audioDataCount++
-      if (audioDataCount === 1) {
-        audioDataFirstTs = Date.now()
-        vlog('nativeMic', `first audio:data received | sampleRate=${event.payload.sample_rate} | channels=${event.payload.channels} | bufferLen=${event.payload.samples_f32.length}`)
-      } else if (audioDataCount % 200 === 0) {
-        const elapsed = (Date.now() - audioDataFirstTs) / 1000
-        const rate = audioDataCount / elapsed
-        vlog('nativeMic', `audio:data #${audioDataCount} | rate=${rate.toFixed(1)}/s | bufferLen=${event.payload.samples_f32.length} | buffer queue=${pcmBuffer.length}`)
-      }
-      const samples = new Float32Array(event.payload.samples_f32)
-      pcmBuffer.push(samples)
-      while (pcmBuffer.length > PCM_BUFFER_MAX_CHUNKS) {
-        pcmBuffer.shift()
-        if (pcmOffset > 0) pcmOffset = 0
-      }
-    })
-    nativeAudioUnlistenRef.current = unlisten
-    vlog('nativeMic', 'audio:data listener registered')
-
-    vlog('nativeMic', `invoking start_audio_capture | deviceId=${audioInputDeviceId} | sampleRate=${AUDIO_SAMPLE_RATE} | channels=1`)
-    try {
-      await invoke('start_audio_capture', {
-        deviceName: audioInputDeviceId ?? null,
-        sampleRate: AUDIO_SAMPLE_RATE,
-        channels: 1,
-      })
-      vlog('nativeMic', 'start_audio_capture OK')
-    } catch (e) {
-      if (audioInputDeviceId) {
-        verr('nativeMic', `start_audio_capture failed with device ${audioInputDeviceId}, retrying without device constraint`, e)
-        setAudioInputDeviceId(null)
-        try {
-          await invoke('start_audio_capture', {
-            deviceName: null,
-            sampleRate: AUDIO_SAMPLE_RATE,
-            channels: 1,
-          })
-          vlog('nativeMic', 'start_audio_capture OK (default device)')
-        } catch (e2) {
-          verr('nativeMic', 'start_audio_capture failed with default device', e2)
-          throw e2
-        }
-      } else {
-        verr('nativeMic', 'start_audio_capture failed', e)
-        throw e
-      }
-    }
-
-    vlog('nativeMic', `creating producer | sampleRate=${AUDIO_SAMPLE_RATE} | bitrate=${bitrateKbps * 1000}`)
-    const processedTrack = destination.stream.getAudioTracks()[0]
-    vlog('nativeMic', `track info | kind=${processedTrack.kind} | label=${processedTrack.label} | readyState=${processedTrack.readyState} | enabled=${processedTrack.enabled}`)
-
-    const producer = await sendTransport.produce({
-      track: processedTrack,
-      encodings: [{ maxBitrate: bitrateKbps * 1000 }],
-      codecOptions: {
-        opusStereo: false,
-        opusDtx: true,
-        opusFec: true,
-        opusMaxAverageBitrate: bitrateKbps * 1000,
-        opusMaxPlaybackRate: 48000,
-      },
-    })
-    producerRef.current = producer
-    vlog('nativeMic', `producer created | id=${producer.id} | kind=${producer.kind} | paused=${producer.paused} | closed=${producer.closed}`)
-
-    vlog('nativeMic', `starting native speaking detection | inputMode=${voiceInputMode}`)
-
-    localSpeakingCleanupRef.current?.()
-    localSpeakingCleanupRef.current = startNativeSpeakingDetection(
-      pcmBuffer,
-      (speaking) => {
-        if (voiceInputMode === 'push-to-talk') return
-        setIsSpeaking(speaking)
-        socket.emit('voice:speaking', { channelId, speaking })
-      },
-      (level) => setLiveAudioLevel(level),
-    )
-
-    if (voiceInputMode === 'push-to-talk') {
-      setupPushToTalk(socket, channelId, producer)
-    }
-  }, [audioInputDeviceId, inputVolume,
-      voiceInputMode, setLiveAudioLevel, setIsSpeaking, pushToTalkKey])
 
   const setupPushToTalk = useCallback((
     socket: Socket,

@@ -4,13 +4,12 @@ mod voice;
 
 use std::sync::Mutex;
 
-use capture::audio::AudioCaptureSession;
-use capture::audio::AudioDeviceInfo;
 use capture::{CaptureSession, MonitorInfo, SessionType};
+use voice::device::AudioDeviceInfo;
+use voice::rnnoise::NoiseSuppressionMode;
 use voice::VoiceController;
 
 static CAPTURE_SESSION: Mutex<Option<CaptureSession>> = Mutex::new(None);
-static AUDIO_SESSION: Mutex<Option<AudioCaptureSession>> = Mutex::new(None);
 static SESSION_TYPE: Mutex<Option<SessionType>> = Mutex::new(None);
 static VOICE_CONTROLLER: Mutex<Option<VoiceController>> = Mutex::new(None);
 static VOICE_DECODER: Mutex<Option<opus2::Decoder>> = Mutex::new(None);
@@ -76,48 +75,12 @@ fn stop_screen_capture() -> Result<(), String> {
 
 #[tauri::command]
 fn list_audio_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
-    capture::audio::list_input_devices()
+    voice::device::list_input_devices()
 }
 
 #[tauri::command]
 fn list_audio_output_devices() -> Result<Vec<AudioDeviceInfo>, String> {
-    capture::audio::list_output_devices()
-}
-
-#[tauri::command]
-fn start_audio_capture(
-    app: tauri::AppHandle,
-    device_name: Option<String>,
-    sample_rate: u32,
-    channels: u16,
-) -> Result<(), String> {
-    let mut session_guard =
-        AUDIO_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if session_guard.is_some() {
-        return Err("An audio capture session is already active".into());
-    }
-
-    let session = capture::audio::start_capture(
-        app,
-        device_name,
-        sample_rate,
-        channels,
-    )?;
-
-    *session_guard = Some(session);
-    Ok(())
-}
-
-#[tauri::command]
-fn stop_audio_capture() -> Result<(), String> {
-    let mut session_guard =
-        AUDIO_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if let Some(mut session) = session_guard.take() {
-        session.stop();
-        Ok(())
-    } else {
-        Err("No active audio capture session".into())
-    }
+    voice::device::list_output_devices()
 }
 
 #[tauri::command]
@@ -202,6 +165,23 @@ fn voice_set_noise_suppression(enabled: bool) -> Result<(), String> {
     let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
     if let Some(ref controller) = *guard {
         tauri::async_runtime::block_on(controller.set_noise_suppression(enabled));
+        Ok(())
+    } else {
+        Err("Voice not initialized".into())
+    }
+}
+
+#[tauri::command]
+fn voice_set_suppression_mode(mode: String) -> Result<(), String> {
+    let ns_mode = match mode.as_str() {
+        "off" => NoiseSuppressionMode::Off,
+        "spectral" => NoiseSuppressionMode::Spectral,
+        "rnnoise" => NoiseSuppressionMode::Rnnoise,
+        _ => return Err(format!("Unknown suppression mode: {mode}")),
+    };
+    let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref controller) = *guard {
+        tauri::async_runtime::block_on(controller.set_suppression_mode(ns_mode));
         Ok(())
     } else {
         Err("Voice not initialized".into())
@@ -311,8 +291,14 @@ fn voice_drain_signals() -> Result<Vec<(String, serde_json::Value)>, String> {
 
 #[tauri::command]
 fn voice_set_muted(muted: bool) -> Result<(), String> {
-    eprintln!("[Voice] voice_set_muted: muted={muted}");
-    Ok(())
+    let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref controller) = *guard {
+        tauri::async_runtime::block_on(controller.set_muted(muted));
+        eprintln!("[Voice] voice_set_muted: muted={muted}");
+        Ok(())
+    } else {
+        Err("Voice not initialized".into())
+    }
 }
 
 #[tauri::command]
@@ -372,8 +358,6 @@ pub fn run() {
             stop_screen_capture,
             list_audio_input_devices,
             list_audio_output_devices,
-            start_audio_capture,
-            stop_audio_capture,
             get_environment,
             voice_init,
             voice_begin,
@@ -387,6 +371,7 @@ pub fn run() {
             voice_update_bitrate,
             voice_set_gate,
             voice_set_noise_suppression,
+            voice_set_suppression_mode,
             voice_set_suppression_strength,
             voice_set_auto_gain,
             voice_screen_share_start,

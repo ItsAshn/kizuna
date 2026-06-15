@@ -331,7 +331,7 @@ fn open_device(
                 let pcm_tx = pcm_tx.clone();
                 move |data: &[i16], _info| {
                     if cancel.load(Ordering::Relaxed) { return; }
-                    let f32_samples: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
+                    let f32_samples: Vec<f32> = data.iter().map(|&s| s as f32 / 32767.0).collect();
                     let _ = pcm_tx.send(f32_samples);
                 }
             },

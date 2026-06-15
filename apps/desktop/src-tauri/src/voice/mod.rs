@@ -2,6 +2,8 @@ mod signaling;
 pub mod transport;
 pub mod encode;
 pub mod dsp;
+pub mod rnnoise;
+pub mod device;
 
 use serde::Serialize;
 

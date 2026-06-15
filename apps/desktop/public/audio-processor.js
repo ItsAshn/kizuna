@@ -27,16 +27,18 @@ class AudioProcessorWorklet extends AudioWorkletProcessor {
     this.specReleaseCoeff = Math.exp(-1 / (0.100 * sampleRate));
     this.noiseLearnCoeff = Math.exp(-1 / (1.5 * sampleRate));
 
-    // Biquad filter states for band splitting
     this.bandFilters = this._createCrossoverFilters();
 
     // Auto gain control state
     this.agcGain = 1.0;
+    this.agcAvgRms = 0;
     this.agcTargetRms = Math.pow(10, -12 / 20); // -12dBFS
-    this.agcMaxGain = Math.pow(10, 6 / 20); // +6dB
+    this.agcMaxGain = Math.pow(10, 12 / 20); // +12dB
     this.agcMaxAtten = Math.pow(10, -12 / 20); // -12dB
-    this.agcAttackCoeff = Math.exp(-1 / (0.100 * sampleRate)); // 100ms
-    this.agcReleaseCoeff = Math.exp(-1 / (0.500 * sampleRate)); // 500ms
+    this.agcAttackCoeff = Math.exp(-1 / (0.050 * sampleRate)); // 50ms
+    this.agcReleaseCoeff = Math.exp(-1 / (0.400 * sampleRate)); // 400ms
+    this.agcRmsCoeff = Math.exp(-1 / (0.050 * sampleRate)); // 50ms EMA
+    this.agcGateThreshold = Math.pow(10, -36 / 20); // -36dB gate
   }
 
   _createCrossoverFilters() {
@@ -51,8 +53,8 @@ class AudioProcessorWorklet extends AudioWorkletProcessor {
       filters.push({
         hp: this._makeHighPass(sr, low),
         lp: this._makeLowPass(sr, high),
-        hpZ1: 0, hpZ2: 0,
-        lpZ1: 0, lpZ2: 0,
+        hpS0: 0, hpS1: 0,
+        lpS0: 0, lpS1: 0,
       });
     }
     return filters;
@@ -90,11 +92,12 @@ class AudioProcessorWorklet extends AudioWorkletProcessor {
     };
   }
 
-  _processBiquad(filter, sample, z1, z2) {
-    if (!filter) return [sample, z1, z2];
-    const out = filter.b0 * sample + filter.b1 * z1 + filter.b2 * z2
-      - filter.a1 * z1 - filter.a2 * z2;
-    return [out, sample, z1];
+  _processBiquad(filter, sample, s0, s1) {
+    if (!filter) return [sample, s0, s1];
+    const out = filter.b0 * sample + s0;
+    const newS0 = filter.b1 * sample - filter.a1 * out + s1;
+    const newS1 = filter.b2 * sample - filter.a2 * out;
+    return [out, newS0, newS1];
   }
 
   process(inputs, outputs, parameters) {
@@ -146,20 +149,18 @@ class AudioProcessorWorklet extends AudioWorkletProcessor {
             const f = this.bandFilters[b];
             let bandSample = sample;
 
-            // Apply high-pass
             if (f.hp) {
-              const [out, z1, z2] = this._processBiquad(f.hp, bandSample, f.hpZ1, f.hpZ2);
+              const [out, s0, s1] = this._processBiquad(f.hp, bandSample, f.hpS0, f.hpS1);
               bandSample = out;
-              f.hpZ1 = z1;
-              f.hpZ2 = z2;
+              f.hpS0 = s0;
+              f.hpS1 = s1;
             }
 
-            // Apply low-pass
             if (f.lp) {
-              const [out, z1, z2] = this._processBiquad(f.lp, bandSample, f.lpZ1, f.lpZ2);
+              const [out, s0, s1] = this._processBiquad(f.lp, bandSample, f.lpS0, f.lpS1);
               bandSample = out;
-              f.lpZ1 = z1;
-              f.lpZ2 = z2;
+              f.lpS0 = s0;
+              f.lpS1 = s1;
             }
 
             const absSig = Math.abs(bandSample);
@@ -199,12 +200,18 @@ class AudioProcessorWorklet extends AudioWorkletProcessor {
       }
     }
 
-    // ── Auto Gain Control (per-frame) ──
+    // ── Auto Gain Control (with gated EMA metering) ──
     if (agcEnabled && agcSampleCount > 0) {
-      const rms = Math.sqrt(agcRmsAccum / agcSampleCount);
-      const desiredGain = rms < 1e-10
-        ? this.agcMaxGain
-        : Math.max(this.agcMaxAtten, Math.min(this.agcMaxGain, this.agcTargetRms / rms));
+      const frameRms = Math.sqrt(agcRmsAccum / agcSampleCount);
+
+      // Gate metering to prevent gain drift during silence
+      if (frameRms > this.agcGateThreshold || this.agcAvgRms > 0.001) {
+        this.agcAvgRms = this.agcAvgRms * this.agcRmsCoeff + frameRms * (1 - this.agcRmsCoeff);
+      }
+
+      const desiredGain = this.agcAvgRms < 1e-10
+        ? this.agcGain
+        : Math.max(this.agcMaxAtten, Math.min(this.agcMaxGain, this.agcTargetRms / this.agcAvgRms));
 
       const coeff = desiredGain > this.agcGain
         ? this.agcAttackCoeff : this.agcReleaseCoeff;

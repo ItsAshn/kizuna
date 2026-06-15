@@ -1,4 +1,3 @@
-pub mod audio;
 pub mod media;
 #[cfg(target_os = "linux")]
 pub mod wayland;

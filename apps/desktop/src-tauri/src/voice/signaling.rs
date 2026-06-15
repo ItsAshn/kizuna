@@ -9,6 +9,7 @@ use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSampl
 
 use super::dsp::AudioProcessor;
 use super::encode::{self, AudioSendSession};
+use super::rnnoise::NoiseSuppressionMode;
 use super::transport;
 use super::VoiceEvent;
 
@@ -37,10 +38,10 @@ impl ActiveCall {
         }
     }
 
-    pub async fn set_noise_suppression(&self, enabled: bool) {
+    pub async fn set_suppression_mode(&self, mode: NoiseSuppressionMode) {
         if let Some(ref proc) = self.processor {
             let mut p = proc.lock().await;
-            p.set_suppression_enabled(enabled);
+            p.set_suppression_mode(mode);
         }
     }
 
@@ -230,7 +231,9 @@ impl VoiceController {
         let mut processor = AudioProcessor::new(48000);
         processor.set_gate_enabled(gate_enabled);
         processor.set_gate_threshold_db(gate_threshold_db);
-        processor.set_suppression_enabled(suppression_enabled);
+        if suppression_enabled {
+            processor.set_suppression_mode(NoiseSuppressionMode::Spectral);
+        }
         processor.set_suppression_strength(suppression_strength);
         processor.set_agc_enabled(auto_gain_enabled);
 
@@ -294,8 +297,19 @@ impl VoiceController {
     }
 
     pub async fn set_noise_suppression(&self, enabled: bool) {
+        let mode = if enabled {
+            NoiseSuppressionMode::Spectral
+        } else {
+            NoiseSuppressionMode::Off
+        };
         if let Some(ref call) = self.active_call {
-            call.set_noise_suppression(enabled).await;
+            call.set_suppression_mode(mode).await;
+        }
+    }
+
+    pub async fn set_suppression_mode(&self, mode: NoiseSuppressionMode) {
+        if let Some(ref call) = self.active_call {
+            call.set_suppression_mode(mode).await;
         }
     }
 
@@ -308,6 +322,15 @@ impl VoiceController {
     pub async fn set_auto_gain(&self, enabled: bool) {
         if let Some(ref call) = self.active_call {
             call.set_auto_gain(enabled).await;
+        }
+    }
+
+    pub async fn set_muted(&self, muted: bool) {
+        if let Some(ref call) = self.active_call {
+            if let Some(ref proc) = call.processor {
+                let mut p = proc.lock().await;
+                p.set_muted(muted);
+            }
         }
     }
 }

@@ -368,23 +368,19 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       if (socketRtpEnabled.has(socket.id) && consumer.kind === 'audio') {
         const forwardingSocket = socket
         const forwardingPeerId = peerId
-        consumer.on('rtp', (rtpPacket: Buffer) => {
-          // Properly skip RTP header including any CSRC and header extensions.
-          const hasExtension = (rtpPacket[0] & 0x10) !== 0
-          const csrcCount = rtpPacket[0] & 0x0f
-          let offset = 12 + csrcCount * 4
-          if (hasExtension && offset + 4 <= rtpPacket.length) {
-            const extLen = rtpPacket.readUInt16BE(offset + 2)
-            offset += 4 + extLen * 4
-          }
-          const opusPayload = rtpPacket.subarray(offset)
-          if (opusPayload.length > 0) {
-            forwardingSocket.emit('voice:socketRtp', {
-              peerId: forwardingPeerId,
-              payload: Array.from(opusPayload),
-            })
-          }
-        })
+          consumer.on('rtp', (rtpPacket: Buffer) => {
+            const hasExtension = (rtpPacket[0] & 0x10) !== 0
+            const csrcCount = rtpPacket[0] & 0x0f
+            let offset = 12 + csrcCount * 4
+            if (hasExtension && offset + 4 <= rtpPacket.length) {
+              const extLen = rtpPacket.readUInt16BE(offset + 2)
+              offset += 4 + extLen * 4
+            }
+            const opusPayload = rtpPacket.subarray(offset)
+            if (opusPayload.length > 0) {
+              forwardingSocket.emit('voice:socketRtp', opusPayload, forwardingPeerId)
+            }
+          })
       }
 
       if (typeof callback === 'function') {
@@ -530,10 +526,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
           }
           const opusPayload = rtpPacket.subarray(offset)
           if (opusPayload.length > 0) {
-            forwardingSocket.emit('voice:socketRtp', {
-              peerId: forwardingPeerId,
-              payload: Array.from(opusPayload),
-            })
+            forwardingSocket.emit('voice:socketRtp', opusPayload, forwardingPeerId)
           }
         })
         count++

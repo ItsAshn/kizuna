@@ -109,8 +109,8 @@ struct Biquad {
     b2: f32,
     a1: f32,
     a2: f32,
-    z1: f32,
-    z2: f32,
+    s0: f32,
+    s1: f32,
 }
 
 impl Biquad {
@@ -121,12 +121,11 @@ impl Biquad {
             b2: 0.0,
             a1: 0.0,
             a2: 0.0,
-            z1: 0.0,
-            z2: 0.0,
+            s0: 0.0,
+            s1: 0.0,
         }
     }
 
-    /// Design a 2nd-order low-pass Butterworth filter.
     fn low_pass(sample_rate: f32, cutoff: f32) -> Self {
         let w0 = 2.0 * PI * cutoff / sample_rate;
         let cos_w0 = w0.cos();
@@ -140,18 +139,17 @@ impl Biquad {
         let a1 = -2.0 * cos_w0;
         let a2 = 1.0 - alpha;
 
-        Biquad {
+        Self {
             b0: b0 / a0,
             b1: b1 / a0,
             b2: b2 / a0,
             a1: a1 / a0,
             a2: a2 / a0,
-            z1: 0.0,
-            z2: 0.0,
+            s0: 0.0,
+            s1: 0.0,
         }
     }
 
-    /// Design a 2nd-order high-pass Butterworth filter.
     fn high_pass(sample_rate: f32, cutoff: f32) -> Self {
         let w0 = 2.0 * PI * cutoff / sample_rate;
         let cos_w0 = w0.cos();
@@ -165,28 +163,27 @@ impl Biquad {
         let a1 = -2.0 * cos_w0;
         let a2 = 1.0 - alpha;
 
-        Biquad {
+        Self {
             b0: b0 / a0,
             b1: b1 / a0,
             b2: b2 / a0,
             a1: a1 / a0,
             a2: a2 / a0,
-            z1: 0.0,
-            z2: 0.0,
+            s0: 0.0,
+            s1: 0.0,
         }
     }
 
     fn process(&mut self, sample: f32) -> f32 {
-        let out = self.b0 * sample + self.b1 * self.z1 + self.b2 * self.z2
-            - self.a1 * self.z1 - self.a2 * self.z2;
-        self.z2 = self.z1;
-        self.z1 = sample;
+        let out = self.b0 * sample + self.s0;
+        self.s0 = self.b1 * sample - self.a1 * out + self.s1;
+        self.s1 = self.b2 * sample - self.a2 * out;
         out
     }
 
     fn reset(&mut self) {
-        self.z1 = 0.0;
-        self.z2 = 0.0;
+        self.s0 = 0.0;
+        self.s1 = 0.0;
     }
 }
 
@@ -350,12 +347,15 @@ impl SpectralGate {
 
 pub struct AutoGain {
     enabled: bool,
-    target_rms: f32,       // Target RMS level (linear, e.g., 0.25 = -12dB)
-    max_gain: f32,         // Maximum boost (e.g., 2.0 = +6dB)
-    max_attenuation: f32,  // Maximum cut (e.g., 0.25 = -12dB)
+    target_rms: f32,
+    max_gain: f32,
+    max_attenuation: f32,
     attack_coeff: f32,
     release_coeff: f32,
     current_gain: f32,
+    current_rms: f32,
+    rms_coeff: f32,
+    gate_threshold: f32,
     sample_rate: u32,
 }
 
@@ -363,16 +363,17 @@ impl AutoGain {
     pub fn new(sample_rate: u32) -> Self {
         let target_db = -12.0;
         let target_rms = 10.0_f32.powf(target_db / 20.0);
-        let attack_coeff = (-1.0 / (0.100 * sample_rate as f32)).exp(); // 100ms
-        let release_coeff = (-1.0 / (0.500 * sample_rate as f32)).exp(); // 500ms
         Self {
             enabled: false,
             target_rms,
-            max_gain: 10.0_f32.powf(6.0 / 20.0), // +6dB
+            max_gain: 10.0_f32.powf(12.0 / 20.0), // +12dB
             max_attenuation: 10.0_f32.powf(-12.0 / 20.0), // -12dB
-            attack_coeff,
-            release_coeff,
+            attack_coeff: (-1.0 / (0.050 * sample_rate as f32)).exp(), // 50ms
+            release_coeff: (-1.0 / (0.400 * sample_rate as f32)).exp(), // 400ms
             current_gain: 1.0,
+            current_rms: 0.0,
+            rms_coeff: (-1.0 / (0.050 * sample_rate as f32)).exp(), // 50ms EMA
+            gate_threshold: 10.0_f32.powf(-36.0 / 20.0), // -36dB gate for metering
             sample_rate,
         }
     }
@@ -380,32 +381,45 @@ impl AutoGain {
     pub fn set_enabled(&mut self, enabled: bool) {
         if !enabled {
             self.current_gain = 1.0;
+            self.current_rms = 0.0;
         }
         self.enabled = enabled;
     }
 
+    pub fn set_target_db(&mut self, target_db: f32) {
+        self.target_rms = 10.0_f32.powf(target_db.clamp(-24.0, -6.0) / 20.0);
+    }
+
     pub fn reset(&mut self) {
         self.current_gain = 1.0;
+        self.current_rms = 0.0;
     }
 
     /// Process a frame through the auto gain control.
-    /// Measures RMS of the frame, computes target gain, smooths with attack/release.
-    pub fn process_frame(&mut self, frame: &mut [f32]) {
+    /// Uses `external_rms` for metering (from pre-gate signal) to avoid
+    /// gain pumping when the noise gate closes. The RMS measurement is
+    /// smoothed with an exponential moving average and gated below a
+    /// threshold to prevent gain drift during silence.
+    pub fn process_frame(&mut self, frame: &mut [f32], external_rms: Option<f32>) {
         if !self.enabled || frame.is_empty() {
             return;
         }
 
-        // Compute RMS of this frame
-        let rms = (frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32).sqrt();
+        // Smooth RMS with EMA, gate measurement during silence
+        let frame_rms = external_rms.unwrap_or_else(|| {
+            (frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32).sqrt()
+        });
 
-        // Compute desired gain: target_rms / actual_rms, clamped
-        let desired_gain = if rms < 1e-10 {
-            self.max_gain // No signal, apply max boost (will just amplify noise floor)
+        if frame_rms > self.gate_threshold || self.current_rms > 0.001 {
+            self.current_rms = self.current_rms * self.rms_coeff + frame_rms * (1.0 - self.rms_coeff);
+        }
+
+        let desired_gain = if self.current_rms < 1e-10 {
+            self.current_gain // Hold current gain when no signal
         } else {
-            (self.target_rms / rms).clamp(self.max_attenuation, self.max_gain)
+            (self.target_rms / self.current_rms).clamp(self.max_attenuation, self.max_gain)
         };
 
-        // Smooth gain changes
         let coeff = if desired_gain > self.current_gain {
             self.attack_coeff
         } else {
@@ -413,7 +427,6 @@ impl AutoGain {
         };
         self.current_gain = self.current_gain * coeff + desired_gain * (1.0 - coeff);
 
-        // Apply gain to all samples
         for sample in frame.iter_mut() {
             *sample *= self.current_gain;
         }
@@ -426,51 +439,66 @@ impl AutoGain {
 // Always-on, no frontend toggle needed.
 
 pub struct PeakLimiter {
-    threshold: f32,       // Peaks above this get gain reduction
-    attack_coeff: f32,    // Fast attack to catch transients
-    release_coeff: f32,   // Slow release for natural recovery
-    current_gain: f32,    // Smooth gain reduction envelope
-    max_reduction: f32,   // Clamp to prevent excessive attenuation
+    threshold: f32,
+    attack_coeff: f32,
+    release_coeff: f32,
+    current_gain: f32,
+    max_reduction: f32,
+    lookahead_samples: usize,
+    lookahead_buf: Vec<f32>,
+    lookahead_pos: usize,
     sample_rate: u32,
 }
 
 impl PeakLimiter {
     pub fn new(sample_rate: u32) -> Self {
         let sr = sample_rate as f32;
+        let lookahead = (sample_rate as usize) / 1000; // 1ms look-ahead
         Self {
-            threshold: 10.0_f32.powf(-3.0 / 20.0), // -3dBFS = 0.708
-            attack_coeff: (-1.0 / (0.001 * sr)).exp(),     // 1ms
-            release_coeff: (-1.0 / (0.100 * sr)).exp(),    // 100ms
+            threshold: 10.0_f32.powf(-3.0 / 20.0), // -3dBFS
+            attack_coeff: (-1.0 / (0.0005 * sr)).exp(),     // 0.5ms
+            release_coeff: (-1.0 / (0.080 * sr)).exp(),     // 80ms
             current_gain: 1.0,
-            max_reduction: 10.0_f32.powf(-12.0 / 20.0),    // -12dB = 0.251
+            max_reduction: 10.0_f32.powf(-12.0 / 20.0),     // -12dB
+            lookahead_samples: lookahead,
+            lookahead_buf: vec![0.0f32; lookahead],
+            lookahead_pos: 0,
             sample_rate,
         }
     }
 
     pub fn reset(&mut self) {
         self.current_gain = 1.0;
+        self.lookahead_buf.fill(0.0);
+        self.lookahead_pos = 0;
     }
 
-    /// Process a frame through the peak limiter.
-    /// Computes the peak level, applies smooth gain reduction above threshold.
+    /// Process a frame through the peak limiter with 1ms look-ahead.
+    /// The look-ahead buffer allows detecting peaks before they reach
+    /// the output, enabling smoother gain reduction.
     pub fn process_frame(&mut self, frame: &mut [f32]) {
         if frame.is_empty() {
             return;
         }
 
-        // Find the peak sample in this frame
-        let peak = frame
-            .iter()
-            .fold(0.0f32, |max, s| max.max(s.abs()));
+        // Pre-scan the incoming frame plus look-ahead buffer for peaks
+        let mut lookahead_peak = 0.0f32;
+        for &s in self.lookahead_buf.iter() {
+            let a = s.abs();
+            if a > lookahead_peak { lookahead_peak = a; }
+        }
+        for &s in frame.iter() {
+            let a = s.abs();
+            if a > lookahead_peak { lookahead_peak = a; }
+        }
 
-        // If peak exceeds threshold, compute target gain reduction
-        let target_gain = if peak > self.threshold {
-            (self.threshold / peak).max(self.max_reduction)
+        // Determine target gain reduction from the look-ahead peak
+        let target_gain = if lookahead_peak > self.threshold {
+            (self.threshold / lookahead_peak).max(self.max_reduction)
         } else {
             1.0
         };
 
-        // Smooth with attack/release
         let coeff = if target_gain < self.current_gain {
             self.attack_coeff
         } else {
@@ -478,10 +506,18 @@ impl PeakLimiter {
         };
         self.current_gain = self.current_gain * coeff + target_gain * (1.0 - coeff);
 
-        // Apply gain to all samples
-        if self.current_gain < 1.0 {
-            for sample in frame.iter_mut() {
-                *sample *= self.current_gain;
+        // Process samples through the look-ahead delay line
+        for sample in frame.iter_mut() {
+            // Swap: send look-ahead buffer sample to output, store new sample
+            let delayed = self.lookahead_buf[self.lookahead_pos];
+            self.lookahead_buf[self.lookahead_pos] = *sample;
+
+            // Apply gain to the delayed sample
+            *sample = delayed * self.current_gain;
+
+            self.lookahead_pos += 1;
+            if self.lookahead_pos >= self.lookahead_samples {
+                self.lookahead_pos = 0;
             }
         }
     }
@@ -489,15 +525,19 @@ impl PeakLimiter {
 
 // ─── Combined DSP Pipeline ────────────────────────────────────────────────
 
+use super::rnnoise::{NoiseSuppressionMode, RnnoiseSuppressor};
+
 pub struct AudioProcessor {
     pub noise_gate: NoiseGate,
     pub spectral_gate: SpectralGate,
+    pub rnnoise: RnnoiseSuppressor,
     pub auto_gain: AutoGain,
     pub peak_limiter: PeakLimiter,
     gate_enabled: bool,
-    suppression_enabled: bool,
+    suppression_mode: NoiseSuppressionMode,
     agc_enabled: bool,
     dc_removal_enabled: bool,
+    muted: bool,
     sample_rate: u32,
     dc_state: f32,
 }
@@ -507,12 +547,14 @@ impl AudioProcessor {
         Self {
             noise_gate: NoiseGate::new(sample_rate, -40.0, 5.0, 120.0, 200.0, 8.0),
             spectral_gate: SpectralGate::new(sample_rate),
+            rnnoise: RnnoiseSuppressor::new(),
             auto_gain: AutoGain::new(sample_rate),
             peak_limiter: PeakLimiter::new(sample_rate),
             gate_enabled: true,
-            suppression_enabled: false,
+            suppression_mode: NoiseSuppressionMode::Off,
             agc_enabled: true,
-            dc_removal_enabled: false,
+            dc_removal_enabled: true,
+            muted: false,
             sample_rate,
             dc_state: 0.0,
         }
@@ -525,9 +567,15 @@ impl AudioProcessor {
         }
     }
 
-    pub fn set_suppression_enabled(&mut self, enabled: bool) {
-        self.suppression_enabled = enabled;
-        self.spectral_gate.set_enabled(enabled);
+    pub fn set_suppression_mode(&mut self, mode: NoiseSuppressionMode) {
+        self.suppression_mode = mode;
+        self.spectral_gate.set_enabled(matches!(mode, NoiseSuppressionMode::Spectral));
+        self.rnnoise.set_enabled(matches!(mode, NoiseSuppressionMode::Rnnoise));
+    }
+
+    pub fn set_suppression_strength(&mut self, strength: f32) {
+        self.spectral_gate.set_strength(strength);
+        self.rnnoise.set_strength(strength);
     }
 
     pub fn set_agc_enabled(&mut self, enabled: bool) {
@@ -539,8 +587,12 @@ impl AudioProcessor {
         self.noise_gate.set_threshold_db(threshold_db);
     }
 
-    pub fn set_suppression_strength(&mut self, strength: f32) {
-        self.spectral_gate.set_strength(strength);
+    pub fn set_muted(&mut self, muted: bool) {
+        self.muted = muted;
+    }
+
+    pub fn is_muted(&self) -> bool {
+        self.muted
     }
 
     pub fn set_dc_removal_enabled(&mut self, enabled: bool) {
@@ -559,8 +611,14 @@ impl AudioProcessor {
     }
 
     /// Process a frame through the full DSP chain.
-    /// Order: DC-removal HPF → noise_gate → spectral suppression → auto gain control → peak limiter.
+    /// Order: mute → DC-removal HPF → noise_gate → spectral suppression → auto gain control → peak limiter.
+    /// AGC meters from the pre-gate signal to avoid gain pumping when the gate closes.
     pub fn process_frame(&mut self, frame: &mut [f32]) {
+        if self.muted {
+            frame.fill(0.0);
+            return;
+        }
+
         if self.dc_removal_enabled {
             let alpha = (-2.0 * PI * 25.0 / self.sample_rate as f32).exp();
             for sample in frame.iter_mut() {
@@ -570,16 +628,28 @@ impl AudioProcessor {
             }
         }
 
+        // Compute pre-gate RMS for AGC metering so gate closure doesn't cause gain pumping
+        let pre_gate_rms = if self.agc_enabled && (self.gate_enabled || self.suppression_mode != NoiseSuppressionMode::Off) {
+            Some((frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32).sqrt())
+        } else {
+            None
+        };
+
         if self.gate_enabled {
             self.noise_gate.process_frame(frame);
         }
-        if self.suppression_enabled {
-            self.spectral_gate.process_frame(frame);
+        match self.suppression_mode {
+            NoiseSuppressionMode::Spectral => {
+                self.spectral_gate.process_frame(frame);
+            }
+            NoiseSuppressionMode::Rnnoise => {
+                self.rnnoise.process_frame(frame);
+            }
+            NoiseSuppressionMode::Off => {}
         }
         if self.agc_enabled {
-            self.auto_gain.process_frame(frame);
+            self.auto_gain.process_frame(frame, pre_gate_rms);
         }
-        // Always-on peak limiter prevents digital clipping from hot signals
         self.peak_limiter.process_frame(frame);
     }
 }
