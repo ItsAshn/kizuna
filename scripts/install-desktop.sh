@@ -19,7 +19,7 @@ log()  { printf "${GREEN}[+]${NC} %s\n" "$1"; }
 warn() { printf "${YELLOW}[!]${NC} %s\n" "$1"; }
 err()  { printf "${RED}[x]${NC} %s\n" "$1"; }
 info() { printf "${CYAN}[i]${NC} %s\n" "$1"; }
-bold() { printf "${BOLD}%s${NC}\n" "$1"; }
+bold() { printf "${BOLD}%s${NC}\n" "${1:-}"; }
 
 REPO="ItsAshn/kizuna"
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
