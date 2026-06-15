@@ -142,7 +142,7 @@ export const useChatStore = create<ChatState>()(
       autoGainControl: true,
       noiseGateEnabled: false,
       noiseGateThreshold: 30,
-      noiseSuppressionStrength: 0,
+      noiseSuppressionStrength: 50,
       inputVolume: 100,
       outputVolume: 100,
       liveAudioLevel: 0,
