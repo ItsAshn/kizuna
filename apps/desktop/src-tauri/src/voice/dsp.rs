@@ -420,12 +420,80 @@ impl AutoGain {
     }
 }
 
+// ─── Peak Limiter ─────────────────────────────────────────────────────────
+// Prevents digital clipping from hot microphone signals (like SM7B + high
+// gain interface) by smoothly attenuating samples above the threshold.
+// Always-on, no frontend toggle needed.
+
+pub struct PeakLimiter {
+    threshold: f32,       // Peaks above this get gain reduction
+    attack_coeff: f32,    // Fast attack to catch transients
+    release_coeff: f32,   // Slow release for natural recovery
+    current_gain: f32,    // Smooth gain reduction envelope
+    max_reduction: f32,   // Clamp to prevent excessive attenuation
+    sample_rate: u32,
+}
+
+impl PeakLimiter {
+    pub fn new(sample_rate: u32) -> Self {
+        let sr = sample_rate as f32;
+        Self {
+            threshold: 10.0_f32.powf(-3.0 / 20.0), // -3dBFS = 0.708
+            attack_coeff: (-1.0 / (0.001 * sr)).exp(),     // 1ms
+            release_coeff: (-1.0 / (0.100 * sr)).exp(),    // 100ms
+            current_gain: 1.0,
+            max_reduction: 10.0_f32.powf(-12.0 / 20.0),    // -12dB = 0.251
+            sample_rate,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.current_gain = 1.0;
+    }
+
+    /// Process a frame through the peak limiter.
+    /// Computes the peak level, applies smooth gain reduction above threshold.
+    pub fn process_frame(&mut self, frame: &mut [f32]) {
+        if frame.is_empty() {
+            return;
+        }
+
+        // Find the peak sample in this frame
+        let peak = frame
+            .iter()
+            .fold(0.0f32, |max, s| max.max(s.abs()));
+
+        // If peak exceeds threshold, compute target gain reduction
+        let target_gain = if peak > self.threshold {
+            (self.threshold / peak).max(self.max_reduction)
+        } else {
+            1.0
+        };
+
+        // Smooth with attack/release
+        let coeff = if target_gain < self.current_gain {
+            self.attack_coeff
+        } else {
+            self.release_coeff
+        };
+        self.current_gain = self.current_gain * coeff + target_gain * (1.0 - coeff);
+
+        // Apply gain to all samples
+        if self.current_gain < 1.0 {
+            for sample in frame.iter_mut() {
+                *sample *= self.current_gain;
+            }
+        }
+    }
+}
+
 // ─── Combined DSP Pipeline ────────────────────────────────────────────────
 
 pub struct AudioProcessor {
     pub noise_gate: NoiseGate,
     pub spectral_gate: SpectralGate,
     pub auto_gain: AutoGain,
+    pub peak_limiter: PeakLimiter,
     gate_enabled: bool,
     suppression_enabled: bool,
     agc_enabled: bool,
@@ -440,6 +508,7 @@ impl AudioProcessor {
             noise_gate: NoiseGate::new(sample_rate, -40.0, 5.0, 120.0, 200.0, 8.0),
             spectral_gate: SpectralGate::new(sample_rate),
             auto_gain: AutoGain::new(sample_rate),
+            peak_limiter: PeakLimiter::new(sample_rate),
             gate_enabled: true,
             suppression_enabled: false,
             agc_enabled: true,
@@ -485,11 +554,12 @@ impl AudioProcessor {
         self.noise_gate.reset();
         self.spectral_gate.reset();
         self.auto_gain.reset();
+        self.peak_limiter.reset();
         self.dc_state = 0.0;
     }
 
     /// Process a frame through the full DSP chain.
-    /// Order: DC-removal HPF → noise_gate → spectral suppression → auto gain control.
+    /// Order: DC-removal HPF → noise_gate → spectral suppression → auto gain control → peak limiter.
     pub fn process_frame(&mut self, frame: &mut [f32]) {
         if self.dc_removal_enabled {
             let alpha = (-2.0 * PI * 25.0 / self.sample_rate as f32).exp();
@@ -509,5 +579,7 @@ impl AudioProcessor {
         if self.agc_enabled {
             self.auto_gain.process_frame(frame);
         }
+        // Always-on peak limiter prevents digital clipping from hot signals
+        self.peak_limiter.process_frame(frame);
     }
 }
