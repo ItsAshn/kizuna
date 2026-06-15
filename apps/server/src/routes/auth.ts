@@ -95,6 +95,7 @@ authRoutes.post('/register', async (c) => {
   )
   return c.json(
       {
+        token,
         user: { ...user, role: isFirstUser ? 'admin' : 'member', is_host: isFirstUser },
         backuptoken,
       },
@@ -164,6 +165,7 @@ authRoutes.post('/login', async (c) => {
     `kizuna_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
   )
   return c.json({
+    token,
     user: {
       id: user.id,
       username: user.username,
@@ -192,7 +194,8 @@ authRoutes.get('/me', authMiddleware, (c) => {
   }
 
   const { is_host, ...userFields } = user
-  return c.json({ user: { ...userFields, role: isUserAdmin(auth.userId) ? 'admin' : 'member', is_host: is_host === 1 } })
+    return c.json({
+    user: { ...userFields, role: isUserAdmin(auth.userId) ? 'admin' : 'member', is_host: is_host === 1 } })
 })
 
 authRoutes.patch('/profile', authMiddleware, async (c) => {

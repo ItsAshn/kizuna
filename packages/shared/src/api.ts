@@ -20,9 +20,24 @@ function normalizeUrl(url: string): string {
   return url.replace(/\/$/, '')
 }
 
-function client(baseUrl: string) {
+const tokenStore = new Map<string, string>()
+
+export function setClientToken(serverUrl: string, token: string): void {
+  tokenStore.set(normalizeUrl(serverUrl), token)
+}
+
+export function clearClientToken(serverUrl: string): void {
+  tokenStore.delete(normalizeUrl(serverUrl))
+}
+
+function client(baseUrl: string, token?: string) {
+  const norm = normalizeUrl(baseUrl)
+  const effectiveToken = token || tokenStore.get(norm)
+  const headers: Record<string, string> = {}
+  if (effectiveToken) headers.Authorization = `Bearer ${effectiveToken}`
   return axios.create({
-    baseURL: normalizeUrl(baseUrl),
+    baseURL: norm,
+    headers,
     withCredentials: true,
   })
 }
@@ -46,7 +61,7 @@ export async function register(
   key_salt?: string,
   challenge?: string,
   nonce?: string,
-): Promise<{ user: User; backuptoken: string }> {
+): Promise<{ token: string; user: User; backuptoken: string }> {
   const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/register`, {
     username,
     password,
@@ -64,7 +79,7 @@ export async function login(
   serverUrl: string,
   username: string,
   password: string,
-): Promise<{ user: User }> {
+): Promise<{ token: string; user: User }> {
   const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/login`, {
     username,
     password,

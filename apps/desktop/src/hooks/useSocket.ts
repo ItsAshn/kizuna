@@ -38,6 +38,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
     }
 
     const socket = io(session.url, {
+      auth: { token: session.token },
       withCredentials: true,
       transports: ['websocket', 'polling'],
     })

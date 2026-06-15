@@ -109,6 +109,7 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
         setActiveSession({
           serverId,
           url: serverId,
+          token: result.token,
           user: result.user,
         })
 
@@ -140,6 +141,7 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
         setActiveSession({
           serverId,
           url: serverId,
+          token: result.token,
           user: result.user,
         })
 

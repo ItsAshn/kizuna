@@ -60,6 +60,7 @@ export default function LoginDialog({ serverId, onClose }: Props) {
         setActiveSession({
           serverId: serverUrl,
           url: serverUrl,
+          token: result.token,
           user: result.user,
         })
 
@@ -79,6 +80,7 @@ export default function LoginDialog({ serverId, onClose }: Props) {
         setActiveSession({
           serverId: serverUrl,
           url: serverUrl,
+          token: result.token,
           user: result.user,
         })
       }

@@ -1,11 +1,12 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { User, SavedServer } from '@kizuna/shared'
-import { getMe } from '@kizuna/shared'
+import { getMe, setClientToken, clearClientToken } from '@kizuna/shared'
 
 interface ServerSession {
   serverId: string
   url: string
+  token: string
   user: User
 }
 
@@ -37,7 +38,10 @@ export const useServerStore = create<ServerState>()(
 
       removeServer: (id) =>
         set((state) => {
-          const { [id]: _, ...restSessions } = state.sessions
+          const { [id]: removedSession, ...restSessions } = state.sessions
+          if (removedSession) {
+            clearClientToken(removedSession.url)
+          }
           return {
             servers: state.servers.filter((s) => s.id !== id),
             sessions: restSessions,
@@ -48,7 +52,13 @@ export const useServerStore = create<ServerState>()(
 
       setActiveSession: (session) =>
         set((state) => {
-          if (!session) return { activeSession: null, activeServerId: null }
+          if (!session) {
+            if (state.activeSession) {
+              clearClientToken(state.activeSession.url)
+            }
+            return { activeSession: null, activeServerId: null }
+          }
+          setClientToken(session.url, session.token)
           return {
             activeSession: session,
             activeServerId: session.serverId,

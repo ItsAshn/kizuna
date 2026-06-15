@@ -62,6 +62,7 @@ export default function Login() {
         setActiveSession({
           serverId: serverUrl,
           url: serverUrl,
+          token: result.token,
           user: result.user,
         })
 
@@ -81,6 +82,7 @@ export default function Login() {
         setActiveSession({
           serverId: serverUrl,
           url: serverUrl,
+          token: result.token,
           user: result.user,
         })
       }
