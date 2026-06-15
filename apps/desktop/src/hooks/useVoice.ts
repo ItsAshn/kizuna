@@ -598,16 +598,18 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
           const { samples, sampleRate } = event.payload
           if (!samples || samples.length === 0) return
 
-          const ctx = nativeAudioCtxRef.current
-          if (!ctx || ctx.sampleRate !== (sampleRate || 48000)) {
-            nativeAudioCtxRef.current?.close()
-            nativeAudioCtxRef.current = new AudioContext({ sampleRate: sampleRate || 48000 })
+          if (!nativeAudioCtxRef.current) {
+            nativeAudioCtxRef.current = new AudioContext()
             nativeAudioNextTimeRef.current = 0
           }
 
           const audioCtx = nativeAudioCtxRef.current!
           const sampleCount = samples.length
-          const buffer = audioCtx.createBuffer(1, sampleCount, audioCtx.sampleRate)
+          const dataSampleRate = sampleRate || 48000
+
+          // Create buffer at the data's sample rate; Web Audio API
+          // automatically resamples to the context's rate on playback.
+          const buffer = audioCtx.createBuffer(1, sampleCount, dataSampleRate)
           buffer.copyToChannel(new Float32Array(samples), 0)
 
           const source = audioCtx.createBufferSource()
@@ -621,7 +623,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
           }
           source.start(startTime)
 
-          nativeAudioNextTimeRef.current = startTime + sampleCount / audioCtx.sampleRate
+          nativeAudioNextTimeRef.current = startTime + sampleCount / dataSampleRate
         }).then((unlisten) => {
           nativeRemoteAudioUnlistenRef.current = unlisten
         }),
