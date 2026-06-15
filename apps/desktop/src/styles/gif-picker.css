@@ -190,6 +190,11 @@
   object-fit: contain;
 }
 
+.gif-picker__img--sticker {
+  width: 125px;
+  height: 125px;
+}
+
 .gif-picker__item-name {
   position: absolute;
   bottom: 0;

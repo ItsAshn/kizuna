@@ -167,9 +167,11 @@ export default function GifPicker({ serverUrl, onSelect, onClose }: GifPickerPro
           )}
           {!loading && !error && items.map((item) => {
             const resolvedUrl = item.file_url.startsWith('/') ? `${serverUrl}${item.file_url}` : item.file_url
-            const scale = item.type === 'sticker' ? 3 : 2
+            const isSticker = item.type === 'sticker'
+            const scale = 2
             const displayWidth = item.width ? Math.round(item.width / scale) : undefined
             const displayHeight = item.height ? Math.round(item.height / scale) : undefined
+            const imgClassName = isSticker ? 'gif-picker__img gif-picker__img--sticker' : 'gif-picker__img'
             return (
               <div
                 key={item.id}
@@ -181,10 +183,10 @@ export default function GifPicker({ serverUrl, onSelect, onClose }: GifPickerPro
                 <img
                   src={resolvedUrl}
                   alt={item.display_name}
-                  className="gif-picker__img"
+                  className={imgClassName}
                   loading="lazy"
-                  width={displayWidth}
-                  height={displayHeight}
+                  width={isSticker ? undefined : displayWidth}
+                  height={isSticker ? undefined : displayHeight}
                 />
                 {hoveredId === item.id && (
                   <div className="gif-picker__item-name">{item.display_name}</div>

@@ -175,6 +175,7 @@ function MessageBubble({
   const editInputRef = useRef<HTMLTextAreaElement>(null)
   const displayName = message.display_name || message.username || 'Unknown'
   const { text, attachments } = useMemo(() => parseAttachments(message.content), [message.content])
+  const renderedHtml = useMemo(() => renderMessageHtml(text, currentUsername), [text, currentUsername])
   const isMediaOnly = !text && attachments.length > 0
   const isStickerOnly = isMediaOnly && attachments.length > 0 && attachments.every(a => {
     const hasPrefix = /^(gif|sticker):/.test(a.filename)
@@ -391,7 +392,7 @@ function MessageBubble({
               onKeyDown={handleEditKeyDown}
             />
           ) : (
-            text && <div className="msg-bubble__text" dangerouslySetInnerHTML={{ __html: useMemo(() => renderMessageHtml(text, currentUsername), [text, currentUsername]) }} />
+            text && <div className="msg-bubble__text" dangerouslySetInnerHTML={{ __html: renderedHtml }} />
           )}
           {attachments.length > 0 && attachments.map((att, i) => (
             <AttachmentPreview key={i} url={att.url} filename={att.filename} serverUrl={serverUrl} isMediaOnly={isMediaOnly} onImageClick={onImageClick} />
