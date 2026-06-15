@@ -17,6 +17,8 @@
   to {
     opacity: 0;
     transform: translateX(32px);
+    width: 0;
+    margin: 8px 0;
   }
 }
 

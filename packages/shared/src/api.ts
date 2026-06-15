@@ -336,11 +336,15 @@ export async function uploadServerBackground(
   const formData = new FormData()
   formData.append('file', file)
 
+  const norm = normalizeUrl(serverUrl)
+  const token = tokenStore.get(norm)
+
   if (onProgress) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
-      xhr.open('POST', `${normalizeUrl(serverUrl)}/api/server/background`)
+      xhr.open('POST', `${norm}/api/server/background`)
       xhr.withCredentials = true
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           onProgress(Math.round((e.loaded / e.total) * 100))
@@ -360,16 +364,7 @@ export async function uploadServerBackground(
     })
   }
 
-  const response = await fetch(`${normalizeUrl(serverUrl)}/api/server/background`, {
-    method: 'POST',
-    credentials: 'include',
-    body: formData,
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Upload failed' }))
-    throw new Error(error.error || 'Upload failed')
-  }
+  await client(serverUrl).post('/api/server/background', formData)
 }
 
 export async function deleteServerBackground(
@@ -587,6 +582,9 @@ export async function uploadAttachment(
       const xhr = new XMLHttpRequest()
       xhr.open('POST', `${normalizeUrl(serverUrl)}/api/attachments/${channelId}`)
       xhr.withCredentials = true
+      const norm = normalizeUrl(serverUrl)
+      const token = tokenStore.get(norm)
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           onProgress(Math.round((e.loaded / e.total) * 100))
@@ -611,19 +609,8 @@ export async function uploadAttachment(
     })
   }
 
-  const response = await fetch(`${normalizeUrl(serverUrl)}/api/attachments/${channelId}`, {
-    method: 'POST',
-    credentials: 'include',
-    body: formData,
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Upload failed' }))
-    throw new Error(error.error || 'Upload failed')
-  }
-
-  const data = await response.json()
-  return data.attachment
+  const res = await client(serverUrl).post(`/api/attachments/${channelId}`, formData)
+  return res.data.attachment
 }
 
 export async function fetchAttachments(

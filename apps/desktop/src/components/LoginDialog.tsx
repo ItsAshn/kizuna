@@ -112,6 +112,8 @@ export default function LoginDialog({ serverId, onClose }: Props) {
           <AuthForm
             serverName={serverInfo?.name || server?.name || serverUrl}
             serverUrl={serverUrl}
+            serverIcon={serverInfo?.icon}
+            serverDescription={serverInfo?.description}
             isRegister={isRegister}
             setIsRegister={setIsRegister}
             username={username}

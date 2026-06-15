@@ -322,8 +322,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
     nativeVoiceUnlistenRef.current?.()
     nativeVoiceUnlistenRef.current = null
-    nativeRemoteAudioUnlistenRef.current?.()
-    nativeRemoteAudioUnlistenRef.current = null
 
     if (iceTimerRef.current) {
       clearTimeout(iceTimerRef.current)
@@ -490,12 +488,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   }, [clearScreenSharePeer])
 
     const nativeVoiceUnlistenRef = useRef<(() => void) | null>(null)
-  const nativeRemoteAudioUnlistenRef = useRef<(() => void) | null>(null)
   const nativeSpeakingUnlistenRef = useRef<(() => void) | null>(null)
-  const nativeAudioCtxRef = useRef<AudioContext | null>(null)
-  const nativeAudioNextTimeRef = useRef<number>(0)
-  const nativeJitterBufferRef = useRef<{ samples: number[]; sampleRate: number }[]>([])
-  const nativeJitterReadyRef = useRef(false)
   const nativeInitializedRef = useRef(false)
   const nativePeerHandlersRef = useRef<boolean>(false)
 
@@ -520,7 +513,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
   const setupNativeVoiceListeners = useCallback((): Promise<void> => {
     nativeVoiceUnlistenRef.current?.()
-    nativeRemoteAudioUnlistenRef.current?.()
     nativeSpeakingUnlistenRef.current?.()
     return import('@tauri-apps/api/event').then(({ listen }) =>
       Promise.all([
@@ -553,6 +545,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
             }
             case 'PeerLeft': {
               removeVoicePeer(ev.data.peer_id)
+              import('@tauri-apps/api/core').then(({ invoke }) =>
+                invoke('voice_remove_peer', { peerId: ev.data.peer_id }).catch(() => {})
+              )
               break
             }
             case 'PeerSpeaking': {
@@ -570,51 +565,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
           }
         }).then((unlisten) => {
           nativeVoiceUnlistenRef.current = unlisten
-        }),
-        listen<any>('voice:remote_audio', (event) => {
-          const { samples, sampleRate } = event.payload
-          if (!samples || samples.length === 0) return
-
-          const audioCtx = nativeAudioCtxRef.current
-          if (!audioCtx) {
-            nativeAudioCtxRef.current = new AudioContext()
-            nativeAudioNextTimeRef.current = 0
-            nativeJitterBufferRef.current = []
-            nativeJitterReadyRef.current = false
-            return
-          }
-
-          // Jitter buffer: accumulate up to 3 frames (60ms) before starting playback
-          nativeJitterBufferRef.current.push({ samples, sampleRate: sampleRate || 48000 })
-
-          if (!nativeJitterReadyRef.current) {
-            if (nativeJitterBufferRef.current.length < 3) return
-            nativeJitterReadyRef.current = true
-          }
-
-          // Drain buffered frames into scheduling queue
-          while (nativeJitterBufferRef.current.length > 0) {
-            const frame = nativeJitterBufferRef.current.shift()!
-            const sampleCount = frame.samples.length
-            const dataSampleRate = frame.sampleRate || 48000
-
-            const buffer = audioCtx.createBuffer(1, sampleCount, dataSampleRate)
-            buffer.copyToChannel(new Float32Array(frame.samples), 0)
-
-            const source = audioCtx.createBufferSource()
-            source.buffer = buffer
-            source.connect(audioCtx.destination)
-
-            let startTime = nativeAudioNextTimeRef.current
-            const now = audioCtx.currentTime
-            if (startTime < now) {
-              startTime = now
-            }
-            source.start(startTime)
-            nativeAudioNextTimeRef.current = startTime + sampleCount / dataSampleRate
-          }
-        }).then((unlisten) => {
-          nativeRemoteAudioUnlistenRef.current = unlisten
         }),
         listen<any>('voice:speaking', (event) => {
           const { channelId, speaking, level } = event.payload
@@ -682,6 +632,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       })
       socket.on('voice:peerLeft', ({ peerId }: { peerId: string }) => {
         removeVoicePeer(peerId)
+        invoke('voice_remove_peer', { peerId }).catch(() => {})
       })
       socket.on('voice:peerSpeaking', ({ peerId, speaking }: { peerId: string; speaking: boolean }) => {
         updateVoicePeer(peerId, { speaking })
@@ -783,8 +734,12 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         suppressionStrength: suppStrength,
         autoGainEnabled: autoGainControl,
         deviceName: audioInputDeviceId || null,
+        outputDeviceId: audioOutputDeviceId || null,
       })
       vlog('joinVoiceNative', 'finish_join OK')
+
+      // Set initial output volume
+      await invoke('voice_set_output_volume', { volume: outputVolume / 100 })
 
       // Step 9: consume existing peers
       if (joinResult.peers) {
@@ -827,7 +782,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       channelIdRef.current = null
       return err
     }
-  }, [socketRef, session, cleanupVoice, setVoiceError, initNativeVoice, setupNativeVoiceListeners, setActiveVoiceChannel, addVoicePeer, audioInputDeviceId, noiseGateEnabled, noiseGateThreshold, noiseSuppression, noiseSuppressionStrength])
+  }, [socketRef, session, cleanupVoice, setVoiceError, initNativeVoice, setupNativeVoiceListeners, setActiveVoiceChannel, addVoicePeer, audioInputDeviceId, audioOutputDeviceId, outputVolume, noiseGateEnabled, noiseGateThreshold, noiseSuppression, noiseSuppressionStrength])
 
   const leaveVoiceNative = useCallback(async () => {
     try {
@@ -850,14 +805,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     }
     nativeVoiceUnlistenRef.current?.()
     nativeVoiceUnlistenRef.current = null
-    nativeRemoteAudioUnlistenRef.current?.()
-    nativeRemoteAudioUnlistenRef.current = null
     nativeSpeakingUnlistenRef.current?.()
     nativeSpeakingUnlistenRef.current = null
-    nativeAudioCtxRef.current?.close()
-    nativeAudioCtxRef.current = null
-    nativeJitterBufferRef.current = []
-    nativeJitterReadyRef.current = false
     channelIdRef.current = null
     setVoicePeers([])
     setIsSpeaking(false)
@@ -1416,6 +1365,10 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         audioElemsRef.current.forEach((el) => {
           el.volume = Math.min(1.0, Math.max(0, state.outputVolume / 100))
         })
+        // Sync native audio output volume
+        import('@tauri-apps/api/core').then(({ invoke }) =>
+          invoke('voice_set_output_volume', { volume: state.outputVolume / 100 }).catch(() => {})
+        )
       }
     })
     return unsub

@@ -38,7 +38,7 @@ interface Props {
 
 function handleApiErr(err: unknown): string {
   const e = err as any
-  return e?.response?.data?.error || 'request failed'
+  return e?.response?.data?.error || e?.message || 'request failed'
 }
 
 function fileToDataUrl(file: File): Promise<string> {

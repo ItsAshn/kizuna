@@ -6,6 +6,7 @@ use std::sync::Mutex;
 
 use capture::{CaptureSession, MonitorInfo, SessionType};
 use voice::device::AudioDeviceInfo;
+use voice::output::AudioOutput;
 use voice::rnnoise::NoiseSuppressionMode;
 use voice::VoiceController;
 
@@ -13,6 +14,7 @@ static CAPTURE_SESSION: Mutex<Option<CaptureSession>> = Mutex::new(None);
 static SESSION_TYPE: Mutex<Option<SessionType>> = Mutex::new(None);
 static VOICE_CONTROLLER: Mutex<Option<VoiceController>> = Mutex::new(None);
 static VOICE_DECODER: Mutex<Option<opus2::Decoder>> = Mutex::new(None);
+static AUDIO_OUTPUT: Mutex<Option<AudioOutput>> = Mutex::new(None);
 
 fn get_session_type() -> SessionType {
     let mut guard = SESSION_TYPE.lock().unwrap();
@@ -133,6 +135,7 @@ fn voice_finish_join(
     suppression_strength: f32,
     auto_gain_enabled: bool,
     device_name: Option<String>,
+    output_device_id: Option<String>,
 ) -> Result<(), String> {
     let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
     let controller = guard.as_mut().ok_or("Voice not initialized")?;
@@ -144,7 +147,25 @@ fn voice_finish_join(
         suppression_strength,
         auto_gain_enabled,
         device_name,
-    ))
+    ))?;
+
+    // Initialize native audio output
+    let mut out_guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if out_guard.is_some() {
+        let prev = out_guard.take();
+        drop(prev);
+    }
+    match AudioOutput::new(output_device_id, 1.0) {
+        Ok(ao) => {
+            eprintln!("[Voice] AudioOutput initialized");
+            *out_guard = Some(ao);
+        }
+        Err(e) => {
+            eprintln!("[Voice] AudioOutput init failed (non-fatal): {e}");
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -220,8 +241,7 @@ fn voice_flush_peers() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn voice_inject_opus(app: tauri::AppHandle, peer_id: String, opus_data: Vec<u8>) -> Result<(), String> {
-    use tauri::Emitter;
+fn voice_inject_opus(_app: tauri::AppHandle, peer_id: String, opus_data: Vec<u8>) -> Result<(), String> {
     let mut guard = VOICE_DECODER.lock().map_err(|e| format!("Lock error: {e}"))?;
     if guard.is_none() {
         *guard = Some(
@@ -237,21 +257,17 @@ fn voice_inject_opus(app: tauri::AppHandle, peer_id: String, opus_data: Vec<u8>)
         .decode_float(&opus_data, &mut pcm, false)
         .map_err(|e| format!("Opus decode: {e}"))?;
     pcm.truncate(samples);
-    pcm.shrink_to_fit();
 
-    // Clamp samples to [-1, 1] to prevent any overflow/distortion from corrupt packets
     for s in &mut pcm {
         *s = s.clamp(-1.0, 1.0);
     }
 
-    let _ = app.emit(
-        "voice:remote_audio",
-        serde_json::json!({
-            "peerId": peer_id,
-            "samples": pcm,
-            "sampleRate": 48000,
-        }),
-    );
+    // Push to native audio output (replaces voice:remote_audio event)
+    let out_guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref output) = *out_guard {
+        output.push_pcm(&peer_id, pcm);
+    }
+
     Ok(())
 }
 
@@ -271,10 +287,13 @@ fn voice_leave() -> Result<(), String> {
     let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
     if let Some(ref mut controller) = *guard {
         controller.leave();
-        Ok(())
-    } else {
-        Err("Voice not initialized".into())
     }
+
+    // Drop audio output
+    let mut out_guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
+    let _ = out_guard.take();
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -308,6 +327,37 @@ fn voice_update_bitrate(voice_bitrate_kbps: u64) -> Result<(), String> {
     } else {
         Err("Voice not initialized".into())
     }
+}
+
+#[tauri::command]
+fn voice_set_output_volume(volume: f32) -> Result<(), String> {
+    let guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref output) = *guard {
+        output.set_volume(volume);
+        Ok(())
+    } else {
+        Err("Audio output not initialized".into())
+    }
+}
+
+#[tauri::command]
+fn voice_set_output_device(device_id: String) -> Result<(), String> {
+    let guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref output) = *guard {
+        output.set_output_device(Some(device_id));
+        Ok(())
+    } else {
+        Err("Audio output not initialized".into())
+    }
+}
+
+#[tauri::command]
+fn voice_remove_peer(peer_id: String) -> Result<(), String> {
+    let guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref output) = *guard {
+        output.remove_peer(&peer_id);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -372,6 +422,9 @@ pub fn run() {
             voice_set_suppression_mode,
             voice_set_suppression_strength,
             voice_set_auto_gain,
+            voice_set_output_volume,
+            voice_set_output_device,
+            voice_remove_peer,
             voice_screen_share_start,
             voice_screen_share_stop,
         ])

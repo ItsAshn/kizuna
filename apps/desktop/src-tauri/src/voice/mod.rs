@@ -4,6 +4,7 @@ pub mod encode;
 pub mod dsp;
 pub mod rnnoise;
 pub mod device;
+pub mod output;
 
 use serde::Serialize;
 

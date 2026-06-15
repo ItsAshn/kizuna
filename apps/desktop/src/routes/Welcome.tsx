@@ -175,6 +175,8 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
             <AuthForm
               serverName={serverInfo.name}
               serverUrl={url}
+              serverIcon={serverInfo.icon}
+              serverDescription={serverInfo.description}
               isRegister={isRegister}
               setIsRegister={setIsRegister}
               username={username}

@@ -5,6 +5,8 @@ import './AuthForm.css'
 interface AuthFormProps {
   serverName: string
   serverUrl: string
+  serverIcon?: string | null
+  serverDescription?: string
   isRegister: boolean
   setIsRegister: (v: boolean) => void
   username: string
@@ -27,6 +29,8 @@ interface AuthFormProps {
 export default function AuthForm({
   serverName,
   serverUrl,
+  serverIcon,
+  serverDescription,
   isRegister,
   setIsRegister,
   username,
@@ -56,8 +60,18 @@ export default function AuthForm({
 
   return (
     <>
-      <h2 className="auth-form__server-name">{serverName}</h2>
-      <p className="auth-form__server-url">{serverUrl}</p>
+      <div className="auth-form__server-header">
+        {serverIcon ? (
+          <img src={serverIcon} alt="" className="auth-form__server-icon" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+        ) : (
+          <div className="auth-form__server-icon auth-form__server-icon--fallback">
+            {serverName.slice(0, 2).toUpperCase()}
+          </div>
+        )}
+        <h2 className="auth-form__server-name">{serverName}</h2>
+        {serverDescription && <p className="auth-form__server-description">{serverDescription}</p>}
+        <p className="auth-form__server-url">{serverUrl}</p>
+      </div>
 
       <div className="auth-form__tabs">
         <button

@@ -106,6 +106,8 @@ export default function Login() {
         <AuthForm
           serverName={serverInfo?.name || server?.name || serverUrl}
           serverUrl={serverUrl}
+          serverIcon={serverInfo?.icon}
+          serverDescription={serverInfo?.description}
           isRegister={isRegister}
           setIsRegister={setIsRegister}
           username={username}
