@@ -54,14 +54,31 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
     isScreenSharing,
     screenSharePeerId,
     setVoiceError,
+    peerVolumes,
+    setPeerVolume,
   } = useChatStore()
   const [closing, setClosing] = useState(false)
   const [showMonitorPicker, setShowMonitorPicker] = useState(false)
   const [screenShareError, setScreenShareError] = useState<string | null>(null)
+  const [leaveConfirm, setLeaveConfirm] = useState(false)
 
   useEffect(() => {
     if (activeVoiceChannelId) setClosing(false)
   }, [activeVoiceChannelId])
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !showMonitorPicker && activeVoiceChannelId) {
+        setClosing(true)
+        setTimeout(() => {
+          setVoiceError(null)
+          leaveVoice()
+        }, 250)
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [showMonitorPicker, activeVoiceChannelId])
 
   const handleLeave = useCallback(() => {
     setClosing(true)
@@ -133,16 +150,36 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
               onClick={toggleMute}
               className={`voice-header__btn ${isMuted ? 'voice-header__btn--unmute' : 'voice-header__btn--mute'}`}
               title={isMuted ? 'Unmute' : 'Mute'}
+              aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
             >
               {isMuted ? <MicOff className="icon-xs" /> : <Mic className="icon-xs" />}
             </button>
-            <button
-              onClick={handleLeave}
-              className="voice-header__btn voice-header__btn--leave"
-              title="Leave"
-            >
-              <PhoneOff className="icon-xs" />
-            </button>
+            {leaveConfirm ? (
+              <div className="voice-header__leave-confirm">
+                <button
+                  onClick={handleLeave}
+                  className="voice-header__btn voice-header__btn--leave-confirm-yes"
+                  title="Confirm leave"
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={() => setLeaveConfirm(false)}
+                  className="voice-header__btn voice-header__btn--mute"
+                  title="Cancel"
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setLeaveConfirm(true)}
+                className="voice-header__btn voice-header__btn--leave"
+                title="Leave"
+              >
+                <PhoneOff className="icon-xs" />
+              </button>
+            )}
           </>
         )}
       </div>
@@ -216,6 +253,16 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
                 {peer.username}
               </span>
               <ConnectionQualityBars quality={peer.connectionQuality} />
+              <div className="voice-peer__volume">
+                <input
+                  type="range"
+                  min={0}
+                  max={200}
+                  value={peerVolumes[peer.id] ?? 100}
+                  onChange={(e) => setPeerVolume(peer.id, Number(e.target.value))}
+                  aria-label={`Volume for ${peer.username}`}
+                />
+              </div>
               {peer.muted && (
                 <span className="voice-peer__peer-muted">Muted</span>
               )}
@@ -224,11 +271,8 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
       </div>
 
       {!voiceError && (
-        <div className="voice-bitrate">
-          <span className="voice-bitrate__label">
-            bitrate
-          </span>
-          <span className="voice-bitrate__value">{serverVoiceBitrateKbps} kbps</span>
+        <div className="voice-footer">
+          <span>{serverVoiceBitrateKbps} kbps</span>
         </div>
       )}
     </div>

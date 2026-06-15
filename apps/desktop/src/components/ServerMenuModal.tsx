@@ -87,11 +87,48 @@ const EXPIRY_OPTIONS = [
   { label: '30 days', value: '720' },
 ]
 
+function NotificationSettings() {
+  const session = useServerStore((s) => s.activeSession)
+  const settings = useChatStore((s) => s.notificationSettings)
+  const setNotificationSettings = useChatStore((s) => s.setNotificationSettings)
+  const serverId = session?.serverId || ''
+  const current = settings[serverId] || { level: 'all' as const, suppressEveryone: false }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
+      <div className="server-menu__field">
+        <label className="server-menu__label">server notification level</label>
+        <select
+          value={current.level}
+          onChange={(e) => setNotificationSettings(serverId, { ...current, level: e.target.value as 'all' | 'mentions' | 'none' })}
+          className="server-menu__select"
+        >
+          <option value="all">All messages</option>
+          <option value="mentions">Only @mentions</option>
+          <option value="none">Nothing</option>
+        </select>
+      </div>
+      <div className="server-menu__toggle-row">
+        <label className="server-menu__label" style={{ margin: 0 }}>suppress @everyone and @here</label>
+        <label className="server-menu__toggle-switch">
+          <input
+            type="checkbox"
+            checked={current.suppressEveryone}
+            onChange={(e) => setNotificationSettings(serverId, { ...current, suppressEveryone: e.target.checked })}
+          />
+          <span className="server-menu__toggle-track">
+            <span className="server-menu__toggle-thumb" />
+          </span>
+        </label>
+      </div>
+    </div>
+  )
+}
+
 export default function ServerMenuModal({ onClose }: Props) {
   const { activeSession: session, updateServerInfo, servers } = useServerStore()
   const { members, setMembers, userStatuses } = useChatStore()
   const serverUrl = session?.url
-  const token = session?.token
   const isAdmin = session?.user?.role === 'admin'
   const [closing, setClosing] = useState(false)
   const mountedRef = useRef(false)
@@ -203,10 +240,9 @@ export default function ServerMenuModal({ onClose }: Props) {
     voiceBitrateSaveTimerRef.current = setTimeout(async () => {
       const { activeSession } = useServerStore.getState()
       const url = activeSession?.url
-      const tok = activeSession?.token
-      if (!url || !tok) return
+      if (!url) return
       try {
-        await updateServerSettings(url, tok, undefined, undefined, undefined, undefined, kbps)
+        await updateServerSettings(url, undefined, undefined, undefined, undefined, kbps)
       } catch {}
     }, 300)
   }, [])
@@ -215,14 +251,14 @@ export default function ServerMenuModal({ onClose }: Props) {
   const blurInitRef = useRef(true)
   useEffect(() => {
     if (blurInitRef.current) { blurInitRef.current = false; return }
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     const timer = setTimeout(async () => {
       try {
-        await updateServerSettings(serverUrl, token, undefined, undefined, bgBlur)
+        await updateServerSettings(serverUrl, undefined, undefined, bgBlur)
       } catch {}
     }, 400)
     return () => clearTimeout(timer)
-  }, [bgBlur, serverUrl, token])
+  }, [bgBlur, serverUrl])
 
   // ─── Members ─────────────────────────────────────────
   const [membersLoading, setMembersLoading] = useState(false)
@@ -289,10 +325,10 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   useEffect(() => {
-    if (!isAdmin || !serverUrl || !token) return
+    if (!isAdmin || !serverUrl) return
     if (adminTab === 'members') {
       setMembersLoading(true)
-      fetchMembers(serverUrl, token).then(d => { if (mountedRef.current) setMembers(d) }).catch(console.error).finally(() => { if (mountedRef.current) setMembersLoading(false) })
+      fetchMembers(serverUrl).then(d => { if (mountedRef.current) setMembers(d) }).catch(console.error).finally(() => { if (mountedRef.current) setMembersLoading(false) })
       loadRoles()
     } else if (adminTab === 'invites') {
       loadInvites()
@@ -301,27 +337,27 @@ export default function ServerMenuModal({ onClose }: Props) {
     } else if (adminTab === 'gifs') {
       loadGifs()
     }
-  }, [adminTab, isAdmin, serverUrl, token])
+  }, [adminTab, isAdmin, serverUrl])
 
   async function loadInvites() {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     setInvitesLoading(true)
-    try { if (mountedRef.current) setInvites(await fetchInvites(serverUrl, token)) } catch {}
+    try { if (mountedRef.current) setInvites(await fetchInvites(serverUrl)) } catch {}
     if (mountedRef.current) setInvitesLoading(false)
   }
 
   async function loadRoles() {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     setRolesLoading(true)
-    try { if (mountedRef.current) setRoles(await fetchRoles(serverUrl, token)) } catch {}
+    try { if (mountedRef.current) setRoles(await fetchRoles(serverUrl)) } catch {}
     if (mountedRef.current) setRolesLoading(false)
   }
 
   async function loadGifs() {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     setGifsLoading(true)
     try {
-      const gifs = await fetchGifs(serverUrl, token, { limit: 200 })
+      const gifs = await fetchGifs(serverUrl, { limit: 200 })
       if (mountedRef.current) setGifsList(gifs)
     } catch {}
     if (mountedRef.current) setGifsLoading(false)
@@ -340,7 +376,7 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   const handleSaveProfile = async () => {
-    if (!serverUrl || !token || !session) return
+    if (!serverUrl || !session) return
     setProfileSaving(true)
     setProfileMsg(null)
     try {
@@ -353,7 +389,7 @@ export default function ServerMenuModal({ onClose }: Props) {
           avatarPayload = await fileToDataUrl(pendingAvatarFile.current)
         }
       }
-      const updated = await updateProfile(serverUrl, token, displayName, avatarPayload)
+      const updated = await updateProfile(serverUrl, displayName, avatarPayload)
       useServerStore.getState().setActiveSession({ ...session, user: updated })
       useServerStore.getState().updateServerInfo(session.serverId, { name: updated.display_name })
       setAvatarChanged(false)
@@ -379,7 +415,7 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   const handleSaveServer = async () => {
-    if (!serverUrl || !token || !session) return
+    if (!serverUrl || !session) return
     setServerSaving(true)
     setServerMsg(null)
     try {
@@ -392,7 +428,7 @@ export default function ServerMenuModal({ onClose }: Props) {
           iconPayload = await fileToDataUrl(pendingServerIconFile.current)
         }
       }
-      const res = await updateServerSettings(serverUrl, token, serverName, iconPayload, bgBlur, undefined, voiceBitrateKbps)
+      const res = await updateServerSettings(serverUrl, serverName, iconPayload, bgBlur, undefined, voiceBitrateKbps)
       updateServerInfo(session.serverId, { name: res.name, icon: res.icon ?? undefined })
       setServerIconChanged(false)
       setServerIconPreview(res.icon ?? null)
@@ -406,12 +442,12 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   const handleSaveCustomCss = async () => {
-    if (!serverUrl || !token || !session) return
+    if (!serverUrl || !session) return
     setCustomCssSaving(true)
     setCustomCssMsg(null)
     try {
       const cssValue = customCss.trim() || null
-      await updateServerSettings(serverUrl, token, undefined, undefined, undefined, cssValue)
+      await updateServerSettings(serverUrl, undefined, undefined, undefined, cssValue)
       if (cssValue) {
         setCustomCss(cssValue)
       }
@@ -426,11 +462,11 @@ export default function ServerMenuModal({ onClose }: Props) {
   // ─── Background handlers ────────────────────────────
   const handleBgFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !serverUrl || !token) return
+    if (!file || !serverUrl) return
     setServerMsg(null)
     setBgUploading(true)
     try {
-      await uploadServerBackground(serverUrl, token, file)
+      await uploadServerBackground(serverUrl, file)
       setBgHasImage(true)
       setBgPreviewTs(Date.now())
       setServerMsg('background uploaded')
@@ -443,10 +479,10 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   const handleRemoveBg = async () => {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     setServerMsg(null)
     try {
-      await deleteServerBackground(serverUrl, token)
+      await deleteServerBackground(serverUrl)
       setBgHasImage(false)
       setBgPreviewTs(Date.now())
       setServerMsg('background removed')
@@ -469,7 +505,7 @@ export default function ServerMenuModal({ onClose }: Props) {
   const clearSelection = () => setSelectedMembers(new Set())
 
   const handleToggleRole = async (m: Member) => {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     const newRole = m.role === 'admin' ? 'member' : 'admin'
 
     if (newRole === 'member' && m.id === session?.user?.id && !selfDemoteConfirm) {
@@ -479,7 +515,7 @@ export default function ServerMenuModal({ onClose }: Props) {
     setSelfDemoteConfirm(false)
 
     try {
-      await setMemberRole(serverUrl, token, m.id, newRole)
+      await setMemberRole(serverUrl, m.id, newRole)
       setMemberMsg(prev => ({ ...prev, [m.id]: `role \u2192 ${newRole}` }))
       setTimeout(() => setMemberMsg(prev => { const n = { ...prev }; delete n[m.id]; return n }), 2000)
     } catch (err) {
@@ -488,9 +524,9 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   const handleKick = async (m: Member) => {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     try {
-      await kickMember(serverUrl, token, m.id)
+      await kickMember(serverUrl, m.id)
       setKickConfirmMember(null)
     } catch (err) {
       setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
@@ -498,9 +534,9 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   const handleGenerateReset = async (m: Member) => {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     try {
-      const result = await generatePasswordReset(serverUrl, token, m.id)
+      const result = await generatePasswordReset(serverUrl, m.id)
       setResetTokenData({ userId: m.id, token: result.resetToken, username: result.username })
     } catch (err) {
       setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
@@ -508,26 +544,26 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   const handleAddRole = async (userId: string, roleId: string) => {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: true }))
     try {
-      await addMemberRole(serverUrl, token, userId, roleId)
+      await addMemberRole(serverUrl, userId, roleId)
     } catch {}
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: false }))
   }
 
   const handleRemoveRole = async (userId: string, roleId: string) => {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: true }))
     try {
-      await removeMemberRole(serverUrl, token, userId, roleId)
+      await removeMemberRole(serverUrl, userId, roleId)
     } catch {}
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: false }))
   }
 
   // ─── Bulk member handlers ───────────────────────────
   const handleBulkToggleAdmin = async (makeAdmin: boolean) => {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     const targetRole = makeAdmin ? 'admin' : 'member' as const
     const targets = members.filter(m => selectedMembers.has(m.id) && m.role !== targetRole)
 
@@ -539,32 +575,32 @@ export default function ServerMenuModal({ onClose }: Props) {
 
     for (const m of targets) {
       try {
-        await setMemberRole(serverUrl, token, m.id, targetRole)
+        await setMemberRole(serverUrl, m.id, targetRole)
       } catch {}
     }
     clearSelection()
   }
 
   const handleBulkKick = async () => {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     const targets = members.filter(m => selectedMembers.has(m.id) && m.id !== session?.user?.id)
     for (const m of targets) {
       try {
-        await kickMember(serverUrl, token, m.id)
+        await kickMember(serverUrl, m.id)
       } catch {}
     }
     clearSelection()
   }
 
   const handleBulkAddRole = async (roleId: string) => {
-    if (!roleId || !serverUrl || !token) return
+    if (!roleId || !serverUrl) return
     const targets = members.filter(m =>
       selectedMembers.has(m.id) &&
       !(m.custom_roles || []).some(r => r.id === roleId),
     )
     for (const m of targets) {
       try {
-        await addMemberRole(serverUrl, token, m.id, roleId)
+        await addMemberRole(serverUrl, m.id, roleId)
       } catch {}
     }
     clearSelection()
@@ -572,12 +608,12 @@ export default function ServerMenuModal({ onClose }: Props) {
 
   // ─── Invite handlers ────────────────────────────────
   const handleCreateInvite = async () => {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     setCreatingInvite(true)
     try {
       const maxUses = newMaxUses ? parseInt(newMaxUses, 10) : undefined
       const expiresInHours = newExpiry !== '0' ? parseFloat(newExpiry) : undefined
-      const invite = await createInvite(serverUrl, token, maxUses, expiresInHours)
+      const invite = await createInvite(serverUrl, maxUses, expiresInHours)
       setInvites(prev => [invite, ...prev])
       const deepLink = `kizuna://join?server=${encodeURIComponent(serverUrl)}&code=${invite.code}`
       const qrDataUrl = await QRCode.toDataURL(deepLink, {
@@ -607,19 +643,19 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   const handleRevokeInvite = async (code: string) => {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     try {
-      await revokeInvite(serverUrl, token, code)
+      await revokeInvite(serverUrl, code)
       setInvites(prev => prev.filter(i => i.code !== code))
     } catch {}
   }
 
   // ─── Role handlers ──────────────────────────────────
   const handleCreateRole = async () => {
-    if (!newRoleName.trim() || !serverUrl || !token) return
+    if (!newRoleName.trim() || !serverUrl) return
     setCreatingRole(true)
     try {
-      const role = await createRole(serverUrl, token, newRoleName.trim(), newRoleColor, newRolePerms)
+      const role = await createRole(serverUrl, newRoleName.trim(), newRoleColor, newRolePerms)
       setRoles(prev => [...prev, role])
       setNewRoleName('')
       setNewRoleColor('#5865f2')
@@ -637,10 +673,10 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   const handleSaveRole = async (id: string) => {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     setSavingRoleId(id)
     try {
-      const updated = await updateRole(serverUrl, token, id, editName, editColor, editPerms)
+      const updated = await updateRole(serverUrl, id, editName, editColor, editPerms)
       setRoles(prev => prev.map(r => r.id === id ? updated : r))
       setMembers(members.map(m => ({
         ...m,
@@ -658,9 +694,9 @@ export default function ServerMenuModal({ onClose }: Props) {
     const count = memberRoleCount(id)
     const msg = `Delete this role? It will be unassigned from ${count} member${count !== 1 ? 's' : ''}.`
     if (!confirm(msg)) return
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     try {
-      await deleteRole(serverUrl, token, id)
+      await deleteRole(serverUrl, id)
       setRoles(prev => prev.filter(r => r.id !== id))
       setMembers(members.map(m => ({
         ...m,
@@ -676,12 +712,12 @@ export default function ServerMenuModal({ onClose }: Props) {
   // ─── GIF/sticker handlers ───────────────────────────
   const handleGifFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !serverUrl || !token) return
+    if (!file || !serverUrl) return
     const name = gifName.trim() || file.name.replace(/\.[^.]+$/, '')
     setGifUploading(true)
     setGifMsg(null)
     try {
-      await uploadGif(serverUrl, token, file, name, gifCategory.trim() || undefined, gifTags.trim() || undefined)
+      await uploadGif(serverUrl, file, name, gifCategory.trim() || undefined, gifTags.trim() || undefined)
       setGifMsg('uploaded')
       setGifName('')
       setGifCategory('')
@@ -696,11 +732,11 @@ export default function ServerMenuModal({ onClose }: Props) {
 
   const handleGifPackFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !serverUrl || !token) return
+    if (!file || !serverUrl) return
     setGifUploading(true)
     setGifMsg(null)
     try {
-      const result = await uploadGifPack(serverUrl, token, file)
+      const result = await uploadGifPack(serverUrl, file)
       setGifMsg(`imported ${result.imported} GIFs`)
       loadGifs()
     } catch (err) {
@@ -712,13 +748,13 @@ export default function ServerMenuModal({ onClose }: Props) {
 
   const handleStickerPackFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !serverUrl || !token) return
+    if (!file || !serverUrl) return
     const packName = prompt('Enter a name for this sticker pack:')
     if (!packName?.trim()) return
     setGifUploading(true)
     setGifMsg(null)
     try {
-      const result = await uploadStickerPack(serverUrl, token, file, packName.trim())
+      const result = await uploadStickerPack(serverUrl, file, packName.trim())
       setGifMsg(`imported ${result.imported} stickers`)
       loadGifs()
     } catch (err) {
@@ -729,9 +765,9 @@ export default function ServerMenuModal({ onClose }: Props) {
   }
 
   const handleDeleteGif = async (id: string) => {
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     try {
-      await deleteGif(serverUrl, token, id)
+      await deleteGif(serverUrl, id)
       setGifsList(prev => prev.filter(g => g.id !== id))
     } catch (err) {
       setGifMsg(handleApiErr(err))
@@ -740,9 +776,9 @@ export default function ServerMenuModal({ onClose }: Props) {
 
   const handleDeleteStickerPack = async (packName: string) => {
     if (!confirm(`Delete sticker pack "${packName}" and all its stickers?`)) return
-    if (!serverUrl || !token) return
+    if (!serverUrl) return
     try {
-      await deleteStickerPack(serverUrl, token, packName)
+      await deleteStickerPack(serverUrl, packName)
       loadGifs()
     } catch (err) {
       setGifMsg(handleApiErr(err))
@@ -831,6 +867,12 @@ export default function ServerMenuModal({ onClose }: Props) {
                 </span>
               )}
             </div>
+          </section>
+
+          {/* Notifications */}
+          <section style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
+            <p className="server-menu__section-title">notifications</p>
+            <NotificationSettings />
           </section>
 
           {/* Admin */}

@@ -6,7 +6,6 @@ import { getMe } from '@kizuna/shared'
 interface ServerSession {
   serverId: string
   url: string
-  token: string
   user: User
 }
 
@@ -76,7 +75,7 @@ export const useServerStore = create<ServerState>()(
         const { activeSession } = get()
         if (!activeSession) return
         try {
-          const user = await getMe(activeSession.url, activeSession.token)
+          const user = await getMe(activeSession.url)
           set((state) => {
             const session = { ...activeSession, user }
             return {

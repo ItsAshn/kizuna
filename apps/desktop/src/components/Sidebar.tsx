@@ -12,16 +12,15 @@ import '../styles/sidebar.css'
 
 interface SidebarProps {
   joinVoice: (channelId: string) => Promise<string | null>
-  leaveVoice: () => void
+  leaveVoice: () => Promise<void>
   toggleMute: () => void
   socketRef: React.MutableRefObject<any>
   startScreenshare: (channelId: string, monitorIndex: number, fps: number) => Promise<string | null>
   stopScreenshare: () => void
-  onOpenSettings: () => void
   onOpenMenu: () => void
 }
 
-export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare, onOpenSettings, onOpenMenu }: SidebarProps) {
+export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare, onOpenMenu }: SidebarProps) {
   const navigate = useNavigate()
   const session = useServerStore((s) => s.activeSession)
   const setActiveSession = useServerStore((s) => s.setActiveSession)
@@ -42,6 +41,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   const [contextMenuChannelId, setContextMenuChannelId] = useState<string | null>(null)
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
   const lockMenuRef = useRef<HTMLDivElement | null>(null)
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false)
 
   useEffect(() => {
     if (!lockMenuChannelId) return
@@ -64,6 +64,10 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   }, [lockMenuChannelId])
 
   function handleLogout() {
+    const channelId = activeChannelId || activeDMChannelId
+    if (channelId) {
+      socketRef.current?.emit('typing:stop', { channelId })
+    }
     setActiveSession(null)
     navigate('/')
   }
@@ -77,7 +81,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
     if (!newChannelName.trim() || !session) return
     setCreating(true)
     try {
-      await createChannel(session.url, session.token, newChannelName.trim(), newChannelType)
+      await createChannel(session.url, newChannelName.trim(), newChannelType)
       setNewChannelName('')
     } finally {
       setCreating(false)
@@ -87,7 +91,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   async function handleToggleLock(ch: typeof channels[0], locked: boolean, write_role_id?: string | null) {
     if (!session) return
     try {
-      await lockChannel(session.url, session.token, ch.id, locked, write_role_id ?? null)
+      await lockChannel(session.url, ch.id, locked, write_role_id ?? null)
     } catch {}
     setLockMenuChannelId(null)
   }
@@ -101,26 +105,28 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   function getMuteMenuItems(channelId: string) {
     const isMuted = channelMutes[channelId] !== undefined
     if (isMuted) {
-      return [
-        { label: 'Unmute Channel', onClick: () => { if (session) deleteChannelMute(session.url, session.token, channelId).catch(() => {}) } },
-      ]
+      return [{
+        items: [{ label: 'Unmute Channel', onClick: () => { if (session) deleteChannelMute(session.url, channelId).catch(() => {}) } }],
+      }]
     }
     const now = Date.now()
-    return [
-      { label: 'Mute for 15 minutes', onClick: () => { if (session) setChannelMute(session.url, session.token, channelId, now + 15 * 60 * 1000).catch(() => {}) } },
-      { label: 'Mute for 1 hour', onClick: () => { if (session) setChannelMute(session.url, session.token, channelId, now + 60 * 60 * 1000).catch(() => {}) } },
-      { label: 'Mute for 3 hours', onClick: () => { if (session) setChannelMute(session.url, session.token, channelId, now + 3 * 60 * 60 * 1000).catch(() => {}) } },
-      { label: 'Mute for 8 hours', onClick: () => { if (session) setChannelMute(session.url, session.token, channelId, now + 8 * 60 * 60 * 1000).catch(() => {}) } },
-      { label: 'Mute for 24 hours', onClick: () => { if (session) setChannelMute(session.url, session.token, channelId, now + 24 * 60 * 60 * 1000).catch(() => {}) } },
-      { label: 'Mute forever', onClick: () => { if (session) setChannelMute(session.url, session.token, channelId, null).catch(() => {}) } },
-    ]
+    return [{
+      items: [
+        { label: 'Mute for 15 minutes', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 15 * 60 * 1000).catch(() => {}) } },
+        { label: 'Mute for 1 hour', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 60 * 60 * 1000).catch(() => {}) } },
+        { label: 'Mute for 3 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 3 * 60 * 60 * 1000).catch(() => {}) } },
+        { label: 'Mute for 8 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 8 * 60 * 60 * 1000).catch(() => {}) } },
+        { label: 'Mute for 24 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 24 * 60 * 60 * 1000).catch(() => {}) } },
+        { label: 'Mute forever', onClick: () => { if (session) setChannelMute(session.url, channelId, null).catch(() => {}) } },
+      ],
+    }]
   }
 
   async function openLockMenu(channelId: string) {
     if (!session || !isAdmin) return
     if (!rolesLoaded) {
       try {
-        const r = await fetchRoles(session.url, session.token)
+        const r = await fetchRoles(session.url)
         setRoles(r)
         setRolesLoaded(true)
       } catch {}
@@ -129,7 +135,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   }
 
   return (
-    <div className="sidebar">
+    <div className="sidebar" role="navigation" aria-label="Channels and direct messages">
       <div className="sidebar__header">
         <div className="sidebar__user-row">
           <UserStatusPicker socketRef={socketRef}>
@@ -159,18 +165,21 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
           <div className="sidebar__section">
             <h3 className="sidebar__section-title">Text Channels</h3>
             {textChannels.map((ch) => {
-              const badge = mentionCounts[ch.id] || unreadCounts[ch.id]
+              const mentionBadge = mentionCounts[ch.id]
+              const unreadOnly = !mentionBadge && unreadCounts[ch.id]
               return (
                 <div key={ch.id} className="sidebar__channel-wrap">
                   <button
                     onClick={() => { setActiveChannel(ch.id); setLockMenuChannelId(null) }}
                     onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
-                    className={`sidebar__channel ${activeChannelId === ch.id ? 'sidebar__channel--active' : ''}`}
+                    className={`sidebar__channel ${activeChannelId === ch.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
+                    aria-label={(ch.type === 'voice' ? 'Voice' : 'Text') + ' channel ' + ch.name + (mentionBadge ? ' — ' + mentionBadge + ' mentions' : '') + (unreadOnly ? ' — unread' : '')}
+                    aria-current={activeChannelId === ch.id ? 'page' : undefined}
                   >
                     <span className="sidebar__channel-icon">#</span>
                     <span className="sidebar__channel-name">{ch.name}</span>
                     {channelMutes[ch.id] !== undefined && <BellOff size={10} className="sidebar__mute-icon" />}
-                    {badge ? <span className="sidebar__unread-badge">{mentionCounts[ch.id] || unreadCounts[ch.id]}</span> : null}
+                    {mentionBadge ? <span className="sidebar__unread-badge">{mentionBadge > 99 ? '99+' : mentionBadge}</span> : unreadOnly ? <span className="sidebar__unread-dot" /> : null}
                   </button>
                   {isAdmin && (
                     <button
@@ -224,9 +233,9 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
               return (
                 <div key={ch.id} className="sidebar__channel-wrap">
                   <button
-                    onClick={() => {
-                      if (activeVoiceChannelId === ch.id) { leaveVoice() }
-                      else { if (activeVoiceChannelId) leaveVoice(); joinVoice(ch.id) }
+                    onClick={async () => {
+                      if (activeVoiceChannelId === ch.id) { await leaveVoice() }
+                      else { if (activeVoiceChannelId) await leaveVoice(); joinVoice(ch.id) }
                     }}
                     onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
                     className={`sidebar__channel ${activeVoiceChannelId === ch.id ? 'sidebar__channel--voice-active' : ''}`}
@@ -277,12 +286,13 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
           <div className="sidebar__section">
             <h3 className="sidebar__section-title">Direct Messages</h3>
             {dmChannels.map((dm) => {
-              const badge = unreadCounts[dm.id]
+              const mentionBadge = mentionCounts[dm.id]
+              const unreadOnly = !mentionBadge && unreadCounts[dm.id]
               return (
               <button
                 key={dm.id}
                 onClick={() => setActiveDMChannel(dm.id)}
-                className={`sidebar__channel ${activeDMChannelId === dm.id ? 'sidebar__channel--active' : ''}`}
+                className={`sidebar__channel ${activeDMChannelId === dm.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
               >
                 <div className="sidebar__dm-avatar">
                   {dm.other_avatar ? (
@@ -290,7 +300,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
                   ) : dm.other_display_name?.[0]?.toUpperCase() || '?'}
                 </div>
                 <span className="sidebar__channel-name">{dm.other_display_name}</span>
-                {badge ? <span className="sidebar__unread-badge">{badge}</span> : null}
+                {mentionBadge ? <span className="sidebar__unread-badge">{mentionBadge > 99 ? '99+' : mentionBadge}</span> : unreadOnly ? <span className="sidebar__unread-dot" /> : null}
               </button>
               )
             })}
@@ -305,6 +315,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
               placeholder="channel-name"
               value={newChannelName}
               onChange={(e) => setNewChannelName(e.target.value)}
+              autoFocus
             />
             <div className="sidebar__create-type-row">
               <div className="sidebar__create-type-toggle">
@@ -340,15 +351,24 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
       />
 
       <div className="sidebar__footer">
-        <button onClick={onOpenSettings} className="sidebar__logout">Settings</button>
-        <button onClick={handleLogout} className="sidebar__logout">Disconnect</button>
+        {showDisconnectConfirm ? (
+          <div className="sidebar__disconnect-confirm">
+            <span className="sidebar__disconnect-label">Disconnect?</span>
+            <div className="sidebar__disconnect-actions">
+              <button onClick={handleLogout} className="sidebar__disconnect-btn sidebar__disconnect-btn--confirm">Yes</button>
+              <button onClick={() => setShowDisconnectConfirm(false)} className="sidebar__disconnect-btn">No</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setShowDisconnectConfirm(true)} className="sidebar__logout">Disconnect</button>
+        )}
       </div>
 
       {contextMenuChannelId && (
         <ContextMenu
           x={contextMenuPos.x}
           y={contextMenuPos.y}
-          items={getMuteMenuItems(contextMenuChannelId)}
+          sections={getMuteMenuItems(contextMenuChannelId)}
           onClose={() => setContextMenuChannelId(null)}
         />
       )}

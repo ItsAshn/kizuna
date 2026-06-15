@@ -1,7 +1,9 @@
 import natUpnp from 'nat-upnp'
 
 const client = natUpnp.createClient()
+export const upnpClient: ReturnType<typeof natUpnp.createClient> = client
 let mappedPorts: { public: number; private: { host: string; port: number }; ttl: number }[] = []
+export function getMappedPorts() { return mappedPorts }
 
 export async function openPorts(options: {
   httpPort: number

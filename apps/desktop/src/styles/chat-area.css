@@ -6,6 +6,19 @@
   overflow: hidden;
 }
 
+.chat-area__messages-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  animation: chatFadeIn 0.15s ease-out;
+}
+
+@keyframes chatFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .chat-area__empty {
   flex: 1;
   display: flex;
@@ -33,7 +46,6 @@
   display: flex;
   align-items: center;
   padding: 0 16px;
-  border-bottom: 1px solid var(--border-color);
   background: var(--bg-secondary);
   flex-shrink: 0;
 }
@@ -60,6 +72,34 @@
   display: flex;
   flex-direction: column;
   gap: 0;
+  position: relative;
+  scrollbar-gutter: stable;
+}
+
+.chat-area__scroll-bottom {
+  position: sticky;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--brand);
+  color: var(--text-primary);
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0.92;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  z-index: 10;
+  white-space: nowrap;
+  width: fit-content;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.chat-area__scroll-bottom:hover {
+  opacity: 1;
+  background: var(--brand-hover);
 }
 
 .chat-area__loading {
@@ -229,7 +269,67 @@
   animation: pulse 1.5s ease-in-out infinite;
 }
 
-/* ── File upload preview ───────────────────────────────────── */
+/* ── Reply bar ──────────────────────────────────────────────── */
+
+.chat-area__reply-bar {
+  margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+.chat-area__reply-bar-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-area__reply-bar-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.chat-area__reply-bar-username {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand);
+  flex-shrink: 0;
+}
+
+.chat-area__reply-bar-preview {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-area__reply-bar-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.chat-area__reply-bar-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* ── Upload preview ───────────────────────────────────────── */
 
 .chat-area__upload-preview {
   margin: 0 0 8px;
@@ -351,4 +451,44 @@
   background: var(--green-dim);
   color: var(--green);
   border-color: var(--green-dim-border);
+}
+
+/* ── Drag-and-drop overlay ────────────────────────────────── */
+
+.chat-area__drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px dashed var(--brand);
+  border-radius: var(--radius-lg);
+  margin: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: dropOverlayFadeIn 0.15s ease-out;
+}
+
+@keyframes dropOverlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.chat-area__drop-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-area__drop-overlay-icon {
+  font-size: 32px;
+  color: var(--brand);
+}
+
+.chat-area__drop-overlay-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand);
 }

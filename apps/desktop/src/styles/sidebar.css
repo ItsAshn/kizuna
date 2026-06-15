@@ -46,6 +46,7 @@
   flex: 1;
   overflow-y: auto;
   padding: 8px;
+  scrollbar-gutter: stable;
 }
 
 .sidebar__section {
@@ -118,6 +119,20 @@
   line-height: 1;
 }
 
+.sidebar__unread-dot {
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.sidebar__channel--unread .sidebar__channel-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
 .sidebar__mute-icon {
   color: var(--text-muted);
   flex-shrink: 0;
@@ -168,6 +183,51 @@
 .sidebar__logout:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.sidebar__disconnect-confirm {
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar__disconnect-label {
+  font-size: 12px;
+  color: var(--red);
+  font-weight: 500;
+}
+
+.sidebar__disconnect-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.sidebar__disconnect-btn {
+  flex: 1;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  cursor: pointer;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  transition: background 0.15s, color 0.15s;
+}
+
+.sidebar__disconnect-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar__disconnect-btn--confirm {
+  background: var(--red-dim);
+  color: var(--red);
+}
+
+.sidebar__disconnect-btn--confirm:hover {
+  background: var(--red-dim-border);
+  color: var(--red);
 }
 
 /* ── User info in header ───────────────────────────────────── */
@@ -472,4 +532,24 @@
   opacity: 0.7;
   padding-top: 1px;
   cursor: default;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 200px;
+  }
+
+  .sidebar__header-name {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 600px) {
+  .sidebar {
+    width: 100%;
+    margin: 0;
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+  }
 }

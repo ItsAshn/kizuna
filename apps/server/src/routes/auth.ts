@@ -3,9 +3,10 @@ import { v4 as uuidv4 } from 'uuid'
 import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { getDb } from '../db'
-import { signToken, authMiddleware, isUserAdmin, isUserHost } from '../middleware/auth'
+import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getJwtSecret } from '../middleware/auth'
+import type { AuthUser, JwtPayload } from '../middleware/auth'
 import { generateChallenge, verifyPoW } from '../middleware/pow'
-import type { AuthUser } from '../middleware/auth'
+import jwt from 'jsonwebtoken'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const authRoutes = new Hono()
@@ -66,12 +67,14 @@ authRoutes.post('/register', async (c) => {
       'INSERT INTO users (id, username, display_name, password_hash, public_key, key_salt, backuptoken_hash) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ).run(id, username.toLowerCase().trim(), display_name || username, hash, public_key?.trim() || null, key_salt?.trim() || null, backuptokenHash)
 
-    const userCount = db
-      .prepare('SELECT COUNT(*) as n FROM server_members')
-      .get() as { n: number }
-    const isFirstUser = userCount.n === 0
-
-    db.prepare('INSERT INTO server_members (user_id, role, is_host) VALUES (?, ?, ?)').run(id, isFirstUser ? 'admin' : 'member', isFirstUser ? 1 : 0)
+    const isFirstUser = db.transaction(() => {
+      const userCount = db
+        .prepare('SELECT COUNT(*) as n FROM server_members')
+        .get() as { n: number }
+      const first = userCount.n === 0
+      db.prepare('INSERT INTO server_members (user_id, role, is_host) VALUES (?, ?, ?)').run(id, first ? 'admin' : 'member', first ? 1 : 0)
+      return first
+    })()
 
     if (isFirstUser) {
       db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(id, 'admin-role')
@@ -83,9 +86,15 @@ authRoutes.post('/register', async (c) => {
       )
       .get(id) as { id: string; username: string; display_name: string; avatar: string | null; public_key: string | null; key_salt: string | null; created_at: number }
 
-    return c.json(
+  const tokenId = uuidv4()
+  const token = signToken({ userId: user.id, username: user.username, tokenId })
+  db.prepare('INSERT OR REPLACE INTO sessions (token_id, user_id, created_at) VALUES (?, ?, unixepoch())').run(tokenId, user.id)
+  c.header(
+    'Set-Cookie',
+    `kizuna_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
+  )
+  return c.json(
       {
-        token: signToken({ userId: user.id, username: user.username }),
         user: { ...user, role: isFirstUser ? 'admin' : 'member', is_host: isFirstUser },
         backuptoken,
       },
@@ -121,24 +130,40 @@ authRoutes.post('/login', async (c) => {
     return c.json({ error: 'Invalid credentials' }, 401)
   }
 
+  const ban = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(user.id) as any
+  if (ban) {
+    return c.json({ error: 'You are banned from this server' }, 403)
+  }
+
   let member = db
     .prepare('SELECT role, is_host FROM server_members WHERE user_id = ?')
     .get(user.id) as { role: string; is_host: number } | undefined
 
   if (!member) {
-    const anyAdmin = db
-      .prepare("SELECT 1 FROM member_roles mr JOIN roles r ON mr.role_id = r.id WHERE r.is_admin = 1")
-      .get()
-    const isFirstAdmin = !anyAdmin
-    db.prepare('INSERT INTO server_members (user_id, role, is_host) VALUES (?, ?, 0)').run(user.id, isFirstAdmin ? 'admin' : 'member')
-    if (isFirstAdmin) {
-      db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(user.id, 'admin-role')
+    db.transaction(() => {
+      const anyAdmin = db
+        .prepare("SELECT 1 FROM member_roles mr JOIN roles r ON mr.role_id = r.id WHERE r.is_admin = 1")
+        .get()
+      const isFirstAdmin = !anyAdmin
+      db.prepare('INSERT OR IGNORE INTO server_members (user_id, role, is_host) VALUES (?, ?, 0)').run(user.id, isFirstAdmin ? 'admin' : 'member')
+      if (isFirstAdmin) {
+        db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(user.id, 'admin-role')
+      }
+    })()
+    member = db.prepare('SELECT role, is_host FROM server_members WHERE user_id = ?').get(user.id) as { role: string; is_host: number } | undefined
+    if (!member) {
+      member = { role: 'member', is_host: 0 }
     }
-    member = { role: isFirstAdmin ? 'admin' : 'member', is_host: 0 }
   }
 
+  const tokenId = uuidv4()
+  const token = signToken({ userId: user.id, username: user.username, tokenId })
+  db.prepare('INSERT OR REPLACE INTO sessions (token_id, user_id, created_at) VALUES (?, ?, unixepoch())').run(tokenId, user.id)
+  c.header(
+    'Set-Cookie',
+    `kizuna_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
+  )
   return c.json({
-    token: signToken({ userId: user.id, username: user.username }),
     user: {
       id: user.id,
       username: user.username,
@@ -210,20 +235,34 @@ authRoutes.patch('/profile', authMiddleware, async (c) => {
 
 authRoutes.get('/users', authMiddleware, (c) => {
   const db = getDb()
+  const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0)
+  const limit = Math.min(200, Math.max(1, parseInt(c.req.query('limit') || '50', 10) || 50))
+
+  const total = (db.prepare('SELECT COUNT(*) as n FROM users').get() as { n: number }).n
+
   const users = db
     .prepare(
       `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at, u.reset_requested_at, sm.is_host
        FROM users u
        LEFT JOIN server_members sm ON sm.user_id = u.id
-       ORDER BY u.username`,
+       ORDER BY u.username
+       LIMIT ? OFFSET ?`,
     )
-    .all() as any[]
+    .all(limit, offset) as any[]
+
+  if (users.length === 0) {
+    return c.json({ users: [], total, offset, limit })
+  }
+
+  const userIds = users.map((u: any) => u.id)
+  const placeholders = userIds.map(() => '?').join(',')
 
   const memberRoles = db.prepare(`
     SELECT mr.user_id, r.id, r.name, r.color, r.permissions, r.is_admin
     FROM member_roles mr
     JOIN roles r ON mr.role_id = r.id
-  `).all() as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number }[]
+    WHERE mr.user_id IN (${placeholders})
+  `).all(...userIds) as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number }[]
 
   const rolesByUser: Record<string, { id: string; name: string; color: string; permissions: Record<string, boolean>; is_admin: boolean }[]> = {}
   for (const row of memberRoles) {
@@ -237,14 +276,13 @@ authRoutes.get('/users', authMiddleware, (c) => {
     })
   }
 
-  // Also include legacy custom_role_id roles
   const legacyRoles = db.prepare(`
     SELECT sm.user_id, r.id, r.name, r.color, r.permissions, r.is_admin
     FROM server_members sm
     JOIN roles r ON sm.custom_role_id = r.id
-    WHERE sm.custom_role_id IS NOT NULL
+    WHERE sm.custom_role_id IS NOT NULL AND sm.user_id IN (${placeholders})
       AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = sm.user_id AND mr.role_id = sm.custom_role_id)
-  `).all() as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number }[]
+  `).all(...userIds) as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number }[]
 
   for (const row of legacyRoles) {
     if (!rolesByUser[row.user_id]) rolesByUser[row.user_id] = []
@@ -274,7 +312,7 @@ authRoutes.get('/users', authMiddleware, (c) => {
     }
   })
 
-  return c.json({ users: formatted })
+  return c.json({ users: formatted, total, offset, limit })
 })
 
 authRoutes.put('/public-key', authMiddleware, async (c) => {
@@ -359,6 +397,47 @@ authRoutes.post('/reset-with-backuptoken', async (c) => {
   return c.json({ ok: true, backuptoken: newBackuptoken })
 })
 
+authRoutes.post('/refresh', async (c) => {
+  let token: string | undefined
+  const cookieHeader = c.req.header('Cookie')
+  if (cookieHeader) {
+    const match = cookieHeader.match(/(?:^|;\s*)kizuna_token=([^;]*)/)
+    if (match) token = match[1]
+  }
+  if (!token) {
+    const authHeader = c.req.header('Authorization')
+    if (authHeader?.startsWith('Bearer ')) token = authHeader.slice(7)
+  }
+  if (!token) {
+    return c.json({ error: 'No token provided' }, 401)
+  }
+
+  try {
+    const payload = jwt.verify(token, getJwtSecret(), { ignoreExpiration: true }) as JwtPayload
+    const userInfo = getUserInfo(payload.userId)
+    if (!userInfo) {
+      return c.json({ error: 'User not found' }, 401)
+    }
+
+    const db = getDb()
+    const row = db.prepare('SELECT token_invalidated_at FROM users WHERE id = ?').get(payload.userId) as { token_invalidated_at: number | null } | undefined
+    if (row?.token_invalidated_at && payload.iat && row.token_invalidated_at > payload.iat) {
+      return c.json({ error: 'Token has been revoked' }, 401)
+    }
+
+    const tokenId = uuidv4()
+    const newToken = signToken({ userId: userInfo.userId, username: userInfo.username, tokenId })
+    db.prepare('INSERT OR REPLACE INTO sessions (token_id, user_id, created_at) VALUES (?, ?, unixepoch())').run(tokenId, userInfo.userId)
+    c.header(
+      'Set-Cookie',
+      `kizuna_token=${newToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
+    )
+    return c.json({ ok: true })
+  } catch {
+    return c.json({ error: 'Invalid token' }, 401)
+  }
+})
+
 authRoutes.get('/reset-password/:token', (c) => {
   const token = c.req.param('token') || ''
   if (!token) return c.json({ error: 'Invalid token' }, 400)
@@ -381,6 +460,21 @@ authRoutes.post('/logout', authMiddleware, (c) => {
   const db = getDb()
   const now = Math.floor(Date.now() / 1000)
   db.prepare('UPDATE users SET token_invalidated_at = ? WHERE id = ?').run(now, auth.userId)
+
+  const cookieHeader = c.req.header('Cookie')
+  if (cookieHeader) {
+    const match = cookieHeader.match(/(?:^|;\s*)kizuna_token=([^;]*)/)
+    if (match) {
+      try {
+        const payload = jwt.decode(match[1]) as { tokenId?: string } | null
+        if (payload?.tokenId) {
+          db.prepare('UPDATE sessions SET revoked_at = ? WHERE token_id = ?').run(now, payload.tokenId)
+        }
+      } catch { /* ignore decode errors */ }
+    }
+  }
+
+  c.header('Set-Cookie', 'kizuna_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
   return c.json({ ok: true })
 })
 

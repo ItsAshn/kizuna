@@ -6,6 +6,7 @@ import { fetchServerInfo, login, register, fetchDMChannels, resolveInviteCode, u
 import { solvePoW } from '@kizuna/shared/pow'
 import { generateAndStoreKey, initializeCrypto, userNeedsKeyUpload, getPublicKey } from '../store/keyStore'
 import type { DMChannelData } from '@kizuna/shared'
+import { Settings } from 'lucide-react'
 import AuthForm from '../components/AuthForm'
 import BackupTokenModal from '../components/BackupTokenModal'
 import Landing from './Landing'
@@ -23,7 +24,7 @@ interface ServerDMs {
   channels: DMChannelData[]
 }
 
-export default function Welcome({ isLanding = false }: { isLanding?: boolean }) {
+export default function Welcome({ isLanding = false, onOpenSettings }: { isLanding?: boolean; onOpenSettings: () => void }) {
   const navigate = useNavigate()
   const { addServer, setActiveSession, servers } = useServerStore()
   const mentionCounts = useChatStore((s) => s.mentionCounts)
@@ -51,7 +52,7 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
       const results: ServerDMs[] = []
       for (const server of servers) {
         try {
-          const channels = await fetchDMChannels(server.url, '')
+          const channels = await fetchDMChannels(server.url)
           if (channels.length > 0) {
             results.push({ serverId: server.id, serverName: server.name, channels: channels.slice(0, 3) })
           }
@@ -108,7 +109,6 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
         setActiveSession({
           serverId,
           url: serverId,
-          token: result.token,
           user: result.user,
         })
 
@@ -123,9 +123,9 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
       } else {
         result = await login(url.trim(), username.trim(), password)
         const serverSalt = result.user.key_salt ? JSON.parse(result.user.key_salt) : null
-        const { publicKey, salt } = await initializeCrypto(url.trim(), result.token, password, serverSalt, result.user.public_key)
+        const { publicKey, salt } = await initializeCrypto(url.trim(), password, serverSalt, result.user.public_key)
         if (userNeedsKeyUpload(result.user.public_key, url.trim())) {
-          await uploadPublicKey(url.trim(), result.token, publicKey, salt)
+          await uploadPublicKey(url.trim(), publicKey, salt)
         }
 
         const serverId = url.trim()
@@ -140,7 +140,6 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
         setActiveSession({
           serverId,
           url: serverId,
-          token: result.token,
           user: result.user,
         })
 
@@ -358,6 +357,15 @@ export default function Welcome({ isLanding = false }: { isLanding?: boolean }) 
       </div>
 
       <button className="welcome__dashboard-cta" onClick={() => setShowConnect(true)}>Connect to Server</button>
+
+      <button
+        className="welcome__settings-btn"
+        onClick={onOpenSettings}
+        title="Settings"
+        aria-label="Settings"
+      >
+        <Settings size={18} />
+      </button>
     </div>
   )
 }

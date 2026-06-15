@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { useServerStore } from '../store/serverStore'
-import { getOrCreateDMChannel } from '@kizuna/shared'
+import UserProfileCard from './UserProfileCard'
 import '../styles/member-list.css'
 
 interface Props {
@@ -11,12 +11,11 @@ interface Props {
 export default function MemberList({ visible }: Props) {
   const members = useChatStore((s) => s.members)
   const session = useServerStore((s) => s.activeSession)
-  const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
-  const dmChannels = useChatStore((s) => s.dmChannels)
   const userStatuses = useChatStore((s) => s.userStatuses)
-  const setDMChannels = useChatStore((s) => s.setDMChannels)
   const [search, setSearch] = useState('')
   const [closing, setClosing] = useState(false)
+  const [profileUserId, setProfileUserId] = useState<string | null>(null)
+  const profileAnchorRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!visible) {
@@ -46,21 +45,8 @@ export default function MemberList({ visible }: Props) {
     return a.username.localeCompare(b.username)
   })
 
-  async function handleStartDM(userId: string) {
-    if (!session) return
-    try {
-      const dm = await getOrCreateDMChannel(session.url, session.token, userId)
-      const store = useChatStore.getState()
-      store.setDMChannels([
-        dm,
-        ...store.dmChannels.filter((d) => d.id !== dm.id),
-      ])
-      setActiveDMChannel(dm.id)
-    } catch { /* ignore */ }
-  }
-
   return (
-    <div className={`member-list${closing ? ' member-list--closing' : ''}`}>
+    <div className={`member-list${closing ? ' member-list--closing' : ''}`} role="complementary" aria-label="Members">
       <div className="member-list__header">
         <h3 className="member-list__title">Members — {members.length}</h3>
         <input
@@ -78,16 +64,12 @@ export default function MemberList({ visible }: Props) {
 
         {filtered.map((member) => {
           const status = userStatuses[member.id] || 'offline'
-          const dmExists = dmChannels.find(d => d.other_user_id === member.id)
           return (
             <button
               key={member.id}
-              onClick={() => {
-                if (member.id !== session?.user.id && dmExists) {
-                  setActiveDMChannel(dmExists.id)
-                } else if (member.id !== session?.user.id) {
-                  handleStartDM(member.id)
-                }
+              onClick={(e) => {
+                profileAnchorRef.current = e.currentTarget as HTMLElement
+                setProfileUserId(member.id)
               }}
               className="member-list__member"
             >
@@ -112,11 +94,18 @@ export default function MemberList({ visible }: Props) {
               </div>
               {member.role === 'admin' && <span className="member-list__admin-badge">admin</span>}
               {member.id === session?.user.id && <span className="member-list__self-tag">you</span>}
-              {member.id !== session?.user.id && <span className="member-list__dm-icon">@</span>}
             </button>
           )
         })}
       </div>
+
+      {profileUserId && (
+        <UserProfileCard
+          userId={profileUserId}
+          anchorEl={profileAnchorRef.current}
+          onClose={() => { setProfileUserId(null); profileAnchorRef.current = null }}
+        />
+      )}
     </div>
   )
 }

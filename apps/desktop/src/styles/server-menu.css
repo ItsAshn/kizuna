@@ -797,7 +797,7 @@
 .server-menu__invite-qr-btn--active {
   color: var(--accent-color);
   border-color: var(--accent-color);
-  background: var(--accent-color)11;
+  background: var(--brand-dim);
 }
 
 /* Background image */

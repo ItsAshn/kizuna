@@ -5,7 +5,7 @@ import { createApp } from './app'
 import { initDb, closeDb } from './db'
 import { createWorker, closeWorker } from './media'
 import { loadConfig, validateJwtSecret } from './config'
-import { openPorts, registerShutdownHook } from './services/upnp'
+import { openPorts, upnpClient, getMappedPorts } from './services/upnp'
 import { resolvePublicAddress, startIpWatcher } from './services/publicAddress'
 
 function printBanner(): void {
@@ -51,8 +51,6 @@ async function start(): Promise<void> {
     process.exit(1)
   }
 
-  registerShutdownHook()
-
   console.log(`[i] Configuring network (UPnP: ${process.env.UPNP_ENABLED !== 'false' ? 'enabled' : 'disabled'})...`)
   await openPorts({ httpPort: PORT, rtcMinPort: RTC_MIN, rtcMaxPort: RTC_MAX })
 
@@ -85,6 +83,9 @@ async function start(): Promise<void> {
 
   const shutdown = async (signal: string) => {
     console.log(`\n[${signal}] Shutting down gracefully...`)
+    for (const mapping of getMappedPorts()) {
+      try { upnpClient.portUnmapping({ public: mapping.public }, () => {}) } catch {}
+    }
     closeDb()
     await closeWorker()
     process.exit(0)

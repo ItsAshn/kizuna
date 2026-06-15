@@ -55,7 +55,7 @@
   border-radius: var(--radius-sm);
   border-color: var(--accent-color);
   background: var(--accent-color);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .server-panel__icon--home {
@@ -69,8 +69,8 @@
 }
 
 .server-panel__icon--action:hover {
-  color: #22c55e;
-  border-color: #22c55e;
+  color: var(--green);
+  border-color: var(--green);
 }
 
 .server-panel__icon-img {
@@ -78,6 +78,7 @@
   height: 100%;
   border-radius: calc(var(--radius-md) - 1px);
   object-fit: cover;
+  transition: border-radius 0.15s ease;
 }
 
 .server-panel__icon:hover .server-panel__icon-img {
@@ -108,19 +109,19 @@
 }
 
 .server-panel__dot--online {
-  background: #22c55e;
+  background: var(--green);
 }
 
 .server-panel__badge {
   position: absolute;
   bottom: -2px;
   right: -4px;
-  background: #ef4444;
-  color: #fff;
+  background: var(--red);
+  color: var(--text-primary);
   font-size: 9px;
   font-weight: 700;
   padding: 1px 4px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   min-width: 16px;
   text-align: center;
   line-height: 1.2;
@@ -134,8 +135,8 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #ef4444;
-  color: #fff;
+  background: var(--red);
+  color: var(--text-primary);
   font-size: 12px;
   display: flex;
   align-items: center;
@@ -144,4 +145,41 @@
   border: 2px solid var(--bg-secondary);
   transform: translate(5px, -5px);
   z-index: 1;
+}
+
+@media (max-width: 600px) {
+  .server-panel {
+    width: 100%;
+    height: 52px;
+    flex-direction: row;
+    align-items: center;
+    flex-shrink: 0;
+    margin: 0;
+    border-radius: 0;
+    padding: 0 8px;
+    gap: 4px;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: none;
+  }
+
+  .server-panel__list {
+    flex-direction: row;
+    gap: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex: 0 1 auto;
+    padding: 0;
+  }
+
+  .server-panel__icon {
+    width: 36px;
+    height: 36px;
+    font-size: 12px;
+  }
+
+  .server-panel__settings-btn {
+    width: 36px;
+    height: 36px;
+  }
 }

@@ -97,11 +97,9 @@ async fn get_environment() -> Result<env::EnvDiagnostic, String> {
 fn voice_init(
     app: tauri::AppHandle,
     server_url: String,
-    auth_token: String,
     user_id: String,
     username: String,
 ) -> Result<(), String> {
-    let _ = auth_token; // stored in TS session, not needed here
     let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
     if guard.is_some() {
         eprintln!("[Voice] voice_init: already initialized, skipping");

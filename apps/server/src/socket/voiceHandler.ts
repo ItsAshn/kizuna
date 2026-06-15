@@ -1,5 +1,5 @@
 import type { Server, Socket } from 'socket.io'
-import { ensureRouter, createTransport, connectTransport, produceOnTransport, consumeOnTransport } from '../media/router'
+import { ensureRouter, createTransport, connectTransport, produceOnTransport, consumeOnTransport, closeRouter } from '../media/router'
 import type { types as mediasoupTypes } from 'mediasoup'
 import { getDb } from '../db'
 
@@ -422,14 +422,10 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     channelId: string
     speaking: boolean
   }) => {
-    for (const [sid] of peers) {
-      if (sid !== socket.id) {
-        socket.to(sid).emit('voice:peerSpeaking', {
-          peerId: socket.id,
-          speaking,
-        })
-      }
-    }
+    socket.to(channelId).emit('voice:peerSpeaking', {
+      peerId: socket.id,
+      speaking,
+    })
   })
 
   socket.on('voice:mute', ({ muted }: { muted: boolean }) => {
@@ -475,15 +471,16 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
 
   socket.on('voice:leave', async (payload?: { channelId?: string }) => {
     const channelId = payload?.channelId
+    let peerChannelId: string | undefined
     if (channelId) {
-      cleanupPeer(socket.id, channelId, io)
+      peerChannelId = channelId
     } else {
-      for (const [sid, peer] of peers) {
-        if (sid === socket.id) {
-          cleanupPeer(socket.id, peer.channelId, io)
-          break
-        }
-      }
+      const peer = peers.get(socket.id)
+      if (peer) peerChannelId = peer.channelId
+    }
+    if (peerChannelId) {
+      socket.leave(peerChannelId)
+      cleanupPeer(socket.id, peerChannelId, io)
     }
   })
 
@@ -537,12 +534,11 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
 
   socket.on('disconnect', async () => {
     socketRtpEnabled.delete(socket.id)
-    for (const [sid, peer] of peers) {
-      if (sid === socket.id) {
-        vlog('disconnect', `socket disconnected | socketId=${socket.id} | user=${peer.username} | channelId=${peer.channelId}`)
-        cleanupPeer(socket.id, peer.channelId, io)
-        break
-      }
+    const peer = peers.get(socket.id)
+    if (peer) {
+      vlog('disconnect', `socket disconnected | socketId=${socket.id} | user=${peer.username} | channelId=${peer.channelId}`)
+      socket.leave(peer.channelId)
+      cleanupPeer(socket.id, peer.channelId, io)
     }
   })
 }
@@ -566,9 +562,23 @@ function cleanupPeer(socketId: string, channelId: string, io: Server): void {
 
   peers.delete(socketId)
 
+  const sock = io.sockets.sockets.get(socketId)
+  if (sock) sock.leave(channelId)
+
   io.to(channelId).emit('voice:peerLeft', { peerId: socketId })
   io.emit('voice:userLeftChannel', { channelId, userId: peer.userId })
   if (wasSharing) {
     io.to(channelId).emit('screen:peerStopped', { peerId: socketId })
+  }
+
+  const remainingInChannel = [...peers.values()].filter(p => p.channelId === channelId).length
+  if (remainingInChannel === 0) {
+    setTimeout(() => {
+      const stillEmpty = [...peers.values()].filter(p => p.channelId === channelId).length === 0
+      if (stillEmpty) {
+        vlog('cleanup', `closing router for empty channel ${channelId}`)
+        closeRouter(channelId)
+      }
+    }, 30_000)
   }
 }

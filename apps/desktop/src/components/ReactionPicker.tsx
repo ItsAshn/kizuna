@@ -5,7 +5,6 @@ import type { GifInfo } from '@kizuna/shared'
 
 interface ReactionPickerProps {
   serverUrl: string
-  token: string
   onSelect: (key: string, type: 'emoji' | 'sticker') => void
   onClose: () => void
 }
@@ -23,7 +22,7 @@ const EMOJI_GRID = [
 
 type Tab = 'emoji' | 'sticker'
 
-export default function ReactionPicker({ serverUrl, token, onSelect, onClose }: ReactionPickerProps) {
+export default function ReactionPicker({ serverUrl, onSelect, onClose }: ReactionPickerProps) {
   const [tab, setTab] = useState<Tab>('emoji')
   const [stickers, setStickers] = useState<GifInfo[]>([])
   const [stickerPacks, setStickerPacks] = useState<string[]>([])
@@ -33,26 +32,34 @@ export default function ReactionPicker({ serverUrl, token, onSelect, onClose }: 
   useEffect(() => {
     if (tab === 'sticker') {
       setLoading(true)
-      fetchStickerPacks(serverUrl, token).then(packs => {
+      fetchStickerPacks(serverUrl).then(packs => {
         setStickerPacks(packs)
         if (packs.length > 0 && !activePack) setActivePack(packs[0])
       }).catch(() => {}).finally(() => setLoading(false))
     }
-  }, [tab, serverUrl, token])
+  }, [tab, serverUrl])
 
   useEffect(() => {
     if (tab === 'sticker' && activePack) {
       setLoading(true)
-      fetchGifs(serverUrl, token, { type: 'sticker', pack: activePack, limit: 50 })
+      fetchGifs(serverUrl, { type: 'sticker', pack: activePack, limit: 50 })
         .then(setStickers)
         .catch(() => setStickers([]))
         .finally(() => setLoading(false))
     }
-  }, [tab, activePack, serverUrl, token])
+  }, [tab, activePack, serverUrl])
 
   const handleOverlay = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose()
   }
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose])
 
   return (
     <div className="reaction-picker__overlay" onClick={handleOverlay}>

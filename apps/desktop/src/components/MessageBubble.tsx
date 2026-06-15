@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
 import { createPortal } from 'react-dom'
-import { Trash2, Pencil } from 'lucide-react'
+import { Trash2, Pencil, Reply, Copy, Pin, User } from 'lucide-react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import type { Message, Member } from '@kizuna/shared'
@@ -9,6 +9,9 @@ import { useServerStore } from '../store/serverStore'
 import ReactionPills from './ReactionPills'
 import ReactionBar from './ReactionBar'
 import ReactionPicker from './ReactionPicker'
+import ContextMenu, { type ContextMenuSection } from './ContextMenu'
+import UserProfileCard from './UserProfileCard'
+import EmbedCard from './EmbedCard'
 import '../styles/message-bubble.css'
 
 interface MessageBubbleProps {
@@ -22,6 +25,9 @@ interface MessageBubbleProps {
   canEdit: boolean
   onEdit: (messageId: string, content: string) => void
   serverUrl?: string
+  onReply?: (message: Message) => void
+  onUserClick?: (userId: string) => void
+  onImageClick?: (imageUrl: string, filename: string) => void
 }
 
 function isImageUrl(url: string): boolean {
@@ -64,6 +70,7 @@ function parseAttachments(content: string): { text: string; attachments: { url: 
   return { text: text.trim(), attachments }
 }
 
+
 function renderMessageHtml(content: string, currentUsername?: string): string {
   if (!content) return ''
 
@@ -88,32 +95,36 @@ function renderMessageHtml(content: string, currentUsername?: string): string {
   return clean
 }
 
-function AttachmentPreview({ url, filename, serverUrl, isMediaOnly }: { url: string; filename: string; serverUrl?: string; isMediaOnly?: boolean }) {
+function AttachmentPreview({ url, filename, serverUrl, isMediaOnly, onImageClick }: { url: string; filename: string; serverUrl?: string; isMediaOnly?: boolean; onImageClick?: (url: string, filename: string) => void }) {
   const resolvedUrl = serverUrl && url.startsWith('/') ? `${serverUrl}${url}` : url
-  const [expanded, setExpanded] = useState(false)
   const [loadError, setLoadError] = useState(false)
+
+  const hasTypePrefix = /^(gif|sticker):/.test(filename)
+  const isSticker = hasTypePrefix ? /^sticker:/.test(filename) : /\/api\/gifs\//.test(url)
+  const displayFilename = hasTypePrefix ? filename.slice(filename.indexOf(':') + 1) : filename
 
   if (loadError) {
     return (
       <a href={resolvedUrl} target="_blank" rel="noopener noreferrer" className="msg-bubble__attachment-link">
-        <span className="msg-bubble__attachment-filename">{filename}</span>
+        <span className="msg-bubble__attachment-filename">{displayFilename}</span>
       </a>
     )
   }
 
   if (isImageUrl(url)) {
-    const isGifUrl = /\/api\/gifs\//.test(url)
     return (
-      <div className={`msg-bubble__attachment-image-wrap ${isMediaOnly ? 'msg-bubble__attachment-image-wrap--media-only' : ''}`} onClick={() => setExpanded(!expanded)}>
+      <div
+        className={`msg-bubble__attachment-image-wrap ${isMediaOnly ? 'msg-bubble__attachment-image-wrap--media-only' : ''}`}
+        onClick={() => onImageClick ? onImageClick(resolvedUrl, displayFilename) : null}
+      >
         <img
           src={resolvedUrl}
-          alt={filename}
+          alt={displayFilename}
           loading="lazy"
           decoding="async"
-          className={`msg-bubble__attachment-image ${expanded ? 'msg-bubble__attachment-image--expanded' : ''} ${isMediaOnly ? 'msg-bubble__attachment-image--media-only' : ''} ${isGifUrl ? 'msg-bubble__attachment-image--sticker' : ''}`}
+          className={`msg-bubble__attachment-image ${isMediaOnly ? 'msg-bubble__attachment-image--media-only' : ''} ${isSticker ? 'msg-bubble__attachment-image--sticker' : ''}`}
           onError={() => setLoadError(true)}
         />
-        {!expanded && !isMediaOnly && <div className="msg-bubble__attachment-expand-hint">expand</div>}
       </div>
     )
   }
@@ -128,12 +139,12 @@ function AttachmentPreview({ url, filename, serverUrl, isMediaOnly }: { url: str
 
   return (
     <a href={resolvedUrl} target="_blank" rel="noopener noreferrer" className="msg-bubble__attachment-link">
-      <span className="msg-bubble__attachment-filename">{filename}</span>
+      <span className="msg-bubble__attachment-filename">{displayFilename}</span>
     </a>
   )
 }
 
-export default function MessageBubble({
+function MessageBubble({
   message,
   isOwn,
   isGrouped,
@@ -144,6 +155,9 @@ export default function MessageBubble({
   canEdit,
   onEdit,
   serverUrl,
+  onReply,
+  onUserClick,
+  onImageClick,
 }: MessageBubbleProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [hovered, setHovered] = useState(false)
@@ -154,12 +168,19 @@ export default function MessageBubble({
   const [barMounted, setBarMounted] = useState(false)
   const barTimer = useRef<ReturnType<typeof setTimeout>>()
   const [barPos, setBarPos] = useState<{ top: number; left: number } | null>(null)
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null)
+  const [showProfileCard, setShowProfileCard] = useState(false)
+  const profileAnchorRef = useRef<HTMLElement | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const editInputRef = useRef<HTMLTextAreaElement>(null)
   const displayName = message.display_name || message.username || 'Unknown'
-  const { text, attachments } = parseAttachments(message.content)
+  const { text, attachments } = useMemo(() => parseAttachments(message.content), [message.content])
   const isMediaOnly = !text && attachments.length > 0
-  const isStickerOnly = isMediaOnly && attachments.length > 0 && attachments.every(a => /\/api\/gifs\//.test(a.url))
+  const isStickerOnly = isMediaOnly && attachments.length > 0 && attachments.every(a => {
+    const hasPrefix = /^(gif|sticker):/.test(a.filename)
+    if (hasPrefix) return /^sticker:/.test(a.filename)
+    return /\/api\/gifs\//.test(a.url)
+  })
   const time = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const session = useServerStore((s) => s.activeSession)
 
@@ -200,9 +221,9 @@ export default function MessageBubble({
       const hasReacted = existing?.users.some(u => u.user_id === session.user.id)
 
       if (hasReacted) {
-        await unreactToMessage(session.url, session.token, message.id, reactionKey)
+        await unreactToMessage(session.url, message.id, reactionKey)
       } else {
-        await reactToMessage(session.url, session.token, message.id, reactionKey, reactionType)
+        await reactToMessage(session.url, message.id, reactionKey, reactionType)
       }
     } catch (err) {
       console.error('Reaction toggle failed:', err)
@@ -254,6 +275,70 @@ export default function MessageBubble({
     }
   }, [editing])
 
+  function getContextMenuSections(): ContextMenuSection[] {
+    const sections: ContextMenuSection[] = []
+
+    const mainItems: typeof sections[0]['items'] = []
+
+    if (onReply) {
+      mainItems.push({
+        label: 'Reply',
+        onClick: () => onReply(message),
+        shortcut: 'R',
+      })
+    }
+
+    mainItems.push({
+      label: 'Copy Text',
+      onClick: () => {
+        const rawText = message.content || ''
+        navigator.clipboard.writeText(rawText).catch(() => {})
+      },
+      shortcut: 'Ctrl+C',
+    })
+
+    mainItems.push({
+      label: 'Copy Message ID',
+      onClick: () => {
+        navigator.clipboard.writeText(message.id).catch(() => {})
+      },
+    })
+
+    if (mainItems.length > 0) {
+      sections.push({ items: mainItems })
+    }
+
+    const actionItems: typeof sections[0]['items'] = []
+
+    if (canEdit && !isStickerOnly) {
+      actionItems.push({
+        label: 'Edit',
+        onClick: startEdit,
+        shortcut: 'E',
+      })
+    }
+
+    if (canDelete && !isStickerOnly) {
+      actionItems.push({
+        label: 'Delete',
+        onClick: () => { onDelete(message.id); setConfirmDelete(false) },
+        danger: true,
+        shortcut: 'Del',
+      })
+    }
+
+    if (actionItems.length > 0) {
+      sections.push({ items: actionItems })
+    }
+
+    return sections
+  }
+
+  function handleMessageContextMenu(e: React.MouseEvent) {
+    e.preventDefault()
+    setContextMenuPos({ x: e.clientX, y: e.clientY })
+  }
+
   return (
     <div className={`msg-bubble__row ${isOwn ? 'msg-bubble__row--own' : ''} ${isGrouped ? 'msg-bubble__row--grouped' : ''} ${isMediaOnly ? 'msg-bubble__row--media-only' : ''}`}>
       {!isOwn && !isGrouped && !isMediaOnly && (
@@ -273,8 +358,30 @@ export default function MessageBubble({
       >
         <div
           className={`msg-bubble__bubble ${isOwn ? 'msg-bubble__bubble--own' : 'msg-bubble__bubble--other'} ${isGrouped && !isOwn ? 'msg-bubble__bubble--grouped' : ''} ${editing ? 'msg-bubble__bubble--editing' : ''} ${isMediaOnly ? 'msg-bubble__bubble--media-only' : ''} ${isStickerOnly ? 'msg-bubble__bubble--sticker-only' : ''}`}
+          onContextMenu={handleMessageContextMenu}
         >
-          {!isOwn && !isGrouped && !isMediaOnly && <p className="msg-bubble__author">{displayName}</p>}
+          {message.reply_to_message_id && message.reply_to_username && (
+            <div className="msg-bubble__reply-preview">
+              <span className="msg-bubble__reply-preview-line" />
+              <span className="msg-bubble__reply-preview-username">@{message.reply_to_username}</span>
+              <span className="msg-bubble__reply-preview-text">
+                {message.reply_to_content
+                  ? message.reply_to_content.length > 120
+                    ? message.reply_to_content.slice(0, 120) + '...'
+                    : message.reply_to_content
+                  : '...'}
+              </span>
+            </div>
+          )}
+          {!isOwn && !isGrouped && !isMediaOnly && (
+            <p
+              className="msg-bubble__author"
+              onClick={(e) => { profileAnchorRef.current = e.currentTarget as HTMLElement; setShowProfileCard(true) }}
+              style={{ cursor: 'pointer' }}
+            >
+              {displayName}
+            </p>
+          )}
           {editing ? (
             <textarea
               ref={editInputRef}
@@ -284,11 +391,18 @@ export default function MessageBubble({
               onKeyDown={handleEditKeyDown}
             />
           ) : (
-            text && <div className="msg-bubble__text" dangerouslySetInnerHTML={{ __html: renderMessageHtml(text, currentUsername) }} />
+            text && <div className="msg-bubble__text" dangerouslySetInnerHTML={{ __html: useMemo(() => renderMessageHtml(text, currentUsername), [text, currentUsername]) }} />
           )}
           {attachments.length > 0 && attachments.map((att, i) => (
-            <AttachmentPreview key={i} url={att.url} filename={att.filename} serverUrl={serverUrl} isMediaOnly={isMediaOnly} />
+            <AttachmentPreview key={i} url={att.url} filename={att.filename} serverUrl={serverUrl} isMediaOnly={isMediaOnly} onImageClick={onImageClick} />
           ))}
+          {text && (
+            <EmbedCard
+              urls={(text.match(/(https?:\/\/[^\s<]+)/g) || [])
+                .filter(u => !/\.(jpg|jpeg|png|gif|webp|mp4|webm|mp3|ogg|wav|pdf)$/i.test(u.split('?')[0]))
+                .slice(0, 3)}
+            />
+          )}
           <div className={`msg-bubble__meta ${showMeta ? 'msg-bubble__meta--visible' : ''} ${editing ? 'msg-bubble__meta--editing' : ''}`}>
             {hovered && <span className="msg-bubble__time">{time}</span>}
             {message.edited_at && <span className="msg-bubble__edited">(edited)</span>}
@@ -346,7 +460,7 @@ export default function MessageBubble({
             />
             <ReactionBar
               serverUrl={session.url}
-              token={session.token}
+              
               onReact={handleToggleReaction}
               onAddClick={() => setPickerOpen(true)}
               visible={hovered || pickerOpen || barHovered}
@@ -358,7 +472,7 @@ export default function MessageBubble({
         {pickerOpen && session && (
           <ReactionPicker
             serverUrl={session.url}
-            token={session.token}
+            
             onSelect={(key, type) => {
               handleToggleReaction(key, type)
               setPickerOpen(false)
@@ -366,7 +480,27 @@ export default function MessageBubble({
             onClose={() => setPickerOpen(false)}
           />
         )}
+
+        {contextMenuPos && (
+          <ContextMenu
+            x={contextMenuPos.x}
+            y={contextMenuPos.y}
+            sections={getContextMenuSections()}
+            onClose={() => setContextMenuPos(null)}
+          />
+        )}
+
+        {showProfileCard && message.user_id && (
+          <UserProfileCard
+            userId={message.user_id}
+            anchorEl={profileAnchorRef.current}
+            onClose={() => { setShowProfileCard(false); profileAnchorRef.current = null }}
+          />
+        )}
       </div>
     </div>
   )
 }
+
+
+export default memo(MessageBubble)

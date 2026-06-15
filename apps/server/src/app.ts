@@ -17,13 +17,19 @@ import attachmentRoutes from './routes/attachments'
 import mutesRoutes from './routes/mutes'
 import gifRoutes from './routes/gifs'
 import reactionRoutes from './routes/reactions'
+import banRoutes from './routes/bans'
+import auditRoutes from './routes/audit'
+import searchRoutes from './routes/search'
+import pinsRoutes from './routes/pins'
+import categoryRoutes from './routes/categories'
+import embedRoutes from './routes/embeds'
 import { authLimiter, messageLimiter, uploadLimiter, apiLimiter } from './middleware/rateLimiter'
 
 export function createApp(httpPort: number) {
   const app = new Hono()
 
   const corsOrigin = process.env.CORS_ORIGIN || '*'
-  app.use('*', cors({ origin: corsOrigin }))
+  app.use('*', cors({ origin: corsOrigin, credentials: true }))
 
   app.use('*', async (c, next) => {
     await next()
@@ -84,6 +90,23 @@ export function createApp(httpPort: number) {
   app.use('/api/reactions/*', apiLimiter as never)
   app.route('/api/reactions', reactionRoutes)
 
+  app.use('/api/bans/*', apiLimiter as never)
+  app.route('/api/bans', banRoutes)
+
+  app.use('/api/audit/*', apiLimiter as never)
+  app.route('/api/audit', auditRoutes)
+
+  app.use('/api/search/*', apiLimiter as never)
+  app.route('/api/search', searchRoutes)
+
+  app.use('/api/pins/*', apiLimiter as never)
+  app.route('/api/pins', pinsRoutes)
+
+  app.use('/api/categories/*', apiLimiter as never)
+  app.route('/api/categories', categoryRoutes)
+
+  app.route('/api/embeds', embedRoutes)
+
   // Global error handler
   app.onError((err, c) => {
     console.error('[server] Unhandled error:', err.message || err)
@@ -108,7 +131,18 @@ export function createApp(httpPort: number) {
   })
 
   io.use((socket, next) => {
-    const token = socket.handshake.auth?.token
+    let token: string | undefined
+
+    const cookieHeader = socket.request.headers.cookie
+    if (cookieHeader) {
+      const match = cookieHeader.match(/(?:^|;\s*)kizuna_token=([^;]*)/)
+      if (match) token = match[1]
+    }
+
+    if (!token) {
+      token = socket.handshake.auth?.token
+    }
+
     if (!token) {
       return next(new Error('Authentication required'))
     }

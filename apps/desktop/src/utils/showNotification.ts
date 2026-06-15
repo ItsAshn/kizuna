@@ -25,9 +25,21 @@ export function showNotification(opts: ShowNotificationOptions) {
     channelId: opts.channelId,
   })
 
+  const tag = opts.type === 'mention' ? `mention-${opts.channelId}` :
+              opts.type === 'announce' ? 'announce' :
+              `message-${opts.channelId ?? 'unknown'}`
+
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      new Notification(opts.title, { body: opts.body, icon: '/Logo.webp' })
+      new Notification(opts.title, { body: opts.body, icon: '/Logo.webp', tag })
     } catch { /* not supported */ }
   }
+}
+
+export function showErrorToast(context: string) {
+  useNotificationStore.getState().addNotification({
+    type: 'message',
+    title: 'Error',
+    body: `Failed to ${context}. Please try again.`,
+  })
 }

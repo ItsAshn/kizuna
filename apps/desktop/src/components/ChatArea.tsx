@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
+import { Virtuoso } from 'react-virtuoso'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey } from '@kizuna/shared'
@@ -10,6 +11,9 @@ import { Lock, Paperclip, Send, Sticker } from 'lucide-react'
 import type { Message, Member, DMChannelData } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
+import Skeleton from './Skeleton'
+import Lightbox from './Lightbox'
+import SearchBar from './SearchBar'
 import '../styles/chat-area.css'
 
 interface ChatAreaProps {
@@ -49,7 +53,15 @@ function formatDateSeparator(date: Date): string {
 
 export default function ChatArea({ socketRef }: ChatAreaProps) {
   const session = useServerStore((s) => s.activeSession)
-  const { channels, dmChannels, messages, members, activeChannelId, activeDMChannelId, addMessage, typingUsers } = useChatStore()
+  const channels = useChatStore((s) => s.channels)
+  const dmChannels = useChatStore((s) => s.dmChannels)
+  const messages = useChatStore((s) => s.messages)
+  const members = useChatStore((s) => s.members)
+  const activeChannelId = useChatStore((s) => s.activeChannelId)
+  const activeDMChannelId = useChatStore((s) => s.activeDMChannelId)
+  const addMessage = useChatStore((s) => s.addMessage)
+  const typingUsers = useChatStore((s) => s.typingUsers)
+  const hasMoreMessages = useChatStore((s) => s.hasMoreMessages)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -62,13 +74,18 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [atIndex, setAtIndex] = useState(0)
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [replyTo, setReplyTo] = useState<{ messageId: string; username: string; content: string } | null>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
   const [channelPerms, setChannelPerms] = useState<{ can_write: boolean; locked: boolean; write_role_name: string | null } | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const virtuosoRef = useRef<any>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([])
-
+  const [atBottom, setAtBottom] = useState(true)
+  const [lightboxImages, setLightboxImages] = useState<{ url: string; filename: string }[] | null>(null)
+  const [lightboxIndex, setLightboxIndex] = useState(0)
+  const [showSearch, setShowSearch] = useState(false)
   const tryDecryptDM = useCallback((msg: Message): Message => {
     if (!msg.encrypted) return msg
     const parsed = isEncryptedContent(msg.content)
@@ -89,7 +106,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const resolveRecipientPublicKey = useCallback(async (dm: DMChannelData | undefined): Promise<string | null> => {
     if (!dm || !session) return null
     try {
-      const freshKey = await getUserPublicKey(session.url, session.token, dm.other_user_id)
+      const freshKey = await getUserPublicKey(session.url, dm.other_user_id)
       if (freshKey) return freshKey
     } catch { /* fall through to cached key */ }
     return dm.other_public_key ?? null
@@ -119,23 +136,34 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     if (activeChannelId) {
       setLoading(true)
       setChannelPerms(null)
-      fetchMessages(session!.url, session!.token, activeChannelId)
-        .then((msgs) => useChatStore.getState().setMessages(activeChannelId, msgs))
+      fetchMessages(session!.url, activeChannelId)
+        .then(({ messages: msgs, hasMore }) => {
+          useChatStore.getState().setMessages(activeChannelId, msgs)
+          useChatStore.getState().setHasMoreMessages(activeChannelId, hasMore)
+        })
         .finally(() => setLoading(false))
 
-      fetchChannelPermissions(session!.url, session!.token, activeChannelId)
+      fetchChannelPermissions(session!.url, activeChannelId)
         .then(setChannelPerms)
         .catch(() => setChannelPerms(null))
 
-      const store = useChatStore.getState()
-      store.setUnreadCounts({ ...store.unreadCounts, [activeChannelId]: 0 })
-      store.setMentionCounts({ ...store.mentionCounts, [activeChannelId]: 0 })
+      useChatStore.setState((state) => ({
+        unreadCounts: { ...state.unreadCounts, [activeChannelId]: 0 },
+        mentionCounts: { ...state.mentionCounts, [activeChannelId]: 0 },
+      }))
 
       socketRef.current?.emit('channel:join', activeChannelId)
       socketRef.current?.emit('mentions:read', { channelId: activeChannelId })
-      socketRef.current?.emit('channel:read', { channelId: activeChannelId })
+      socketRef.current?.emit('channel:read', { channelId: activeChannelId }, (res: { last_read_at?: number }) => {
+        if (res?.last_read_at) {
+          useChatStore.getState().setChannelLastReadAt(activeChannelId, res.last_read_at)
+        }
+      })
 
-      return () => { socketRef.current?.emit('channel:leave', activeChannelId) }
+      return () => {
+        socketRef.current?.emit('channel:leave', activeChannelId)
+        socketRef.current?.emit('typing:stop', { channelId: activeChannelId })
+      }
     }
   }, [activeChannelId])
 
@@ -143,20 +171,29 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     if (activeDMChannelId) {
       setLoading(true)
       setChannelPerms(null)
-      fetchDMMessages(session!.url, session!.token, activeDMChannelId)
-        .then((msgs) => {
+      fetchDMMessages(session!.url, activeDMChannelId)
+        .then(({ messages: msgs, hasMore }) => {
           const decrypted = msgs.map((m) => tryDecryptDM(m))
           useChatStore.getState().setMessages(activeDMChannelId, decrypted)
+          useChatStore.getState().setHasMoreMessages(activeDMChannelId, hasMore)
         })
         .finally(() => setLoading(false))
 
-      const store = useChatStore.getState()
-      store.setUnreadCounts({ ...store.unreadCounts, [activeDMChannelId]: 0 })
-      store.setMentionCounts({ ...store.mentionCounts, [activeDMChannelId]: 0 })
+      useChatStore.setState((state) => ({
+        unreadCounts: { ...state.unreadCounts, [activeDMChannelId]: 0 },
+        mentionCounts: { ...state.mentionCounts, [activeDMChannelId]: 0 },
+      }))
 
-      socketRef.current?.emit('dm:read', { channelId: activeDMChannelId })
+      socketRef.current?.emit('dm:read', { channelId: activeDMChannelId }, (res: { last_read_at?: number }) => {
+        if (res?.last_read_at) {
+          useChatStore.getState().setChannelLastReadAt(activeDMChannelId, res.last_read_at)
+        }
+      })
 
-      return () => { socketRef.current?.emit('channel:leave', activeDMChannelId) }
+      return () => {
+        socketRef.current?.emit('channel:leave', activeDMChannelId)
+        socketRef.current?.emit('typing:stop', { channelId: activeDMChannelId })
+      }
     }
   }, [activeDMChannelId, tryDecryptDM])
 
@@ -173,8 +210,52 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   }, [dmChannels, tryDecryptDM, activeDMChannelId])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [channelMessages, dmMessages])
+    return () => {
+      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
+    }
+  }, [pendingPreviewUrl])
+
+  const loadMoreMessages = useCallback(() => {
+    const channelId = activeChannelId || activeDMChannelId
+    if (!channelId || !session) return
+    const store = useChatStore.getState()
+    const channelMessages = store.messages[channelId] || []
+    if (!store.hasMoreMessages[channelId] || channelMessages.length === 0) return
+    const oldestId = channelMessages[0].id
+    if (!oldestId) return
+    store.setHasMoreMessages(channelId, false)
+    ;(async () => {
+      try {
+        const { messages: olderMsgs, hasMore } = activeDMChannelId
+          ? await fetchDMMessages(session.url, channelId, 50, oldestId)
+          : await fetchMessages(session.url, channelId, 50, oldestId)
+        const decrypted = activeDMChannelId ? olderMsgs.map(m => tryDecryptDM(m)) : olderMsgs
+        store.prependMessages(channelId, decrypted)
+        store.setHasMoreMessages(channelId, hasMore)
+      } catch {
+        store.setHasMoreMessages(channelId, true)
+      }
+    })()
+  }, [activeChannelId, activeDMChannelId, session, tryDecryptDM])
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault()
+        setShowSearch(v => !v)
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (typingTimeout.current) {
+        clearTimeout(typingTimeout.current)
+      }
+    }
+  }, [])
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
@@ -197,10 +278,14 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
 
     const channelId = activeChannelId || activeDMChannelId
     if (channelId && session) {
-      if (typingTimeout.current) clearTimeout(typingTimeout.current)
-      socketRef.current?.emit('typing:start', { channelId })
+      if (typingTimeout.current) {
+        clearTimeout(typingTimeout.current)
+      } else {
+        socketRef.current?.emit('typing:start', { channelId })
+      }
       typingTimeout.current = setTimeout(() => {
         socketRef.current?.emit('typing:stop', { channelId })
+        typingTimeout.current = null
       }, 3000)
     }
   }, [sendError, activeChannelId, activeDMChannelId, session])
@@ -244,7 +329,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
       let message: Message
       if (activeChannelId) {
         const attIds = pendingAttachmentId ? [pendingAttachmentId] : undefined
-        message = await sendMessage(session.url, session.token, activeChannelId, input.trim(), attIds)
+        message = await sendMessage(session.url, activeChannelId, input.trim(), attIds, replyTo?.messageId)
         setPendingAttachmentId(null)
       } else if (activeDMChannelId) {
         const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
@@ -259,7 +344,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
         } else {
           content = input.trim()
         }
-        message = await sendDMMessage(session.url, session.token, activeDMChannelId, content, encrypted)
+        message = await sendDMMessage(session.url, activeDMChannelId, content, encrypted)
         if (encrypted) {
           message = { ...message, content: input.trim() }
         }
@@ -268,6 +353,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
       }
       addMessage(message.channel_id || channelId, message)
       setInput('')
+      setReplyTo(null)
       setSendError(null)
       if (inputRef.current) { inputRef.current.style.height = 'auto'; inputRef.current.focus() }
     } catch (err: any) {
@@ -297,7 +383,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     setUploading(true)
     setUploadProgress(0)
     try {
-      const result = await uploadAttachment(session.url, session.token, targetChannelId, pendingFile, (pct) => setUploadProgress(pct))
+      const result = await uploadAttachment(session.url, targetChannelId, pendingFile, (pct) => setUploadProgress(pct))
       setPendingAttachmentId(result.id)
       const attachmentText = `![${result.filename}](${result.url})`
       const text = input.trim()
@@ -306,7 +392,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
       let message: Message
       if (activeChannelId) {
         message = await sendMessage(
-          session.url, session.token, activeChannelId,
+          session.url, activeChannelId,
           text ? text + '\n' + attachmentText : attachmentText,
           attIds,
         )
@@ -324,7 +410,7 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
         } else {
           content = finalText
         }
-        message = await sendDMMessage(session.url, session.token, activeDMChannelId, content, encrypted, attIds)
+        message = await sendDMMessage(session.url, activeDMChannelId, content, encrypted, attIds)
         if (encrypted) {
           message = { ...message, content: finalText }
         }
@@ -354,11 +440,38 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     if (!channelId) return
     try {
       if (activeDMChannelId) {
-        await deleteDMMessage(session.url, session.token, messageId)
+        await deleteDMMessage(session.url, messageId)
       } else {
-        await deleteMessage(session.url, session.token, messageId)
+        await deleteMessage(session.url, messageId)
       }
     } catch { /* ignore */ }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.currentTarget === e.target) {
+      setIsDragOver(false)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) {
+      setPendingFile(files[0])
+      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
+      const isImage = files[0].type.startsWith('image/')
+      setPendingPreviewUrl(isImage ? URL.createObjectURL(files[0]) : null)
+    }
   }
 
   const handleEditMessage = async (messageId: string, content: string) => {
@@ -377,9 +490,9 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
           sendContent = JSON.stringify(enc)
           encrypted = true
         }
-        await editDMMessage(session.url, session.token, messageId, sendContent, encrypted)
+        await editDMMessage(session.url, messageId, sendContent, encrypted)
       } else {
-        await editMessage(session.url, session.token, messageId, content)
+        await editMessage(session.url, messageId, content)
       }
     } catch { /* ignore */ }
   }
@@ -403,32 +516,23 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const inputMaxLen = activeDMChannelId ? 2700 : 4000
   const cantWrite = channelPerms?.locked && !channelPerms?.can_write
 
-  const renderMessagesWithGroups = () => {
-    let lastDate = ''
-    let lastUserId = ''
-    const elements: React.ReactNode[] = []
+  const renderMessageItem = useCallback((_index: number, msg: Message) => {
+    const msgIdx = displayMessages.indexOf(msg)
+    const prevMsg = msgIdx > 0 ? displayMessages[msgIdx - 1] : null
+    const msgDate = new Date(msg.created_at).toDateString()
+    const prevDate = prevMsg ? new Date(prevMsg.created_at).toDateString() : ''
+    const isOwn = msg.user_id === session?.user.id
+    const isGrouped = prevMsg?.user_id === msg.user_id && !isOwn
+    const messageCanDelete = isOwn || canDeleteAny
 
-    displayMessages.forEach((msg, i) => {
-      const msgDate = new Date(msg.created_at).toDateString()
-      if (msgDate !== lastDate) {
-        lastDate = msgDate
-        elements.push(
-          <div key={`date-${msg.id}`} className="msg-bubble__date-separator">
+    return (
+      <>
+        {msgDate !== prevDate && (
+          <div className="msg-bubble__date-separator">
             <span className="msg-bubble__date-label">{formatDateSeparator(new Date(msg.created_at))}</span>
           </div>
-        )
-      }
-
-      const isOwn = msg.user_id === session?.user.id
-      const isGrouped = msg.user_id === lastUserId && !isOwn
-      lastUserId = msg.user_id
-
-      const showProfile = !!channelPerms?.locked
-      const messageCanDelete = isOwn || canDeleteAny
-
-      elements.push(
+        )}
         <MessageBubble
-          key={msg.id}
           message={msg}
           isOwn={isOwn}
           isGrouped={isGrouped}
@@ -439,15 +543,60 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
           canEdit={isOwn}
           onEdit={handleEditMessage}
           serverUrl={session?.url}
+          onReply={(replyMsg) => {
+            setReplyTo({ messageId: replyMsg.id, username: replyMsg.display_name || replyMsg.username || 'Unknown', content: replyMsg.content })
+            inputRef.current?.focus()
+          }}
+          onUserClick={() => {}}
+          onImageClick={(imageUrl, filename) => {
+            const allImages: { url: string; filename: string }[] = []
+            const channelMsgs = activeChannelId || activeDMChannelId
+              ? messages[activeChannelId || activeDMChannelId || ''] || []
+              : []
+            const imgRe = /!\[([^\]]*)\]\(([^)]+)\)/g
+            const urlRe = /(https?:\/\/[^\s]+)/g
+            for (const m of channelMsgs) {
+              let match
+              while ((match = imgRe.exec(m.content)) !== null) {
+                const u = match[2]
+                if (u.startsWith('/uploads/') || u.startsWith('/api/attachments/') || u.startsWith('/api/gifs/') || u.startsWith('http')) {
+                  const resolved = session?.url && u.startsWith('/') ? `${session.url}${u}` : u
+                  allImages.push({ url: resolved, filename: match[1] || 'image' })
+                }
+              }
+              while ((match = urlRe.exec(m.content)) !== null) {
+                const u = match[1]
+                if (/\.(jpg|jpeg|png|gif|webp)$/i.test(u)) {
+                  if (!allImages.some(a => a.url === u)) {
+                    allImages.push({ url: u, filename: u.split('/').pop() || 'image' })
+                  }
+                }
+              }
+            }
+            const currentIndex = allImages.findIndex(img => img.url === imageUrl)
+            setLightboxImages(allImages)
+            setLightboxIndex(currentIndex >= 0 ? currentIndex : 0)
+          }}
         />
-      )
-    })
-
-    return elements
-  }
+      </>
+    )
+  }, [displayMessages, session, members, canDeleteAny, activeChannelId, activeDMChannelId, messages, setReplyTo])
 
   return (
-    <div className="chat-area">
+    <div
+      className="chat-area"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragOver && (
+        <div className="chat-area__drop-overlay">
+          <div className="chat-area__drop-overlay-content">
+            <span className="chat-area__drop-overlay-icon">&#x2913;</span>
+            <span className="chat-area__drop-overlay-text">Drop files to upload</span>
+          </div>
+        </div>
+      )}
       <div className="chat-area__header">
         <span className="chat-area__header-prefix">{activeDMChannelId ? '@' : '#'}</span>
         <h2 className="chat-area__header-title">{headerTitle}</h2>
@@ -468,14 +617,55 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
         )}
       </div>
 
-      <div className="chat-area__messages">
-        {loading && <p className="chat-area__loading">Loading messages...</p>}
+      {showSearch && activeChannelId && (
+        <SearchBar
+          channelId={activeChannelId}
+          onClose={() => setShowSearch(false)}
+          onJumpToMessage={() => setShowSearch(false)}
+        />
+      )}
+
+      <div className="chat-area__messages" role="log" aria-label="Messages" aria-live="polite">
+        {loading && (
+          <>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="skeleton--message">
+                <Skeleton variant="circle" width={40} height={40} />
+                <div className="skeleton--message-body">
+                  <Skeleton variant="text" width={120} />
+                  <Skeleton variant="text" width={200 + (i % 3) * 80} />
+                  {i % 2 === 0 && <Skeleton variant="text" width={140} />}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
         {!loading && displayMessages.length === 0 && (
           <p className="chat-area__loading">No messages yet. Be the first to send one!</p>
         )}
-        {renderMessagesWithGroups()}
-        {typingText && <div className="chat-area__typing">{typingText}</div>}
-        <div ref={messagesEndRef} />
+        {!loading && displayMessages.length > 0 && (
+          <Virtuoso
+            ref={virtuosoRef}
+            data={displayMessages}
+            itemContent={renderMessageItem}
+            followOutput="smooth"
+            atBottomStateChange={(isAtBottom) => setAtBottom(isAtBottom)}
+            startReached={loadMoreMessages}
+            style={{ flex: 1 }}
+            components={{
+              Footer: () => typingText ? <div className="chat-area__typing">{typingText}</div> : null,
+            }}
+          />
+        )}
+        {!atBottom && displayMessages.length > 10 && (
+          <button
+            className="chat-area__scroll-bottom"
+            onClick={() => virtuosoRef.current?.scrollToIndex(displayMessages.length - 1)}
+            title="Scroll to bottom"
+          >
+            ↓ New messages
+          </button>
+        )}
       </div>
 
       <div className="chat-area__input-bar">
@@ -494,6 +684,25 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
                 {(u === 'everyone' || u === 'here') && <span className="chat-area__mention-group-tag">group</span>}
               </button>
             ))}
+          </div>
+        )}
+
+        {replyTo && (
+          <div className="chat-area__reply-bar">
+            <div className="chat-area__reply-bar-content">
+              <span className="chat-area__reply-bar-label">Replying to</span>
+              <span className="chat-area__reply-bar-username">@{replyTo.username}</span>
+              <span className="chat-area__reply-bar-preview">
+                {replyTo.content.length > 80 ? replyTo.content.slice(0, 80) + '...' : replyTo.content}
+              </span>
+            </div>
+            <button
+              className="chat-area__reply-bar-close"
+              onClick={() => setReplyTo(null)}
+              aria-label="Cancel reply"
+            >
+              x
+            </button>
           </div>
         )}
 
@@ -522,10 +731,10 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
             onChange={handleFileSelect}
             accept="image/*,video/*,audio/*,.pdf,.txt,.json"
           />
-          <button className="chat-area__attach-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Attach file">
+          <button className="chat-area__attach-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Attach file" aria-label="Attach file">
             <Paperclip size={16} />
           </button>
-          <button className="chat-area__gif-btn" onClick={() => setGifPickerOpen(true)} title="GIFs & Stickers">
+          <button className="chat-area__gif-btn" onClick={() => setGifPickerOpen(true)} title="GIFs & Stickers" aria-label="GIFs and stickers">
             <Sticker size={16} />
           </button>
           <textarea
@@ -539,8 +748,9 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
             onKeyDown={handleKeyDown}
             maxLength={inputMaxLen}
             disabled={cantWrite}
+            aria-label={`Message ${activeDMChannelId ? activeDM?.other_display_name || 'direct messages' : activeChannel?.name || 'channel'}`}
           />
-          <button className="chat-area__send-btn" onClick={handleSend} disabled={((!input.trim() && !pendingFile) || uploading || cantWrite)}>
+          <button className="chat-area__send-btn" onClick={handleSend} disabled={((!input.trim() && !pendingFile) || uploading || cantWrite)} aria-label="Send message">
             <Send size={16} />
           </button>
         </div>
@@ -552,9 +762,9 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
         {gifPickerOpen && session && (
           <GifPicker
             serverUrl={session.url}
-            token={session.token}
-            onSelect={(url, displayName) => {
-              setInput(prev => prev + `![${displayName}](${url})`)
+            
+            onSelect={(url, displayName, type) => {
+              setInput(prev => prev + `![${type}:${displayName}](${url})`)
               setGifPickerOpen(false)
               inputRef.current?.focus()
             }}
@@ -562,6 +772,14 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
           />
         )}
       </div>
+
+      {lightboxImages && (
+        <Lightbox
+          images={lightboxImages}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxImages(null)}
+        />
+      )}
     </div>
   )
 }

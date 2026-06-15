@@ -47,6 +47,9 @@ export interface Message {
   edited_at?: number | null
   updated_at?: number | null
   reactions?: MessageReaction[]
+  reply_to_message_id?: string | null
+  reply_to_username?: string | null
+  reply_to_content?: string | null
 }
 
 export type ReactionType = 'emoji' | 'sticker'

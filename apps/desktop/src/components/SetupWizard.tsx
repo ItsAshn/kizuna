@@ -44,6 +44,14 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   const handleCopy = async (cmd: string) => {
     try {
       await navigator.clipboard.writeText(cmd)

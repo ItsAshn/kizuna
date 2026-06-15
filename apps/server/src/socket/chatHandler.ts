@@ -167,9 +167,10 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     socket.leave(channelId)
   })
 
-  socket.on('message:send', ({ channelId, content }: {
+  socket.on('message:send', ({ channelId, content, replyToMessageId }: {
     channelId: string
     content: string
+    replyToMessageId?: string
   }) => {
     if (!checkSocketRateLimit(socket, 'message:send', 30, 10_000)) return
     if (!channelId || !content?.trim() || !userId) return
@@ -188,10 +189,19 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
     const db = getDb()
     const id = uuidv4()
+    let replyUsername: string | null = null
+    let replyContent: string | null = null
+    if (replyToMessageId) {
+      const replyMsg = db.prepare('SELECT author_username, content FROM messages WHERE id = ? AND channel_id = ?').get(replyToMessageId, channelId) as any
+      if (replyMsg) {
+        replyUsername = replyMsg.author_username
+        replyContent = replyMsg.content
+      }
+    }
     db.prepare(
-      `INSERT INTO messages (id, channel_id, author_id, author_username, content)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(id, channelId, userId, username, content.trim())
+      `INSERT INTO messages (id, channel_id, author_id, author_username, content, reply_to_message_id, reply_to_username, reply_to_content)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, channelId, userId, username, content.trim(), replyToMessageId || null, replyUsername, replyContent)
 
     const row = db.prepare(
       `SELECT m.*, u.display_name, u.avatar
@@ -209,6 +219,9 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       avatar: row.avatar || undefined,
       content: row.content,
       created_at: row.created_at * 1000,
+      reply_to_message_id: row.reply_to_message_id || null,
+      reply_to_username: row.reply_to_username || null,
+      reply_to_content: row.reply_to_content || null,
     }
 
     io.to(channelId).emit('message:new', message)
@@ -261,6 +274,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     }
 
     io.to(existing.channel_id).emit('message:edit', updated)
+    io.to(NOTIFICATION_ROOM).emit('message:edit', updated)
   })
 
   socket.on('message:delete', ({ messageId }: { messageId: string }) => {
@@ -279,6 +293,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     db.prepare('DELETE FROM attachments WHERE message_id = ?').run(messageId)
     db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
     io.to(message.channel_id).emit('message:delete', { id: messageId, channel_id: message.channel_id })
+    io.to(NOTIFICATION_ROOM).emit('message:delete', { id: messageId, channel_id: message.channel_id })
   })
 
   socket.on('mentions:read', ({ channelId }: { channelId?: string }) => {
@@ -369,11 +384,11 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
   socket.on('typing:start', ({ channelId }: { channelId: string }) => {
     if (!checkSocketRateLimit(socket, 'typing', 20, 10_000)) return
-    socket.to(channelId).emit('typing:start', { username })
+    socket.to(channelId).emit('typing:start', { channelId, username })
   })
 
   socket.on('typing:stop', ({ channelId }: { channelId: string }) => {
-    socket.to(channelId).emit('typing:stop', { username })
+    socket.to(channelId).emit('typing:stop', { channelId, username })
   })
 
   socket.on('dm:send', ({ toUserId, content, encrypted }: {
@@ -385,13 +400,15 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     if (!toUserId || !content?.trim() || !userId) return
 
     const db = getDb()
+    const [user1Id, user2Id] = [userId, toUserId].sort()
     let channel = db.prepare(
-      'SELECT * FROM dm_channels WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)'
-    ).get(userId, toUserId, toUserId, userId) as any
+      'SELECT * FROM dm_channels WHERE user1_id = ? AND user2_id = ?'
+    ).get(user1Id, user2Id) as any
 
     if (!channel) {
       const channelId = uuidv4()
-      db.prepare('INSERT INTO dm_channels (id, user1_id, user2_id) VALUES (?, ?, ?)').run(channelId, userId, toUserId)
+      db.prepare('INSERT OR IGNORE INTO dm_channels (id, user1_id, user2_id) VALUES (?, ?, ?)').run(channelId, user1Id, user2Id)
+      channel = db.prepare('SELECT * FROM dm_channels WHERE user1_id = ? AND user2_id = ?').get(user1Id, user2Id) as any
       channel = { id: channelId }
     }
 

@@ -1,19 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Search, X } from 'lucide-react'
 import { fetchGifs, fetchGifCategories, fetchStickerPacks } from '@kizuna/shared'
-import type { GifInfo } from '@kizuna/shared'
+import type { GifInfo, GifType } from '@kizuna/shared'
 import '../styles/gif-picker.css'
 
 interface GifPickerProps {
   serverUrl: string
-  token: string
-  onSelect: (url: string, displayName: string) => void
+  onSelect: (url: string, displayName: string, type: GifType) => void
   onClose: () => void
 }
 
 type Tab = 'gifs' | 'stickers'
 
-export default function GifPicker({ serverUrl, token, onSelect, onClose }: GifPickerProps) {
+export default function GifPicker({ serverUrl, onSelect, onClose }: GifPickerProps) {
   const [activeTab, setActiveTab] = useState<Tab>('gifs')
   const [items, setItems] = useState<GifInfo[]>([])
   const [loading, setLoading] = useState(false)
@@ -38,13 +37,13 @@ export default function GifPicker({ serverUrl, token, onSelect, onClose }: GifPi
       if (activeTab === 'stickers' && activePack) params.pack = activePack
       if (search.trim()) params.search = search.trim()
 
-      const gifs = await fetchGifs(serverUrl, token, params as any)
+      const gifs = await fetchGifs(serverUrl, params as any)
       setItems(gifs)
     } catch {
       setError('Failed to load')
     }
     setLoading(false)
-  }, [serverUrl, token, activeTab, activeCategory, activePack, search])
+  }, [serverUrl, activeTab, activeCategory, activePack, search])
 
   useEffect(() => {
     loadItems()
@@ -52,15 +51,15 @@ export default function GifPicker({ serverUrl, token, onSelect, onClose }: GifPi
 
   useEffect(() => {
     if (activeTab === 'gifs') {
-      fetchGifCategories(serverUrl, token, 'gif')
+      fetchGifCategories(serverUrl, 'gif')
         .then(setCategories)
         .catch(() => setCategories([]))
     } else {
-      fetchStickerPacks(serverUrl, token)
+      fetchStickerPacks(serverUrl)
         .then(setPacks)
         .catch(() => setPacks([]))
     }
-  }, [activeTab, serverUrl, token])
+  }, [activeTab, serverUrl])
 
   useEffect(() => {
     setActiveCategory('')
@@ -70,7 +69,6 @@ export default function GifPicker({ serverUrl, token, onSelect, onClose }: GifPi
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
-    setSearch(val)
     if (searchTimeout.current) clearTimeout(searchTimeout.current)
     searchTimeout.current = setTimeout(() => {
       setSearch(val)
@@ -79,12 +77,20 @@ export default function GifPicker({ serverUrl, token, onSelect, onClose }: GifPi
 
   const handleSelect = (item: GifInfo) => {
     const resolvedUrl = item.file_url.startsWith('/') ? `${serverUrl}${item.file_url}` : item.file_url
-    onSelect(resolvedUrl, item.display_name)
+    onSelect(resolvedUrl, item.display_name, item.type)
   }
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose()
   }
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose])
 
   return (
     <div className="gif-picker__overlay" onClick={handleOverlayClick}>
@@ -113,6 +119,7 @@ export default function GifPicker({ serverUrl, token, onSelect, onClose }: GifPi
             className="gif-picker__search-input"
             placeholder={`Search ${activeTab}...`}
             onChange={handleSearchChange}
+            autoFocus
           />
         </div>
 
@@ -160,6 +167,9 @@ export default function GifPicker({ serverUrl, token, onSelect, onClose }: GifPi
           )}
           {!loading && !error && items.map((item) => {
             const resolvedUrl = item.file_url.startsWith('/') ? `${serverUrl}${item.file_url}` : item.file_url
+            const scale = item.type === 'sticker' ? 3 : 2
+            const displayWidth = item.width ? Math.round(item.width / scale) : undefined
+            const displayHeight = item.height ? Math.round(item.height / scale) : undefined
             return (
               <div
                 key={item.id}
@@ -168,7 +178,14 @@ export default function GifPicker({ serverUrl, token, onSelect, onClose }: GifPi
                 onMouseEnter={() => setHoveredId(item.id)}
                 onMouseLeave={() => setHoveredId(null)}
               >
-                <img src={resolvedUrl} alt={item.display_name} className="gif-picker__img" loading="lazy" />
+                <img
+                  src={resolvedUrl}
+                  alt={item.display_name}
+                  className="gif-picker__img"
+                  loading="lazy"
+                  width={displayWidth}
+                  height={displayHeight}
+                />
                 {hoveredId === item.id && (
                   <div className="gif-picker__item-name">{item.display_name}</div>
                 )}

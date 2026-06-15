@@ -184,8 +184,7 @@ attachmentRoutes.get('/file/:filename', (c) => {
   }
 
   const contentType = getContentType(sanitized)
-  const content = fs.readFileSync(filepath)
-  return new Response(content, {
+  return new Response(fs.createReadStream(filepath), {
     status: 200,
     headers: {
       'Content-Type': contentType,

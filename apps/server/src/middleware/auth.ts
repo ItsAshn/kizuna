@@ -8,10 +8,11 @@ export type { AuthUser }
 export interface JwtPayload {
   userId: string
   username: string
+  tokenId?: string
   iat?: number
 }
 
-function getJwtSecret(): string {
+export function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET
   if (!secret) {
     throw new Error('JWT_SECRET is not set. Authentication cannot function.')
@@ -181,12 +182,25 @@ export function getUserChannelPermissions(userId: string, channelId: string): { 
 }
 
 export async function authMiddleware(c: Context, next: Next): Promise<Response | void> {
-  const authHeader = c.req.header('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
+  let token: string | undefined
+
+  const cookieHeader = c.req.header('Cookie')
+  if (cookieHeader) {
+    const match = cookieHeader.match(/(?:^|;\s*)kizuna_token=([^;]*)/)
+    if (match) token = match[1]
+  }
+
+  if (!token) {
+    const authHeader = c.req.header('Authorization')
+    if (authHeader?.startsWith('Bearer ')) {
+      token = authHeader.slice(7)
+    }
+  }
+
+  if (!token) {
     return c.json({ error: 'Missing or invalid authorization header' }, 401)
   }
 
-  const token = authHeader.slice(7)
   try {
     const payload = verifyToken(token)
     const userInfo = getUserInfo(payload.userId)
@@ -198,6 +212,13 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
     const row = db.prepare('SELECT token_invalidated_at FROM users WHERE id = ?').get(payload.userId) as { token_invalidated_at: number | null } | undefined
     if (row?.token_invalidated_at && payload.iat && row.token_invalidated_at > payload.iat) {
       return c.json({ error: 'Token has been revoked' }, 401)
+    }
+
+    if (payload.tokenId) {
+      const session = db.prepare('SELECT revoked_at FROM sessions WHERE token_id = ?').get(payload.tokenId) as { revoked_at: number | null } | undefined
+      if (session?.revoked_at) {
+        return c.json({ error: 'Token has been revoked' }, 401)
+      }
     }
 
     c.set('auth' as never, userInfo as never)
@@ -216,9 +237,22 @@ export async function adminMiddleware(c: Context, next: Next): Promise<Response 
 }
 
 export function authOptional(c: Context, next: Next): Promise<void> {
-  const authHeader = c.req.header('Authorization')
-  if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.slice(7)
+  let token: string | undefined
+
+  const cookieHeader = c.req.header('Cookie')
+  if (cookieHeader) {
+    const match = cookieHeader.match(/(?:^|;\s*)kizuna_token=([^;]*)/)
+    if (match) token = match[1]
+  }
+
+  if (!token) {
+    const authHeader = c.req.header('Authorization')
+    if (authHeader?.startsWith('Bearer ')) {
+      token = authHeader.slice(7)
+    }
+  }
+
+  if (token) {
     try {
       const payload = verifyToken(token)
       const userInfo = getUserInfo(payload.userId)

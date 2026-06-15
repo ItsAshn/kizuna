@@ -81,7 +81,6 @@ export async function generateAndStoreKey(
 
 export async function initializeCrypto(
   serverUrl: string,
-  token: string,
   password: string,
   serverSalt?: number[] | null,
   serverPublicKey?: string | null,
@@ -100,7 +99,7 @@ export async function initializeCrypto(
       state.initialized = true
       if (serverPublicKey !== kp.publicKeyString) {
         try {
-          await uploadPublicKey(serverUrl, token, kp.publicKeyString, serverSalt)
+          await uploadPublicKey(serverUrl, kp.publicKeyString, serverSalt)
         } catch {
           console.warn('[Crypto] Failed to upload updated public key')
         }
@@ -131,4 +130,11 @@ export function clearCryptoState(): void {
   state.publicKey = null
   state.secretKey = null
   state.initialized = false
+  // Clear all stored keys from localStorage and sessionStorage
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith(LS_PREFIX)) localStorage.removeItem(key)
+  }
+  for (const key of Object.keys(sessionStorage)) {
+    if (key.startsWith(SS_KEY_PREFIX)) sessionStorage.removeItem(key)
+  }
 }

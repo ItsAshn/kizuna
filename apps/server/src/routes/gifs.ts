@@ -444,10 +444,9 @@ gifRoutes.get('/:id/file', (c) => {
     return new Response(null, { status: 304, headers: { ETag: etag } })
   }
 
-  const content = fs.readFileSync(filePath)
   const contentType = getContentType(row.stored_filename)
 
-  return new Response(content, {
+  return new Response(fs.createReadStream(filePath), {
     status: 200,
     headers: {
       'Content-Type': contentType,

@@ -379,4 +379,28 @@
   border-color: var(--text-muted);
 }
 
+.welcome__settings-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.welcome__settings-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--brand);
+  background: var(--bg-tertiary);
+}
+
 

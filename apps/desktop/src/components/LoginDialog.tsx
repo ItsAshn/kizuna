@@ -37,6 +37,14 @@ export default function LoginDialog({ serverId, onClose }: Props) {
     }
   }, [serverUrl])
 
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   async function handleAuth() {
     if (!username.trim() || !password.trim()) return
     setLoading(true)
@@ -52,7 +60,6 @@ export default function LoginDialog({ serverId, onClose }: Props) {
         setActiveSession({
           serverId: serverUrl,
           url: serverUrl,
-          token: result.token,
           user: result.user,
         })
 
@@ -64,15 +71,14 @@ export default function LoginDialog({ serverId, onClose }: Props) {
       } else {
         result = await login(serverUrl, username.trim(), password)
         const serverSalt = result.user.key_salt ? JSON.parse(result.user.key_salt) : null
-        const { publicKey, salt } = await initializeCrypto(serverUrl, result.token, password, serverSalt, result.user.public_key)
+        const { publicKey, salt } = await initializeCrypto(serverUrl, password, serverSalt, result.user.public_key)
         if (userNeedsKeyUpload(result.user.public_key, serverUrl)) {
-          await uploadPublicKey(serverUrl, result.token, publicKey, salt)
+          await uploadPublicKey(serverUrl, publicKey, salt)
         }
 
         setActiveSession({
           serverId: serverUrl,
           url: serverUrl,
-          token: result.token,
           user: result.user,
         })
       }

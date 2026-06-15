@@ -2,14 +2,16 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
+import { Settings } from 'lucide-react'
 import ExportModal from './ExportModal'
 import '../styles/server-panel.css'
 
 interface ServerPanelProps {
   onLoginRequired?: (serverId: string) => void
+  onOpenSettings?: () => void
 }
 
-export default function ServerPanel({ onLoginRequired }: ServerPanelProps) {
+export default function ServerPanel({ onLoginRequired, onOpenSettings }: ServerPanelProps) {
   const navigate = useNavigate()
   const {
     servers,
@@ -18,7 +20,7 @@ export default function ServerPanel({ onLoginRequired }: ServerPanelProps) {
     setActiveServer,
     removeServer,
   } = useServerStore()
-  const mentionCounts = useChatStore((s) => s.mentionCounts)
+  const serverMentionCounts = useChatStore((s) => s.serverMentionCounts)
   const [showRemove, setShowRemove] = useState<string | null>(null)
   const [showExport, setShowExport] = useState(false)
 
@@ -54,6 +56,7 @@ export default function ServerPanel({ onLoginRequired }: ServerPanelProps) {
         className={`server-panel__icon server-panel__icon--home ${!activeServerId ? 'server-panel__icon--active' : ''}`}
         onClick={handleHome}
         title="Home"
+        aria-label="Home"
       >
         [D]
       </button>
@@ -64,13 +67,15 @@ export default function ServerPanel({ onLoginRequired }: ServerPanelProps) {
         {servers.map((server) => {
           const isActive = activeServerId === server.id
           const isConnected = !!sessions[server.id]
-          const mentions = mentionCounts[server.id] ?? 0
+          const mentions = serverMentionCounts[server.id] ?? 0
 
           return (
             <button
               key={server.id}
               className={`server-panel__icon ${isActive ? 'server-panel__icon--active' : ''}`}
               onClick={() => handleServerClick(server.id)}
+              aria-label={`${server.name}${isConnected ? ' — connected' : ' — not connected'}${mentions > 0 ? ` — ${mentions} mentions` : ''}`}
+              aria-current={isActive ? 'page' : undefined}
               onContextMenu={(e) => {
                 e.preventDefault()
                 handleRemove(e, server.id)
@@ -114,6 +119,7 @@ export default function ServerPanel({ onLoginRequired }: ServerPanelProps) {
         className="server-panel__icon server-panel__icon--action"
         onClick={() => navigate('/')}
         title="Add Server"
+        aria-label="Add server"
       >
         +
       </button>
@@ -124,6 +130,15 @@ export default function ServerPanel({ onLoginRequired }: ServerPanelProps) {
         title="Export / Import"
       >
         ...
+      </button>
+
+      <button
+        className="server-panel__icon server-panel__icon--action"
+        onClick={onOpenSettings}
+        title="Settings"
+        aria-label="Settings"
+      >
+        <Settings size={18} />
       </button>
 
       {showExport && <ExportModal onClose={() => setShowExport(false)} />}

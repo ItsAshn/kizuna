@@ -17,7 +17,7 @@ export function useBackgroundNotifications(): void {
 
     for (const server of servers) {
       const session = sessions[server.id]
-      if (!session?.token) continue
+      if (!session) continue
 
       const existing = socketsRef.current.get(server.id)
       if (existing) {
@@ -26,7 +26,7 @@ export function useBackgroundNotifications(): void {
       }
 
       const socket = io(session.url, {
-        auth: { token: session.token },
+        withCredentials: true,
         transports: ['websocket', 'polling'],
       })
 
@@ -45,26 +45,30 @@ export function useBackgroundNotifications(): void {
           store.addMessage(message.channel_id, message)
         }
         if (activeServerId !== server.id || message.channel_id !== store.activeChannelId) {
+          if (activeServerId === server.id) return
           const sender = message.display_name || message.username || 'Someone'
           const body = message.content.length > 100 ? message.content.slice(0, 100) + '...' : message.content
           showNotification({ type: 'message', title: sender, body, channelId: message.channel_id })
+          store.setUnreadCounts({
+            ...store.unreadCounts,
+            [message.channel_id]: (store.unreadCounts[message.channel_id] || 0) + 1,
+          })
         }
       })
 
       socket.on('message:mention', (mention: any) => {
+        if (activeServerId === server.id) return
         const store = useChatStore.getState()
         store.setMentionCounts({
           ...store.mentionCounts,
           [mention.channel_id]: (store.mentionCounts[mention.channel_id] || 0) + 1,
         })
-        if (activeServerId !== server.id || mention.channel_id !== store.activeChannelId) {
-          showNotification({
-            type: 'mention',
-            title: mention.author_username || 'Someone',
-            body: mention.content?.length > 100 ? mention.content.slice(0, 100) + '...' : mention.content || '',
-            channelId: mention.channel_id,
-          })
-        }
+        showNotification({
+          type: 'mention',
+          title: mention.author_username || 'Someone',
+          body: mention.content?.length > 100 ? mention.content.slice(0, 100) + '...' : mention.content || '',
+          channelId: mention.channel_id,
+        })
       })
 
       socket.on('server:announce', ({ title, body }: { title: string; body: string }) => {
@@ -109,7 +113,11 @@ export function useBackgroundNotifications(): void {
     socketsRef.current = newSockets
 
     return () => {
-      // Don't disconnect on cleanup — leave persistent sockets alive
+      const current = socketsRef.current
+      for (const [, socket] of current) {
+        socket.disconnect()
+      }
+      current.clear()
     }
   }, [servers, sessions, activeServerId])
 }

@@ -1,32 +1,41 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useSocket } from '../hooks/useSocket'
 import { useVoice } from '../hooks/useVoice'
 import { useScreenshare } from '../hooks/useScreenshare'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { fetchChannels, fetchMembers, fetchDMChannels, fetchServerInfo, fetchChannelMutes } from '@kizuna/shared'
 import { restoreFromSession } from '../store/keyStore'
+import { Loader2, Users } from 'lucide-react'
 import ServerPanel from '../components/ServerPanel'
 import UpdateBanner from '../components/UpdateBanner'
 import Sidebar from '../components/Sidebar'
 import ChatArea from '../components/ChatArea'
 import MemberList from '../components/MemberList'
 import ScreenShareOverlay from '../components/ScreenShareOverlay'
-import UserSettingsModal from '../components/UserSettingsModal'
 import ServerMenuModal from '../components/ServerMenuModal'
 import EnvStatus from '../components/EnvStatus'
 import SetupWizard from '../components/SetupWizard'
 import LoginDialog from '../components/LoginDialog'
 import NotificationContainer from '../components/NotificationContainer'
+import QuickSwitcher from '../components/QuickSwitcher'
 import { useNavigate } from 'react-router-dom'
 import '../styles/chat.css'
 
-export default function Chat() {
+export default function Chat({ onOpenSettings }: { onOpenSettings: () => void }) {
   const navigate = useNavigate()
   const session = useServerStore((s) => s.activeSession)
   const refreshSessionUser = useServerStore((s) => s.refreshSessionUser)
   const servers = useServerStore((s) => s.servers)
-  const { setChannels, setMembers, setDMChannels, activeChannelId, activeDMChannelId, setActiveChannel, setActiveDMChannel, serverBackgroundEnabled, customCssEnabled, setChannelMutes } = useChatStore()
+  const {
+    setChannels, setMembers, setDMChannels,
+    activeChannelId, activeDMChannelId,
+    setActiveChannel, setActiveDMChannel,
+    serverBackgroundEnabled, customCssEnabled,
+    setChannelMutes, socketConnected, socketReconnecting, socketReconnectAttempts,
+    members, channels, dmChannels,
+  } = useChatStore()
   const socketRef = useSocket()
   const {
     joinVoice,
@@ -37,42 +46,64 @@ export default function Chat() {
   } = useVoice(socketRef)
   const { startScreenshare, stopScreenshare } = useScreenshare(socketRef, sendTransportRef)
   const [showMembers, setShowMembers] = useState(true)
-  const [showSettings, setShowSettings] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   const [showEnvWizard, setShowEnvWizard] = useState(false)
   const [loginForServerId, setLoginForServerId] = useState<string | null>(null)
-  const [chatClosing, setChatClosing] = useState(false)
-  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [showQuickSwitcher, setShowQuickSwitcher] = useState(false)
   const [bgInfo, setBgInfo] = useState<{ hasBackground: boolean; backgroundBlur: number; customCss: string | null } | null>(null)
-
-  const closeChat = useCallback(() => {
-    setChatClosing(true)
-    closeTimeoutRef.current = setTimeout(() => {
-      setActiveChannel(null)
-      setActiveDMChannel(null)
-      setChatClosing(false)
-    }, 200)
-  }, [setActiveChannel, setActiveDMChannel])
+  const [initialLoading, setInitialLoading] = useState(true)
 
   const chatOpen = !!(activeChannelId || activeDMChannelId)
 
-  useEffect(() => {
-    if (chatOpen) {
-      setChatClosing(false)
-      if (closeTimeoutRef.current) {
-        clearTimeout(closeTimeoutRef.current)
-        closeTimeoutRef.current = null
-      }
-    }
-  }, [activeChannelId, activeDMChannelId])
+  const channelNavList = useMemo(() => {
+    const list: { id: string; type: 'channel' | 'dm' }[] = [
+      ...channels.filter(c => c.type === 'text').map(c => ({ id: c.id, type: 'channel' as const })),
+      ...dmChannels.map(d => ({ id: d.id, type: 'dm' as const })),
+    ]
+    return list
+  }, [channels, dmChannels])
 
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && chatOpen) closeChat()
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [chatOpen, closeChat])
+  useKeyboardShortcuts(useMemo(() => [
+    {
+      key: 'k',
+      ctrl: true,
+      handler: () => setShowQuickSwitcher(true),
+    },
+    {
+      key: 'e',
+      ctrl: true,
+      handler: () => setShowMembers(v => !v),
+    },
+    {
+      key: 'Escape',
+      handler: () => {},
+      allowInInput: true,
+    },
+    {
+      key: 'ArrowUp',
+      alt: true,
+      handler: () => {
+        if (!channelNavList.length) return
+        const currentId = activeChannelId || activeDMChannelId
+        const idx = channelNavList.findIndex(c => c.id === currentId)
+        const prev = idx <= 0 ? channelNavList[channelNavList.length - 1] : channelNavList[idx - 1]
+        if (prev.type === 'channel') setActiveChannel(prev.id)
+        else setActiveDMChannel(prev.id)
+      },
+    },
+    {
+      key: 'ArrowDown',
+      alt: true,
+      handler: () => {
+        if (!channelNavList.length) return
+        const currentId = activeChannelId || activeDMChannelId
+        const idx = channelNavList.findIndex(c => c.id === currentId)
+        const next = idx < 0 || idx >= channelNavList.length - 1 ? channelNavList[0] : channelNavList[idx + 1]
+        if (next.type === 'channel') setActiveChannel(next.id)
+        else setActiveDMChannel(next.id)
+      },
+    },
+  ], [channelNavList, activeChannelId, activeDMChannelId, setActiveChannel, setActiveDMChannel, setShowMembers]))
 
   useEffect(() => {
     if (!session) {
@@ -85,15 +116,15 @@ export default function Chat() {
     async function load() {
       try {
         await refreshSessionUser()
-        const [channels, members, dms, info, mutes] = await Promise.all([
-          fetchChannels(session!.url, session!.token),
-          fetchMembers(session!.url, session!.token),
-          fetchDMChannels(session!.url, session!.token),
+        const [channelsList, membersList, dms, info, mutes] = await Promise.all([
+          fetchChannels(session!.url),
+          fetchMembers(session!.url),
+          fetchDMChannels(session!.url),
           fetchServerInfo(session!.url),
-          fetchChannelMutes(session!.url, session!.token),
+          fetchChannelMutes(session!.url),
         ])
-        setChannels(channels)
-        setMembers(members)
+        setChannels(channelsList)
+        setMembers(membersList)
         setDMChannels(dms)
         setBgInfo({ hasBackground: info.hasBackground, backgroundBlur: info.backgroundBlur, customCss: info.customCss })
         const mutesMap: Record<string, number | null> = {}
@@ -101,10 +132,12 @@ export default function Chat() {
           mutesMap[m.channel_id] = m.muted_until
         }
         setChannelMutes(mutesMap)
+        setInitialLoading(false)
       } catch {
         setChannels([])
         setMembers([])
         setDMChannels([])
+        setInitialLoading(false)
       }
     }
     load()
@@ -132,9 +165,8 @@ export default function Chat() {
 
   if (!session) return null
 
-  const shouldShowChat = chatOpen || chatClosing
-
   const showBg = bgInfo?.hasBackground && serverBackgroundEnabled
+  const serverName = servers.find(s => s.id === session.serverId)?.name || 'Kizuna'
 
   return (
     <>
@@ -145,7 +177,24 @@ export default function Chat() {
         '--bg-blur': `${bgInfo?.backgroundBlur ?? 0}px`,
       } as React.CSSProperties : undefined}
     >
-      {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} />}
+      {!socketConnected && (
+        <div className="connection-banner">
+          {socketReconnecting ? (
+            <>
+              <Loader2 size={14} className="connection-banner__spinner" />
+              Reconnecting{socketReconnectAttempts > 0 ? ` (attempt ${socketReconnectAttempts})` : ''}...
+            </>
+          ) : (
+            <>
+              Disconnected from server
+              <button className="connection-banner__reconnect" onClick={() => socketRef.current?.connect()}>
+                Reconnect
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={onOpenSettings} />}
       <Sidebar
         joinVoice={joinVoice}
         leaveVoice={leaveVoice}
@@ -153,40 +202,56 @@ export default function Chat() {
         socketRef={socketRef}
         startScreenshare={startScreenshare}
         stopScreenshare={stopScreenshare}
-        onOpenSettings={() => setShowSettings(true)}
         onOpenMenu={() => setShowMenu(true)}
       />
       <div className="chat-main">
         <UpdateBanner />
         <div className="chat-main__content">
-          {shouldShowChat && (
-            <div className={`chat-modal-overlay${chatClosing ? ' chat-modal-overlay--closing' : ''}`} onClick={closeChat}>
-              <div className={`chat-modal${chatClosing ? ' chat-modal--closing' : ''}`} onClick={(e) => e.stopPropagation()}>
-                <button className="chat-modal__close-btn" onClick={closeChat}>[esc]</button>
-                <ChatArea socketRef={socketRef} />
+          {chatOpen ? (
+            <>
+              <div className="chat-toolbar">
+                <div className="chat-toolbar__left">
+                  <EnvStatus onOpenWizard={() => setShowEnvWizard(true)} />
+                </div>
+                <button
+                  onClick={() => setShowMembers(!showMembers)}
+                  className={`chat-toolbar__members-btn${showMembers ? ' chat-toolbar__members-btn--active' : ''}`}
+                  title={showMembers ? 'Hide member list' : 'Show member list'}
+                  aria-label={showMembers ? 'Hide member list' : 'Show member list'}
+                >
+                  <Users size={14} />
+                  <span>{members.length}</span>
+                </button>
+              </div>
+              <ChatArea socketRef={socketRef} />
+            </>
+          ) : (
+            <div className="chat-placeholder">
+              <div className="chat-placeholder__icon">
+                {servers.find(s => s.id === session.serverId)?.icon ? (
+                  <img src={servers.find(s => s.id === session.serverId)!.icon} alt="" className="chat-placeholder__icon-img" />
+                ) : serverName.slice(0, 2).toUpperCase()}
+              </div>
+              <h1 className="chat-placeholder__title">Welcome to {serverName}</h1>
+              <p className="chat-placeholder__subtitle">Select a channel or direct message to start chatting</p>
+              <div className="chat-placeholder__stats">
+                <div className="chat-placeholder__stat">
+                  <span className="chat-placeholder__stat-value">{members.length}</span>
+                  <span className="chat-placeholder__stat-label">Members</span>
+                </div>
               </div>
             </div>
           )}
         </div>
       </div>
       <MemberList visible={showMembers} />
-      <button
-        onClick={() => setShowMembers(!showMembers)}
-        className="btn-secondary"
-        style={{ position: 'absolute', top: '12px', right: '12px', zIndex: 40, fontSize: '12px', padding: '4px 12px' }}
-      >
-        {showMembers ? 'Hide Members' : 'Members'}
-      </button>
-      <div style={{ position: 'absolute', top: '12px', right: showMembers ? '140px' : '100px', zIndex: 40 }}>
-        <EnvStatus onOpenWizard={() => setShowEnvWizard(true)} />
-      </div>
       <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
       <NotificationContainer />
     </div>
-    {showSettings && <UserSettingsModal onClose={() => setShowSettings(false)} />}
     {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} />}
     {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
     {loginForServerId && <LoginDialog serverId={loginForServerId} onClose={() => setLoginForServerId(null)} />}
+    {showQuickSwitcher && <QuickSwitcher onClose={() => setShowQuickSwitcher(false)} />}
     </>
   )
 }

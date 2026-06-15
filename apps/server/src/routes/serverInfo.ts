@@ -321,12 +321,9 @@ serverInfoRoutes.delete('/invites/:code', authMiddleware, (c) => {
 serverInfoRoutes.post('/join/:code', async (c) => {
   const code = (c.req.param('code') || '').toUpperCase()
   const db = getDb()
+
   const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as any
   if (!invite) return c.json({ error: 'Invalid invite code' }, 404)
-
-  if (invite.max_uses !== null && invite.uses >= invite.max_uses) {
-    return c.json({ error: 'Invite has reached maximum uses' }, 400)
-  }
 
   if (invite.expires_at !== null && invite.expires_at * 1000 < Date.now()) {
     return c.json({ error: 'Invite has expired' }, 400)
@@ -348,8 +345,14 @@ serverInfoRoutes.post('/join/:code', async (c) => {
     const existing = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(userId)
     if (existing) return c.json({ ok: true, alreadyMember: true })
 
+    const result = db.prepare(
+      'UPDATE invite_codes SET uses = uses + 1 WHERE code = ? AND (max_uses IS NULL OR uses < max_uses) AND (expires_at IS NULL OR expires_at > unixepoch())'
+    ).run(code)
+    if (result.changes === 0) {
+      return c.json({ error: 'Invite has expired or reached maximum uses' }, 400)
+    }
+
     db.prepare('INSERT OR REPLACE INTO server_members (user_id, role) VALUES (?, ?)').run(userId, 'member')
-    db.prepare('UPDATE invite_codes SET uses = uses + 1 WHERE code = ?').run(code)
     return c.json({ ok: true, alreadyMember: false })
   }
 
@@ -600,9 +603,8 @@ serverInfoRoutes.get('/background', (c) => {
     '.webp': 'image/webp',
   }
   const contentType = mimeMap[ext] || 'image/jpeg'
-  const content = fs.readFileSync(filepath)
 
-  return new Response(content, {
+  return new Response(fs.createReadStream(filepath), {
     status: 200,
     headers: {
       'Content-Type': contentType,

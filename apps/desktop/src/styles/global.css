@@ -6,11 +6,13 @@
   --bg-active: #2d2d2d;
   --text-primary: #ffffff;
   --text-secondary: #a0a0a0;
-  --text-muted: #6b6b6b;
+  --text-muted: #808080;
   --border-color: #2a2a2a;
   --brand: #4c6ef5;
   --brand-hover: #4263eb;
   --brand-dim: rgba(76, 110, 245, 0.15);
+  --brand-dim-border: rgba(76, 110, 245, 0.25);
+  --brand-glow: rgba(76, 110, 245, 0.20);
   --accent-color: #6366f1;
   --bg-surface: #1a1a1a;
   --modal-bg: rgba(17, 17, 17, 0.94);
@@ -24,12 +26,14 @@
   --green-dim-border: rgba(64, 192, 87, 0.20);
   --yellow: #fab005;
   --gray: #6b7280;
+  --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 24px;
   --radius-full: 9999px;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --focus-ring: 0 0 0 2px var(--bg-primary), 0 0 0 3.5px var(--brand);
 }
 
 *,
@@ -74,6 +78,28 @@ body {
   border-radius: 3px;
 }
 
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--bg-hover);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--text-muted);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+button:focus:not(:focus-visible),
+[tabindex]:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible),
+select:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -91,6 +117,11 @@ body {
 
 .btn-primary:hover {
   background: var(--brand-hover);
+}
+
+.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .btn-primary:disabled {
@@ -118,6 +149,11 @@ body {
   color: var(--text-primary);
 }
 
+.btn-secondary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .btn-danger {
   display: inline-flex;
   align-items: center;
@@ -135,6 +171,11 @@ body {
 
 .btn-danger:hover {
   background: var(--red-hover);
+}
+
+.btn-danger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 3.5px var(--red);
 }
 
 .input-field {
@@ -193,4 +234,14 @@ body {
 .icon-md {
   width: 20px;
   height: 20px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

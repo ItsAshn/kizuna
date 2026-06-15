@@ -13,8 +13,8 @@ function getOrCreateDMChannel(db: any, userId: string, otherUserId: string) {
 
   if (!channel) {
     const id = uuidv4()
-    db.prepare('INSERT INTO dm_channels (id, user1_id, user2_id) VALUES (?, ?, ?)').run(id, sortedIds[0], sortedIds[1])
-    channel = db.prepare('SELECT * FROM dm_channels WHERE id = ?').get(id)
+    db.prepare('INSERT OR IGNORE INTO dm_channels (id, user1_id, user2_id) VALUES (?, ?, ?)').run(id, sortedIds[0], sortedIds[1])
+    channel = db.prepare('SELECT * FROM dm_channels WHERE user1_id = ? AND user2_id = ?').get(sortedIds[0], sortedIds[1])
   }
 
   return channel
@@ -102,6 +102,8 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
     rows = rows.reverse()
   }
 
+  const hasMore = rows.length === limit
+
   const messages = rows.map((row) => ({
     id: row.id,
     channel_id: channelId,
@@ -114,7 +116,7 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
     created_at: row.created_at * 1000,
   }))
 
-  return c.json({ messages })
+  return c.json({ messages, hasMore })
 })
 
 // POST /dms/channel/:channelId/messages

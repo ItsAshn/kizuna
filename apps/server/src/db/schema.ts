@@ -36,6 +36,9 @@ export const SCHEMA_SQL = `
     edited_at INTEGER DEFAULT NULL,
     updated_at INTEGER DEFAULT NULL,
     created_at INTEGER DEFAULT (unixepoch()),
+    reply_to_message_id TEXT DEFAULT NULL,
+    reply_to_username TEXT DEFAULT NULL,
+    reply_to_content TEXT DEFAULT NULL,
     FOREIGN KEY (channel_id) REFERENCES channels(id)
   );
 
@@ -58,7 +61,10 @@ export const SCHEMA_SQL = `
     content TEXT NOT NULL,
     encrypted INTEGER NOT NULL DEFAULT 0,
     edited_at INTEGER DEFAULT NULL,
-    created_at INTEGER DEFAULT (unixepoch())
+    created_at INTEGER DEFAULT (unixepoch()),
+    reply_to_message_id TEXT DEFAULT NULL,
+    reply_to_username TEXT DEFAULT NULL,
+    reply_to_content TEXT DEFAULT NULL
   );
 
   CREATE TABLE IF NOT EXISTS server_members (
@@ -202,6 +208,16 @@ export const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_mentions_user_read ON mentions(mentioned_user_id, read);
   CREATE INDEX IF NOT EXISTS idx_direct_messages_channel ON direct_messages(channel_id);
   CREATE INDEX IF NOT EXISTS idx_message_edits_message ON message_edits(message_id);
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    token_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    created_at INTEGER DEFAULT (unixepoch()),
+    revoked_at INTEGER DEFAULT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 `
 
 export const SEED_SQL = `

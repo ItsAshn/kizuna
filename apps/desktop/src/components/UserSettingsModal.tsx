@@ -362,17 +362,18 @@ export default function UserSettingsModal({ onClose }: Props) {
             <p className="settings-modal__section-title">input mode</p>
             <div className="settings-modal__radio-group">
               {INPUT_MODES.map(mode => (
-                <div
+                <button
                   key={mode.value}
                   className={`settings-modal__radio-option${voiceInputMode === mode.value ? ' settings-modal__radio-option--active' : ''}`}
                   onClick={() => setVoiceInputMode(mode.value)}
+                  type="button"
                 >
                   <span className="settings-modal__radio-dot" />
-                  <div>
+                  <div style={{ textAlign: 'left' }}>
                     <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{mode.label}</div>
                     <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>{mode.desc}</div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </section>

@@ -4,6 +4,13 @@ import type { Channel, Message, Member, DMChannelData, VoicePeer, ConnectionQual
 
 export type VoiceInputMode = 'voice-activity' | 'push-to-talk'
 
+export type NotificationLevel = 'all' | 'mentions' | 'none'
+
+interface NotificationSettings {
+  level: NotificationLevel
+  suppressEveryone: boolean
+}
+
 interface ChatState {
   channels: Channel[]
   dmChannels: DMChannelData[]
@@ -13,6 +20,7 @@ interface ChatState {
   activeDMChannelId: string | null
   unreadCounts: Record<string, number>
   mentionCounts: Record<string, number>
+  serverMentionCounts: Record<string, number>
 
   activeVoiceChannelId: string | null
   voicePeers: VoicePeer[]
@@ -40,6 +48,8 @@ interface ChatState {
 
   voiceChannelUsers: Record<string, { userId: string; username: string }[]>
 
+  peerVolumes: Record<string, number>
+
   screenSharePeerId: string | null
   screenShareUsername: string | null
   isScreenSharing: boolean
@@ -54,7 +64,16 @@ interface ChatState {
   updateVersion: string | null
   updateError: string | null
 
+  socketConnected: boolean
+  socketReconnecting: boolean
+  socketReconnectAttempts: number
+
   channelMutes: Record<string, number | null>
+
+  channelLastReadAt: Record<string, number>
+  hasMoreMessages: Record<string, boolean>
+
+  notificationSettings: Record<string, NotificationSettings>
 
   setChannels: (channels: Channel[]) => void
   setDMChannels: (channels: DMChannelData[]) => void
@@ -65,6 +84,8 @@ interface ChatState {
   setActiveDMChannel: (channelId: string | null) => void
   setUnreadCounts: (counts: Record<string, number>) => void
   setMentionCounts: (counts: Record<string, number>) => void
+  incrementServerMentionCount: (serverId: string) => void
+  clearServerMentionCount: (serverId: string) => void
   removeMessage: (channelId: string, messageId: string) => void
   setActiveVoiceChannel: (channelId: string | null) => void
   setVoicePeers: (peers: VoicePeer[]) => void
@@ -81,6 +102,8 @@ interface ChatState {
   setVoiceChannelUsers: (users: Record<string, { userId: string; username: string }[]>) => void
   addVoiceChannelUser: (channelId: string, user: { userId: string; username: string }) => void
   removeVoiceChannelUser: (channelId: string, userId: string) => void
+
+  setPeerVolume: (peerId: string, volume: number) => void
   setVoiceInputMode: (mode: VoiceInputMode) => void
   setPushToTalkKey: (key: string) => void
   setNoiseSuppression: (enabled: boolean) => void
@@ -106,9 +129,19 @@ interface ChatState {
   setUpdateVersion: (version: string | null) => void
   setUpdateError: (error: string | null) => void
 
+  setSocketConnected: (connected: boolean) => void
+  setSocketReconnecting: (reconnecting: boolean) => void
+  setSocketReconnectAttempts: (attempts: number) => void
+
   setChannelMutes: (mutes: Record<string, number | null>) => void
   upsertChannelMute: (channelId: string, mutedUntil: number | null) => void
   removeChannelMute: (channelId: string) => void
+
+  setChannelLastReadAt: (channelId: string, timestamp: number) => void
+  setHasMoreMessages: (channelId: string, hasMore: boolean) => void
+  prependMessages: (channelId: string, messages: Message[]) => void
+
+  setNotificationSettings: (serverId: string, settings: NotificationSettings) => void
 
   updateMessageReactions: (channelId: string, messageId: string, reactions: MessageReaction[]) => void
 }
@@ -124,6 +157,7 @@ export const useChatStore = create<ChatState>()(
       activeDMChannelId: null,
       unreadCounts: {},
       mentionCounts: {},
+      serverMentionCounts: {},
       activeVoiceChannelId: null,
       voicePeers: [],
       isMuted: false,
@@ -135,6 +169,8 @@ export const useChatStore = create<ChatState>()(
       voiceError: null,
       voiceChannelUsers: {},
       typingUsers: {},
+
+      peerVolumes: {},
       userStatuses: {},
       voiceInputMode: 'voice-activity' as VoiceInputMode,
       pushToTalkKey: 'AltLeft',
@@ -159,6 +195,16 @@ export const useChatStore = create<ChatState>()(
       updateError: null,
       channelMutes: {},
 
+      channelLastReadAt: {},
+
+      hasMoreMessages: {},
+
+      notificationSettings: {},
+
+      socketConnected: true,
+      socketReconnecting: false,
+      socketReconnectAttempts: 0,
+
       setChannels: (channels) => set({ channels }),
       setDMChannels: (dmChannels) => set({ dmChannels }),
       setMessages: (channelId, messages) =>
@@ -179,6 +225,19 @@ export const useChatStore = create<ChatState>()(
       setActiveDMChannel: (activeDMChannelId) => set({ activeDMChannelId, activeChannelId: null }),
       setUnreadCounts: (unreadCounts) => set({ unreadCounts }),
       setMentionCounts: (mentionCounts) => set({ mentionCounts }),
+      incrementServerMentionCount: (serverId) =>
+        set((s) => ({
+          serverMentionCounts: {
+            ...s.serverMentionCounts,
+            [serverId]: (s.serverMentionCounts[serverId] || 0) + 1,
+          },
+        })),
+      clearServerMentionCount: (serverId) =>
+        set((s) => {
+          const next = { ...s.serverMentionCounts }
+          delete next[serverId]
+          return { serverMentionCounts: next }
+        }),
       removeMessage: (channelId, messageId) =>
         set((state) => ({
           messages: {
@@ -242,6 +301,9 @@ export const useChatStore = create<ChatState>()(
       setInputVolume: (inputVolume) => set({ inputVolume }),
       setOutputVolume: (outputVolume) => set({ outputVolume }),
       setLiveAudioLevel: (liveAudioLevel) => set({ liveAudioLevel }),
+
+      setPeerVolume: (peerId, volume) =>
+        set((s) => ({ peerVolumes: { ...s.peerVolumes, [peerId]: volume } })),
       setTypingUsers: (channelId, users) =>
         set((s) => ({
           typingUsers: { ...s.typingUsers, [channelId]: users },
@@ -268,6 +330,10 @@ export const useChatStore = create<ChatState>()(
       setUpdateVersion: (updateVersion) => set({ updateVersion }),
       setUpdateError: (updateError) => set({ updateError }),
 
+      setSocketConnected: (socketConnected) => set({ socketConnected, socketReconnecting: false, socketReconnectAttempts: 0 }),
+      setSocketReconnecting: (socketReconnecting) => set({ socketReconnecting, socketConnected: false }),
+      setSocketReconnectAttempts: (socketReconnectAttempts) => set({ socketReconnectAttempts }),
+
       setChannelMutes: (channelMutes) => set({ channelMutes }),
       upsertChannelMute: (channelId, mutedUntil) =>
         set((s) => ({ channelMutes: { ...s.channelMutes, [channelId]: mutedUntil } })),
@@ -277,6 +343,29 @@ export const useChatStore = create<ChatState>()(
           delete next[channelId]
           return { channelMutes: next }
         }),
+
+      setChannelLastReadAt: (channelId, timestamp) =>
+        set((s) => ({
+          channelLastReadAt: { ...s.channelLastReadAt, [channelId]: timestamp },
+        })),
+
+      setHasMoreMessages: (channelId, hasMore) =>
+        set((s) => ({
+          hasMoreMessages: { ...s.hasMoreMessages, [channelId]: hasMore },
+        })),
+
+      prependMessages: (channelId, messages) =>
+        set((s) => ({
+          messages: {
+            ...s.messages,
+            [channelId]: [...messages, ...(s.messages[channelId] || [])],
+          },
+        })),
+
+      setNotificationSettings: (serverId, settings) =>
+        set((s) => ({
+          notificationSettings: { ...s.notificationSettings, [serverId]: settings },
+        })),
 
       updateMessageReactions: (channelId, messageId, reactions) =>
         set((state) => ({
@@ -305,6 +394,10 @@ export const useChatStore = create<ChatState>()(
         outputVolume: state.outputVolume,
         serverBackgroundEnabled: state.serverBackgroundEnabled,
         customCssEnabled: state.customCssEnabled,
+        unreadCounts: state.unreadCounts,
+        mentionCounts: state.mentionCounts,
+        serverMentionCounts: state.serverMentionCounts,
+        notificationSettings: state.notificationSettings,
       }),
     },
   ),

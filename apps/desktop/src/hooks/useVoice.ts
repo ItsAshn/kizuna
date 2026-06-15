@@ -507,7 +507,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       const { invoke } = await import('@tauri-apps/api/core')
       await invoke('voice_init', {
         serverUrl: session.url,
-        authToken: session.token,
         userId: session.user.id,
         username: session.user.username,
       })
@@ -837,8 +836,11 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     } catch (e) {
       verr('leaveVoice', 'Native leave failed', e)
     }
-    // Clean up chat socket peer handlers
     const socket = socketRef.current
+    if (socket) {
+      socket.emit('voice:leave', { channelId: channelIdRef.current })
+    }
+    // Clean up chat socket peer handlers
     if (socket && nativePeerHandlersRef.current) {
       socket.off('voice:newPeer')
       socket.off('voice:peerLeft')
@@ -1358,9 +1360,9 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     }, RECONNECT_DELAY_MS * reconnectAttemptsRef.current)
   }, [joinVoice, cleanupVoice, setVoiceError])
 
-  const leaveVoice = useCallback(() => {
+  const leaveVoice = useCallback(async () => {
     if (isTauri()) {
-      leaveVoiceNative()
+      await leaveVoiceNative()
       setActiveVoiceChannel(null)
       setIsMuted(false)
       setVoiceError(null)
@@ -1382,7 +1384,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     setActiveVoiceChannel(null)
     setIsMuted(false)
     setVoiceError(null)
-  }, [socketRef, cleanupVoice, setActiveVoiceChannel, setIsMuted, setVoiceError])
+  }, [socketRef, cleanupVoice, setActiveVoiceChannel, setIsMuted, setVoiceError, leaveVoiceNative])
 
   const toggleMute = useCallback(() => {
     if (voiceInputMode === 'push-to-talk') return

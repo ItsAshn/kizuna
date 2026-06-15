@@ -60,7 +60,7 @@ function getCachedRouter(channelId: string): mediasoupTypes.Router | undefined {
   return routers.get(channelId)
 }
 
-export { getCachedRouter as getOrCreateRouter }
+export { ensureRouter as getOrCreateRouter }
 
 export async function ensureRouter(channelId: string): Promise<mediasoupTypes.Router> {
   const existing = routers.get(channelId)

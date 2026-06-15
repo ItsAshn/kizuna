@@ -30,7 +30,6 @@ bytemuck = "1"
 
 tokio = { version = "1", features = ["full"] }
 webrtc = "0.17"
-rust_socketio = { version = "0.6", features = ["async"] }
 futures-util = "0.3"
 opus2 = "0.4"
 bytes = "1"

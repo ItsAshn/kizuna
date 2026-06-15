@@ -22,6 +22,9 @@ function mapMessage(row: any) {
     edited_at: row.edited_at ? row.edited_at * 1000 : null,
     created_at: row.created_at * 1000,
     reactions: row.reactions ? JSON.parse(row.reactions) : [],
+    reply_to_message_id: row.reply_to_message_id || null,
+    reply_to_username: row.reply_to_username || null,
+    reply_to_content: row.reply_to_content || null,
   }
 }
 
@@ -81,13 +84,14 @@ messageRoutes.get('/:channelId', authMiddleware, (c) => {
   }
 
   const messages = rows.map(mapMessage)
+  const hasMore = rows.length === limit
   const messageIds = messages.map(m => m.id)
   const reactionsMap = fetchReactionsForMessages(db, messageIds)
   for (const msg of messages) {
     msg.reactions = reactionsMap[msg.id] || []
   }
 
-  return c.json({ messages })
+  return c.json({ messages, hasMore })
 })
 
 // POST /messages/:channelId — send message
@@ -103,16 +107,27 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
     return c.json({ error: 'This channel is locked' }, 403)
   }
 
-  const body = await c.req.json() as { content: string; attachment_ids?: string[] }
-  const { content, attachment_ids } = body
+  const body = await c.req.json() as { content: string; attachment_ids?: string[]; reply_to_message_id?: string }
+  const { content, attachment_ids, reply_to_message_id } = body
   if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)
   if (content.length > 4000) return c.json({ error: 'Message too long (max 4000 chars)' }, 400)
 
   const db = getDb()
   const id = uuidv4()
+
+  let replyUsername: string | null = null
+  let replyContent: string | null = null
+  if (reply_to_message_id) {
+    const replyMsg = db.prepare('SELECT author_username, content FROM messages WHERE id = ? AND channel_id = ?').get(reply_to_message_id, channelId) as any
+    if (replyMsg) {
+      replyUsername = replyMsg.author_username
+      replyContent = replyMsg.content
+    }
+  }
+
   db.prepare(
-    'INSERT INTO messages (id, channel_id, author_id, author_username, content) VALUES (?, ?, ?, ?, ?)'
-  ).run(id, channelId, user.userId, user.username, content.trim())
+    'INSERT INTO messages (id, channel_id, author_id, author_username, content, reply_to_message_id, reply_to_username, reply_to_content) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, channelId, user.userId, user.username, content.trim(), reply_to_message_id || null, replyUsername, replyContent)
 
   if (attachment_ids && attachment_ids.length > 0) {
     for (const attId of attachment_ids) {

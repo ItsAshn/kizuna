@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Check, Copy, CheckCheck } from 'lucide-react'
 import './BackupTokenModal.css'
 
@@ -20,6 +20,16 @@ export default function BackupTokenModal({ backuptoken, onComplete }: Props) {
     setCopied(true)
     setTimeout(() => setCopied(false), 3000)
   }
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && step === 'display') {
+        onComplete()
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [step, onComplete])
 
   return (
     <div className="backuptoken-overlay">

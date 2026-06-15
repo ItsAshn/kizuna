@@ -20,10 +20,10 @@ function normalizeUrl(url: string): string {
   return url.replace(/\/$/, '')
 }
 
-function client(baseUrl: string, token?: string) {
+function client(baseUrl: string) {
   return axios.create({
     baseURL: normalizeUrl(baseUrl),
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    withCredentials: true,
   })
 }
 
@@ -46,7 +46,7 @@ export async function register(
   key_salt?: string,
   challenge?: string,
   nonce?: string,
-): Promise<{ token: string; user: User; backuptoken: string }> {
+): Promise<{ user: User; backuptoken: string }> {
   const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/register`, {
     username,
     password,
@@ -64,7 +64,7 @@ export async function login(
   serverUrl: string,
   username: string,
   password: string,
-): Promise<{ token: string; user: User }> {
+): Promise<{ user: User }> {
   const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/login`, {
     username,
     password,
@@ -74,25 +74,21 @@ export async function login(
 
 export async function logout(
   serverUrl: string,
-  token: string,
 ): Promise<void> {
-  await client(serverUrl, token).post('/api/auth/logout')
+  await client(serverUrl).post('/api/auth/logout')
 }
 
-export async function getMe(serverUrl: string, token: string): Promise<User> {
-  const res = await axios.get(`${normalizeUrl(serverUrl)}/api/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+export async function getMe(serverUrl: string): Promise<User> {
+  const res = await client(serverUrl).get('/api/auth/me')
   return res.data.user
 }
 
 export async function uploadPublicKey(
   serverUrl: string,
-  token: string,
   publicKey: string,
   keySalt?: number[],
 ): Promise<void> {
-  await client(serverUrl, token).put('/api/auth/public-key', {
+  await client(serverUrl).put('/api/auth/public-key', {
     public_key: publicKey,
     key_salt: keySalt != null ? JSON.stringify(keySalt) : undefined,
   })
@@ -100,27 +96,26 @@ export async function uploadPublicKey(
 
 export async function getUserPublicKey(
   serverUrl: string,
-  token: string,
   userId: string,
 ): Promise<string | null> {
-  const res = await client(serverUrl, token).get(`/api/auth/users/${userId}/public-key`)
+  const res = await client(serverUrl).get(`/api/auth/users/${userId}/public-key`)
   return res.data.public_key ?? null
 }
 
 export async function validateResetToken(
   serverUrl: string,
-  token: string,
+  resetToken: string,
 ): Promise<{ username: string }> {
-  const res = await axios.get(`${normalizeUrl(serverUrl)}/api/auth/reset-password/${token}`)
+  const res = await axios.get(`${normalizeUrl(serverUrl)}/api/auth/reset-password/${resetToken}`)
   return res.data
 }
 
 export async function resetPassword(
   serverUrl: string,
-  token: string,
+  resetToken: string,
   password: string,
 ): Promise<{ backuptoken: string }> {
-  const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/reset-password/${token}`, { password })
+  const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/reset-password/${resetToken}`, { password })
   return res.data
 }
 
@@ -140,10 +135,9 @@ export async function resetWithBackupToken(
 
 export async function generatePasswordReset(
   serverUrl: string,
-  authToken: string,
   userId: string,
 ): Promise<{ resetToken: string; username: string; expiresAt: number }> {
-  const res = await client(serverUrl, authToken).post(`/api/server/members/${userId}/generate-reset`)
+  const res = await client(serverUrl).post(`/api/server/members/${userId}/generate-reset`)
   return res.data
 }
 
@@ -191,49 +185,44 @@ export async function resolveInviteCode(
 
 export async function fetchChannels(
   serverUrl: string,
-  token: string,
 ): Promise<Channel[]> {
-  const res = await client(serverUrl, token).get('/api/channels')
+  const res = await client(serverUrl).get('/api/channels')
   return res.data.channels ?? res.data
 }
 
 export async function createChannel(
   serverUrl: string,
-  token: string,
   name: string,
   type: 'text' | 'voice',
   locked = false,
   write_role_id?: string | null,
 ): Promise<Channel> {
-  const res = await client(serverUrl, token).post('/api/channels', { name, type, locked, write_role_id })
+  const res = await client(serverUrl).post('/api/channels', { name, type, locked, write_role_id })
   return res.data.channel ?? res.data
 }
 
 export async function deleteChannel(
   serverUrl: string,
-  token: string,
   id: string,
 ): Promise<void> {
-  await client(serverUrl, token).delete(`/api/channels/${id}`)
+  await client(serverUrl).delete(`/api/channels/${id}`)
 }
 
 export async function lockChannel(
   serverUrl: string,
-  token: string,
   id: string,
   locked: boolean,
   write_role_id?: string | null,
 ): Promise<Channel> {
-  const res = await client(serverUrl, token).patch(`/api/channels/${id}`, { locked, write_role_id })
+  const res = await client(serverUrl).patch(`/api/channels/${id}`, { locked, write_role_id })
   return res.data.channel ?? res.data
 }
 
 export async function fetchChannelPermissions(
   serverUrl: string,
-  token: string,
   channelId: string,
 ): Promise<{ can_write: boolean; locked: boolean; write_role_id: string | null; write_role_name: string | null }> {
-  const res = await client(serverUrl, token).get(`/api/channels/${channelId}/permissions`)
+  const res = await client(serverUrl).get(`/api/channels/${channelId}/permissions`)
   return res.data
 }
 
@@ -241,45 +230,43 @@ export async function fetchChannelPermissions(
 
 export async function fetchMessages(
   serverUrl: string,
-  token: string,
   channelId: string,
   limit = 50,
-): Promise<Message[]> {
-  const res = await client(serverUrl, token).get(`/api/messages/${channelId}`, {
-    params: { limit },
-  })
-  return res.data.messages ?? res.data
+  before?: string,
+): Promise<{ messages: Message[]; hasMore: boolean }> {
+  const params: Record<string, string | number> = { limit }
+  if (before) params.before = before
+  const res = await client(serverUrl).get(`/api/messages/${channelId}`, { params })
+  return { messages: res.data.messages ?? res.data, hasMore: res.data.hasMore ?? false }
 }
 
 export async function sendMessage(
   serverUrl: string,
-  token: string,
   channelId: string,
   content: string,
   attachmentIds?: string[],
+  replyToMessageId?: string,
 ): Promise<Message> {
-  const res = await client(serverUrl, token).post(`/api/messages/${channelId}`, {
-    content,
-    ...(attachmentIds?.length ? { attachment_ids: attachmentIds } : {}),
-  })
+  const body: Record<string, any> = { content }
+  if (attachmentIds?.length) body.attachment_ids = attachmentIds
+  if (replyToMessageId) body.reply_to_message_id = replyToMessageId
+  const res = await client(serverUrl).post(`/api/messages/${channelId}`, body)
   return res.data.message ?? res.data
 }
 
 export async function deleteMessage(
   serverUrl: string,
-  token: string,
   messageId: string,
 ): Promise<void> {
-  await client(serverUrl, token).delete(`/api/messages/${messageId}`)
+  await client(serverUrl).delete(`/api/messages/${messageId}`)
 }
 
 export async function editMessage(
   serverUrl: string,
-  token: string,
   messageId: string,
   content: string,
 ): Promise<Message> {
-  const res = await client(serverUrl, token).patch(`/api/messages/${messageId}`, { content })
+  const res = await client(serverUrl).patch(`/api/messages/${messageId}`, { content })
   return res.data.message ?? res.data
 }
 
@@ -287,9 +274,8 @@ export async function editMessage(
 
 export async function fetchMembers(
   serverUrl: string,
-  token: string,
 ): Promise<Member[]> {
-  const res = await client(serverUrl, token).get('/api/auth/users')
+  const res = await client(serverUrl).get('/api/auth/users')
   return res.data.users ?? res.data
 }
 
@@ -297,11 +283,10 @@ export async function fetchMembers(
 
 export async function updateProfile(
   serverUrl: string,
-  token: string,
   display_name?: string,
   avatar?: string | null,
 ): Promise<User> {
-  const res = await client(serverUrl, token).patch('/api/auth/profile', {
+  const res = await client(serverUrl).patch('/api/auth/profile', {
     display_name,
     avatar,
   })
@@ -312,7 +297,6 @@ export async function updateProfile(
 
 export async function updateServerSettings(
   serverUrl: string,
-  token: string,
   name?: string,
   icon?: string | null,
   background_blur?: number,
@@ -325,13 +309,12 @@ export async function updateServerSettings(
   if (background_blur !== undefined) body.background_blur = background_blur
   if (customCss !== undefined) body.custom_css = customCss
   if (voiceBitrateKbps !== undefined) body.voice_bitrate_kbps = voiceBitrateKbps
-  const res = await client(serverUrl, token).patch('/api/server/settings', body)
+  const res = await client(serverUrl).patch('/api/server/settings', body)
   return res.data as ServerInfo
 }
 
 export async function uploadServerBackground(
   serverUrl: string,
-  token: string,
   file: File,
   onProgress?: (percent: number) => void,
 ): Promise<void> {
@@ -342,7 +325,7 @@ export async function uploadServerBackground(
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       xhr.open('POST', `${normalizeUrl(serverUrl)}/api/server/background`)
-      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.withCredentials = true
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           onProgress(Math.round((e.loaded / e.total) * 100))
@@ -364,7 +347,7 @@ export async function uploadServerBackground(
 
   const response = await fetch(`${normalizeUrl(serverUrl)}/api/server/background`, {
     method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'include',
     body: formData,
   })
 
@@ -376,20 +359,18 @@ export async function uploadServerBackground(
 
 export async function deleteServerBackground(
   serverUrl: string,
-  token: string,
 ): Promise<void> {
-  await client(serverUrl, token).delete('/api/server/background')
+  await client(serverUrl).delete('/api/server/background')
 }
 
 // ─── Invites ──────────────────────────────────────────────
 
 export async function createInvite(
   serverUrl: string,
-  token: string,
   maxUses?: number,
   expiresInHours?: number,
 ): Promise<InviteCode> {
-  const res = await client(serverUrl, token).post('/api/server/invites', {
+  const res = await client(serverUrl).post('/api/server/invites', {
     maxUses: maxUses || null,
     expiresInHours: expiresInHours || null,
   })
@@ -398,86 +379,77 @@ export async function createInvite(
 
 export async function fetchInvites(
   serverUrl: string,
-  token: string,
 ): Promise<InviteCode[]> {
-  const res = await client(serverUrl, token).get('/api/server/invites')
+  const res = await client(serverUrl).get('/api/server/invites')
   return res.data.invites ?? res.data
 }
 
 export async function revokeInvite(
   serverUrl: string,
-  token: string,
   code: string,
 ): Promise<void> {
-  await client(serverUrl, token).delete(`/api/server/invites/${code}`)
+  await client(serverUrl).delete(`/api/server/invites/${code}`)
 }
 
 // ─── Member Management ────────────────────────────────────
 
 export async function setMemberRole(
   serverUrl: string,
-  token: string,
   userId: string,
   role: 'admin' | 'member',
 ): Promise<void> {
-  await client(serverUrl, token).patch(`/api/server/members/${userId}/role`, { role })
+  await client(serverUrl).patch(`/api/server/members/${userId}/role`, { role })
 }
 
 export async function kickMember(
   serverUrl: string,
-  token: string,
   userId: string,
 ): Promise<void> {
-  await client(serverUrl, token).delete(`/api/server/members/${userId}`)
+  await client(serverUrl).delete(`/api/server/members/${userId}`)
 }
 
 export async function assignCustomRole(
   serverUrl: string,
-  token: string,
   userId: string,
   roleId: string | null,
 ): Promise<void> {
   if (roleId) {
-    await client(serverUrl, token).post(`/api/server/members/${userId}/roles`, { roleId })
+    await client(serverUrl).post(`/api/server/members/${userId}/roles`, { roleId })
   }
 }
 
 export async function addMemberRole(
   serverUrl: string,
-  token: string,
   userId: string,
   roleId: string,
 ): Promise<void> {
-  await client(serverUrl, token).post(`/api/server/members/${userId}/roles`, { roleId })
+  await client(serverUrl).post(`/api/server/members/${userId}/roles`, { roleId })
 }
 
 export async function removeMemberRole(
   serverUrl: string,
-  token: string,
   userId: string,
   roleId: string,
 ): Promise<void> {
-  await client(serverUrl, token).delete(`/api/server/members/${userId}/roles/${roleId}`)
+  await client(serverUrl).delete(`/api/server/members/${userId}/roles/${roleId}`)
 }
 
 // ─── Roles ────────────────────────────────────────────────
 
 export async function fetchRoles(
   serverUrl: string,
-  token: string,
 ): Promise<CustomRole[]> {
-  const res = await client(serverUrl, token).get('/api/roles')
+  const res = await client(serverUrl).get('/api/roles')
   return res.data.roles ?? res.data
 }
 
 export async function createRole(
   serverUrl: string,
-  token: string,
   name: string,
   color: string,
   permissions: Partial<Record<Permission, boolean>>,
 ): Promise<CustomRole> {
-  const res = await client(serverUrl, token).post('/api/roles', {
+  const res = await client(serverUrl).post('/api/roles', {
     name,
     color,
     permissions,
@@ -487,13 +459,12 @@ export async function createRole(
 
 export async function updateRole(
   serverUrl: string,
-  token: string,
   id: string,
   name: string,
   color: string,
   permissions: Partial<Record<Permission, boolean>>,
 ): Promise<CustomRole> {
-  const res = await client(serverUrl, token).patch(`/api/roles/${id}`, {
+  const res = await client(serverUrl).patch(`/api/roles/${id}`, {
     name,
     color,
     permissions,
@@ -503,23 +474,21 @@ export async function updateRole(
 
 export async function deleteRole(
   serverUrl: string,
-  token: string,
   id: string,
 ): Promise<void> {
-  await client(serverUrl, token).delete(`/api/roles/${id}`)
+  await client(serverUrl).delete(`/api/roles/${id}`)
 }
 
 // ─── Invite Join ──────────────────────────────────────────
 
 export async function joinWithInvite(
   serverUrl: string,
-  token: string | undefined,
   code: string,
 ): Promise<{ ok: boolean; alreadyMember: boolean }> {
   const res = await axios.post(
     `${normalizeUrl(serverUrl)}/api/server/join/${code.toUpperCase()}`,
     {},
-    token ? { headers: { Authorization: `Bearer ${token}` } } : {},
+    { withCredentials: true },
   )
   return res.data
 }
@@ -528,43 +497,42 @@ export async function joinWithInvite(
 
 export async function fetchDMChannels(
   serverUrl: string,
-  token: string,
 ): Promise<DMChannelData[]> {
-  const res = await client(serverUrl, token).get('/api/dms')
+  const res = await client(serverUrl).get('/api/dms')
   return res.data.channels ?? res.data
 }
 
 export async function getOrCreateDMChannel(
   serverUrl: string,
-  token: string,
   userId: string,
 ): Promise<DMChannelData> {
-  const res = await client(serverUrl, token).get(`/api/dms/${userId}`)
+  const res = await client(serverUrl).get(`/api/dms/${userId}`)
   return res.data.channel
 }
 
 export async function fetchDMMessages(
   serverUrl: string,
-  token: string,
   channelId: string,
   limit = 50,
-): Promise<Message[]> {
-  const res = await client(serverUrl, token).get(
+  before?: string,
+): Promise<{ messages: Message[]; hasMore: boolean }> {
+  const params: Record<string, string | number> = { limit }
+  if (before) params.before = before
+  const res = await client(serverUrl).get(
     `/api/dms/channel/${channelId}/messages`,
-    { params: { limit } },
+    { params },
   )
-  return res.data.messages ?? res.data
+  return { messages: res.data.messages ?? res.data, hasMore: res.data.hasMore ?? false }
 }
 
 export async function sendDMMessage(
   serverUrl: string,
-  token: string,
   channelId: string,
   content: string,
   encrypted?: boolean,
   attachmentIds?: string[],
 ): Promise<Message> {
-  const res = await client(serverUrl, token).post(
+  const res = await client(serverUrl).post(
     `/api/dms/channel/${channelId}/messages`,
     { content, encrypted: encrypted || false, ...(attachmentIds?.length ? { attachment_ids: attachmentIds } : {}) },
   )
@@ -573,28 +541,25 @@ export async function sendDMMessage(
 
 export async function editDMMessage(
   serverUrl: string,
-  token: string,
   messageId: string,
   content: string,
   encrypted?: boolean,
 ): Promise<Message> {
-  const res = await client(serverUrl, token).patch(`/api/dms/messages/${messageId}`, { content, encrypted: encrypted || false })
+  const res = await client(serverUrl).patch(`/api/dms/messages/${messageId}`, { content, encrypted: encrypted || false })
   return res.data.message ?? res.data
 }
 
 export async function deleteDMMessage(
   serverUrl: string,
-  token: string,
   messageId: string,
 ): Promise<void> {
-  await client(serverUrl, token).delete(`/api/dms/messages/${messageId}`)
+  await client(serverUrl).delete(`/api/dms/messages/${messageId}`)
 }
 
 // ─── Attachments ──────────────────────────────────────────
 
 export async function uploadAttachment(
   serverUrl: string,
-  token: string,
   channelId: string,
   file: File,
   onProgress?: (percent: number) => void,
@@ -606,7 +571,7 @@ export async function uploadAttachment(
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       xhr.open('POST', `${normalizeUrl(serverUrl)}/api/attachments/${channelId}`)
-      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.withCredentials = true
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           onProgress(Math.round((e.loaded / e.total) * 100))
@@ -633,7 +598,7 @@ export async function uploadAttachment(
 
   const response = await fetch(`${normalizeUrl(serverUrl)}/api/attachments/${channelId}`, {
     method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'include',
     body: formData,
   })
 
@@ -648,10 +613,9 @@ export async function uploadAttachment(
 
 export async function fetchAttachments(
   serverUrl: string,
-  token: string,
   messageId: string,
 ): Promise<FileAttachment[]> {
-  const res = await client(serverUrl, token).get(`/api/attachments/message/${messageId}`)
+  const res = await client(serverUrl).get(`/api/attachments/message/${messageId}`)
   return res.data.attachments ?? res.data
 }
 
@@ -659,61 +623,54 @@ export async function fetchAttachments(
 
 export async function fetchChannelMutes(
   serverUrl: string,
-  token: string,
 ): Promise<ChannelMute[]> {
-  const res = await client(serverUrl, token).get('/api/mutes')
+  const res = await client(serverUrl).get('/api/mutes')
   return res.data.mutes ?? res.data
 }
 
 export async function setChannelMute(
   serverUrl: string,
-  token: string,
   channelId: string,
   mutedUntil: number | null,
 ): Promise<ChannelMute> {
-  const res = await client(serverUrl, token).put(`/api/mutes/${channelId}`, { muted_until: mutedUntil })
+  const res = await client(serverUrl).put(`/api/mutes/${channelId}`, { muted_until: mutedUntil })
   return res.data.mute ?? res.data
 }
 
 export async function deleteChannelMute(
   serverUrl: string,
-  token: string,
   channelId: string,
 ): Promise<void> {
-  await client(serverUrl, token).delete(`/api/mutes/${channelId}`)
+  await client(serverUrl).delete(`/api/mutes/${channelId}`)
 }
 
 // ─── GIFs & Stickers ─────────────────────────────────────
 
 export async function fetchGifs(
   serverUrl: string,
-  token: string,
   params?: { type?: 'gif' | 'sticker'; category?: string; pack?: string; search?: string; limit?: number; offset?: number },
 ): Promise<GifInfo[]> {
-  const res = await client(serverUrl, token).get('/api/gifs', { params })
+  const res = await client(serverUrl).get('/api/gifs', { params })
   return res.data.gifs ?? res.data
 }
 
 export async function fetchGifCategories(
   serverUrl: string,
-  token: string,
   type?: 'gif' | 'sticker',
 ): Promise<string[]> {
-  const res = await client(serverUrl, token).get('/api/gifs/categories', { params: type ? { type } : {} })
+  const res = await client(serverUrl).get('/api/gifs/categories', { params: type ? { type } : {} })
   return res.data.categories ?? res.data
 }
 
 export async function fetchStickerPacks(
   serverUrl: string,
-  token: string,
 ): Promise<string[]> {
-  const res = await client(serverUrl, token).get('/api/gifs/packs')
+  const res = await client(serverUrl).get('/api/gifs/packs')
   return res.data.packs ?? res.data
 }
 
 export async function uploadGif(
   serverUrl: string,
-  token: string,
   file: File,
   displayName: string,
   category?: string,
@@ -725,7 +682,7 @@ export async function uploadGif(
   if (category) formData.append('category', category)
   if (tags) formData.append('tags', tags)
 
-  const res = await client(serverUrl, token).post('/api/gifs/upload', formData, {
+  const res = await client(serverUrl).post('/api/gifs/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
   return res.data
@@ -733,13 +690,12 @@ export async function uploadGif(
 
 export async function uploadGifPack(
   serverUrl: string,
-  token: string,
   file: File,
 ): Promise<{ imported: number }> {
   const formData = new FormData()
   formData.append('file', file)
 
-  const res = await client(serverUrl, token).post('/api/gifs/pack', formData, {
+  const res = await client(serverUrl).post('/api/gifs/pack', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
   return res.data
@@ -747,7 +703,6 @@ export async function uploadGifPack(
 
 export async function uploadStickerPack(
   serverUrl: string,
-  token: string,
   file: File,
   packName: string,
 ): Promise<{ imported: number }> {
@@ -755,7 +710,7 @@ export async function uploadStickerPack(
   formData.append('file', file)
   formData.append('pack_name', packName)
 
-  const res = await client(serverUrl, token).post('/api/gifs/sticker-pack', formData, {
+  const res = await client(serverUrl).post('/api/gifs/sticker-pack', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
   return res.data
@@ -763,18 +718,16 @@ export async function uploadStickerPack(
 
 export async function deleteGif(
   serverUrl: string,
-  token: string,
   gifId: string,
 ): Promise<void> {
-  await client(serverUrl, token).delete(`/api/gifs/${gifId}`)
+  await client(serverUrl).delete(`/api/gifs/${gifId}`)
 }
 
 export async function deleteStickerPack(
   serverUrl: string,
-  token: string,
   packName: string,
 ): Promise<{ ok: boolean; deleted: number }> {
-  const res = await client(serverUrl, token).delete(`/api/gifs/pack/${encodeURIComponent(packName)}`)
+  const res = await client(serverUrl).delete(`/api/gifs/pack/${encodeURIComponent(packName)}`)
   return res.data
 }
 
@@ -782,12 +735,11 @@ export async function deleteStickerPack(
 
 export async function reactToMessage(
   serverUrl: string,
-  token: string,
   messageId: string,
   reactionKey: string,
   reactionType: string = 'emoji',
 ): Promise<{ reactions: import('./types').MessageReaction[] }> {
-  const res = await client(serverUrl, token).post(`/api/reactions/${messageId}`, {
+  const res = await client(serverUrl).post(`/api/reactions/${messageId}`, {
     reaction_key: reactionKey,
     reaction_type: reactionType,
   })
@@ -796,18 +748,92 @@ export async function reactToMessage(
 
 export async function unreactToMessage(
   serverUrl: string,
-  token: string,
   messageId: string,
   reactionKey: string,
 ): Promise<{ reactions: import('./types').MessageReaction[] }> {
-  const res = await client(serverUrl, token).delete(`/api/reactions/${messageId}/${encodeURIComponent(reactionKey)}`)
+  const res = await client(serverUrl).delete(`/api/reactions/${messageId}/${encodeURIComponent(reactionKey)}`)
   return res.data
 }
 
 export async function fetchPopularReactions(
   serverUrl: string,
-  token: string,
 ): Promise<{ emojis: string[]; stickers: { id: string; url: string }[] }> {
-  const res = await client(serverUrl, token).get('/api/reactions/popular')
+  const res = await client(serverUrl).get('/api/reactions/popular')
   return res.data
+}
+
+export async function searchMessages(
+  serverUrl: string,
+  query: string,
+  channelId?: string,
+  limit = 20,
+  before?: string,
+): Promise<{ results: { message: Message; channelName: string }[]; hasMore: boolean }> {
+  const params: Record<string, string | number> = { query, limit }
+  if (channelId) params.channelId = channelId
+  if (before) params.before = before
+  const res = await client(serverUrl).get('/api/search', { params })
+  return { results: res.data.results ?? [], hasMore: res.data.hasMore ?? false }
+}
+
+export async function fetchPinnedMessages(
+  serverUrl: string,
+  channelId: string,
+): Promise<any[]> {
+  const res = await client(serverUrl).get(`/api/pins/${channelId}`)
+  return res.data.pins ?? []
+}
+
+export async function pinMessage(
+  serverUrl: string,
+  channelId: string,
+  messageId: string,
+): Promise<void> {
+  await client(serverUrl).post(`/api/pins/${channelId}/${messageId}`)
+}
+
+export async function unpinMessage(
+  serverUrl: string,
+  channelId: string,
+  messageId: string,
+): Promise<void> {
+  await client(serverUrl).delete(`/api/pins/${channelId}/${messageId}`)
+}
+
+export async function fetchCategories(
+  serverUrl: string,
+): Promise<{ id: string; name: string; position: number }[]> {
+  const res = await client(serverUrl).get('/api/categories')
+  return res.data.categories ?? []
+}
+
+export async function createCategory(
+  serverUrl: string,
+  name: string,
+): Promise<{ id: string; name: string; position: number }> {
+  const res = await client(serverUrl).post('/api/categories', { name })
+  return res.data
+}
+
+export async function updateCategory(
+  serverUrl: string,
+  categoryId: string,
+  name: string,
+): Promise<void> {
+  await client(serverUrl).patch(`/api/categories/${categoryId}`, { name })
+}
+
+export async function deleteCategory(
+  serverUrl: string,
+  categoryId: string,
+): Promise<void> {
+  await client(serverUrl).delete(`/api/categories/${categoryId}`)
+}
+
+export async function unfurlUrls(
+  serverUrl: string,
+  urls: string[],
+): Promise<Record<string, any>> {
+  const res = await client(serverUrl).post('/api/embeds/unfurl', { urls })
+  return res.data.embeds ?? {}
 }

@@ -195,13 +195,91 @@ function runMigrations(database: Database.Database): void {
     `DROP TABLE IF EXISTS message_reactions`,
     `ALTER TABLE message_reactions_new RENAME TO message_reactions`,
     `CREATE INDEX IF NOT EXISTS idx_msg_reactions_msg ON message_reactions(message_id)`,
+    `ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT DEFAULT NULL`,
+    `ALTER TABLE messages ADD COLUMN reply_to_username TEXT DEFAULT NULL`,
+    `ALTER TABLE messages ADD COLUMN reply_to_content TEXT DEFAULT NULL`,
+    `ALTER TABLE direct_messages ADD COLUMN reply_to_message_id TEXT DEFAULT NULL`,
+    `ALTER TABLE direct_messages ADD COLUMN reply_to_username TEXT DEFAULT NULL`,
+    `ALTER TABLE direct_messages ADD COLUMN reply_to_content TEXT DEFAULT NULL`,
+    `CREATE TABLE IF NOT EXISTS bans (
+       id TEXT PRIMARY KEY,
+       user_id TEXT NOT NULL,
+       banned_by TEXT NOT NULL,
+       reason TEXT DEFAULT NULL,
+       created_at INTEGER DEFAULT (unixepoch()),
+       FOREIGN KEY (user_id) REFERENCES users(id),
+       FOREIGN KEY (banned_by) REFERENCES users(id)
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_bans_user ON bans(user_id)`,
+    `CREATE TABLE IF NOT EXISTS audit_logs (
+       id TEXT PRIMARY KEY,
+       action TEXT NOT NULL,
+       actor_id TEXT NOT NULL,
+       target_id TEXT DEFAULT NULL,
+       details TEXT DEFAULT NULL,
+       created_at INTEGER DEFAULT (unixepoch()),
+       FOREIGN KEY (actor_id) REFERENCES users(id)
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at)`,
+    // Normalize dm_channels: ensure user1_id < user2_id for consistency
+    `UPDATE dm_channels SET user1_id = MIN(user1_id, user2_id), user2_id = MAX(user1_id, user2_id) WHERE user1_id > user2_id`,
+    // Performance indexes
+    `CREATE INDEX IF NOT EXISTS idx_server_members_role ON server_members(role)`,
+    `CREATE INDEX IF NOT EXISTS idx_message_reactions_user ON message_reactions(user_id, reaction_type)`,
+    `CREATE INDEX IF NOT EXISTS idx_attachments_message ON attachments(message_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_mentions_channel ON mentions(channel_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_invite_codes_created ON invite_codes(created_by)`,
+    `CREATE INDEX IF NOT EXISTS idx_server_members_custom_role ON server_members(custom_role_id)`,
+    // Session tracking for per-token revocation
+    `CREATE TABLE IF NOT EXISTS sessions (
+       token_id TEXT PRIMARY KEY,
+       user_id TEXT NOT NULL,
+       created_at INTEGER DEFAULT (unixepoch()),
+       revoked_at INTEGER DEFAULT NULL,
+       FOREIGN KEY (user_id) REFERENCES users(id)
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`,
+    `CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(content, content_rowid='rowid')`,
+    `CREATE TABLE IF NOT EXISTS pinned_messages (
+       id TEXT PRIMARY KEY,
+       channel_id TEXT NOT NULL,
+       message_id TEXT NOT NULL,
+       pinned_by TEXT NOT NULL,
+       pinned_at INTEGER DEFAULT (unixepoch()),
+       FOREIGN KEY (channel_id) REFERENCES channels(id),
+       FOREIGN KEY (message_id) REFERENCES messages(id),
+       FOREIGN KEY (pinned_by) REFERENCES users(id),
+       UNIQUE(channel_id, message_id)
+     )`,
+    `CREATE TABLE IF NOT EXISTS channel_categories (
+       id TEXT PRIMARY KEY,
+       name TEXT NOT NULL,
+       position INTEGER DEFAULT 0,
+       created_at INTEGER DEFAULT (unixepoch())
+     )`,
+    `ALTER TABLE channels ADD COLUMN category_id TEXT DEFAULT NULL`,
+    `CREATE TABLE IF NOT EXISTS link_embeds (
+       url TEXT PRIMARY KEY,
+       title TEXT DEFAULT NULL,
+       description TEXT DEFAULT NULL,
+       image TEXT DEFAULT NULL,
+       site_name TEXT DEFAULT NULL,
+       favicon TEXT DEFAULT NULL,
+       fetched_at INTEGER DEFAULT (unixepoch())
+     )`,
   ]
 
   for (const sql of migrations) {
     try {
       database.exec(sql)
-    } catch {
-      // Column/table already exists — skip
+    } catch (err: any) {
+      const msg = err.message || ''
+      if (msg.includes('duplicate column') || msg.includes('already exists') || msg.includes('UNIQUE constraint failed')) {
+        continue
+      }
+      console.error('[DB] Migration failed:', msg.slice(0, 200))
+      throw err
     }
   }
 }

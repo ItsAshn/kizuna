@@ -29,7 +29,6 @@ function tryDecryptSocketDM(message: Message): Message {
 export function useSocket(): MutableRefObject<Socket | null> {
   const socketRef = useRef<Socket | null>(null)
   const session = useServerStore((s) => s.activeSession)
-  const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   useEffect(() => {
     if (!session) {
@@ -39,13 +38,14 @@ export function useSocket(): MutableRefObject<Socket | null> {
     }
 
     const socket = io(session.url, {
-      auth: { token: session.token },
+      withCredentials: true,
       transports: ['websocket', 'polling'],
     })
 
     socketRef.current = socket
 
     socket.on('connect', () => {
+      useChatStore.getState().setSocketConnected(true)
       socket.emit('user:subscribe')
       socket.emit('notification:subscribe')
       socket.emit('user:joined')
@@ -60,15 +60,51 @@ export function useSocket(): MutableRefObject<Socket | null> {
       }
     })
 
-    socket.on('message:new', (message: Message) => {
-      const store = useChatStore.getState()
-      store.addMessage(message.channel_id, message)
-      if (message.channel_id !== store.activeChannelId) {
-        store.setUnreadCounts({
-          ...store.unreadCounts,
-          [message.channel_id]: (store.unreadCounts[message.channel_id] || 0) + 1,
-        })
+    socket.on('disconnect', () => {
+      useChatStore.getState().setSocketConnected(false)
+    })
+
+    socket.io.on('reconnect_attempt', (attempt) => {
+      useChatStore.getState().setSocketReconnecting(true)
+      useChatStore.getState().setSocketReconnectAttempts(attempt)
+    })
+
+    socket.io.on('reconnect', () => {
+      useChatStore.getState().setSocketReconnectAttempts(0)
+    })
+
+    socket.on('connect_error', (err) => {
+      useChatStore.getState().setSocketConnected(false)
+      const msg = err.message || ''
+      if (msg.includes('Invalid or expired token') || msg.includes('Authentication required') || msg.includes('User not found')) {
+        useServerStore.getState().setActiveSession(null)
+        window.location.href = '/'
       }
+    })
+
+    socket.on('message:new', (message: Message) => {
+      useChatStore.setState((state) => {
+        const existing = state.messages[message.channel_id] || []
+        if (existing.some((m) => m.id === message.id)) return {}
+
+        const serverId = useServerStore.getState().activeSession?.serverId
+        const notif = serverId ? state.notificationSettings[serverId] : undefined
+        const skipUnread = notif?.level === 'none' || notif?.level === 'mentions'
+
+        const newState: any = {
+          messages: {
+            ...state.messages,
+            [message.channel_id]: [...existing, message],
+          },
+        }
+        if (message.channel_id !== state.activeChannelId && !skipUnread) {
+          newState.unreadCounts = {
+            ...state.unreadCounts,
+            [message.channel_id]: (state.unreadCounts[message.channel_id] || 0) + 1,
+          }
+        }
+        return newState
+      })
     })
 
     socket.on('message:edit', (message: Message) => {
@@ -83,15 +119,24 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('dm:received', (message: Message) => {
-      const store = useChatStore.getState()
       const decrypted = tryDecryptSocketDM(message)
-      store.addMessage(message.channel_id, decrypted)
-      if (message.channel_id !== store.activeDMChannelId) {
-        store.setUnreadCounts({
-          ...store.unreadCounts,
-          [message.channel_id]: (store.unreadCounts[message.channel_id] || 0) + 1,
-        })
-      }
+      useChatStore.setState((state) => {
+        const existing = state.messages[message.channel_id] || []
+        if (existing.some((m) => m.id === message.id)) return {}
+        const newState: any = {
+          messages: {
+            ...state.messages,
+            [message.channel_id]: [...existing, decrypted],
+          },
+        }
+        if (message.channel_id !== state.activeDMChannelId) {
+          newState.unreadCounts = {
+            ...state.unreadCounts,
+            [message.channel_id]: (state.unreadCounts[message.channel_id] || 0) + 1,
+          }
+        }
+        return newState
+      })
     })
 
     socket.on('dm:edit', (message: Message) => {
@@ -107,12 +152,24 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('message:mention', (mention: any) => {
-      const store = useChatStore.getState()
-      store.setMentionCounts({
-        ...store.mentionCounts,
-        [mention.channel_id]: (store.mentionCounts[mention.channel_id] || 0) + 1,
-      })
-      if (mention.channel_id !== store.activeChannelId) {
+      const serverId = useServerStore.getState().activeSession?.serverId
+      const notif = serverId ? useChatStore.getState().notificationSettings[serverId] : undefined
+      const isEveryone = mention.mention_type === 'everyone' || mention.mention_type === 'here'
+      const suppress = notif?.suppressEveryone && isEveryone
+
+      if (!suppress) {
+        useChatStore.setState((state) => ({
+          mentionCounts: {
+            ...state.mentionCounts,
+            [mention.channel_id]: (state.mentionCounts[mention.channel_id] || 0) + 1,
+          },
+          serverMentionCounts: {
+            ...state.serverMentionCounts,
+            [session!.serverId]: (state.serverMentionCounts[session!.serverId] || 0) + 1,
+          },
+        }))
+      }
+      if (mention.channel_id !== useChatStore.getState().activeChannelId) {
         showNotification({
           type: 'mention',
           title: mention.author_username || 'Someone',
@@ -159,18 +216,16 @@ export function useSocket(): MutableRefObject<Socket | null> {
       useChatStore.getState().setChannelMutes(mutes)
     })
 
-    socket.on('typing:start', ({ username }: { username: string }) => {
+    socket.on('typing:start', ({ channelId, username }: { channelId: string; username: string }) => {
       const store = useChatStore.getState()
-      const channelId = store.activeChannelId || store.activeDMChannelId || ''
       const current = store.typingUsers[channelId] || []
       if (!current.includes(username)) {
         store.setTypingUsers(channelId, [...current, username])
       }
     })
 
-    socket.on('typing:stop', ({ username }: { username: string }) => {
+    socket.on('typing:stop', ({ channelId, username }: { channelId: string; username: string }) => {
       const store = useChatStore.getState()
-      const channelId = store.activeChannelId || store.activeDMChannelId || ''
       const current = store.typingUsers[channelId] || []
       store.setTypingUsers(
         channelId,
@@ -278,12 +333,10 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     return () => {
       clearInterval(heartbeatInterval)
-      typingTimers.current.forEach((t) => clearTimeout(t))
-      typingTimers.current.clear()
       socket.disconnect()
       socketRef.current = null
     }
-  }, [session?.serverId, session?.token])
+  }, [session?.serverId])
 
   return socketRef
 }
