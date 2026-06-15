@@ -138,7 +138,7 @@ export const useChatStore = create<ChatState>()(
       userStatuses: {},
       voiceInputMode: 'voice-activity' as VoiceInputMode,
       pushToTalkKey: 'AltLeft',
-      noiseSuppression: false,
+      noiseSuppression: true,
       autoGainControl: true,
       noiseGateEnabled: false,
       noiseGateThreshold: 30,
