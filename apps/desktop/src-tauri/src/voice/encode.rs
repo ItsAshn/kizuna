@@ -1,3 +1,5 @@
+use std::io::Read;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -9,19 +11,44 @@ use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSampl
 
 use super::dsp::AudioProcessor;
 
+/// Payload sent from the audio send loop to signal speaking state + audio level.
+pub type SpeakingEvent = (bool, f32); // (is_speaking, rms_level)
+
 pub fn start_native_audio_capture(
     device_id: Option<String>,
     sample_rate: u32,
     channels: u16,
     pcm_tx: tokio::sync::mpsc::UnboundedSender<Vec<f32>>,
     cancel: Arc<AtomicBool>,
-) -> Result<cpal::Stream, String> {
+) -> Result<Option<cpal::Stream>, String> {
     let host = cpal::default_host();
+    let host_id = host.id();
+    let is_alsa = format!("{:?}", host_id).to_lowercase().contains("alsa");
 
-    // If a specific device was requested, try it. On Linux, devices listed by
-    // pactl/PipeWire (alsa_input/alsa_output prefix) can't be opened directly
-    // via ALSA because PipeWire holds them exclusively. Fall through to the
-    // sound-server/default path instead.
+    // ─── PipeWire/PulseAudio path: use parec subprocess ────────────
+    // CPAL's ALSA backend produces corrupted audio on PipeWire systems
+    // due to S24LE ↔ F32 format conversion issues in the ALSA plugin.
+    // `parec` talks through the pipewire-pulse protocol and reliably
+    // produces correct float32 data.
+    if is_alsa {
+        let use_parec = device_id
+            .as_deref()
+            .map(|id| id.starts_with("alsa_input.") || id.starts_with("alsa_output."))
+            .unwrap_or(true);
+
+        let parec_device = device_id.as_deref().unwrap_or("default");
+        if use_parec {
+            eprintln!("[AudioCapture] trying parec (device: {parec_device}) — avoids CPAL ALSA/PipeWire corruption");
+            if try_parec_capture(parec_device, sample_rate, channels, &pcm_tx, &cancel) {
+                eprintln!("[AudioCapture] using parec subprocess for device: {parec_device}");
+                return Ok(None);
+            }
+            eprintln!("[AudioCapture] parec failed for '{parec_device}', falling back to CPAL");
+        }
+    }
+
+    // ─── CPAL path: for non-PipeWire devices or fallback ───────────
+    // If a specific non-PipeWire device was requested, try it directly.
     if let Some(ref id) = device_id {
         let is_pipewire_device = id.starts_with("alsa_input.") || id.starts_with("alsa_output.");
         if !is_pipewire_device {
@@ -36,38 +63,29 @@ pub fn start_native_audio_capture(
                 .ok_or_else(|| format!("Input device '{}' not found", id))?;
 
             return open_device(&device, sample_rate, channels, &pcm_tx, &cancel)
-                .map(|s| { eprintln!("[AudioCapture] using specific device: {id}"); s });
+                .map(|s| { eprintln!("[AudioCapture] using specific device: {id}"); Some(s) });
         }
-        eprintln!("[AudioCapture] PipeWire-managed device '{}' selected, falling back to sound server", id);
+        eprintln!("[AudioCapture] PipeWire-managed device '{id}' selected — already tried parec above");
     }
-
-    // On Linux/ALSA, sound server devices (PipeWire/PulseAudio) are far more
-    // reliable than the raw ALSA default device, which often opens successfully
-    // but produces silence through the dmix/dsnoop plugin chain. Try them first.
-    let host_id = host.id();
-    let is_alsa = format!("{:?}", host_id).to_lowercase().contains("alsa");
 
     let devices: Vec<cpal::Device> = host
         .input_devices()
         .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
         .collect();
 
-    // Pass 1 (Linux/ALSA only): try sound server devices first since they use
-    // proper audio routing through the system sound server.
-    if is_alsa {
+    // Helper: try opening a device matching a predicate on its description.
+    let try_open_by_name = |pred: fn(&str) -> bool| -> Option<cpal::Stream> {
         for device in &devices {
             let dname = device
                 .description()
                 .map(|d| d.name().to_string())
                 .unwrap_or_else(|_| "unknown".into());
             let lower = dname.to_lowercase();
-            if lower.contains("pipewire sound server")
-                || lower.contains("pulseaudio sound server")
-            {
+            if pred(&lower) {
                 match open_device(device, sample_rate, channels, &pcm_tx, &cancel) {
                     Ok(stream) => {
                         eprintln!("[AudioCapture] using sound server device: {dname}");
-                        return Ok(stream);
+                        return Some(stream);
                     }
                     Err(e) => {
                         eprintln!("[AudioCapture] sound server device '{dname}' failed: {e}");
@@ -75,9 +93,23 @@ pub fn start_native_audio_capture(
                 }
             }
         }
+        None
+    };
+
+    // On Linux/ALSA, sound server devices (PipeWire/PulseAudio) are far more
+    // reliable than raw ALSA hardware devices, which often open successfully
+    // but produce silence through the dmix/dsnoop plugin chain.
+    // Broaden the match: any device containing "pipewire" or "pulse" / "pulseaudio".
+    if is_alsa {
+        if let Some(stream) = try_open_by_name(|n| {
+            n.contains("pipewire") || n.contains("pulseaudio") || n.contains(" pulse ")
+        }) {
+            return Ok(Some(stream));
+        }
     }
 
-    // Try default device
+    // Try the ALSA default PCM device — on PipeWire systems this routes
+    // through the PipeWire ALSA plugin and captures the default source.
     if let Some(default_device) = host.default_input_device() {
         match open_device(&default_device, sample_rate, channels, &pcm_tx, &cancel) {
             Ok(stream) => {
@@ -86,7 +118,7 @@ pub fn start_native_audio_capture(
                     .map(|d| d.name().to_string())
                     .unwrap_or_else(|_| "default".into());
                 eprintln!("[AudioCapture] using default device: {dname}");
-                return Ok(stream);
+                return Ok(Some(stream));
             }
             Err(e) => {
                 eprintln!("[AudioCapture] default device failed: {e} (will try other devices)");
@@ -94,39 +126,17 @@ pub fn start_native_audio_capture(
         }
     }
 
-    // Fall back to any available input device, skipping obvious non-microphones.
-    let mut sound_server_found = false;
-    let mut hardware_found = false;
-
-    // Pass 2: try sound server devices (pipewire, pulseaudio) — they may work
-    // even when the ALSA pipewire plugin is broken because they use different
-    // plugins (libasound_module_pcm_pulse.so etc.)
+    // Not ALSA or sound-server search didn't match: try broader matching.
     if !is_alsa {
-        for device in &devices {
-            let dname = device
-                .description()
-                .map(|d| d.name().to_string())
-                .unwrap_or_else(|_| "unknown".into());
-
-            let lower = dname.to_lowercase();
-            if lower.contains("pipewire sound server")
-                || lower.contains("pulseaudio sound server")
-            {
-                sound_server_found = true;
-                match open_device(device, sample_rate, channels, &pcm_tx, &cancel) {
-                    Ok(stream) => {
-                        eprintln!("[AudioCapture] using sound server device: {dname}");
-                        return Ok(stream);
-                    }
-                    Err(e) => {
-                        eprintln!("[AudioCapture] sound server device '{dname}' failed: {e}");
-                    }
-                }
-            }
+        if let Some(stream) = try_open_by_name(|n| {
+            n.contains("pipewire") || n.contains("pulseaudio") || n.contains(" pulse ")
+        }) {
+            return Ok(Some(stream));
         }
     }
 
-    // Pass 3: try remaining real hardware devices
+    // Fall back to any available input device, skipping obvious non-microphones.
+    let mut hardware_found = false;
     for device in &devices {
         let dname = device
             .description()
@@ -134,16 +144,15 @@ pub fn start_native_audio_capture(
             .unwrap_or_else(|_| "unknown".into());
 
         let lower = dname.to_lowercase();
-        // Skip virtual dummy devices and already-tried sound server devices
         if lower.contains("discard") || lower.contains("rate converter")
             || lower.contains("plugin for") || lower.contains("jack audio")
             || lower.contains("open sound") || lower.contains("speex")
             || lower.contains("upmix") || lower.contains("downmix")
             || (lower.contains("output") && !lower.contains("wave") && !lower.contains("usb"))
-            || lower.contains("pipewire sound server")
-            || lower.contains("pulseaudio sound server")
+            || lower.contains("pipewire")
+            || lower.contains("pulseaudio")
         {
-            eprintln!("[AudioCapture] skipped virtual device: {dname}");
+            eprintln!("[AudioCapture] skipped virtual/plugin device: {dname}");
             continue;
         }
 
@@ -151,7 +160,7 @@ pub fn start_native_audio_capture(
         match open_device(device, sample_rate, channels, &pcm_tx, &cancel) {
             Ok(stream) => {
                 eprintln!("[AudioCapture] using fallback device: {dname}");
-                return Ok(stream);
+                return Ok(Some(stream));
             }
             Err(e) => {
                 eprintln!("[AudioCapture] trying next device '{dname}' (error: {e})");
@@ -159,11 +168,127 @@ pub fn start_native_audio_capture(
         }
     }
 
-    if !sound_server_found && !hardware_found {
+    // Last resort: try parec with default source when everything else failed.
+    if is_alsa {
+        eprintln!("[AudioCapture] CPAL exhausted, trying parec with default source as last resort");
+        if try_parec_capture("default", sample_rate, channels, &pcm_tx, &cancel) {
+            eprintln!("[AudioCapture] using parec default fallback");
+            return Ok(None);
+        }
+    }
+
+    if !hardware_found {
         return Err("No audio input devices found".into());
     }
 
     Err("No working audio input device found".into())
+}
+
+/// Fallback capture using `parec` subprocess (PulseAudio/pipewire-pulse).
+/// This is used when CPAL's ALSA backend cannot open the device.
+/// Returns `true` if the subprocess was spawned successfully.
+fn try_parec_capture(
+    device_id: &str,
+    sample_rate: u32,
+    channels: u16,
+    pcm_tx: &tokio::sync::mpsc::UnboundedSender<Vec<f32>>,
+    cancel: &Arc<AtomicBool>,
+) -> bool {
+    let device = device_id.to_string();
+    let pcm_tx = pcm_tx.clone();
+    let cancel = cancel.clone();
+    let frame_size = 960usize;
+    let read_size = frame_size * (channels as usize) * 4; // f32 = 4 bytes
+
+    let mut child = match Command::new("parec")
+        .args([
+            "--device", &device,
+            "--format=float32le",
+            &format!("--rate={}", sample_rate),
+            &format!("--channels={}", channels),
+            "--latency-msec=20",
+            "--raw",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[ParecCapture] failed to spawn parec: {e}");
+            return false;
+        }
+    };
+
+    let pid = child.id();
+    eprintln!("[ParecCapture] spawned parec (pid={pid}) for device: {device}");
+
+    let mut stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => {
+            eprintln!("[ParecCapture] no stdout from parec");
+            let _ = child.kill();
+            return false;
+        }
+    };
+
+    std::thread::spawn(move || {
+        let mut child = child;
+        let mut leftover = Vec::new();
+        let mut byte_buf = [0u8; 4];
+        let mut callback_count = 0u64;
+
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
+
+            // Read raw bytes from parec stdout
+            let mut temp = vec![0u8; 65536];
+            match stdout.read(&mut temp) {
+                Ok(0) => {
+                    eprintln!("[ParecCapture] stdout EOF");
+                    break;
+                }
+                Ok(n) => {
+                    temp.truncate(n);
+                    leftover.extend_from_slice(&temp);
+
+                    // Process complete frames
+                    while leftover.len() >= read_size {
+                        let raw: Vec<f32> = leftover[..read_size]
+                            .chunks_exact(4)
+                            .map(|b| {
+                                byte_buf.copy_from_slice(b);
+                                f32::from_le_bytes(byte_buf)
+                            })
+                            .collect();
+                        leftover.drain(..read_size);
+
+                        if cancel.load(Ordering::Relaxed) {
+                            break;
+                        }
+
+                        callback_count += 1;
+                        if callback_count <= 5 || callback_count % 500 == 0 {
+                            eprintln!("[ParecCapture] callback #{callback_count}, samples={}", raw.len());
+                        }
+
+                        let _ = pcm_tx.send(raw);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[ParecCapture] read error: {e}");
+                    break;
+                }
+            }
+        }
+
+        let _ = child.kill();
+        eprintln!("[ParecCapture] thread exiting after {callback_count} callbacks");
+    });
+
+    true
 }
 
 fn open_device(
@@ -331,8 +456,8 @@ impl AudioSendSession {
         encoder: AudioEncoder,
         track: Arc<TrackLocalStaticSample>,
         pcm_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<f32>>,
-        cpal_stream: cpal::Stream,
-        speaking_tx: tokio::sync::mpsc::UnboundedSender<bool>,
+        cpal_stream: Option<cpal::Stream>,
+        speaking_tx: tokio::sync::mpsc::UnboundedSender<SpeakingEvent>,
         processor: AudioProcessor,
         initial_bitrate_bps: u32,
     ) -> Self {
@@ -350,7 +475,7 @@ impl AudioSendSession {
         Self {
             cancel,
             handle: Some(handle),
-            _stream: Some(cpal_stream),
+            _stream: cpal_stream,
             processor,
             desired_bitrate,
         }
@@ -376,7 +501,7 @@ async fn run_audio_send(
     track: Arc<TrackLocalStaticSample>,
     mut pcm_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<f32>>,
     cancel: Arc<AtomicBool>,
-    speaking_tx: tokio::sync::mpsc::UnboundedSender<bool>,
+    speaking_tx: tokio::sync::mpsc::UnboundedSender<SpeakingEvent>,
     processor: Arc<tokio::sync::Mutex<AudioProcessor>>,
     desired_bitrate: Arc<AtomicU32>,
 ) -> Result<(), String> {
@@ -412,19 +537,19 @@ async fn run_audio_send(
 
                     // VAD: compute RMS on processed frame
                     let rms = (frame.iter().map(|s| s * s).sum::<f32>() / frame_size as f32).sqrt();
-                    let speaking = rms > threshold;
+                    let speaking_now = rms > threshold;
 
-                    if speaking && !is_speaking {
+                    if speaking_now && !is_speaking {
                         is_speaking = true;
                         silence_frames = 0;
-                        let _ = speaking_tx.send(true);
-                    } else if speaking {
+                        let _ = speaking_tx.send((true, rms));
+                    } else if speaking_now {
                         silence_frames = 0;
                     } else if is_speaking {
                         silence_frames += 1;
                         if silence_frames >= hold_frames {
                             is_speaking = false;
-                            let _ = speaking_tx.send(false);
+                            let _ = speaking_tx.send((false, rms));
                         }
                     }
 

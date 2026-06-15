@@ -1,6 +1,6 @@
 [package]
 name = "kizuna"
-version = "0.17.9"
+version = "0.17.10"
 description = "Kizuna Desktop Client"
 authors = ["ItsAshn"]
 edition = "2021"

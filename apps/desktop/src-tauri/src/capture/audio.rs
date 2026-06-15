@@ -67,31 +67,40 @@ impl Drop for AudioCaptureSession {
 }
 
 pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
-    #[cfg(target_os = "linux")]
-    if let Ok(devices) = try_list_pipewire_devices(true) {
-        if !devices.is_empty() {
-            alog!("list_input_devices: using PipeWire, found {} device(s)", devices.len());
-            return Ok(devices);
-        }
-    }
-
     let host = cpal::default_host();
     let host_id = host.id();
     alog!("list_input_devices: host={:?}", host_id);
-    let default_device_id = host
+
+    // Collect devices from both PipeWire (pactl) and CPAL so users can select
+    // either. PipeWire devices have alsa_input.* IDs but can't be opened
+    // directly via CPAL/ALSA; CPAL sound-server devices ("PipeWire Sound
+    // Server" / "PulseAudio Sound Server") route through the PipeWire ALSA
+    // plugin and ARE openable.
+    let mut result: Vec<AudioDeviceInfo> = Vec::new();
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    #[cfg(target_os = "linux")]
+    if let Ok(pw_devices) = try_list_pipewire_devices(true) {
+        for d in pw_devices {
+            if seen_ids.insert(d.device_id.clone()) {
+                alog!("list_input_devices: PW device: name='{}' id={}", d.name, d.device_id);
+                result.push(d);
+            }
+        }
+    }
+
+    let default_input_device_id = host
         .default_input_device()
         .and_then(|d| d.id().ok())
         .map(|id| id.to_string())
         .unwrap_or_default();
-    alog!("list_input_devices: default_device_id={}", default_device_id);
+    alog!("list_input_devices: default_device_id={}", default_input_device_id);
 
-    let mut devices = host
+    let cpal_devices = host
         .input_devices()
         .map_err(|e| format!("Failed to enumerate input devices: {e}"))?;
 
-    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut result = Vec::new();
-    while let Some(device) = devices.next() {
+    for device in cpal_devices {
         let name = device
             .description()
             .map(|d| d.name().to_string())
@@ -104,7 +113,7 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
                 continue;
             }
         };
-        let is_default = device_id == default_device_id;
+        let is_default = device_id == default_input_device_id;
 
         let trim_name = name.trim().to_string();
         if !seen_ids.insert(device_id.clone()) {
@@ -213,6 +222,25 @@ pub fn list_output_devices() -> Result<Vec<AudioDeviceInfo>, String> {
     Ok(result)
 }
 
+/// Try to find a CPAL input device whose description contains `keyword`.
+fn try_cpal_device_by_desc(
+    host: &cpal::Host,
+    keyword: &str,
+) -> Option<cpal::Device> {
+    if let Ok(devices) = host.input_devices() {
+        for device in devices {
+            if let Ok(desc) = device.description() {
+                let name = desc.name().to_string().to_lowercase();
+                if name.contains(&keyword.to_lowercase()) {
+                    alog!("try_cpal_device_by_desc: found device matching '{}': '{}'", keyword, name);
+                    return Some(device);
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn start_capture(
     app: tauri::AppHandle,
     device_id: Option<String>,
@@ -225,10 +253,17 @@ pub fn start_capture(
 
     let device = if let Some(ref id_str) = device_id {
         // PipeWire-managed devices (pactl format: alsa_input/alsa_output prefix)
-        // can't be opened directly via ALSA. Fall back to default device.
+        // can't be opened directly via ALSA. Try sound server devices first,
+        // then fall back to the default device.
         if id_str.starts_with("alsa_input.") || id_str.starts_with("alsa_output.") {
-            alog!("start_capture: PipeWire device '{}' selected, falling back to default", id_str);
-            host.default_input_device()
+            alog!("start_capture: PipeWire device '{}' selected, trying sound server devices", id_str);
+
+            try_cpal_device_by_desc(&host, "pipewire")
+                .or_else(|| try_cpal_device_by_desc(&host, "pulseaudio"))
+                .or_else(|| {
+                    alog!("start_capture: sound server devices not found, falling back to default");
+                    host.default_input_device()
+                })
                 .ok_or("No input device found. Connect a microphone.")?
         } else {
             alog!("start_capture: searching for device '{}'", id_str);
@@ -450,13 +485,14 @@ fn is_virtual_device_name(name: &str, is_output: bool) -> bool {
 
 #[cfg(target_os = "linux")]
 fn try_list_pipewire_devices(is_input: bool) -> Result<Vec<AudioDeviceInfo>, String> {
+    // Use long format to get human-readable descriptions.
     let output = if is_input {
         Command::new("pactl")
-            .args(["list", "sources", "short"])
+            .args(["list", "sources"])
             .output()
     } else {
         Command::new("pactl")
-            .args(["list", "sinks", "short"])
+            .args(["list", "sinks"])
             .output()
     }
     .map_err(|e| format!("Failed to run pactl: {e}"))?;
@@ -467,58 +503,74 @@ fn try_list_pipewire_devices(is_input: bool) -> Result<Vec<AudioDeviceInfo>, Str
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut devices = Vec::new();
+    let mut current_name: Option<String> = None;
+    let mut current_desc: Option<String> = None;
+    let mut current_channels: u16 = 2;
+    let mut current_sample_rate: u32 = 48000;
 
     for line in stdout.lines() {
         let line = line.trim();
         if line.is_empty() {
-            continue;
-        }
-
-        // pactl format: <id>\t<name>\t<module>\t<sample_format> <channels>ch <rate>Hz
-        // Example: 56  alsa_input.usb-Elgato...mono-fallback  PipeWire  s24le 1ch 48000Hz
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 2 {
-            continue;
-        }
-
-        // Skip monitor sources (output monitors)
-        let name = parts[1].trim();
-        if is_input && name.contains(".monitor") {
-            continue;
-        }
-        if name.contains("monitor") || name.is_empty() {
-            continue;
-        }
-
-        // Extract channel count and sample rate from the last column
-        let mut channels: u16 = 2;
-        let mut sample_rate: u32 = 48000;
-
-        if let Some(last) = parts.last() {
-            let info = last.trim();
-            if let Some(ch_pos) = info.find("ch") {
-                if let Ok(ch) = info[..ch_pos].trim().parse::<u16>() {
-                    channels = ch;
+            // End of a source/sink block — push if we have a valid source name
+            if let Some(name) = current_name.take() {
+                // Skip monitor sources
+                if !name.contains(".monitor") {
+                    let display_name = current_desc.take().unwrap_or_else(|| name.clone());
+                    devices.push(AudioDeviceInfo {
+                        name: display_name,
+                        device_id: name,
+                        is_default: false,
+                        max_channels: current_channels,
+                        default_sample_rate: current_sample_rate,
+                    });
                 }
             }
-            if let Some(hz_pos) = info.find("Hz") {
-                let rate_str = &info[..hz_pos];
+            current_desc = None;
+            current_channels = 2;
+            current_sample_rate = 48000;
+            continue;
+        }
+
+        if let Some(name_val) = line.strip_prefix("Name: ") {
+            current_name = Some(name_val.trim().to_string());
+        } else if let Some(desc_val) = line.strip_prefix("Description: ") {
+            current_desc = Some(desc_val.trim().to_string());
+        } else if let Some(ch_str) = line.strip_prefix("Sample Specification: ") {
+            // e.g. "s24le 1ch 48000Hz"
+            let spec = ch_str.trim();
+            if let Some(ch_pos) = spec.find("ch") {
+                let ch_part = spec[..ch_pos].trim();
+                if let Some(last_space) = ch_part.rfind(' ') {
+                    if let Ok(ch) = ch_part[last_space + 1..].parse::<u16>() {
+                        current_channels = ch;
+                    }
+                } else if let Ok(ch) = ch_part.parse::<u16>() {
+                    current_channels = ch;
+                }
+            }
+            if let Some(hz_pos) = spec.find("Hz") {
+                let rate_str = &spec[..hz_pos];
                 if let Some(space_pos) = rate_str.rfind(' ') {
                     if let Ok(rate) = rate_str[space_pos + 1..].trim().parse::<u32>() {
-                        sample_rate = rate;
+                        current_sample_rate = rate;
                     }
                 }
             }
         }
+    }
 
-        devices.push(AudioDeviceInfo {
-            name: name.to_string(),
-            device_id: name.to_string(),
-            is_default: false,
-            max_channels: channels,
-            default_sample_rate: sample_rate,
-        });
-
+    // Process last block if not empty
+    if let Some(name) = current_name.take() {
+        if !name.contains(".monitor") {
+            let display_name = current_desc.unwrap_or_else(|| name.clone());
+            devices.push(AudioDeviceInfo {
+                name: display_name,
+                device_id: name,
+                is_default: false,
+                max_channels: current_channels,
+                default_sample_rate: current_sample_rate,
+            });
+        }
     }
 
     if !devices.is_empty() {

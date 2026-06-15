@@ -3,6 +3,12 @@ import { useChatStore, type VoiceInputMode } from '../store/chatStore'
 import { useUpdaterActions } from '../hooks/useUpdater'
 import '../styles/settings.css'
 
+interface AudioDataPayload {
+  samples_f32: number[]
+  sample_rate: number
+  channels: number
+}
+
 interface Props {
   onClose: () => void
 }
@@ -67,7 +73,7 @@ export default function UserSettingsModal({ onClose }: Props) {
     noiseSuppressionStrength, setNoiseSuppressionStrength,
     inputVolume, setInputVolume,
     outputVolume, setOutputVolume,
-    liveAudioLevel,
+    liveAudioLevel, setLiveAudioLevel,
     updateState, updateProgress, updateVersion, updateError,
   } = useChatStore()
   const { checkForUpdates, getVersion } = useUpdaterActions()
@@ -81,6 +87,7 @@ export default function UserSettingsModal({ onClose }: Props) {
   const [listeningForKey, setListeningForKey] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
   const unmountedRef = useRef(false)
+  const audioLevelCleanupRef = useRef<(() => void) | null>(null)
 
   const meterLevel = Math.min(100, Math.round((liveAudioLevel / 40) * 100))
 
@@ -224,6 +231,56 @@ export default function UserSettingsModal({ onClose }: Props) {
     loadDevices()
     return () => { unmountedRef.current = true }
   }, [loadDevices])
+
+  // Start/stop audio monitoring for the level meter in settings.
+  // This uses start_audio_capture to get raw PCM and compute RMS.
+  const startAudioMonitoring = useCallback(async () => {
+    audioLevelCleanupRef.current?.()
+
+    if (!isTauri()) return
+
+    const { invoke } = await import('@tauri-apps/api/core')
+    const { listen } = await import('@tauri-apps/api/event')
+
+    // Stop any existing capture first
+    try { await invoke('stop_audio_capture') } catch {}
+
+    // Start capture with the currently selected device
+    try {
+      await invoke('start_audio_capture', {
+        deviceName: audioInputDeviceId ?? null,
+        sampleRate: 48000,
+        channels: 1,
+      })
+    } catch (e) {
+      console.error('settings: start_audio_capture failed', e)
+      return
+    }
+
+    const unlisten = await listen<AudioDataPayload>('audio:data', (event) => {
+      const samples = event.payload.samples_f32
+      if (!samples || samples.length === 0) return
+      const sumSq = samples.reduce((sum, s) => sum + s * s, 0)
+      const rms = Math.sqrt(sumSq / samples.length)
+      setLiveAudioLevel(rms * 1000)
+    })
+
+    audioLevelCleanupRef.current = () => {
+      unlisten()
+      invoke('stop_audio_capture').catch(() => {})
+    }
+  }, [audioInputDeviceId, setLiveAudioLevel])
+
+  // Start monitoring when devices are loaded and stop on unmount.
+  // Also restart when the selected input device changes.
+  useEffect(() => {
+    if (!inputDevices) return // wait for device list
+    startAudioMonitoring()
+    return () => {
+      audioLevelCleanupRef.current?.()
+      audioLevelCleanupRef.current = null
+    }
+  }, [inputDevices, audioInputDeviceId, startAudioMonitoring])
 
   const handleResetAudio = useCallback(() => {
     setAudioInputDeviceId(null)

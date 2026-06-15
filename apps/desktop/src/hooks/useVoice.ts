@@ -626,12 +626,15 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
           nativeRemoteAudioUnlistenRef.current = unlisten
         }),
         listen<any>('voice:speaking', (event) => {
-          const { channelId, speaking } = event.payload
+          const { channelId, speaking, level } = event.payload
           const socket = socketRef.current
           if (socket && channelId) {
             socket.emit('voice:speaking', { channelId, speaking })
           }
           setIsSpeaking(speaking)
+          if (typeof level === 'number') {
+            setLiveAudioLevel(level * 1000)
+          }
         }).then((unlisten) => {
           nativeSpeakingUnlistenRef.current = unlisten
         }),
@@ -640,7 +643,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       verr('setupNativeVoice', 'Failed to setup voice listeners', e)
     })
   }, [addVoicePeer, removeVoicePeer, updateVoicePeer, setActiveVoiceChannel, setVoiceError,
-      setScreenSharePeer, clearScreenSharePeer, setIsSpeaking, socketRef])
+      setScreenSharePeer, clearScreenSharePeer, setIsSpeaking, setLiveAudioLevel, socketRef])
 
   const joinVoiceNative = useCallback(async (channelId: string): Promise<string | null> => {
     const socket = socketRef.current

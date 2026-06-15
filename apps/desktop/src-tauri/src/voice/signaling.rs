@@ -220,10 +220,10 @@ impl VoiceController {
             .map_err(|e| format!("Opus encoder: {e}"))?;
 
         let (pcm_tx, pcm_rx) = mpsc::unbounded_channel::<Vec<f32>>();
-        let (speaking_tx, mut speaking_rx) = mpsc::unbounded_channel::<bool>();
+        let (speaking_tx, mut speaking_rx) = mpsc::unbounded_channel::<encode::SpeakingEvent>();
 
         let cancel = Arc::new(AtomicBool::new(false));
-        let stream = encode::start_native_audio_capture(
+        let cpal_stream = encode::start_native_audio_capture(
             device_id, 48000, 1, pcm_tx, cancel.clone(),
         )?;
 
@@ -238,7 +238,7 @@ impl VoiceController {
             encoder,
             audio_track,
             pcm_rx,
-            stream,
+            cpal_stream,
             speaking_tx,
             processor,
             bitrate_bps,
@@ -246,14 +246,15 @@ impl VoiceController {
 
         call.processor = Some(audio_send.processor());
 
-        // Relay speaking state changes to TypeScript via Tauri event
+        // Relay speaking state + audio level to TypeScript via Tauri event
         let app = self.app.clone();
         let channel_id = call.channel_id.clone();
         tokio::spawn(async move {
-            while let Some(speaking) = speaking_rx.recv().await {
+            while let Some((speaking, rms)) = speaking_rx.recv().await {
                 let _ = app.emit("voice:speaking", json!({
                     "channelId": channel_id,
                     "speaking": speaking,
+                    "level": rms,
                 }));
             }
         });

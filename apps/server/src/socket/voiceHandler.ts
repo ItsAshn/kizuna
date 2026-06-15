@@ -369,7 +369,15 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         const forwardingSocket = socket
         const forwardingPeerId = peerId
         consumer.on('rtp', (rtpPacket: Buffer) => {
-          const opusPayload = rtpPacket.subarray(12)
+          // Properly skip RTP header including any CSRC and header extensions.
+          const hasExtension = (rtpPacket[0] & 0x10) !== 0
+          const csrcCount = rtpPacket[0] & 0x0f
+          let offset = 12 + csrcCount * 4
+          if (hasExtension && offset + 4 <= rtpPacket.length) {
+            const extLen = rtpPacket.readUInt16BE(offset + 2)
+            offset += 4 + extLen * 4
+          }
+          const opusPayload = rtpPacket.subarray(offset)
           if (opusPayload.length > 0) {
             forwardingSocket.emit('voice:socketRtp', {
               peerId: forwardingPeerId,
@@ -513,7 +521,14 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         const forwardingSocket = socket
         const forwardingPeerId = producerPeerId
         consumer.on('rtp', (rtpPacket: Buffer) => {
-          const opusPayload = rtpPacket.subarray(12)
+          const hasExtension = (rtpPacket[0] & 0x10) !== 0
+          const csrcCount = rtpPacket[0] & 0x0f
+          let offset = 12 + csrcCount * 4
+          if (hasExtension && offset + 4 <= rtpPacket.length) {
+            const extLen = rtpPacket.readUInt16BE(offset + 2)
+            offset += 4 + extLen * 4
+          }
+          const opusPayload = rtpPacket.subarray(offset)
           if (opusPayload.length > 0) {
             forwardingSocket.emit('voice:socketRtp', {
               peerId: forwardingPeerId,

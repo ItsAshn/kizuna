@@ -261,6 +261,11 @@ fn voice_inject_opus(app: tauri::AppHandle, peer_id: String, opus_data: Vec<u8>)
     pcm.truncate(samples);
     pcm.shrink_to_fit();
 
+    // Clamp samples to [-1, 1] to prevent any overflow/distortion from corrupt packets
+    for s in &mut pcm {
+        *s = s.clamp(-1.0, 1.0);
+    }
+
     let _ = app.emit(
         "voice:remote_audio",
         serde_json::json!({
