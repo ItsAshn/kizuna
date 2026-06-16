@@ -451,7 +451,7 @@ authRoutes.post('/refresh', async (c) => {
       'Set-Cookie',
       `kizuna_token=${newToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
     )
-    return c.json({ ok: true })
+    return c.json({ ok: true, token: newToken })
   } catch {
     return c.json({ error: 'Invalid token' }, 401)
   }

@@ -30,16 +30,58 @@ export function clearClientToken(serverUrl: string): void {
   tokenStore.delete(normalizeUrl(serverUrl))
 }
 
+type TokenRefreshHandler = (serverUrl: string) => Promise<string | null>
+
+let tokenRefreshHandler: TokenRefreshHandler | null = null
+
+export function setTokenRefreshHandler(handler: TokenRefreshHandler): void {
+  tokenRefreshHandler = handler
+}
+
+const refreshMap = new Map<string, Promise<string | null>>()
+
 function client(baseUrl: string, token?: string) {
   const norm = normalizeUrl(baseUrl)
   const effectiveToken = token || tokenStore.get(norm)
   const headers: Record<string, string> = {}
   if (effectiveToken) headers.Authorization = `Bearer ${effectiveToken}`
-  return axios.create({
+
+  const instance = axios.create({
     baseURL: norm,
     headers,
     withCredentials: true,
   })
+
+  instance.interceptors.response.use(
+    (res) => res,
+    async (error) => {
+      if (error.response?.status !== 401) throw error
+      if (error.config?._retry) throw error
+      if (!tokenRefreshHandler) throw error
+
+      const reqUrl: string = error.config?.url || ''
+      if (reqUrl.includes('/auth/refresh')) throw error
+
+      error.config._retry = true
+
+      let refreshP = refreshMap.get(norm)
+      if (!refreshP) {
+        refreshP = tokenRefreshHandler(norm).finally(() => {
+          refreshMap.delete(norm)
+        })
+        refreshMap.set(norm, refreshP)
+      }
+
+      const newToken = await refreshP
+      if (!newToken) throw error
+
+      tokenStore.set(norm, newToken)
+      error.config.headers.Authorization = `Bearer ${newToken}`
+      return instance(error.config)
+    },
+  )
+
+  return instance
 }
 
 // ─── Auth ─────────────────────────────────────────────────
@@ -85,6 +127,17 @@ export async function login(
     password,
   })
   return res.data
+}
+
+export async function refreshToken(
+  serverUrl: string,
+): Promise<string | null> {
+  try {
+    const res = await client(serverUrl).post('/api/auth/refresh')
+    return res.data.token ?? null
+  } catch {
+    return null
+  }
 }
 
 export async function logout(

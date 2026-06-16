@@ -79,8 +79,21 @@ export function getUserInfo(userId: string): AuthUser | null {
 
 export function getUserPermissions(userId: string): { role: string; permissions: Record<string, boolean> } | null {
   const db = getDb()
-  const member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
-  if (!member) return null
+  let member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
+
+  if (!member) {
+    const userExists = db.prepare('SELECT 1 FROM users WHERE id = ?').get(userId)
+    if (!userExists) return null
+
+    try {
+      db.prepare('INSERT OR IGNORE INTO server_members (user_id, role) VALUES (?, ?)').run(userId, 'member')
+      assignDefaultRoles(userId)
+      member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
+    } catch (err: any) {
+      console.error(`[auth] Failed to auto-insert user ${userId} into server_members:`, err.message)
+    }
+    if (!member) return null
+  }
 
   const userIsAdmin = isUserAdmin(userId)
 
@@ -112,27 +125,31 @@ export function getUserPermissions(userId: string): { role: string; permissions:
     initiate_dm_calls: true,
   }
 
-  const roles = db.prepare(`
-    SELECT r.permissions, r.position
-    FROM member_roles mr
-    JOIN roles r ON mr.role_id = r.id
-    WHERE mr.user_id = ?
-    UNION ALL
-    SELECT r.permissions, r.position
-    FROM server_members sm
-    JOIN roles r ON sm.custom_role_id = r.id
-    WHERE sm.user_id = ? AND sm.custom_role_id IS NOT NULL
-      AND NOT EXISTS (SELECT 1 FROM member_roles mr2 WHERE mr2.user_id = sm.user_id AND mr2.role_id = sm.custom_role_id)
-    ORDER BY position ASC
-  `).all(userId, userId) as { permissions: string }[]
+  try {
+    const roles = db.prepare(`
+      SELECT r.permissions, r.position
+      FROM member_roles mr
+      JOIN roles r ON mr.role_id = r.id
+      WHERE mr.user_id = ?
+      UNION ALL
+      SELECT r.permissions, r.position
+      FROM server_members sm
+      JOIN roles r ON sm.custom_role_id = r.id
+      WHERE sm.user_id = ? AND sm.custom_role_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM member_roles mr2 WHERE mr2.user_id = sm.user_id AND mr2.role_id = sm.custom_role_id)
+      ORDER BY position ASC
+    `).all(userId, userId) as { permissions: string }[]
 
-  for (const role of roles) {
-    try {
-      const rolePerms = JSON.parse(role.permissions || '{}')
-      for (const [key, value] of Object.entries(rolePerms)) {
-        if (value === true) permissions[key] = true
-      }
-    } catch { /* skip malformed JSON */ }
+    for (const role of roles) {
+      try {
+        const rolePerms = JSON.parse(role.permissions || '{}')
+        for (const [key, value] of Object.entries(rolePerms)) {
+          if (value === true) permissions[key] = true
+        }
+      } catch { /* skip malformed JSON */ }
+    }
+  } catch (err: any) {
+    console.error(`[auth] Failed to query role permissions for user ${userId}:`, err.message)
   }
 
   return { role: 'member', permissions }

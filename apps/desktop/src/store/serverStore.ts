@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { User, SavedServer } from '@kizuna/shared'
-import { getMe, setClientToken, clearClientToken } from '@kizuna/shared'
+import { getMe, setClientToken, clearClientToken, refreshToken, setTokenRefreshHandler } from '@kizuna/shared'
 
 interface ServerSession {
   serverId: string
@@ -116,3 +116,17 @@ export const useServerStore = create<ServerState>()(
     },
   ),
 )
+
+setTokenRefreshHandler(async (serverUrl: string) => {
+  try {
+    const newToken = await refreshToken(serverUrl)
+    if (!newToken) return null
+    const session = useServerStore.getState().activeSession
+    if (session && session.url === serverUrl) {
+      useServerStore.getState().setActiveSession({ ...session, token: newToken })
+    }
+    return newToken
+  } catch {
+    return null
+  }
+})

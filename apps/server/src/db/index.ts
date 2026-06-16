@@ -104,7 +104,116 @@ function validateSchema(database: Database.Database): void {
   }
 }
 
+function columnExists(database: Database.Database, table: string, column: string): boolean {
+  const cols = database.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]
+  return cols.some(c => c.name === column)
+}
+
+function tableExists(database: Database.Database, table: string): boolean {
+  const row = database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(table)
+  return !!row
+}
+
+function indexExists(database: Database.Database, name: string): boolean {
+  const row = database.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name = ?").get(name)
+  return !!row
+}
+
+function seedPreExistingMigrations(database: Database.Database): void {
+  const row = database.prepare('SELECT 1 FROM _migrations LIMIT 1').get()
+  if (row) return
+
+  const insert = database.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)')
+
+  const checks: [string, boolean][] = [
+    ['server_settings_table', tableExists(database, 'server_settings')],
+    ['invite_codes_table', tableExists(database, 'invite_codes')],
+    ['roles_initial', tableExists(database, 'roles')],
+    ['dm_channels_table', tableExists(database, 'dm_channels')],
+    ['idx_dm_channels_users', indexExists(database, 'idx_dm_channels_users')],
+    ['channel_reads_table', tableExists(database, 'channel_reads')],
+    ['dm_reads_table', tableExists(database, 'dm_reads')],
+    ['message_edits_table', tableExists(database, 'message_edits')],
+    ['idx_messages_channel_created', indexExists(database, 'idx_messages_channel_created')],
+    ['idx_mentions_user_read', indexExists(database, 'idx_mentions_user_read')],
+    ['idx_direct_messages_channel', indexExists(database, 'idx_direct_messages_channel')],
+    ['idx_message_edits_message', indexExists(database, 'idx_message_edits_message')],
+    ['users_add_public_key', columnExists(database, 'users', 'public_key')],
+    ['users_add_key_salt', columnExists(database, 'users', 'key_salt')],
+    ['dm_add_encrypted', columnExists(database, 'direct_messages', 'encrypted')],
+    ['dm_add_edited_at', columnExists(database, 'direct_messages', 'edited_at')],
+    ['users_add_reset_token', columnExists(database, 'users', 'reset_token')],
+    ['users_add_reset_token_expires', columnExists(database, 'users', 'reset_token_expires_at')],
+    ['users_add_token_invalidated_at', columnExists(database, 'users', 'token_invalidated_at')],
+    ['member_roles_table', tableExists(database, 'member_roles')],
+    ['channels_add_locked', columnExists(database, 'channels', 'locked')],
+    ['channels_add_write_role_id', columnExists(database, 'channels', 'write_role_id')],
+    ['migrate_custom_role_to_member_roles', tableExists(database, 'member_roles')],
+    ['roles_add_is_admin', columnExists(database, 'roles', 'is_admin')],
+    ['seed_admin_role', tableExists(database, 'roles')],
+    ['assign_admin_role', tableExists(database, 'member_roles')],
+    ['users_add_reset_requested_at', columnExists(database, 'users', 'reset_requested_at')],
+    ['users_add_backuptoken_hash', columnExists(database, 'users', 'backuptoken_hash')],
+    ['server_members_add_is_host', columnExists(database, 'server_members', 'is_host')],
+    ['seed_first_host', columnExists(database, 'server_members', 'is_host')],
+    ['attachments_new_table', false],
+    ['migrate_attachments', false],
+    ['drop_attachments', false],
+    ['rename_attachments_new', false],
+    ['channel_mutes_table', tableExists(database, 'channel_mutes')],
+    ['gifs_table', tableExists(database, 'gifs')],
+    ['idx_gifs_type', indexExists(database, 'idx_gifs_type')],
+    ['idx_gifs_category', indexExists(database, 'idx_gifs_category')],
+    ['idx_gifs_pack', indexExists(database, 'idx_gifs_pack')],
+    ['idx_gifs_name', indexExists(database, 'idx_gifs_name')],
+    ['message_reactions_v1', false],
+    ['idx_msg_reactions_msg_v1', false],
+    ['message_reactions_new_table', tableExists(database, 'message_reactions')],
+    ['migrate_message_reactions', false],
+    ['drop_message_reactions_v1', false],
+    ['rename_message_reactions_new', false],
+    ['idx_msg_reactions_msg_v2', indexExists(database, 'idx_msg_reactions_msg')],
+    ['messages_add_reply_to', columnExists(database, 'messages', 'reply_to_message_id')],
+    ['messages_add_reply_username', columnExists(database, 'messages', 'reply_to_username')],
+    ['messages_add_reply_content', columnExists(database, 'messages', 'reply_to_content')],
+    ['dm_add_reply_to', columnExists(database, 'direct_messages', 'reply_to_message_id')],
+    ['dm_add_reply_username', columnExists(database, 'direct_messages', 'reply_to_username')],
+    ['dm_add_reply_content', columnExists(database, 'direct_messages', 'reply_to_content')],
+    ['bans_table', tableExists(database, 'bans')],
+    ['idx_bans_user', indexExists(database, 'idx_bans_user')],
+    ['audit_logs_table', tableExists(database, 'audit_logs')],
+    ['idx_audit_logs_actor', indexExists(database, 'idx_audit_logs_actor')],
+    ['idx_audit_logs_created', indexExists(database, 'idx_audit_logs_created')],
+    ['normalize_dm_channels', tableExists(database, 'dm_channels')],
+    ['idx_server_members_role', indexExists(database, 'idx_server_members_role')],
+    ['idx_message_reactions_user', indexExists(database, 'idx_message_reactions_user')],
+    ['idx_attachments_message', indexExists(database, 'idx_attachments_message')],
+    ['idx_mentions_channel', indexExists(database, 'idx_mentions_channel')],
+    ['idx_invite_codes_created', indexExists(database, 'idx_invite_codes_created')],
+    ['idx_server_members_custom_role', indexExists(database, 'idx_server_members_custom_role')],
+    ['sessions_table', tableExists(database, 'sessions')],
+    ['idx_sessions_user', indexExists(database, 'idx_sessions_user')],
+    ['messages_fts', tableExists(database, 'messages_fts')],
+    ['pinned_messages_table', tableExists(database, 'pinned_messages')],
+    ['channel_categories_table', tableExists(database, 'channel_categories')],
+    ['channels_add_category_id', columnExists(database, 'channels', 'category_id')],
+    ['link_embeds_table', tableExists(database, 'link_embeds')],
+    ['roles_add_position', columnExists(database, 'roles', 'position')],
+    ['roles_add_hoist', columnExists(database, 'roles', 'hoist')],
+    ['roles_add_mentionable', columnExists(database, 'roles', 'mentionable')],
+    ['roles_add_default_on_join', columnExists(database, 'roles', 'default_on_join')],
+    ['set_admin_role_position', columnExists(database, 'roles', 'position')],
+    ['channel_role_overrides_table', tableExists(database, 'channel_role_overrides')],
+  ]
+
+  for (const [name, isApplied] of checks) {
+    if (isApplied) insert.run(name)
+  }
+}
+
 function runMigrations(database: Database.Database): void {
+  seedPreExistingMigrations(database)
+
   const applied = new Set(
     (database.prepare('SELECT name FROM _migrations').all() as { name: string }[]).map(r => r.name),
   )

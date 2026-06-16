@@ -8,6 +8,7 @@ import type { DMIncomingCall } from '../store/chatStore'
 import { decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
 import type { Message, Channel, DMChannelData, UserStatus, MessageReaction, Member } from '@kizuna/shared'
+import { refreshToken } from '@kizuna/shared'
 import { showNotification } from '../utils/showNotification'
 
 function tryDecryptSocketDM(message: Message): Message {
@@ -79,8 +80,23 @@ export function useSocket(): MutableRefObject<Socket | null> {
       useChatStore.getState().setSocketConnected(false)
       const msg = err.message || ''
       if (msg.includes('Invalid or expired token') || msg.includes('Authentication required') || msg.includes('User not found')) {
-        useServerStore.getState().setActiveSession(null)
-        window.location.href = '/'
+        ;(async () => {
+          const session = useServerStore.getState().activeSession
+          if (!session) {
+            window.location.href = '/'
+            return
+          }
+          const newToken = await refreshToken(session.url)
+          if (newToken) {
+            useServerStore.getState().setActiveSession({
+              ...session,
+              token: newToken,
+            })
+          } else {
+            useServerStore.getState().setActiveSession(null)
+            window.location.href = '/'
+          }
+        })()
       }
     })
 
@@ -361,7 +377,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
       socket.disconnect()
       socketRef.current = null
     }
-  }, [session?.serverId])
+  }, [session?.serverId, session?.token])
 
   return socketRef
 }
