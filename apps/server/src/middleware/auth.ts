@@ -109,6 +109,7 @@ export function getUserPermissions(userId: string): { role: string; permissions:
     add_reactions: true,
     upload_attachments: true,
     use_voice: true,
+    initiate_dm_calls: true,
   }
 
   const roles = db.prepare(`

@@ -1369,9 +1369,13 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     setDMCallChannelId(dmChannelId)
     setDMCallOtherUser(otherUserId, otherUsername)
 
-    const result: any = await new Promise((resolve) =>
-      socket.emit('dm:call:start', { dmChannelId }, resolve),
-    )
+    const result: any = await new Promise<any>((resolve) => {
+      const timeout = setTimeout(() => resolve({ error: 'Call timed out' }), 30_000)
+      socket.emit('dm:call:start', { dmChannelId }, (res: any) => {
+        clearTimeout(timeout)
+        resolve(res)
+      })
+    })
 
     if (result?.error) {
       clearDMCall()

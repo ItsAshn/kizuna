@@ -3,15 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { Settings } from 'lucide-react'
-import ExportModal from './ExportModal'
 import '../styles/server-panel.css'
 
 interface ServerPanelProps {
   onLoginRequired?: (serverId: string) => void
   onOpenSettings?: () => void
+  onOpenExport?: () => void
 }
 
-export default function ServerPanel({ onLoginRequired, onOpenSettings }: ServerPanelProps) {
+export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExport }: ServerPanelProps) {
   const navigate = useNavigate()
   const {
     servers,
@@ -22,8 +22,6 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings }: ServerP
   } = useServerStore()
   const serverMentionCounts = useChatStore((s) => s.serverMentionCounts)
   const [showRemove, setShowRemove] = useState<string | null>(null)
-  const [showExport, setShowExport] = useState(false)
-
   function handleHome() {
     setActiveServer(null)
     navigate('/')
@@ -126,7 +124,7 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings }: ServerP
 
       <button
         className="server-panel__icon server-panel__icon--action"
-        onClick={() => setShowExport(true)}
+        onClick={onOpenExport}
         title="Export / Import"
       >
         ...
@@ -141,7 +139,6 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings }: ServerP
         <Settings size={18} />
       </button>
 
-      {showExport && <ExportModal onClose={() => setShowExport(false)} />}
     </div>
   )
 }

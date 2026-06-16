@@ -76,7 +76,7 @@ export default function UserSettingsModal({ onClose }: Props) {
     liveAudioLevel, setLiveAudioLevel,
     updateState, updateProgress, updateVersion, updateError,
   } = useChatStore()
-  const { checkForUpdates, getVersion } = useUpdaterActions()
+  const { checkForUpdates, installUpdate, getVersion } = useUpdaterActions()
 
   const [inputDevices, setInputDevices] = useState<AudioDevice[] | null>(null)
   const [outputDevices, setOutputDevices] = useState<AudioDevice[] | null>(null)
@@ -603,9 +603,14 @@ export default function UserSettingsModal({ onClose }: Props) {
                 </button>
               </div>
               {updateState === 'ready' && (
-                <p className="settings-modal__alert settings-modal__alert--success">
-                  update {updateVersion} ready — restart to apply
-                </p>
+                <div className="settings-modal__version-row">
+                  <span className="settings-modal__alert settings-modal__alert--success">
+                    update {updateVersion} ready — restart to apply
+                  </span>
+                  <button onClick={installUpdate} className="settings-modal__check-btn">
+                    restart now
+                  </button>
+                </div>
               )}
               {updateState === 'error' && (
                 <p className="settings-modal__alert settings-modal__alert--error">

@@ -20,6 +20,7 @@ export interface User {
   public_key?: string | null
   key_salt?: string | null
   status?: UserStatus
+  permissions?: Record<string, boolean>
 }
 
 export interface Channel {

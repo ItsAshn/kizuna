@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { getDb } from '../db'
-import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getJwtSecret, assignDefaultRoles } from '../middleware/auth'
+import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getUserPermissions, getJwtSecret, assignDefaultRoles } from '../middleware/auth'
 import type { AuthUser, JwtPayload } from '../middleware/auth'
 import { generateChallenge, verifyPoW } from '../middleware/pow'
 import jwt from 'jsonwebtoken'
@@ -198,8 +198,9 @@ authRoutes.get('/me', authMiddleware, (c) => {
   }
 
   const { is_host, ...userFields } = user
-    return c.json({
-    user: { ...userFields, role: isUserAdmin(auth.userId) ? 'admin' : 'member', is_host: is_host === 1 } })
+  const perms = getUserPermissions(auth.userId)
+  return c.json({
+    user: { ...userFields, role: isUserAdmin(auth.userId) ? 'admin' : 'member', is_host: is_host === 1, permissions: perms?.permissions } })
 })
 
 authRoutes.patch('/profile', authMiddleware, async (c) => {

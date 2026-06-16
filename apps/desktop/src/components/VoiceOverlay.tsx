@@ -87,7 +87,7 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
     }, 250)
   }, [leaveVoice, setVoiceError])
 
-  if (!activeVoiceChannelId && !closing) return null
+  if (!activeVoiceChannelId && !voiceError && !closing) return null
 
   const channel = channels.find(c => c.id === activeVoiceChannelId)
   const isDMCall = !!dmCallOtherUsername

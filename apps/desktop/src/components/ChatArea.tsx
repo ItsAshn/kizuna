@@ -88,6 +88,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
   const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [atBottom, setAtBottom] = useState(true)
   const lastCountAtBottom = useRef(0)
+  const scrolledChannelRef = useRef<string | null>(null)
   const [lightboxImages, setLightboxImages] = useState<{ url: string; filename: string }[] | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const [showSearch, setShowSearch] = useState(false)
@@ -126,6 +127,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
   const canDeleteAny = activeChannelId && session
     ? hasDeletePermission(members, session.user.id, session.user.role)
     : false
+  const canCall = session?.user.permissions?.initiate_dm_calls === true || session?.user.role === 'admin'
 
   const specialTargets = ['everyone', 'here']
   const allSuggestions = [
@@ -528,6 +530,16 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
       lastCountAtBottom.current = displayMessages.length
     }
   }, [atBottom, displayMessages.length])
+
+  useEffect(() => {
+    const currentId = activeChannelId || activeDMChannelId
+    if (!currentId || currentId === scrolledChannelRef.current) return
+    if (displayMessages.length === 0) return
+    scrolledChannelRef.current = currentId
+    setTimeout(() => {
+      virtuosoRef.current?.scrollToIndex(displayMessages.length - 1)
+    }, 0)
+  }, [activeChannelId, activeDMChannelId, displayMessages.length])
   const channelId = activeChannelId || activeDMChannelId || ''
   const typingList = typingUsers[channelId]?.filter(u => u !== session?.user.username) || []
   const typingText = typingList.length === 1
@@ -623,7 +635,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
       <div className="chat-area__header">
         <span className="chat-area__header-prefix">{activeDMChannelId ? '@' : '#'}</span>
         <h2 className="chat-area__header-title">{headerTitle}</h2>
-        {activeDMChannelId && activeDM && (
+        {activeDMChannelId && activeDM && canCall && (
           <button
             onClick={() => {
               if (dmCallStatus === 'active' && dmCallChannelId === activeDM.id) {

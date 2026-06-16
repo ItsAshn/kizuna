@@ -21,6 +21,7 @@ import LoginDialog from '../components/LoginDialog'
 import NotificationContainer from '../components/NotificationContainer'
 import QuickSwitcher from '../components/QuickSwitcher'
 import IncomingCallModal from '../components/IncomingCallModal'
+import ExportModal from '../components/ExportModal'
 import { useNavigate } from 'react-router-dom'
 import '../styles/chat.css'
 
@@ -62,6 +63,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const [showEnvWizard, setShowEnvWizard] = useState(false)
   const [loginForServerId, setLoginForServerId] = useState<string | null>(null)
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false)
+  const [showExport, setShowExport] = useState(false)
   const [bgInfo, setBgInfo] = useState<{ hasBackground: boolean; backgroundBlur: number; customCss: string | null } | null>(null)
   const [initialLoading, setInitialLoading] = useState(true)
 
@@ -224,7 +226,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           )}
         </div>
       )}
-      {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={onOpenSettings} />}
+      {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={onOpenSettings} onOpenExport={() => setShowExport(true)} />}
       <Sidebar
         joinVoice={joinVoice}
         leaveVoice={leaveVoice}
@@ -282,6 +284,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
       <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
       <NotificationContainer />
     </div>
+    {showExport && <ExportModal onClose={() => setShowExport(false)} />}
     {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} />}
     {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
     {loginForServerId && <LoginDialog serverId={loginForServerId} onClose={() => setLoginForServerId(null)} />}

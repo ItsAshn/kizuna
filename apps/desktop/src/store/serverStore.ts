@@ -106,6 +106,13 @@ export const useServerStore = create<ServerState>()(
         activeServerId: state.activeServerId,
         activeSession: state.activeSession,
       }),
+      onRehydrateStorage: () => {
+        return (state) => {
+          if (state?.activeSession) {
+            setClientToken(state.activeSession.url, state.activeSession.token)
+          }
+        }
+      },
     },
   ),
 )
