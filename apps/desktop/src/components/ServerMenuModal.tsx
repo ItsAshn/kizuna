@@ -1067,9 +1067,6 @@ export default function ServerMenuModal({ onClose }: Props) {
                                 {m.is_host && <span className="server-menu__member-badge" style={{ color: '#f59e0b', borderColor: '#f59e0b66', backgroundColor: '#f59e0b22', marginLeft: '4px' }}>host</span>}
                               </p>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                <p className={`server-menu__member-role ${m.role === 'admin' ? 'server-menu__member-role--admin' : ''}`}>
-                                  {m.role ?? 'member'}
-                                </p>
                                 {(m.custom_roles || []).map((r) => (
                                   <span key={r.id} className="server-menu__member-badge"
                                     style={{ color: r.color || '#5865f2', borderColor: (r.color || '#5865f2') + '66', backgroundColor: (r.color || '#5865f2') + '22' }}>

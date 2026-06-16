@@ -110,10 +110,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('message:edit', (message: Message) => {
-      const store = useChatStore.getState()
-      const channelMessages = store.messages[message.channel_id] || []
-      const updated = channelMessages.map((m) => (m.id === message.id ? message : m))
-      store.setMessages(message.channel_id, updated)
+      useChatStore.getState().updateMessage(message.channel_id, message.id, message)
     })
 
     socket.on('message:delete', ({ id, channel_id }: { id: string; channel_id: string }) => {
@@ -142,11 +139,8 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('dm:edit', (message: Message) => {
-      const store = useChatStore.getState()
       const decrypted = tryDecryptSocketDM(message)
-      const channelMessages = store.messages[message.channel_id] || []
-      const updated = channelMessages.map((m) => (m.id === message.id ? decrypted : m))
-      store.setMessages(message.channel_id, updated)
+      useChatStore.getState().updateMessage(decrypted.channel_id, decrypted.id, decrypted)
     })
 
     socket.on('dm:delete', ({ id, channel_id }: { id: string; channel_id: string }) => {

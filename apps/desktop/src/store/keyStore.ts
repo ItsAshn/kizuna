@@ -43,11 +43,11 @@ export function hasStoredKey(serverUrl: string): boolean {
 }
 
 export function restoreFromSession(serverUrl: string): boolean {
-  const encoded = sessionStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}`)
+  const encoded = localStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}`) || sessionStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}`)
   if (!encoded) return false
   try {
     state.secretKey = decodeSecretKey(encoded)
-    state.publicKey = sessionStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}-pub`) || null
+    state.publicKey = localStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}-pub`) || sessionStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}-pub`) || null
     state.initialized = true
     return true
   } catch {
@@ -64,8 +64,8 @@ export async function generateAndStoreKey(
   const kp = await deriveKeyPair(password, salt)
 
   const encoded = encodeSecretKey(kp.secretKey)
-  sessionStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}`, encoded)
-  sessionStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}-pub`, kp.publicKeyString)
+  localStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}`, encoded)
+  localStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}-pub`, kp.publicKeyString)
 
   localStorage.setItem(`${LS_PREFIX}${serverUrl}`, JSON.stringify({
     publicKey: kp.publicKeyString,
@@ -88,8 +88,8 @@ export async function initializeCrypto(
   if (serverSalt != null) {
     try {
       const kp = await deriveKeyPair(password, serverSalt)
-      sessionStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}`, encodeSecretKey(kp.secretKey))
-      sessionStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}-pub`, kp.publicKeyString)
+      localStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}`, encodeSecretKey(kp.secretKey))
+      localStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}-pub`, kp.publicKeyString)
       localStorage.setItem(`${LS_PREFIX}${serverUrl}`, JSON.stringify({
         publicKey: kp.publicKeyString,
         salt: serverSalt,
@@ -134,7 +134,7 @@ export function clearCryptoState(): void {
   for (const key of Object.keys(localStorage)) {
     if (key.startsWith(LS_PREFIX)) localStorage.removeItem(key)
   }
-  for (const key of Object.keys(sessionStorage)) {
-    if (key.startsWith(SS_KEY_PREFIX)) sessionStorage.removeItem(key)
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith(SS_KEY_PREFIX)) localStorage.removeItem(key)
   }
 }

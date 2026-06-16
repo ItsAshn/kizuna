@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import QRCode from 'qrcode'
 import { useServerStore } from '../store/serverStore'
 import '../styles/export-modal.css'
 
@@ -9,13 +8,12 @@ interface Props {
 
 export default function ExportModal({ onClose }: Props) {
   const { servers, setActiveSession } = useServerStore()
-  const [qrDataUrl, setQrDataUrl] = useState('')
-  const [jsonData, setJsonData] = useState('')
-  const [tab, setTab] = useState<'qr' | 'import'>('qr')
   const [importText, setImportText] = useState('')
   const [status, setStatus] = useState('')
   const [statusIsError, setStatusIsError] = useState(false)
   const [closing, setClosing] = useState(false)
+
+  const jsonData = JSON.stringify({ servers })
 
   const handleClose = () => {
     if (closing) return
@@ -28,16 +26,6 @@ export default function ExportModal({ onClose }: Props) {
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [])
-
-  useEffect(() => {
-    const json = JSON.stringify({ servers })
-    setJsonData(json)
-    QRCode.toDataURL(json, {
-      width: 280,
-      margin: 1,
-      color: { dark: '#f2f3f5', light: '#1e1f22' },
-    }).then(setQrDataUrl).catch(() => setQrDataUrl(''))
-  }, [servers])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(jsonData).then(() => {
@@ -75,45 +63,21 @@ export default function ExportModal({ onClose }: Props) {
           <button onClick={handleClose} className="export-modal__close-btn">[esc]</button>
         </div>
 
-        <div className="export-modal__tabs">
-          <button
-            onClick={() => setTab('qr')}
-            className={`export-modal__tab ${tab === 'qr' ? 'export-modal__tab--active' : ''}`}
-          >
-            export (qr)
-          </button>
-          <button
-            onClick={() => setTab('import')}
-            className={`export-modal__tab ${tab === 'import' ? 'export-modal__tab--active' : ''}`}
-          >
+        <div className="export-modal__body">
+          <label className="export-modal__label">exported json</label>
+          <pre className="export-modal__json">{jsonData}</pre>
+          <button onClick={handleCopy} className="export-modal__copy-btn">copy json</button>
+
+          <label className="export-modal__label">paste exported json</label>
+          <textarea
+            className="export-modal__textarea"
+            placeholder='{"servers":[...]}'
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+          />
+          <button onClick={handleImport} className="export-modal__import-btn" disabled={!importText.trim()}>
             import
           </button>
-        </div>
-
-        <div className="export-modal__body">
-          {tab === 'qr' ? (
-            <>
-              {qrDataUrl ? (
-                <img src={qrDataUrl} alt="Server list QR" className="export-modal__qr" />
-              ) : (
-                <p className="export-modal__empty-text">too many servers for qr — use json</p>
-              )}
-              <button onClick={handleCopy} className="export-modal__copy-btn">copy json</button>
-            </>
-          ) : (
-            <>
-              <label className="export-modal__label">paste exported json</label>
-              <textarea
-                className="export-modal__textarea"
-                placeholder='{"servers":[...]}'
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-              />
-              <button onClick={handleImport} className="export-modal__import-btn" disabled={!importText.trim()}>
-                import
-              </button>
-            </>
-          )}
 
           {status && (
             <p className={`export-modal__status ${statusIsError ? 'export-modal__status--err' : 'export-modal__status--ok'}`}>

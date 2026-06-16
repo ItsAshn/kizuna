@@ -1,0 +1,57 @@
+.connect-dialog {
+  width: 480px;
+}
+
+.connect-dialog__connect {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.connect-dialog__input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.connect-dialog__saved-header {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin: 16px 0 8px;
+}
+
+.connect-dialog__saved-server {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  margin-bottom: 6px;
+}
+
+.connect-dialog__saved-server:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-color);
+}
+
+.connect-dialog__saved-server-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.connect-dialog__saved-server-url {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}

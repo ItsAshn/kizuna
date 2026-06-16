@@ -267,7 +267,7 @@ function MessageBubble({
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 300)}px`
-  })
+  }, [editContent])
 
   useEffect(() => {
     if (editing && editInputRef.current) {
@@ -342,14 +342,14 @@ function MessageBubble({
 
   return (
     <div className={`msg-bubble__row ${isOwn ? 'msg-bubble__row--own' : ''} ${isGrouped ? 'msg-bubble__row--grouped' : ''} ${isMediaOnly ? 'msg-bubble__row--media-only' : ''}`}>
-      {!isOwn && !isGrouped && !isMediaOnly && (
+      {!isOwn && !isGrouped && (
         <div className="msg-bubble__avatar">
           {message.avatar ? (
             <img src={message.avatar} alt="" className="msg-bubble__avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
           ) : displayName[0]?.toUpperCase()}
         </div>
       )}
-      {!isOwn && isGrouped && !isMediaOnly && <div className="msg-bubble__avatar-spacer" />}
+      {!isOwn && isGrouped && <div className="msg-bubble__avatar-spacer" />}
 
       <div
         className="msg-bubble__content"
@@ -374,7 +374,7 @@ function MessageBubble({
               </span>
             </div>
           )}
-          {!isOwn && !isGrouped && !isMediaOnly && (
+          {!isOwn && !isGrouped && (
             <p
               className="msg-bubble__author"
               onClick={(e) => { profileAnchorRef.current = e.currentTarget as HTMLElement; setShowProfileCard(true) }}

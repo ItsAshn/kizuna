@@ -57,10 +57,11 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
   const session = useServerStore((s) => s.activeSession)
   const channels = useChatStore((s) => s.channels)
   const dmChannels = useChatStore((s) => s.dmChannels)
-  const messages = useChatStore((s) => s.messages)
   const members = useChatStore((s) => s.members)
   const activeChannelId = useChatStore((s) => s.activeChannelId)
   const activeDMChannelId = useChatStore((s) => s.activeDMChannelId)
+  const channelMessages = useChatStore((s) => (activeChannelId ? s.messages[activeChannelId] : undefined) ?? [])
+  const dmMessages = useChatStore((s) => (activeDMChannelId ? s.messages[activeDMChannelId] : undefined) ?? [])
   const addMessage = useChatStore((s) => s.addMessage)
   const typingUsers = useChatStore((s) => s.typingUsers)
   const hasMoreMessages = useChatStore((s) => s.hasMoreMessages)
@@ -121,8 +122,6 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
 
   const activeChannel = channels.find((c) => c.id === activeChannelId)
   const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
-  const channelMessages = messages[activeChannelId || ''] || []
-  const dmMessages = messages[activeDMChannelId || ''] || []
 
   const canDeleteAny = activeChannelId && session
     ? hasDeletePermission(members, session.user.id, session.user.role)
@@ -204,6 +203,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
         mentionCounts: { ...state.mentionCounts, [activeDMChannelId]: 0 },
       }))
 
+      socketRef.current?.emit('channel:join', activeDMChannelId)
       socketRef.current?.emit('dm:read', { channelId: activeDMChannelId }, (res: { last_read_at?: number }) => {
         if (res?.last_read_at) {
           useChatStore.getState().setChannelLastReadAt(activeDMChannelId, res.last_read_at)
@@ -454,7 +454,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
     setUploading(false)
   }
 
-  const handleDeleteMessage = async (messageId: string) => {
+  const handleDeleteMessage = useCallback(async (messageId: string) => {
     if (!session) return
     const channelId = activeChannelId || activeDMChannelId
     if (!channelId) return
@@ -465,7 +465,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
         await deleteMessage(session.url, messageId)
       }
     } catch { /* ignore */ }
-  }
+  }, [session, activeChannelId, activeDMChannelId])
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -494,13 +494,14 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
     }
   }
 
-  const handleEditMessage = async (messageId: string, content: string) => {
+  const handleEditMessage = useCallback(async (messageId: string, content: string) => {
     if (!session) return
     const channelId = activeChannelId || activeDMChannelId
     if (!channelId) return
     try {
       if (activeDMChannelId) {
         const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
+        if (!activeDM) return
         const otherPubKey = await resolveRecipientPublicKey(activeDM)
         const secKey = getSecretKey()
         let sendContent = content
@@ -515,7 +516,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
         await editMessage(session.url, messageId, content)
       }
     } catch { /* ignore */ }
-  }
+  }, [session, activeChannelId, activeDMChannelId, dmChannels, resolveRecipientPublicKey])
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`
@@ -532,14 +533,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
   }, [atBottom, displayMessages.length])
 
   useEffect(() => {
-    const currentId = activeChannelId || activeDMChannelId
-    if (!currentId || currentId === scrolledChannelRef.current) return
-    if (displayMessages.length === 0) return
-    scrolledChannelRef.current = currentId
-    setTimeout(() => {
-      virtuosoRef.current?.scrollToIndex(displayMessages.length - 1)
-    }, 0)
-  }, [activeChannelId, activeDMChannelId, displayMessages.length])
+    lastCountAtBottom.current = displayMessages.length
+  }, [activeChannelId, activeDMChannelId])
   const channelId = activeChannelId || activeDMChannelId || ''
   const typingList = typingUsers[channelId]?.filter(u => u !== session?.user.username) || []
   const typingText = typingList.length === 1
@@ -585,9 +580,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
           onUserClick={() => {}}
           onImageClick={(imageUrl, filename) => {
             const allImages: { url: string; filename: string }[] = []
-            const channelMsgs = activeChannelId || activeDMChannelId
-              ? messages[activeChannelId || activeDMChannelId || ''] || []
-              : []
+            const channelMsgs = displayMessages
             const imgRe = /!\[([^\]]*)\]\(([^)]+)\)/g
             const urlRe = /(https?:\/\/[^\s]+)/g
             for (const m of channelMsgs) {
@@ -615,7 +608,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
         />
       </>
     )
-  }, [displayMessages, session, members, canDeleteAny, activeChannelId, activeDMChannelId, messages, setReplyTo])
+  }, [displayMessages, session, members, canDeleteAny, activeChannelId, activeDMChannelId, setReplyTo])
 
   return (
     <div
@@ -696,12 +689,14 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
         )}
         {!loading && displayMessages.length > 0 && (
           <Virtuoso
+            key={activeChannelId || activeDMChannelId}
             ref={virtuosoRef}
             data={displayMessages}
             itemContent={renderMessageItem}
             followOutput="smooth"
             atBottomStateChange={(isAtBottom) => setAtBottom(isAtBottom)}
             startReached={loadMoreMessages}
+            initialTopMostItemIndex={displayMessages.length > 0 ? displayMessages.length - 1 : 0}
             style={{ flex: 1 }}
             components={{
               Footer: () => typingText ? <div className="chat-area__typing">{typingText}</div> : null,

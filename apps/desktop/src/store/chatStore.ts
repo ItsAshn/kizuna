@@ -96,6 +96,7 @@ interface ChatState {
   setDMChannels: (channels: DMChannelData[]) => void
   setMessages: (channelId: string, messages: Message[]) => void
   addMessage: (channelId: string, message: Message) => void
+  updateMessage: (channelId: string, messageId: string, message: Message) => void
   setMembers: (members: Member[]) => void
   setActiveChannel: (channelId: string | null) => void
   setActiveDMChannel: (channelId: string | null) => void
@@ -251,6 +252,15 @@ export const useChatStore = create<ChatState>()(
             },
           }
         }),
+      updateMessage: (channelId, messageId, message) =>
+        set((state) => ({
+          messages: {
+            ...state.messages,
+            [channelId]: (state.messages[channelId] || []).map((m) =>
+              m.id === messageId ? message : m,
+            ),
+          },
+        })),
       setMembers: (members) => set({ members }),
       setActiveChannel: (activeChannelId) => set({ activeChannelId, activeDMChannelId: null }),
       setActiveDMChannel: (activeDMChannelId) => set({ activeDMChannelId, activeChannelId: null }),

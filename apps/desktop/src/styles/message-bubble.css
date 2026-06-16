@@ -512,7 +512,6 @@
 
 .msg-bubble__edit-input {
   width: 100%;
-  min-width: 400px;
   min-height: 36px;
   max-height: 300px;
   overflow-y: auto;
@@ -822,6 +821,7 @@
 .msg-bubble__content {
   position: relative;
   max-width: 480px;
+  overflow: hidden;
 }
 
 .msg-bubble__row--own .msg-bubble__content {

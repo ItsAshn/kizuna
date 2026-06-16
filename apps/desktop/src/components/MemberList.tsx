@@ -133,7 +133,7 @@ export default function MemberList({ visible }: Props) {
             </div>
           )}
         </div>
-        {member.role === 'admin' && <span className="member-list__admin-badge">admin</span>}
+        {member.role === 'admin' && !member.custom_role_name && <span className="member-list__admin-badge">admin</span>}
         {member.is_host && <span className="member-list__host-badge">host</span>}
         {member.id === session?.user.id && <span className="member-list__self-tag">you</span>}
       </button>

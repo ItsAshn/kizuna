@@ -232,6 +232,11 @@ export const SCHEMA_SQL = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+  CREATE TABLE IF NOT EXISTS _migrations (
+    name TEXT PRIMARY KEY,
+    applied_at INTEGER NOT NULL DEFAULT (unixepoch())
+  );
 `
 
 export const SEED_SQL = `

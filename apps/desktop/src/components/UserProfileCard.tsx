@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useChatStore } from '../store/chatStore'
 import { useServerStore } from '../store/serverStore'
 import { getOrCreateDMChannel } from '@kizuna/shared'
-import { MessageCircle, Shield } from 'lucide-react'
+import { MessageCircle } from 'lucide-react'
 import '../styles/user-profile-card.css'
 
 interface UserProfileCardProps {
@@ -97,12 +97,6 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
       </div>
 
       <div className="user-profile-card__roles">
-        {member.role === 'admin' && (
-          <span className="user-profile-card__role-badge" style={{ color: '#f59e0b', borderColor: '#f59e0b66', backgroundColor: '#f59e0b22' }}>
-            <Shield size={10} />
-            admin
-          </span>
-        )}
         {member.custom_roles?.map((r) => (
           <span key={r.id} className="user-profile-card__role-badge" style={{ color: r.color || '#5865f2', borderColor: (r.color || '#5865f2') + '66', backgroundColor: (r.color || '#5865f2') + '22' }}>
             {r.name}

@@ -9,9 +9,10 @@ interface ServerPanelProps {
   onLoginRequired?: (serverId: string) => void
   onOpenSettings?: () => void
   onOpenExport?: () => void
+  onAddServer?: () => void
 }
 
-export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExport }: ServerPanelProps) {
+export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExport, onAddServer }: ServerPanelProps) {
   const navigate = useNavigate()
   const {
     servers,
@@ -115,7 +116,7 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
 
       <button
         className="server-panel__icon server-panel__icon--action"
-        onClick={() => navigate('/')}
+        onClick={onAddServer}
         title="Add Server"
         aria-label="Add server"
       >
