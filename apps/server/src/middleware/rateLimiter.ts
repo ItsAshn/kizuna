@@ -46,7 +46,8 @@ function rateLimiter(maxRequests: number, windowMs: number) {
   }
 }
 
-export const authLimiter = rateLimiter(20, 60_000)
+export const authLimiter = rateLimiter(60, 60_000)
+export const sensitiveAuthLimiter = rateLimiter(5, 60_000)
 export const messageLimiter = rateLimiter(60, 60_000)
 export const uploadLimiter = rateLimiter(30, 60_000)
 export const apiLimiter = rateLimiter(100, 60_000)

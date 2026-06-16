@@ -6,6 +6,7 @@ import { getDb } from '../db'
 import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getUserPermissions, getJwtSecret, assignDefaultRoles } from '../middleware/auth'
 import type { AuthUser, JwtPayload } from '../middleware/auth'
 import { generateChallenge, verifyPoW } from '../middleware/pow'
+import { sensitiveAuthLimiter } from '../middleware/rateLimiter'
 import jwt from 'jsonwebtoken'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
@@ -20,7 +21,7 @@ authRoutes.get('/challenge', (c) => {
   })
 })
 
-authRoutes.post('/register', async (c) => {
+authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
   const { username, password, display_name, serverPassword, public_key, key_salt, challenge, nonce } = await c.req.json()
 
   if (!username || !password) {
@@ -112,7 +113,7 @@ authRoutes.post('/register', async (c) => {
   }
 })
 
-authRoutes.post('/login', async (c) => {
+authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
   const { username, password } = await c.req.json()
 
   if (!username || !password) {
@@ -354,7 +355,7 @@ authRoutes.get('/users/:userId/public-key', authMiddleware, (c) => {
   return c.json({ public_key: user.public_key || null })
 })
 
-authRoutes.post('/request-reset', async (c) => {
+authRoutes.post('/request-reset', sensitiveAuthLimiter, async (c) => {
   const { username } = await c.req.json()
   if (!username || !username.trim()) {
     return c.json({ error: 'Username is required' }, 400)
@@ -374,7 +375,7 @@ authRoutes.post('/request-reset', async (c) => {
   return c.json({ ok: true })
 })
 
-authRoutes.post('/reset-with-backuptoken', async (c) => {
+authRoutes.post('/reset-with-backuptoken', sensitiveAuthLimiter, async (c) => {
   const { username, backuptoken, new_password } = await c.req.json() as { username?: string; backuptoken?: string; new_password?: string }
   if (!username || !backuptoken || !new_password) {
     return c.json({ error: 'username, backuptoken, and new_password are required' }, 400)
@@ -496,7 +497,7 @@ authRoutes.post('/logout', authMiddleware, (c) => {
   return c.json({ ok: true })
 })
 
-authRoutes.post('/reset-password/:token', async (c) => {
+authRoutes.post('/reset-password/:token', sensitiveAuthLimiter, async (c) => {
   const token = c.req.param('token') || ''
   if (!token) return c.json({ error: 'Invalid token' }, 400)
 
