@@ -26,6 +26,7 @@ export function initDb(): Database.Database {
   database.exec(SCHEMA_SQL)
   database.exec(SEED_SQL)
   runMigrations(database)
+  validateSchema(database)
   return database
 }
 
@@ -33,6 +34,73 @@ export function closeDb(): void {
   if (db) {
     db.close()
     db = null
+  }
+}
+
+const EXPECTED_SCHEMA: Record<string, string[]> = {
+  users: ['id', 'username', 'display_name', 'password_hash', 'avatar', 'last_seen_at',
+    'public_key', 'key_salt', 'token_invalidated_at', 'reset_token', 'reset_token_expires_at',
+    'reset_requested_at', 'backuptoken_hash', 'created_at'],
+  channels: ['id', 'name', 'type', 'topic', 'position', 'locked', 'write_role_id', 'category_id', 'created_at'],
+  messages: ['id', 'channel_id', 'author_id', 'author_username', 'content', 'edited_at',
+    'updated_at', 'created_at', 'reply_to_message_id', 'reply_to_username', 'reply_to_content'],
+  direct_messages: ['id', 'channel_id', 'from_id', 'from_username', 'to_id', 'content',
+    'encrypted', 'edited_at', 'created_at', 'reply_to_message_id', 'reply_to_username', 'reply_to_content'],
+  server_members: ['user_id', 'role', 'is_host', 'custom_role_id', 'joined_at'],
+  roles: ['id', 'name', 'color', 'permissions', 'is_admin', 'position', 'hoist', 'mentionable', 'default_on_join', 'created_at'],
+  member_roles: ['user_id', 'role_id'],
+  dm_channels: ['id', 'user1_id', 'user2_id', 'last_message_at', 'created_at'],
+  mentions: ['id', 'message_id', 'channel_id', 'author_id', 'author_username',
+    'mentioned_user_id', 'mention_type', 'content', 'read', 'created_at'],
+  attachments: ['id', 'message_id', 'filename', 'url', 'size', 'content_type', 'created_at'],
+  channel_reads: ['user_id', 'channel_id', 'last_read_at'],
+  dm_reads: ['user_id', 'channel_id', 'last_read_at'],
+  message_edits: ['id', 'message_id', 'old_content', 'edited_by', 'edited_at'],
+  channel_mutes: ['user_id', 'channel_id', 'muted_until'],
+  gifs: ['id', 'type', 'display_name', 'category', 'tags', 'pack_name',
+    'stored_filename', 'original_filename', 'file_size', 'width', 'height', 'uploaded_by', 'created_at'],
+  message_reactions: ['message_id', 'user_id', 'reaction_key', 'reaction_type', 'created_at'],
+  server_settings: ['key', 'value'],
+  invite_codes: ['code', 'created_by', 'max_uses', 'uses', 'expires_at', 'created_at'],
+  bans: ['id', 'user_id', 'banned_by', 'reason', 'created_at'],
+  audit_logs: ['id', 'action', 'actor_id', 'target_id', 'details', 'created_at'],
+  sessions: ['token_id', 'user_id', 'created_at', 'revoked_at'],
+  pinned_messages: ['id', 'channel_id', 'message_id', 'pinned_by', 'pinned_at'],
+  channel_categories: ['id', 'name', 'position', 'created_at'],
+  link_embeds: ['url', 'title', 'description', 'image', 'site_name', 'favicon', 'fetched_at'],
+  channel_role_overrides: ['channel_id', 'role_id', 'allow_permissions', 'deny_permissions'],
+  _migrations: ['name', 'applied_at'],
+}
+
+function validateSchema(database: Database.Database): void {
+  const tableNames = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'messages_fts%' ORDER BY name"
+  ).all() as { name: string }[]
+
+  const existingTables = new Set(tableNames.map(r => r.name))
+  const missing: string[] = []
+
+  for (const [table, expectedCols] of Object.entries(EXPECTED_SCHEMA)) {
+    if (!existingTables.has(table)) {
+      missing.push(`  Table "${table}" is missing — migrations may not have run`)
+      continue
+    }
+
+    const cols = database.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]
+    const colNames = new Set(cols.map(c => c.name))
+
+    for (const col of expectedCols) {
+      if (!colNames.has(col)) {
+        missing.push(`  Column "${table}.${col}" is missing — migration may not have run`)
+      }
+    }
+  }
+
+  if (missing.length > 0) {
+    console.error('[DB] Schema validation failed — missing tables/columns:')
+    for (const m of missing) console.error(m)
+    console.error('[DB] The database is out of sync with the current server version.')
+    console.error('[DB] Ensure all migrations have run or restore from a backup.')
   }
 }
 

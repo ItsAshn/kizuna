@@ -113,17 +113,17 @@ export function getUserPermissions(userId: string): { role: string; permissions:
   }
 
   const roles = db.prepare(`
-    SELECT r.permissions
+    SELECT r.permissions, r.position
     FROM member_roles mr
     JOIN roles r ON mr.role_id = r.id
     WHERE mr.user_id = ?
     UNION ALL
-    SELECT r.permissions
+    SELECT r.permissions, r.position
     FROM server_members sm
     JOIN roles r ON sm.custom_role_id = r.id
     WHERE sm.user_id = ? AND sm.custom_role_id IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM member_roles mr2 WHERE mr2.user_id = sm.user_id AND mr2.role_id = sm.custom_role_id)
-    ORDER BY r.position ASC
+    ORDER BY position ASC
   `).all(userId, userId) as { permissions: string }[]
 
   for (const role of roles) {
