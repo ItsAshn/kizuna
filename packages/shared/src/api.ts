@@ -382,10 +382,12 @@ export async function updateProfile(
   serverUrl: string,
   display_name?: string,
   avatar?: string | null,
+  banner?: string | null,
 ): Promise<User> {
   const res = await client(serverUrl).patch('/api/auth/profile', {
     display_name,
     avatar,
+    banner,
   })
   return res.data.user ?? res.data
 }

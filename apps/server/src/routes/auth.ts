@@ -176,6 +176,7 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
       username: user.username,
       display_name: user.display_name,
       avatar: user.avatar,
+      banner: user.banner,
       public_key: user.public_key,
       key_salt: user.key_salt,
       role: member.role,
@@ -190,9 +191,9 @@ authRoutes.get('/me', authMiddleware, (c) => {
 
   const user = db
     .prepare(
-      'SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.key_salt, u.created_at, sm.is_host FROM users u LEFT JOIN server_members sm ON sm.user_id = u.id WHERE u.id = ?',
+      'SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.key_salt, u.created_at, sm.is_host FROM users u LEFT JOIN server_members sm ON sm.user_id = u.id WHERE u.id = ?',
     )
-    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; public_key: string | null; key_salt: string | null; created_at: number; is_host: number | null } | undefined
+    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; banner: string | null; public_key: string | null; key_salt: string | null; created_at: number; is_host: number | null } | undefined
 
   if (!user) {
     return c.json({ error: 'User not found' }, 404)
@@ -206,16 +207,16 @@ authRoutes.get('/me', authMiddleware, (c) => {
 
 authRoutes.patch('/profile', authMiddleware, async (c) => {
   const auth = getAuth(c)
-  const { display_name, avatar } = await c.req.json()
+  const { display_name, avatar, banner } = await c.req.json()
 
-  if (!display_name && avatar === undefined) {
+  if (!display_name && avatar === undefined && banner === undefined) {
     return c.json({ error: 'Nothing to update' }, 400)
   }
 
   const db = getDb()
   const user = db
-    .prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?')
-    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null } | undefined
+    .prepare('SELECT id, username, display_name, avatar, banner FROM users WHERE id = ?')
+    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; banner: string | null } | undefined
 
   if (!user) {
     return c.json({ error: 'User not found' }, 404)
@@ -223,10 +224,12 @@ authRoutes.patch('/profile', authMiddleware, async (c) => {
 
   const newName = display_name?.trim() || user.display_name
   const newAvatar = avatar === null ? null : avatar || user.avatar
+  const newBanner = banner === null ? null : banner || user.banner
 
-  db.prepare('UPDATE users SET display_name = ?, avatar = ? WHERE id = ?').run(
+  db.prepare('UPDATE users SET display_name = ?, avatar = ?, banner = ? WHERE id = ?').run(
     newName,
     newAvatar,
+    newBanner,
     auth.userId,
   )
 
@@ -236,6 +239,7 @@ authRoutes.patch('/profile', authMiddleware, async (c) => {
       username: user.username,
       display_name: newName,
       avatar: newAvatar,
+      banner: newBanner,
       role: isUserAdmin(auth.userId) ? 'admin' : 'member',
       is_host: isUserHost(auth.userId),
     },
@@ -251,7 +255,7 @@ authRoutes.get('/users', authMiddleware, (c) => {
 
   const users = db
     .prepare(
-      `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at, u.reset_requested_at, sm.is_host
+       `SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.reset_requested_at, sm.is_host
        FROM users u
        LEFT JOIN server_members sm ON sm.user_id = u.id
        ORDER BY u.username

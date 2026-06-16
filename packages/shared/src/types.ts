@@ -13,6 +13,7 @@ export interface User {
   username: string
   display_name: string
   avatar?: string
+  banner?: string
   created_at: number
   role?: 'admin' | 'member'
   is_host?: boolean
@@ -80,6 +81,7 @@ export interface Member {
   username: string
   display_name: string
   avatar?: string
+  banner?: string
   role?: 'admin' | 'member'
   is_host?: boolean
   custom_roles?: CustomRole[]

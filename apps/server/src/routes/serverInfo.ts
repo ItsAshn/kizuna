@@ -13,7 +13,7 @@ function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 function getMemberById(userId: string) {
   const db = getDb()
   const user = db.prepare(`
-    SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at, u.reset_requested_at, sm.is_host
+    SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.reset_requested_at, sm.is_host
     FROM users u
     LEFT JOIN server_members sm ON sm.user_id = u.id
     WHERE u.id = ?
@@ -72,6 +72,7 @@ function getMemberById(userId: string) {
     username: user.username,
     display_name: user.display_name,
     avatar: user.avatar,
+    banner: user.banner,
     last_seen_at: user.last_seen_at ? user.last_seen_at * 1000 : null,
     role: isAdmin ? 'admin' : 'member',
     is_host: user.is_host === 1,

@@ -16,6 +16,9 @@
 
 .user-profile-card__banner {
   height: 48px;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--bg-tertiary);
 }
 
 .user-profile-card__avatar-wrap {

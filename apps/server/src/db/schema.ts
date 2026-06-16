@@ -5,6 +5,7 @@ export const SCHEMA_SQL = `
     display_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     avatar TEXT DEFAULT NULL,
+    banner TEXT DEFAULT NULL,
     last_seen_at INTEGER DEFAULT NULL,
     public_key TEXT DEFAULT NULL,
     key_salt TEXT DEFAULT NULL,

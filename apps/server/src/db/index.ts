@@ -38,7 +38,7 @@ export function closeDb(): void {
 }
 
 const EXPECTED_SCHEMA: Record<string, string[]> = {
-  users: ['id', 'username', 'display_name', 'password_hash', 'avatar', 'last_seen_at',
+  users: ['id', 'username', 'display_name', 'password_hash', 'avatar', 'banner', 'last_seen_at',
     'public_key', 'key_salt', 'token_invalidated_at', 'reset_token', 'reset_token_expires_at',
     'reset_requested_at', 'backuptoken_hash', 'created_at'],
   channels: ['id', 'name', 'type', 'topic', 'position', 'locked', 'write_role_id', 'category_id', 'created_at'],
@@ -204,6 +204,7 @@ function seedPreExistingMigrations(database: Database.Database): void {
     ['roles_add_default_on_join', columnExists(database, 'roles', 'default_on_join')],
     ['set_admin_role_position', columnExists(database, 'roles', 'position')],
     ['channel_role_overrides_table', tableExists(database, 'channel_role_overrides')],
+    ['users_add_banner', columnExists(database, 'users', 'banner')],
   ]
 
   for (const [name, isApplied] of checks) {
@@ -465,6 +466,7 @@ function runMigrations(database: Database.Database): void {
        FOREIGN KEY (channel_id) REFERENCES channels(id),
        FOREIGN KEY (role_id) REFERENCES roles(id)
      )` },
+    { name: 'users_add_banner', sql: `ALTER TABLE users ADD COLUMN banner TEXT DEFAULT NULL` },
   ]
 
   const insertStmt = database.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)')

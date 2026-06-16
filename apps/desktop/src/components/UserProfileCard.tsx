@@ -74,14 +74,14 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
     onClose()
   }
 
-  if (!pos || !member) return null
+  if (!member) return null
 
   const isSelf = member.id === session?.user?.id
   const displayName = member.display_name || member.username
 
   return createPortal(
-    <div ref={ref} className="user-profile-card" style={{ position: 'fixed', top: pos.top, left: pos.left }}>
-      <div className="user-profile-card__banner" style={{ backgroundColor: member.custom_role_color || (member.role === 'admin' ? '#f59e0b' : '#374151') }} />
+    <div ref={ref} className="user-profile-card" style={{ position: 'fixed', top: pos?.top ?? 0, left: pos?.left ?? 0, visibility: pos ? 'visible' : 'hidden' }}>
+      <div className="user-profile-card__banner" style={member.banner ? { backgroundImage: `url(${member.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { backgroundColor: member.custom_role_color || (member.role === 'admin' ? '#f59e0b' : '#374151') }} />
       <div className="user-profile-card__avatar-wrap">
         <div className="user-profile-card__avatar" style={{ backgroundColor: member.custom_role_color || (member.role === 'admin' ? '#f59e0b' : '#374151') }}>
           {member.avatar ? (
