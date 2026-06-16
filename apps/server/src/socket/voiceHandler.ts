@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io'
 import { ensureRouter, createTransport, connectTransport, produceOnTransport, consumeOnTransport, closeRouter } from '../media/router'
 import type { types as mediasoupTypes } from 'mediasoup'
 import { getDb } from '../db'
+import { getUserPermissions, hasPermission } from '../middleware/auth'
 
 function vts(): string {
   return new Date().toISOString().split('T')[1].slice(0, 12)
@@ -97,11 +98,30 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     vlog('join', `request | socketId=${socket.id} | channelId=${channelId} | userId=${userId} | username=${username} | peers=${peers.size}`)
     try {
       const db = getDb()
-      const member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
-      if (!member) {
-        vlog('join', `rejected: not a server member | userId=${userId}`)
-        if (typeof callback === 'function') callback({ error: 'Not a server member' })
-        return
+
+      if (channelId.startsWith('dm:')) {
+        const dmChannelId = channelId.slice(3)
+        const dmChannel = db.prepare(
+          'SELECT * FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)'
+        ).get(dmChannelId, userId, userId)
+        if (!dmChannel) {
+          vlog('join', `rejected: not a dm channel participant | userId=${userId} | dmChannelId=${dmChannelId}`)
+          if (typeof callback === 'function') callback({ error: 'Not a participant in this DM' })
+          return
+        }
+      } else {
+        const member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
+        if (!member) {
+          vlog('join', `rejected: not a server member | userId=${userId}`)
+          if (typeof callback === 'function') callback({ error: 'Not a server member' })
+          return
+        }
+        const userInfo = getUserPermissions(userId)
+        if (!userInfo || !hasPermission(userInfo, 'use_voice')) {
+          vlog('join', `rejected: no use_voice permission | userId=${userId}`)
+          if (typeof callback === 'function') callback({ error: 'You do not have permission to join voice channels' })
+          return
+        }
       }
 
       const router = await ensureRouter(channelId)

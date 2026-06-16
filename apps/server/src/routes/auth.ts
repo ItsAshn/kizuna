@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { getDb } from '../db'
-import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getJwtSecret } from '../middleware/auth'
+import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getJwtSecret, assignDefaultRoles } from '../middleware/auth'
 import type { AuthUser, JwtPayload } from '../middleware/auth'
 import { generateChallenge, verifyPoW } from '../middleware/pow'
 import jwt from 'jsonwebtoken'
@@ -78,6 +78,8 @@ authRoutes.post('/register', async (c) => {
 
     if (isFirstUser) {
       db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(id, 'admin-role')
+    } else {
+      assignDefaultRoles(id)
     }
 
     const user = db
@@ -149,6 +151,8 @@ authRoutes.post('/login', async (c) => {
       db.prepare('INSERT OR IGNORE INTO server_members (user_id, role, is_host) VALUES (?, ?, 0)').run(user.id, isFirstAdmin ? 'admin' : 'member')
       if (isFirstAdmin) {
         db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(user.id, 'admin-role')
+      } else {
+        assignDefaultRoles(user.id)
       }
     })()
     member = db.prepare('SELECT role, is_host FROM server_members WHERE user_id = ?').get(user.id) as { role: string; is_host: number } | undefined
@@ -261,13 +265,14 @@ authRoutes.get('/users', authMiddleware, (c) => {
   const placeholders = userIds.map(() => '?').join(',')
 
   const memberRoles = db.prepare(`
-    SELECT mr.user_id, r.id, r.name, r.color, r.permissions, r.is_admin
+    SELECT mr.user_id, r.id, r.name, r.color, r.permissions, r.is_admin, r.position, r.hoist
     FROM member_roles mr
     JOIN roles r ON mr.role_id = r.id
     WHERE mr.user_id IN (${placeholders})
-  `).all(...userIds) as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number }[]
+    ORDER BY r.position ASC
+  `).all(...userIds) as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number; position: number; hoist: number }[]
 
-  const rolesByUser: Record<string, { id: string; name: string; color: string; permissions: Record<string, boolean>; is_admin: boolean }[]> = {}
+  const rolesByUser: Record<string, { id: string; name: string; color: string; permissions: Record<string, boolean>; is_admin: boolean; position: number; hoist: boolean }[]> = {}
   for (const row of memberRoles) {
     if (!rolesByUser[row.user_id]) rolesByUser[row.user_id] = []
     rolesByUser[row.user_id].push({
@@ -276,16 +281,18 @@ authRoutes.get('/users', authMiddleware, (c) => {
       color: row.color,
       permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
       is_admin: row.is_admin === 1,
+      position: row.position ?? 0,
+      hoist: row.hoist === 1,
     })
   }
 
   const legacyRoles = db.prepare(`
-    SELECT sm.user_id, r.id, r.name, r.color, r.permissions, r.is_admin
+    SELECT sm.user_id, r.id, r.name, r.color, r.permissions, r.is_admin, r.position, r.hoist
     FROM server_members sm
     JOIN roles r ON sm.custom_role_id = r.id
     WHERE sm.custom_role_id IS NOT NULL AND sm.user_id IN (${placeholders})
       AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = sm.user_id AND mr.role_id = sm.custom_role_id)
-  `).all(...userIds) as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number }[]
+  `).all(...userIds) as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number; position: number; hoist: number }[]
 
   for (const row of legacyRoles) {
     if (!rolesByUser[row.user_id]) rolesByUser[row.user_id] = []
@@ -296,6 +303,8 @@ authRoutes.get('/users', authMiddleware, (c) => {
         color: row.color,
         permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
         is_admin: row.is_admin === 1,
+        position: row.position ?? 0,
+        hoist: row.hoist === 1,
       })
     }
   }
@@ -303,15 +312,20 @@ authRoutes.get('/users', authMiddleware, (c) => {
   const formatted = users.map((u: any) => {
     const userRoles = rolesByUser[u.id] || []
     const isAdmin = userRoles.some(r => r.is_admin)
+    const highestRole = userRoles.length > 0 ? userRoles[userRoles.length - 1] : null
+    const hoistedRole = [...userRoles].reverse().find(r => r.hoist) || null
     return {
       ...u,
       last_seen_at: u.last_seen_at ? u.last_seen_at * 1000 : null,
       role: isAdmin ? 'admin' : 'member',
       is_host: u.is_host === 1,
       custom_roles: userRoles,
-      custom_role_id: userRoles.length > 0 ? userRoles[0].id : null,
-      custom_role_name: userRoles.length > 0 ? userRoles[0].name : null,
-      custom_role_color: userRoles.length > 0 ? userRoles[0].color : null,
+      custom_role_id: highestRole?.id ?? null,
+      custom_role_name: highestRole?.name ?? null,
+      custom_role_color: highestRole?.color ?? null,
+      hoist_role_id: hoistedRole?.id ?? null,
+      hoist_role_name: hoistedRole?.name ?? null,
+      hoist_role_color: hoistedRole?.color ?? null,
     }
   })
 

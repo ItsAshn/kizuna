@@ -12,6 +12,7 @@ interface VoiceOverlayProps {
   socketRef: React.MutableRefObject<any>
   startScreenshare: (channelId: string, monitorIndex: number, fps: number) => Promise<string | null>
   stopScreenshare: () => void
+  dmCallOtherUsername?: string | null
 }
 
 function ConnectionQualityBars({ quality }: { quality: ConnectionQuality | null | undefined }) {
@@ -41,7 +42,7 @@ function ConnectionQualityBars({ quality }: { quality: ConnectionQuality | null 
   )
 }
 
-export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare }: VoiceOverlayProps) {
+export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare, dmCallOtherUsername }: VoiceOverlayProps) {
   const {
     activeVoiceChannelId,
     voicePeers,
@@ -60,8 +61,6 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
   const [closing, setClosing] = useState(false)
   const [showMonitorPicker, setShowMonitorPicker] = useState(false)
   const [screenShareError, setScreenShareError] = useState<string | null>(null)
-  const [leaveConfirm, setLeaveConfirm] = useState(false)
-
   useEffect(() => {
     if (activeVoiceChannelId) setClosing(false)
   }, [activeVoiceChannelId])
@@ -91,6 +90,9 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
   if (!activeVoiceChannelId && !closing) return null
 
   const channel = channels.find(c => c.id === activeVoiceChannelId)
+  const isDMCall = !!dmCallOtherUsername
+  const headerName = isDMCall ? dmCallOtherUsername : (channel?.name || 'Voice Channel')
+  const headerIcon = isDMCall ? (dmCallOtherUsername?.[0]?.toUpperCase()) : ''
 
   const handleRetry = () => {
     setVoiceError(null)
@@ -118,16 +120,22 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
       )}
 
       <div className="voice-header">
-        <Volume2 className="icon-xs voice-header__icon" />
+        {isDMCall ? (
+          <div className="voice-peer__avatar voice-peer__avatar--dmcall">
+            {headerIcon}
+          </div>
+        ) : (
+          <Volume2 className="icon-xs voice-header__icon" />
+        )}
         <span className="voice-header__name">
-          {channel?.name || 'Voice Channel'}
+          {headerName}
         </span>
         <span className={`voice-header__status ${voiceError ? 'voice-header__status--error' : ''}`}>
           {voiceError ? 'error' : 'connected'}
         </span>
         {!voiceError && (
           <>
-            {'__TAURI_INTERNALS__' in window && (
+            {!isDMCall && '__TAURI_INTERNALS__' in window && (
               <button
                 onClick={() => {
                   if (isScreenSharing) {
@@ -154,32 +162,13 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
             >
               {isMuted ? <MicOff className="icon-xs" /> : <Mic className="icon-xs" />}
             </button>
-            {leaveConfirm ? (
-              <div className="voice-header__leave-confirm">
-                <button
-                  onClick={handleLeave}
-                  className="voice-header__btn voice-header__btn--leave-confirm-yes"
-                  title="Confirm leave"
-                >
-                  Yes
-                </button>
-                <button
-                  onClick={() => setLeaveConfirm(false)}
-                  className="voice-header__btn voice-header__btn--mute"
-                  title="Cancel"
-                >
-                  No
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setLeaveConfirm(true)}
-                className="voice-header__btn voice-header__btn--leave"
-                title="Leave"
-              >
-                <PhoneOff className="icon-xs" />
-              </button>
-            )}
+            <button
+              onClick={handleLeave}
+              className="voice-header__btn voice-header__btn--leave"
+              title="Leave"
+            >
+              <PhoneOff className="icon-xs" />
+            </button>
           </>
         )}
       </div>

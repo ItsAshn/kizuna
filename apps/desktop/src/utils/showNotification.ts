@@ -2,14 +2,14 @@ import { useNotificationStore } from '../store/notificationStore'
 import { useChatStore } from '../store/chatStore'
 
 interface ShowNotificationOptions {
-  type: 'announce' | 'mention' | 'message'
+  type: 'announce' | 'mention' | 'message' | 'dmcall'
   title: string
   body: string
   channelId?: string
 }
 
 export function showNotification(opts: ShowNotificationOptions) {
-  if (opts.channelId && opts.type !== 'announce') {
+  if (opts.channelId && opts.type !== 'announce' && opts.type !== 'dmcall') {
     const mutes = useChatStore.getState().channelMutes
     const mute = mutes[opts.channelId]
     if (mute !== undefined) {
@@ -27,6 +27,7 @@ export function showNotification(opts: ShowNotificationOptions) {
 
   const tag = opts.type === 'mention' ? `mention-${opts.channelId}` :
               opts.type === 'announce' ? 'announce' :
+              opts.type === 'dmcall' ? 'dmcall' :
               `message-${opts.channelId ?? 'unknown'}`
 
   if ('Notification' in window && Notification.permission === 'granted') {

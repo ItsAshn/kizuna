@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { getDb } from '../db'
-import { authMiddleware } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
@@ -68,6 +68,13 @@ reactionRoutes.post('/:messageId', authMiddleware, async (c) => {
   const db = getDb()
   const msgInfo = getMessageInfo(db, messageId)
   if (!msgInfo) return c.json({ error: 'Message not found' }, 404)
+
+  if (!msgInfo.isDM) {
+    const userPerms = getUserPermissions(user.userId)
+    if (!userPerms || !hasPermission(userPerms, 'add_reactions')) {
+      return c.json({ error: 'Forbidden' }, 403)
+    }
+  }
 
   const existing = findReaction(db, messageId, user.userId, reaction_key)
   if (existing) return c.json({ error: 'Already reacted' }, 409)

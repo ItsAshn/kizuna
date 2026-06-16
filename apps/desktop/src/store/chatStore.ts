@@ -6,6 +6,16 @@ export type VoiceInputMode = 'voice-activity' | 'push-to-talk'
 
 export type NotificationLevel = 'all' | 'mentions' | 'none'
 
+export interface DMIncomingCall {
+  dmChannelId: string
+  callerUserId: string
+  callerUsername: string
+  calleeUserId: string
+  calleeUsername: string
+}
+
+export type DMCallStatus = 'idle' | 'ringing-incoming' | 'ringing-outgoing' | 'active'
+
 interface NotificationSettings {
   level: NotificationLevel
   suppressEveryone: boolean
@@ -63,6 +73,13 @@ interface ChatState {
   updateProgress: number
   updateVersion: string | null
   updateError: string | null
+
+  dmCallStatus: DMCallStatus
+  dmCallChannelId: string | null
+  dmCallOtherUserId: string | null
+  dmCallOtherUsername: string | null
+  incomingCall: DMIncomingCall | null
+  dmCallShouldCleanup: boolean
 
   socketConnected: boolean
   socketReconnecting: boolean
@@ -144,6 +161,13 @@ interface ChatState {
   setNotificationSettings: (serverId: string, settings: NotificationSettings) => void
 
   updateMessageReactions: (channelId: string, messageId: string, reactions: MessageReaction[]) => void
+
+  setDMCallStatus: (status: DMCallStatus) => void
+  setDMCallChannelId: (channelId: string | null) => void
+  setDMCallOtherUser: (userId: string | null, username: string | null) => void
+  setIncomingCall: (call: DMIncomingCall | null) => void
+  setDMCallShouldCleanup: (should: boolean) => void
+  clearDMCall: () => void
 }
 
 export const useChatStore = create<ChatState>()(
@@ -204,6 +228,13 @@ export const useChatStore = create<ChatState>()(
       socketConnected: true,
       socketReconnecting: false,
       socketReconnectAttempts: 0,
+
+      dmCallStatus: 'idle' as DMCallStatus,
+      dmCallChannelId: null,
+      dmCallOtherUserId: null,
+      dmCallOtherUsername: null,
+      incomingCall: null,
+      dmCallShouldCleanup: false,
 
       setChannels: (channels) => set({ channels }),
       setDMChannels: (dmChannels) => set({ dmChannels }),
@@ -376,6 +407,23 @@ export const useChatStore = create<ChatState>()(
             ),
           },
         })),
+
+      setDMCallStatus: (dmCallStatus) => set({ dmCallStatus }),
+      setDMCallChannelId: (dmCallChannelId) => set({ dmCallChannelId }),
+      setDMCallOtherUser: (userId, username) => set({ dmCallOtherUserId: userId, dmCallOtherUsername: username }),
+      setIncomingCall: (incomingCall) => set({
+        incomingCall,
+        dmCallStatus: incomingCall ? 'ringing-incoming' : 'idle',
+      }),
+      setDMCallShouldCleanup: (dmCallShouldCleanup) => set({ dmCallShouldCleanup }),
+      clearDMCall: () => set({
+        dmCallStatus: 'idle',
+        dmCallChannelId: null,
+        dmCallOtherUserId: null,
+        dmCallOtherUsername: null,
+        incomingCall: null,
+        dmCallShouldCleanup: false,
+      }),
     }),
     {
       name: 'kizuna-voice-settings-v2',

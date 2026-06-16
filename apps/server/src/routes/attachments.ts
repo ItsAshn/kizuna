@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb } from '../db'
-import { authMiddleware, isUserAdmin } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission, isUserAdmin } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 import { uploadLimiter } from '../middleware/rateLimiter'
 import { processImage, shouldProcessImage } from '../media/imageProcessor'
@@ -76,6 +76,11 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 attachmentRoutes.post('/:channelId', uploadLimiter as never, authMiddleware, async (c) => {
   const user = getAuth(c)
   const channelId = c.req.param('channelId')
+
+  const userPerms = getUserPermissions(user.userId)
+  if (!userPerms || !hasPermission(userPerms, 'upload_attachments')) {
+    return c.json({ error: 'Forbidden' }, 403)
+  }
 
   try {
     const contentLength = parseInt(c.req.header('content-length') || '0', 10)

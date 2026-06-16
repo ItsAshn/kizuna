@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export interface NotificationItem {
   id: string
-  type: 'announce' | 'mention' | 'message'
+  type: 'announce' | 'mention' | 'message' | 'dmcall'
   title: string
   body: string
   channelId?: string

@@ -4,11 +4,11 @@ import type { Socket } from 'socket.io-client'
 import { Virtuoso } from 'react-virtuoso'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey } from '@kizuna/shared'
+import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import { Lock, Paperclip, Send, Sticker } from 'lucide-react'
-import type { Message, Member, DMChannelData } from '@kizuna/shared'
+import { Lock, Paperclip, Send, Sticker, Phone } from 'lucide-react'
+import type { Message, Member, DMChannelData, CustomRole } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
 import Skeleton from './Skeleton'
@@ -18,6 +18,8 @@ import '../styles/chat-area.css'
 
 interface ChatAreaProps {
   socketRef: MutableRefObject<Socket | null>
+  onStartDMCall?: (dmChannelId: string, otherUserId: string, otherUsername: string) => void
+  onEndDMCall?: () => void
 }
 
 function getAtQuery(text: string, cursor: number): string | null {
@@ -51,7 +53,7 @@ function formatDateSeparator(date: Date): string {
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export default function ChatArea({ socketRef }: ChatAreaProps) {
+export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: ChatAreaProps) {
   const session = useServerStore((s) => s.activeSession)
   const channels = useChatStore((s) => s.channels)
   const dmChannels = useChatStore((s) => s.dmChannels)
@@ -62,6 +64,8 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const addMessage = useChatStore((s) => s.addMessage)
   const typingUsers = useChatStore((s) => s.typingUsers)
   const hasMoreMessages = useChatStore((s) => s.hasMoreMessages)
+  const dmCallStatus = useChatStore((s) => s.dmCallStatus)
+  const dmCallChannelId = useChatStore((s) => s.dmCallChannelId)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -83,9 +87,11 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [atBottom, setAtBottom] = useState(true)
+  const lastCountAtBottom = useRef(0)
   const [lightboxImages, setLightboxImages] = useState<{ url: string; filename: string }[] | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const [showSearch, setShowSearch] = useState(false)
+  const [mentionableRoles, setMentionableRoles] = useState<CustomRole[]>([])
   const tryDecryptDM = useCallback((msg: Message): Message => {
     if (!msg.encrypted) return msg
     const parsed = isEncryptedContent(msg.content)
@@ -122,10 +128,22 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
     : false
 
   const specialTargets = ['everyone', 'here']
-  const allSuggestions = [...specialTargets, ...members.map(m => m.username)]
+  const allSuggestions = [
+    ...specialTargets,
+    ...mentionableRoles.map(r => r.name),
+    ...members.map(m => m.username),
+  ]
   const suggestions = atQuery !== null
     ? allSuggestions.filter(u => u.toLowerCase().startsWith(atQuery.toLowerCase()))
     : []
+
+  useEffect(() => {
+    if (session) {
+      fetchRoles(session.url).then(roles => {
+        setMentionableRoles(roles.filter(r => r.mentionable))
+      }).catch(() => {})
+    }
+  }, [session])
 
   useEffect(() => { setSelectedIndex(0) }, [suggestions.length, atQuery])
   useEffect(() => {
@@ -505,6 +523,11 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
 
   const headerTitle = activeChannel?.name || activeDM?.other_display_name || 'Kizuna'
   const displayMessages = activeDMChannelId ? dmMessages : channelMessages
+  useEffect(() => {
+    if (atBottom) {
+      lastCountAtBottom.current = displayMessages.length
+    }
+  }, [atBottom, displayMessages.length])
   const channelId = activeChannelId || activeDMChannelId || ''
   const typingList = typingUsers[channelId]?.filter(u => u !== session?.user.username) || []
   const typingText = typingList.length === 1
@@ -600,6 +623,22 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
       <div className="chat-area__header">
         <span className="chat-area__header-prefix">{activeDMChannelId ? '@' : '#'}</span>
         <h2 className="chat-area__header-title">{headerTitle}</h2>
+        {activeDMChannelId && activeDM && (
+          <button
+            onClick={() => {
+              if (dmCallStatus === 'active' && dmCallChannelId === activeDM.id) {
+                onEndDMCall?.()
+              } else if (dmCallStatus !== 'ringing-outgoing') {
+                onStartDMCall?.(activeDM.id, activeDM.other_user_id, activeDM.other_display_name)
+              }
+            }}
+            className={`chat-area__call-btn ${dmCallStatus === 'active' && dmCallChannelId === activeDM.id ? 'chat-area__call-btn--active' : ''}`}
+            title={dmCallStatus === 'active' && dmCallChannelId === activeDM.id ? 'End call' : dmCallStatus === 'ringing-outgoing' && dmCallChannelId === activeDM.id ? 'Calling...' : 'Start call'}
+            disabled={dmCallStatus === 'ringing-outgoing' && dmCallChannelId === activeDM.id}
+          >
+            <Phone className="icon-xs" />
+          </button>
+        )}
         {activeDMChannelId && dmHasKey && (
           <span className="chat-area__encrypted-badge" title="End-to-end encrypted">🔒</span>
         )}
@@ -657,10 +696,10 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
             }}
           />
         )}
-        {!atBottom && displayMessages.length > 10 && (
+        {!atBottom && displayMessages.length > lastCountAtBottom.current && (
           <button
             className="chat-area__scroll-bottom"
-            onClick={() => virtuosoRef.current?.scrollToIndex(displayMessages.length - 1)}
+            onClick={() => { virtuosoRef.current?.scrollToIndex(displayMessages.length - 1); lastCountAtBottom.current = displayMessages.length }}
             title="Scroll to bottom"
           >
             ↓ New messages
@@ -671,7 +710,10 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
       <div className="chat-area__input-bar">
         {suggestions.length > 0 && (
           <div className="chat-area__mention-suggestions">
-            {suggestions.slice(0, 8).map((u, i) => (
+            {suggestions.slice(0, 8).map((u, i) => {
+              const mentionableRole = mentionableRoles.find(r => r.name === u)
+              const isRole = !!mentionableRole
+              return (
               <button
                 key={u}
                 ref={(el) => { suggestionRefs.current[i] = el }}
@@ -679,11 +721,14 @@ export default function ChatArea({ socketRef }: ChatAreaProps) {
                 onMouseEnter={() => setSelectedIndex(i)}
                 className={`chat-area__mention-suggestion ${i === selectedIndex ? 'chat-area__mention-suggestion--selected' : ''}`}
               >
+                {isRole && <span className="chat-area__mention-role-dot" style={{ backgroundColor: mentionableRole.color }} />}
                 <span className="chat-area__mention-prefix">@</span>
                 {u}
+                {isRole && <span className="chat-area__mention-group-tag">role</span>}
                 {(u === 'everyone' || u === 'here') && <span className="chat-area__mention-group-tag">group</span>}
               </button>
-            ))}
+              )
+            })}
           </div>
         )}
 

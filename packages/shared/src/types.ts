@@ -85,6 +85,9 @@ export interface Member {
   custom_role_id?: string | null
   custom_role_name?: string | null
   custom_role_color?: string | null
+  hoist_role_id?: string | null
+  hoist_role_name?: string | null
+  hoist_role_color?: string | null
   status?: UserStatus
   reset_requested_at?: number | null
 }
@@ -96,10 +99,16 @@ export interface AdminInfo {
 
 export type Permission =
   | 'send_messages'
-  | 'manage_channels'
+  | 'send_dm_messages'
+  | 'add_reactions'
+  | 'upload_attachments'
   | 'delete_messages'
+  | 'manage_channels'
+  | 'manage_roles'
   | 'kick_members'
   | 'manage_invites'
+  | 'use_voice'
+  | 'initiate_dm_calls'
 
 export interface CustomRole {
   id: string
@@ -107,6 +116,10 @@ export interface CustomRole {
   color: string
   permissions: Partial<Record<Permission, boolean>>
   is_admin?: boolean
+  position?: number
+  hoist?: boolean
+  mentionable?: boolean
+  default_on_join?: boolean
   created_at?: number
 }
 
@@ -189,7 +202,7 @@ export interface Mention {
   author_id: string
   author_username: string
   mentioned_user_id: string | null
-  mention_type: 'everyone' | 'here' | 'user'
+  mention_type: 'everyone' | 'here' | 'user' | 'role'
   content: string
   read: number
   created_at: number

@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { X, Megaphone, AtSign, MessageCircle } from 'lucide-react'
+import { X, Megaphone, AtSign, MessageCircle, Phone } from 'lucide-react'
 import { useNotificationStore } from '../store/notificationStore'
 import { useChatStore } from '../store/chatStore'
 import type { NotificationItem } from '../store/notificationStore'
@@ -8,6 +8,7 @@ const typeIcons = {
   announce: Megaphone,
   mention: AtSign,
   message: MessageCircle,
+  dmcall: Phone,
 }
 
 interface Props {
@@ -17,15 +18,20 @@ interface Props {
 export default function NotificationToast({ notification }: Props) {
   const dismissNotification = useNotificationStore((s) => s.dismissNotification)
   const setActiveChannel = useChatStore((s) => s.setActiveChannel)
+  const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
 
   const Icon = typeIcons[notification.type]
 
   const handleClick = useCallback(() => {
     if (notification.channelId) {
-      setActiveChannel(notification.channelId)
+      if (notification.type === 'dmcall') {
+        setActiveDMChannel(notification.channelId)
+      } else {
+        setActiveChannel(notification.channelId)
+      }
     }
     dismissNotification(notification.id)
-  }, [notification.channelId, notification.id, dismissNotification, setActiveChannel])
+  }, [notification.channelId, notification.id, notification.type, dismissNotification, setActiveChannel, setActiveDMChannel])
 
   return (
     <div

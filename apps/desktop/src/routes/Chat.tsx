@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useSocket } from '../hooks/useSocket'
@@ -20,6 +20,7 @@ import SetupWizard from '../components/SetupWizard'
 import LoginDialog from '../components/LoginDialog'
 import NotificationContainer from '../components/NotificationContainer'
 import QuickSwitcher from '../components/QuickSwitcher'
+import IncomingCallModal from '../components/IncomingCallModal'
 import { useNavigate } from 'react-router-dom'
 import '../styles/chat.css'
 
@@ -43,8 +44,19 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     toggleMute,
     sendTransportRef,
     videoElRef,
+    startDMCall,
+    acceptDMCall,
+    rejectDMCall,
+    endDMCall,
+    connectDMCall,
   } = useVoice(socketRef)
   const { startScreenshare, stopScreenshare } = useScreenshare(socketRef, sendTransportRef)
+  const {
+    dmCallStatus, dmCallChannelId, dmCallOtherUserId, dmCallOtherUsername,
+    incomingCall, setIncomingCall, dmCallShouldCleanup, setDMCallShouldCleanup,
+    clearDMCall,
+  } = useChatStore()
+  const dmCallConnectedRef = useRef(false)
   const [showMembers, setShowMembers] = useState(true)
   const [showMenu, setShowMenu] = useState(false)
   const [showEnvWizard, setShowEnvWizard] = useState(false)
@@ -163,6 +175,24 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     }
   }, [session?.serverId, customCssEnabled, bgInfo?.customCss])
 
+  useEffect(() => {
+    if (dmCallStatus === 'active' && dmCallChannelId && !dmCallConnectedRef.current) {
+      dmCallConnectedRef.current = true
+      connectDMCall(dmCallChannelId)
+    }
+    if (dmCallStatus === 'idle') {
+      dmCallConnectedRef.current = false
+    }
+  }, [dmCallStatus, dmCallChannelId, connectDMCall])
+
+  useEffect(() => {
+    if (dmCallShouldCleanup) {
+      leaveVoice()
+      setDMCallShouldCleanup(false)
+      clearDMCall()
+    }
+  }, [dmCallShouldCleanup, leaveVoice, setDMCallShouldCleanup, clearDMCall])
+
   if (!session) return null
 
   const showBg = bgInfo?.hasBackground && serverBackgroundEnabled
@@ -223,7 +253,11 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
                   <span>{members.length}</span>
                 </button>
               </div>
-              <ChatArea socketRef={socketRef} />
+              <ChatArea
+                socketRef={socketRef}
+                onStartDMCall={startDMCall}
+                onEndDMCall={endDMCall}
+              />
             </>
           ) : (
             <div className="chat-placeholder">
@@ -252,6 +286,13 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
     {loginForServerId && <LoginDialog serverId={loginForServerId} onClose={() => setLoginForServerId(null)} />}
     {showQuickSwitcher && <QuickSwitcher onClose={() => setShowQuickSwitcher(false)} />}
+    {incomingCall && (
+      <IncomingCallModal
+        incomingCall={incomingCall}
+        onAccept={() => acceptDMCall(incomingCall.dmChannelId, incomingCall.callerUserId, incomingCall.callerUsername)}
+        onReject={() => rejectDMCall(incomingCall.dmChannelId)}
+      />
+    )}
     </>
   )
 }

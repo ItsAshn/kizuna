@@ -3,11 +3,12 @@ import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useNavigate } from 'react-router-dom'
 import { createChannel, lockChannel, fetchRoles, setChannelMute, deleteChannelMute } from '@kizuna/shared'
-import type { CustomRole } from '@kizuna/shared'
+import type { CustomRole, Channel } from '@kizuna/shared'
 import { Lock, Unlock, BellOff } from 'lucide-react'
 import VoiceOverlay from './VoiceOverlay'
 import UserStatusPicker from './UserStatusPicker'
 import ContextMenu from './ContextMenu'
+import ChannelSettingsModal from './ChannelSettingsModal'
 import '../styles/sidebar.css'
 
 interface SidebarProps {
@@ -31,6 +32,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
     setActiveChannel, setActiveDMChannel,
     channelMutes,
     voiceChannelUsers, members,
+    dmCallOtherUsername,
   } = useChatStore()
   const [newChannelName, setNewChannelName] = useState('')
   const [newChannelType, setNewChannelType] = useState<'text' | 'voice'>('text')
@@ -42,6 +44,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
   const lockMenuRef = useRef<HTMLDivElement | null>(null)
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false)
+  const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null)
 
   useEffect(() => {
     if (!lockMenuChannelId) return
@@ -103,23 +106,34 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   }
 
   function getMuteMenuItems(channelId: string) {
+    const ch = channels.find(c => c.id === channelId)
     const isMuted = channelMutes[channelId] !== undefined
-    if (isMuted) {
-      return [{
-        items: [{ label: 'Unmute Channel', onClick: () => { if (session) deleteChannelMute(session.url, channelId).catch(() => {}) } }],
-      }]
+    const sections: { items: { label: string; onClick: () => void; danger?: boolean }[] }[] = []
+
+    if (ch && isAdmin) {
+      sections.push({
+        items: [{ label: 'Edit Channel', onClick: () => { setContextMenuChannelId(null); setSettingsChannel(ch) } }],
+      })
     }
-    const now = Date.now()
-    return [{
-      items: [
-        { label: 'Mute for 15 minutes', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 15 * 60 * 1000).catch(() => {}) } },
-        { label: 'Mute for 1 hour', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 60 * 60 * 1000).catch(() => {}) } },
-        { label: 'Mute for 3 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 3 * 60 * 60 * 1000).catch(() => {}) } },
-        { label: 'Mute for 8 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 8 * 60 * 60 * 1000).catch(() => {}) } },
-        { label: 'Mute for 24 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 24 * 60 * 60 * 1000).catch(() => {}) } },
-        { label: 'Mute forever', onClick: () => { if (session) setChannelMute(session.url, channelId, null).catch(() => {}) } },
-      ],
-    }]
+
+    if (isMuted) {
+      sections.push({
+        items: [{ label: 'Unmute Channel', onClick: () => { if (session) deleteChannelMute(session.url, channelId).catch(() => {}) } }],
+      })
+    } else {
+      const now = Date.now()
+      sections.push({
+        items: [
+          { label: 'Mute for 15 minutes', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 15 * 60 * 1000).catch(() => {}) } },
+          { label: 'Mute for 1 hour', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 60 * 60 * 1000).catch(() => {}) } },
+          { label: 'Mute for 3 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 3 * 60 * 60 * 1000).catch(() => {}) } },
+          { label: 'Mute for 8 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 8 * 60 * 60 * 1000).catch(() => {}) } },
+          { label: 'Mute for 24 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 24 * 60 * 60 * 1000).catch(() => {}) } },
+          { label: 'Mute forever', onClick: () => { if (session) setChannelMute(session.url, channelId, null).catch(() => {}) } },
+        ],
+      })
+    }
+    return sections
   }
 
   async function openLockMenu(channelId: string) {
@@ -348,6 +362,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
         socketRef={socketRef}
         startScreenshare={startScreenshare}
         stopScreenshare={stopScreenshare}
+        dmCallOtherUsername={dmCallOtherUsername}
       />
 
       <div className="sidebar__footer">
@@ -370,6 +385,13 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
           y={contextMenuPos.y}
           sections={getMuteMenuItems(contextMenuChannelId)}
           onClose={() => setContextMenuChannelId(null)}
+        />
+      )}
+
+      {settingsChannel && (
+        <ChannelSettingsModal
+          channel={settingsChannel}
+          onClose={() => setSettingsChannel(null)}
         />
       )}
     </div>

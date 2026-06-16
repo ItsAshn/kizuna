@@ -301,6 +301,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
     inputVolume, outputVolume,
     setLiveAudioLevel,
+    setDMCallStatus, setDMCallChannelId, setDMCallOtherUser,
+    setIncomingCall, clearDMCall,
+    dmCallChannelId,
   } = useChatStore()
 
   const cleanupVoice = useCallback(() => {
@@ -1310,11 +1313,16 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
   }, [joinVoice, cleanupVoice, setVoiceError])
 
   const leaveVoice = useCallback(async () => {
+    const channelId = channelIdRef.current
     if (isTauri()) {
       await leaveVoiceNative()
       setActiveVoiceChannel(null)
       setIsMuted(false)
       setVoiceError(null)
+      if (channelId?.startsWith('dm:')) {
+        socketRef.current?.emit('dm:call:end', { dmChannelId: channelId.slice(3) })
+        clearDMCall()
+      }
       return
     }
     const socket = socketRef.current
@@ -1327,13 +1335,17 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       socket.off('screen:peerStopped')
       socket.off('voice:consumerClosed')
       stopScreenConsume()
+      if (channelId?.startsWith('dm:')) {
+        socket.emit('dm:call:end', { dmChannelId: channelId.slice(3) })
+        clearDMCall()
+      }
       socket.emit('voice:leave', { channelId: channelIdRef.current })
     }
     channelIdRef.current = null
     setActiveVoiceChannel(null)
     setIsMuted(false)
     setVoiceError(null)
-  }, [socketRef, cleanupVoice, setActiveVoiceChannel, setIsMuted, setVoiceError, leaveVoiceNative])
+  }, [socketRef, cleanupVoice, setActiveVoiceChannel, setIsMuted, setVoiceError, leaveVoiceNative, clearDMCall])
 
   const toggleMute = useCallback(() => {
     if (voiceInputMode === 'push-to-talk') return
@@ -1348,6 +1360,70 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       else producerRef.current.resume()
     }
   }, [isMuted, setIsMuted, voiceInputMode])
+
+  const startDMCall = useCallback(async (dmChannelId: string, otherUserId: string, otherUsername: string) => {
+    const socket = socketRef.current
+    if (!socket) return
+
+    setDMCallStatus('ringing-outgoing')
+    setDMCallChannelId(dmChannelId)
+    setDMCallOtherUser(otherUserId, otherUsername)
+
+    const result: any = await new Promise((resolve) =>
+      socket.emit('dm:call:start', { dmChannelId }, resolve),
+    )
+
+    if (result?.error) {
+      clearDMCall()
+      setVoiceError(result.error)
+    }
+  }, [socketRef, setDMCallStatus, setDMCallChannelId, setDMCallOtherUser, clearDMCall, setVoiceError])
+
+  const acceptDMCall = useCallback(async (dmChannelId: string, otherUserId: string, otherUsername: string) => {
+    const socket = socketRef.current
+    if (!socket) return
+
+    setIncomingCall(null)
+    setDMCallStatus('active')
+    setDMCallChannelId(dmChannelId)
+    setDMCallOtherUser(otherUserId, otherUsername)
+
+    const voiceChannelId = `dm:${dmChannelId}`
+    socket.emit('dm:call:accept', { dmChannelId })
+    const error = await joinVoice(voiceChannelId)
+    if (error) {
+      clearDMCall()
+    }
+  }, [socketRef, setIncomingCall, setDMCallStatus, setDMCallChannelId, setDMCallOtherUser, joinVoice, clearDMCall])
+
+  const rejectDMCall = useCallback((dmChannelId: string) => {
+    const socket = socketRef.current
+    if (!socket) return
+    socket.emit('dm:call:reject', { dmChannelId })
+    clearDMCall()
+  }, [socketRef, clearDMCall])
+
+  const endDMCall = useCallback(async () => {
+    const socket = socketRef.current
+    const channelId = dmCallChannelId
+    if (!socket || !channelId) {
+      await leaveVoice()
+      clearDMCall()
+      return
+    }
+    const voiceChannelId = `dm:${channelId}`
+    socket.emit('dm:call:end', { dmChannelId: channelId })
+    await leaveVoice()
+    clearDMCall()
+  }, [socketRef, dmCallChannelId, leaveVoice, clearDMCall])
+
+  const connectDMCall = useCallback(async (dmChannelId: string) => {
+    const voiceChannelId = `dm:${dmChannelId}`
+    const error = await joinVoice(voiceChannelId)
+    if (error) {
+      clearDMCall()
+    }
+  }, [joinVoice, clearDMCall])
 
   useEffect(() => {
     let prevInputVolume = inputVolume
@@ -1374,5 +1450,5 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     return unsub
   }, [])
 
-  return { joinVoice, leaveVoice, toggleMute, sendTransportRef, recvTransportRef, videoElRef }
+  return { joinVoice, leaveVoice, toggleMute, sendTransportRef, recvTransportRef, videoElRef, startDMCall, acceptDMCall, rejectDMCall, endDMCall, connectDMCall }
 }

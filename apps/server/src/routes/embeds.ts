@@ -27,6 +27,29 @@ embedRoutes.post('/unfurl', authMiddleware, async (c) => {
       continue
     }
 
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
+    if (ytMatch) {
+      try {
+        const oembedRes = await fetch(
+          `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${ytMatch[1]}`)}&format=json`
+        )
+        if (oembedRes.ok) {
+          const oembed = await oembedRes.json() as any
+          const title = oembed.title || null
+          const image = oembed.thumbnail_url || null
+
+          db.prepare(
+            'INSERT OR REPLACE INTO link_embeds (url, title, description, image, site_name, favicon, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          ).run(url, title, null, image, 'YouTube', 'https://www.youtube.com/favicon.ico', Math.floor(Date.now() / 1000))
+
+          results[url] = { title, description: null, image, siteName: 'YouTube', favicon: 'https://www.youtube.com/favicon.ico' }
+          continue
+        }
+      } catch {
+        // oEmbed failed — fall through to generic scraper
+      }
+    }
+
     try {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 5000)

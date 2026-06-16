@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin, isUserHost } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin, isUserHost, assignDefaultRoles } from '../middleware/auth'
 import { getAllPeers } from '../socket/voiceHandler'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
@@ -21,13 +21,14 @@ function getMemberById(userId: string) {
   if (!user) return null
 
   const memberRoles = db.prepare(`
-    SELECT mr.user_id, r.id, r.name, r.color, r.permissions, r.is_admin
+    SELECT mr.user_id, r.id, r.name, r.color, r.permissions, r.is_admin, r.position, r.hoist
     FROM member_roles mr
     JOIN roles r ON mr.role_id = r.id
     WHERE mr.user_id = ?
-  `).all(userId) as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number }[]
+    ORDER BY r.position ASC
+  `).all(userId) as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number; position: number; hoist: number }[]
 
-  const rolesByUser: { id: string; name: string; color: string; permissions: Record<string, boolean>; is_admin: boolean }[] = []
+  const rolesByUser: { id: string; name: string; color: string; permissions: Record<string, boolean>; is_admin: boolean; position: number; hoist: boolean }[] = []
   for (const row of memberRoles) {
     rolesByUser.push({
       id: row.id,
@@ -35,17 +36,19 @@ function getMemberById(userId: string) {
       color: row.color,
       permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
       is_admin: row.is_admin === 1,
+      position: row.position ?? 0,
+      hoist: row.hoist === 1,
     })
   }
 
   const legacyRoles = db.prepare(`
-    SELECT r.id, r.name, r.color, r.permissions, r.is_admin
+    SELECT r.id, r.name, r.color, r.permissions, r.is_admin, r.position, r.hoist
     FROM server_members sm
     JOIN roles r ON sm.custom_role_id = r.id
     WHERE sm.user_id = ?
       AND sm.custom_role_id IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = sm.user_id AND mr.role_id = sm.custom_role_id)
-  `).all(userId) as { id: string; name: string; color: string; permissions: string; is_admin: number }[]
+  `).all(userId) as { id: string; name: string; color: string; permissions: string; is_admin: number; position: number; hoist: number }[]
 
   for (const row of legacyRoles) {
     if (!rolesByUser.some(r => r.id === row.id)) {
@@ -55,11 +58,15 @@ function getMemberById(userId: string) {
         color: row.color,
         permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
         is_admin: row.is_admin === 1,
+        position: row.position ?? 0,
+        hoist: row.hoist === 1,
       })
     }
   }
 
   const isAdmin = rolesByUser.some(r => r.is_admin)
+  const highestRole = rolesByUser.length > 0 ? rolesByUser[rolesByUser.length - 1] : null
+  const hoistedRole = [...rolesByUser].reverse().find(r => r.hoist) || null
   return {
     id: user.id,
     username: user.username,
@@ -69,9 +76,12 @@ function getMemberById(userId: string) {
     role: isAdmin ? 'admin' : 'member',
     is_host: user.is_host === 1,
     custom_roles: rolesByUser,
-    custom_role_id: rolesByUser.length > 0 ? rolesByUser[0].id : null,
-    custom_role_name: rolesByUser.length > 0 ? rolesByUser[0].name : null,
-    custom_role_color: rolesByUser.length > 0 ? rolesByUser[0].color : null,
+    custom_role_id: highestRole?.id ?? null,
+    custom_role_name: highestRole?.name ?? null,
+    custom_role_color: highestRole?.color ?? null,
+    hoist_role_id: hoistedRole?.id ?? null,
+    hoist_role_name: hoistedRole?.name ?? null,
+    hoist_role_color: hoistedRole?.color ?? null,
   }
 }
 
@@ -353,6 +363,7 @@ serverInfoRoutes.post('/join/:code', async (c) => {
     }
 
     db.prepare('INSERT OR REPLACE INTO server_members (user_id, role) VALUES (?, ?)').run(userId, 'member')
+    assignDefaultRoles(userId)
     return c.json({ ok: true, alreadyMember: false })
   }
 

@@ -18,6 +18,7 @@ import {
   createRole,
   updateRole,
   deleteRole,
+  reorderRoles,
   uploadServerBackground,
   deleteServerBackground,
   fetchServerInfo,
@@ -71,11 +72,17 @@ function fileToDataUrl(file: File): Promise<string> {
 type AdminTab = 'settings' | 'members' | 'invites' | 'roles' | 'css' | 'gifs'
 
 const ALL_PERMISSIONS: { key: Permission; label: string; desc: string }[] = [
-  { key: 'send_messages', label: 'send', desc: 'Post messages in text channels' },
-  { key: 'manage_channels', label: 'channels', desc: 'Create, edit, and delete channels' },
+  { key: 'send_messages', label: 'send', desc: 'Post messages in guild text channels' },
+  { key: 'send_dm_messages', label: 'dm', desc: 'Send direct messages to other users' },
+  { key: 'add_reactions', label: 'react', desc: 'Add emoji and sticker reactions to messages' },
+  { key: 'upload_attachments', label: 'attach', desc: 'Upload files, images, and attachments' },
   { key: 'delete_messages', label: 'delete', desc: 'Remove messages from any user' },
+  { key: 'manage_channels', label: 'channels', desc: 'Create, edit, and delete channels' },
+  { key: 'manage_roles', label: 'roles', desc: 'Create, edit, delete, and assign roles' },
   { key: 'kick_members', label: 'kick', desc: 'Remove members from the server' },
   { key: 'manage_invites', label: 'invites', desc: 'Create and revoke invite codes' },
+  { key: 'use_voice', label: 'voice', desc: 'Join and speak in guild voice channels' },
+  { key: 'initiate_dm_calls', label: 'dm call', desc: 'Start and accept DM voice calls' },
 ]
 
 const EXPIRY_OPTIONS = [
@@ -298,14 +305,21 @@ export default function ServerMenuModal({ onClose }: Props) {
   const [newRoleName, setNewRoleName] = useState('')
   const [newRoleColor, setNewRoleColor] = useState('#5865f2')
   const [newRolePerms, setNewRolePerms] = useState<Partial<Record<Permission, boolean>>>({})
+  const [newRoleHoist, setNewRoleHoist] = useState(false)
+  const [newRoleMentionable, setNewRoleMentionable] = useState(false)
+  const [newRoleDefaultOnJoin, setNewRoleDefaultOnJoin] = useState(false)
   const [creatingRole, setCreatingRole] = useState(false)
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editColor, setEditColor] = useState('')
   const [editPerms, setEditPerms] = useState<Partial<Record<Permission, boolean>>>({})
+  const [editHoist, setEditHoist] = useState(false)
+  const [editMentionable, setEditMentionable] = useState(false)
+  const [editDefaultOnJoin, setEditDefaultOnJoin] = useState(false)
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null)
   const [assigningRole, setAssigningRole] = useState<Record<string, boolean>>({})
   const [showCreateRole, setShowCreateRole] = useState(false)
+  const [reorderingRoles, setReorderingRoles] = useState(false)
 
   // ─── GIFs & Stickers ────────────────────────────────
   const [gifsList, setGifsList] = useState<GifInfo[]>([])
@@ -655,11 +669,14 @@ export default function ServerMenuModal({ onClose }: Props) {
     if (!newRoleName.trim() || !serverUrl) return
     setCreatingRole(true)
     try {
-      const role = await createRole(serverUrl, newRoleName.trim(), newRoleColor, newRolePerms)
+      const role = await createRole(serverUrl, newRoleName.trim(), newRoleColor, newRolePerms, newRoleHoist, newRoleMentionable, newRoleDefaultOnJoin)
       setRoles(prev => [...prev, role])
       setNewRoleName('')
       setNewRoleColor('#5865f2')
       setNewRolePerms({})
+      setNewRoleHoist(false)
+      setNewRoleMentionable(false)
+      setNewRoleDefaultOnJoin(false)
       setShowCreateRole(false)
     } catch {}
     setCreatingRole(false)
@@ -670,13 +687,16 @@ export default function ServerMenuModal({ onClose }: Props) {
     setEditName(role.name)
     setEditColor(role.color)
     setEditPerms({ ...role.permissions })
+    setEditHoist(role.hoist ?? false)
+    setEditMentionable(role.mentionable ?? false)
+    setEditDefaultOnJoin(role.default_on_join ?? false)
   }
 
   const handleSaveRole = async (id: string) => {
     if (!serverUrl) return
     setSavingRoleId(id)
     try {
-      const updated = await updateRole(serverUrl, id, editName, editColor, editPerms)
+      const updated = await updateRole(serverUrl, id, editName, editColor, editPerms, editHoist, editMentionable, editDefaultOnJoin)
       setRoles(prev => prev.map(r => r.id === id ? updated : r))
       setMembers(members.map(m => ({
         ...m,
@@ -1295,6 +1315,20 @@ export default function ServerMenuModal({ onClose }: Props) {
                           </button>
                         ))}
                       </div>
+                      <div className="server-menu__role-flags">
+                        <label className="server-menu__role-flag">
+                          <input type="checkbox" checked={newRoleHoist} onChange={(e) => setNewRoleHoist(e.target.checked)} />
+                          <span>Display members separately</span>
+                        </label>
+                        <label className="server-menu__role-flag">
+                          <input type="checkbox" checked={newRoleMentionable} onChange={(e) => setNewRoleMentionable(e.target.checked)} />
+                          <span>Allow @role mentions</span>
+                        </label>
+                        <label className="server-menu__role-flag">
+                          <input type="checkbox" checked={newRoleDefaultOnJoin} onChange={(e) => setNewRoleDefaultOnJoin(e.target.checked)} />
+                          <span>Assign on join</span>
+                        </label>
+                      </div>
                       <button onClick={handleCreateRole} disabled={creatingRole || !newRoleName.trim()}
                         className="server-menu__role-create-btn">
                         {creatingRole ? '...' : 'create role'}
@@ -1307,7 +1341,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                   ) : roles.length === 0 ? (
                     <p className="server-menu__loading">no custom roles</p>
                   ) : (
-                    roles.map(role => {
+                    roles.map((role, idx) => {
                       const count = memberRoleCount(role.id)
                       return (
                         <div key={role.id} className="server-menu__role-item">
@@ -1328,6 +1362,20 @@ export default function ServerMenuModal({ onClose }: Props) {
                                   </button>
                                 ))}
                               </div>
+                              <div className="server-menu__role-flags">
+                                <label className="server-menu__role-flag">
+                                  <input type="checkbox" checked={editHoist} onChange={(e) => setEditHoist(e.target.checked)} />
+                                  <span>Display members separately</span>
+                                </label>
+                                <label className="server-menu__role-flag">
+                                  <input type="checkbox" checked={editMentionable} onChange={(e) => setEditMentionable(e.target.checked)} />
+                                  <span>Allow @role mentions</span>
+                                </label>
+                                <label className="server-menu__role-flag">
+                                  <input type="checkbox" checked={editDefaultOnJoin} onChange={(e) => setEditDefaultOnJoin(e.target.checked)} />
+                                  <span>Assign on join</span>
+                                </label>
+                              </div>
                               <div style={{ display: 'flex', gap: '8px' }}>
                                 <button onClick={() => handleSaveRole(role.id)} disabled={savingRoleId === role.id}
                                   className="server-menu__save-btn" style={{ fontSize: '10px' }}>
@@ -1344,7 +1392,69 @@ export default function ServerMenuModal({ onClose }: Props) {
                                 <span className="server-menu__role-color-dot" style={{ backgroundColor: role.color }} />
                                 <span className="server-menu__role-name" style={{ color: role.color }}>{role.name}</span>
                                 {count > 0 && <span className="server-menu__role-count">{count} member{count !== 1 ? 's' : ''}</span>}
+                                {role.hoist && <span className="server-menu__role-tag">hoist</span>}
+                                {role.mentionable && <span className="server-menu__role-tag">@</span>}
+                                {role.default_on_join && <span className="server-menu__role-tag">join</span>}
                                 <div className="server-menu__role-actions">
+                                  {!role.is_admin && (
+                                    <>
+                                      <button
+                                        onClick={async () => {
+                                          if (!serverUrl) return
+                                          setReorderingRoles(true)
+                                          const newRoles = [...roles]
+                                          const currentIdx = newRoles.findIndex(r => r.id === role.id)
+                                          if (idx > 0) {
+                                            const prev = newRoles[idx - 1]
+                                            const prevPos = prev.position ?? 0
+                                            const myPos = role.position ?? 0
+                                            const order = [
+                                              { id: role.id, position: prevPos },
+                                              { id: prev.id, position: myPos },
+                                            ]
+                                            try {
+                                              await reorderRoles(serverUrl, order)
+                                              newRoles[idx] = { ...role, position: prevPos }
+                                              newRoles[idx - 1] = { ...prev, position: myPos }
+                                              newRoles.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+                                              setRoles(newRoles)
+                                            } catch {}
+                                          }
+                                          setReorderingRoles(false)
+                                        }}
+                                        disabled={idx === 0 || reorderingRoles}
+                                        className="server-menu__role-action-btn"
+                                        title="Move up"
+                                      >&#9650;</button>
+                                      <button
+                                        onClick={async () => {
+                                          if (!serverUrl) return
+                                          setReorderingRoles(true)
+                                          const newRoles = [...roles]
+                                          if (idx < newRoles.length - 1) {
+                                            const next = newRoles[idx + 1]
+                                            const nextPos = next.position ?? 0
+                                            const myPos = role.position ?? 0
+                                            const order = [
+                                              { id: role.id, position: nextPos },
+                                              { id: next.id, position: myPos },
+                                            ]
+                                            try {
+                                              await reorderRoles(serverUrl, order)
+                                              newRoles[idx] = { ...role, position: nextPos }
+                                              newRoles[idx + 1] = { ...next, position: myPos }
+                                              newRoles.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+                                              setRoles(newRoles)
+                                            } catch {}
+                                          }
+                                          setReorderingRoles(false)
+                                        }}
+                                        disabled={idx === roles.length - 1 || reorderingRoles}
+                                        className="server-menu__role-action-btn"
+                                        title="Move down"
+                                      >&#9660;</button>
+                                    </>
+                                  )}
                                   <button onClick={() => handleStartEditRole(role)} className="server-menu__role-action-btn">edit</button>
                                   <button onClick={() => handleDeleteRole(role.id)} className="server-menu__role-action-btn server-menu__role-action-btn--danger">delete</button>
                                 </div>

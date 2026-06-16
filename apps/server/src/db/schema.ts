@@ -27,6 +27,16 @@ export const SCHEMA_SQL = `
     created_at INTEGER DEFAULT (unixepoch())
   );
 
+  CREATE TABLE IF NOT EXISTS channel_role_overrides (
+    channel_id TEXT NOT NULL,
+    role_id TEXT NOT NULL,
+    allow_permissions TEXT NOT NULL DEFAULT '{}',
+    deny_permissions TEXT NOT NULL DEFAULT '{}',
+    PRIMARY KEY (channel_id, role_id),
+    FOREIGN KEY (channel_id) REFERENCES channels(id),
+    FOREIGN KEY (role_id) REFERENCES roles(id)
+  );
+
   CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     channel_id TEXT NOT NULL,
@@ -131,6 +141,10 @@ export const SCHEMA_SQL = `
     color TEXT NOT NULL DEFAULT '#5865f2',
     permissions TEXT NOT NULL DEFAULT '{}',
     is_admin INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0,
+    hoist INTEGER NOT NULL DEFAULT 0,
+    mentionable INTEGER NOT NULL DEFAULT 0,
+    default_on_join INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER DEFAULT (unixepoch())
   );
 

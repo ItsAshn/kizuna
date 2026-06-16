@@ -197,10 +197,57 @@
   flex-shrink: 0;
 }
 
+.member-list__host-badge {
+  font-size: 10px;
+  color: #f59e0b;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
 .member-list__self-tag {
   font-size: 9px;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+.member-list__group {
+  margin-bottom: 4px;
+}
+
+.member-list__group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.member-list__group-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.member-list__group-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-list__group-count {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.member-list__group-online {
+  color: var(--text-muted);
+  font-size: 9px;
+  margin-left: auto;
 }
 
 .member-list__dm-icon {

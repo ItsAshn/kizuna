@@ -236,9 +236,38 @@ export async function lockChannel(
 export async function fetchChannelPermissions(
   serverUrl: string,
   channelId: string,
-): Promise<{ can_write: boolean; locked: boolean; write_role_id: string | null; write_role_name: string | null }> {
+): Promise<{ can_write: boolean; locked: boolean; write_role_id: string | null; write_role_name: string | null; permissions?: Record<string, boolean> }> {
   const res = await client(serverUrl).get(`/api/channels/${channelId}/permissions`)
   return res.data
+}
+
+export async function fetchChannelOverrides(
+  serverUrl: string,
+  channelId: string,
+): Promise<{ channel_id: string; role_id: string; role_name: string; role_color: string; role_position: number; allow_permissions: Record<string, boolean>; deny_permissions: Record<string, boolean> }[]> {
+  const res = await client(serverUrl).get(`/api/channels/${channelId}/overrides`)
+  return res.data.overrides ?? []
+}
+
+export async function setChannelOverride(
+  serverUrl: string,
+  channelId: string,
+  roleId: string,
+  allowPermissions: Record<string, boolean>,
+  denyPermissions: Record<string, boolean>,
+): Promise<void> {
+  await client(serverUrl).put(`/api/channels/${channelId}/overrides/${roleId}`, {
+    allow_permissions: allowPermissions,
+    deny_permissions: denyPermissions,
+  })
+}
+
+export async function deleteChannelOverride(
+  serverUrl: string,
+  channelId: string,
+  roleId: string,
+): Promise<void> {
+  await client(serverUrl).delete(`/api/channels/${channelId}/overrides/${roleId}`)
 }
 
 // ─── Messages ─────────────────────────────────────────────
@@ -458,11 +487,17 @@ export async function createRole(
   name: string,
   color: string,
   permissions: Partial<Record<Permission, boolean>>,
+  hoist?: boolean,
+  mentionable?: boolean,
+  defaultOnJoin?: boolean,
 ): Promise<CustomRole> {
   const res = await client(serverUrl).post('/api/roles', {
     name,
     color,
     permissions,
+    hoist,
+    mentionable,
+    default_on_join: defaultOnJoin,
   })
   return res.data.role ?? res.data
 }
@@ -473,11 +508,17 @@ export async function updateRole(
   name: string,
   color: string,
   permissions: Partial<Record<Permission, boolean>>,
+  hoist?: boolean,
+  mentionable?: boolean,
+  defaultOnJoin?: boolean,
 ): Promise<CustomRole> {
   const res = await client(serverUrl).patch(`/api/roles/${id}`, {
     name,
     color,
     permissions,
+    hoist,
+    mentionable,
+    default_on_join: defaultOnJoin,
   })
   return res.data.role ?? res.data
 }
@@ -487,6 +528,13 @@ export async function deleteRole(
   id: string,
 ): Promise<void> {
   await client(serverUrl).delete(`/api/roles/${id}`)
+}
+
+export async function reorderRoles(
+  serverUrl: string,
+  order: { id: string; position: number }[],
+): Promise<void> {
+  await client(serverUrl).patch('/api/roles/reorder', { order })
 }
 
 // ─── Invite Join ──────────────────────────────────────────

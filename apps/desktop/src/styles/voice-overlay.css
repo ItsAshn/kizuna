@@ -202,23 +202,6 @@
   color: var(--red);
 }
 
-.voice-header__leave-confirm {
-  display: flex;
-  gap: 4px;
-}
-
-.voice-header__btn--leave-confirm-yes {
-  background: var(--red-dim);
-  color: var(--red);
-  padding: 4px 10px;
-  border: 1px solid var(--red-dim-border);
-  border-radius: var(--radius-xs);
-  font-size: 12px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: background 0.15s;
-}
-
 /* ── Peer list ──────────────────────────────────────────── */
 
 .voice-body {
@@ -298,6 +281,21 @@
 .voice-peer__avatar--peer-speaking {
   background: var(--green);
   color: var(--text-primary);
+}
+
+.voice-peer__avatar--dmcall {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-accent, #7289da);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: 6px;
+  flex-shrink: 0;
 }
 
 .voice-peer__name {

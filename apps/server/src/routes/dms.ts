@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
-import { authMiddleware } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
@@ -132,6 +132,11 @@ dmRoutes.post('/channel/:channelId/messages', authMiddleware, async (c) => {
   const db = getDb()
   const channel = db.prepare('SELECT * FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)').get(channelId, user.userId, user.userId) as any
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
+
+  const userPerms = getUserPermissions(user.userId)
+  if (!userPerms || !hasPermission(userPerms, 'send_dm_messages')) {
+    return c.json({ error: 'Forbidden' }, 403)
+  }
 
   const toId = channel.user1_id === user.userId ? channel.user2_id : channel.user1_id
 

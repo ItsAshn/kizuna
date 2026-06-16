@@ -117,7 +117,7 @@ function runMigrations(database: Database.Database): void {
     `ALTER TABLE roles ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`,
     `INSERT OR IGNORE INTO roles (id, name, color, permissions, is_admin) VALUES
      ('admin-role', 'Admin', '#f59e0b',
-      '{"send_messages":true,"manage_channels":true,"delete_messages":true,"kick_members":true,"manage_invites":true}',
+      '{"send_messages":true,"send_dm_messages":true,"add_reactions":true,"upload_attachments":true,"delete_messages":true,"manage_channels":true,"manage_roles":true,"kick_members":true,"manage_invites":true,"use_voice":true,"initiate_dm_calls":true}',
       1)`,
     `INSERT OR IGNORE INTO member_roles (user_id, role_id)
      SELECT user_id, 'admin-role' FROM server_members WHERE role = 'admin'
@@ -258,7 +258,7 @@ function runMigrations(database: Database.Database): void {
        position INTEGER DEFAULT 0,
        created_at INTEGER DEFAULT (unixepoch())
      )`,
-    `ALTER TABLE channels ADD COLUMN category_id TEXT DEFAULT NULL`,
+     `ALTER TABLE channels ADD COLUMN category_id TEXT DEFAULT NULL`,
     `CREATE TABLE IF NOT EXISTS link_embeds (
        url TEXT PRIMARY KEY,
        title TEXT DEFAULT NULL,
@@ -267,6 +267,20 @@ function runMigrations(database: Database.Database): void {
        site_name TEXT DEFAULT NULL,
        favicon TEXT DEFAULT NULL,
        fetched_at INTEGER DEFAULT (unixepoch())
+     )`,
+    `ALTER TABLE roles ADD COLUMN position INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE roles ADD COLUMN hoist INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE roles ADD COLUMN mentionable INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE roles ADD COLUMN default_on_join INTEGER NOT NULL DEFAULT 0`,
+    `UPDATE roles SET position = 9999 WHERE id = 'admin-role'`,
+    `CREATE TABLE IF NOT EXISTS channel_role_overrides (
+       channel_id TEXT NOT NULL,
+       role_id TEXT NOT NULL,
+       allow_permissions TEXT NOT NULL DEFAULT '{}',
+       deny_permissions TEXT NOT NULL DEFAULT '{}',
+       PRIMARY KEY (channel_id, role_id),
+       FOREIGN KEY (channel_id) REFERENCES channels(id),
+       FOREIGN KEY (role_id) REFERENCES roles(id)
      )`,
   ]
 

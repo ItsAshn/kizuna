@@ -26,7 +26,7 @@ setInterval(() => {
 }, 60_000).unref()
 
 interface MentionResult {
-  type: 'everyone' | 'here' | 'user'
+  type: 'everyone' | 'here' | 'user' | 'role'
   target: string | null
 }
 
@@ -90,6 +90,36 @@ export function processMentions(io: Server, message: any, mentions: MentionResul
         mentionedUserId: null,
       })
     } else {
+      // Check if this matches a mentionable role first
+      const role = db.prepare(
+        "SELECT id, name FROM roles WHERE LOWER(name) = ? AND mentionable = 1"
+      ).get(mention.target!.toLowerCase()) as { id: string; name: string } | undefined
+
+      if (role) {
+        const roleMembers = db.prepare(
+          'SELECT user_id FROM member_roles WHERE role_id = ?'
+        ).all(role.id) as { user_id: string }[]
+
+        for (const rm of roleMembers) {
+          const roleMentionId = uuidv4()
+          db.prepare(
+            `INSERT OR IGNORE INTO mentions
+             (id, message_id, channel_id, author_id, author_username, mentioned_user_id, content, mention_type)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(roleMentionId, message.id, message.channel_id, base.author_id, base.author_username, rm.user_id, message.content, 'role')
+
+          io.to(`user:${rm.user_id}`).emit('message:mention', {
+            ...base,
+            id: roleMentionId,
+            mention_type: 'role',
+            mentioned_user_id: rm.user_id,
+            role_name: role.name,
+            role_id: role.id,
+          })
+        }
+        continue
+      }
+
       const user = db.prepare('SELECT id, username FROM users WHERE username = ?').get(mention.target!) as { id: string; username: string } | undefined
       if (!user) continue
 
@@ -399,6 +429,12 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     if (!checkSocketRateLimit(socket, 'dm:send', 30, 10_000)) return
     if (!toUserId || !content?.trim() || !userId) return
 
+    const userInfo = getUserPermissions(userId)
+    if (!userInfo || !hasPermission(userInfo, 'send_dm_messages')) {
+      socket.emit('error', { code: 'FORBIDDEN', message: 'You do not have permission to send direct messages' })
+      return
+    }
+
     const db = getDb()
     const [user1Id, user2Id] = [userId, toUserId].sort()
     let channel = db.prepare(
@@ -498,6 +534,145 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     socket.emit('dm:delete', { id: messageId, channel_id: dm.channel_id })
   })
 
+  // ─── DM Voice Calls ──────────────────────────────────
+  const dmCalls = new Map<string, {
+    dmChannelId: string
+    callerId: string
+    callerUsername: string
+    calleeId: string
+    calleeUsername: string
+    status: 'ringing' | 'active'
+    startedAt: number
+  }>()
+
+  socket.on('dm:call:start', ({ dmChannelId }: { dmChannelId: string }, callback?: Function) => {
+    if (!userId || !username) {
+      if (typeof callback === 'function') callback({ error: 'Not authenticated' })
+      return
+    }
+    const userInfo = getUserPermissions(userId)
+    if (!userInfo || !hasPermission(userInfo, 'initiate_dm_calls')) {
+      if (typeof callback === 'function') callback({ error: 'You do not have permission to start DM calls' })
+      return
+    }
+    const db = getDb()
+    const dmChannel = db.prepare(
+      'SELECT * FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)'
+    ).get(dmChannelId, userId, userId) as any
+    if (!dmChannel) {
+      if (typeof callback === 'function') callback({ error: 'DM channel not found' })
+      return
+    }
+    const existing = [...dmCalls.values()].find(
+      c => c.dmChannelId === dmChannelId && c.status !== 'active'
+    )
+    if (existing) {
+      if (typeof callback === 'function') callback({ error: 'A call is already in progress' })
+      return
+    }
+    const calleeId = dmChannel.user1_id === userId ? dmChannel.user2_id : dmChannel.user1_id
+    const calleeRow = db.prepare('SELECT username FROM users WHERE id = ?').get(calleeId) as any
+    const calleeUsername = calleeRow?.username || 'Unknown'
+
+    dmCalls.set(dmChannelId, {
+      dmChannelId,
+      callerId: userId,
+      callerUsername: username,
+      calleeId,
+      calleeUsername,
+      status: 'ringing',
+      startedAt: Date.now(),
+    })
+
+    const calleeSockets = io.sockets.adapter.rooms.get(`user:${calleeId}`)
+    if (!calleeSockets || calleeSockets.size === 0) {
+      dmCalls.delete(dmChannelId)
+      if (typeof callback === 'function') callback({ error: 'User is offline' })
+      return
+    }
+
+    io.to(`user:${calleeId}`).emit('dm:call:incoming', {
+      dmChannelId,
+      callerUserId: userId,
+      callerUsername: username,
+      calleeUserId: calleeId,
+      calleeUsername,
+    })
+
+    if (typeof callback === 'function') callback({ ok: true })
+  })
+
+  socket.on('dm:call:accept', ({ dmChannelId }: { dmChannelId: string }, callback?: Function) => {
+    if (!userId) {
+      if (typeof callback === 'function') callback({ error: 'Not authenticated' })
+      return
+    }
+    const userInfo = getUserPermissions(userId)
+    if (!userInfo || !hasPermission(userInfo, 'initiate_dm_calls')) {
+      if (typeof callback === 'function') callback({ error: 'You do not have permission to accept DM calls' })
+      return
+    }
+    const call = dmCalls.get(dmChannelId)
+    if (!call || call.calleeId !== userId) {
+      if (typeof callback === 'function') callback({ error: 'No pending call' })
+      return
+    }
+    call.status = 'active'
+    io.to(`user:${call.callerId}`).emit('dm:call:accepted', {
+      dmChannelId,
+      acceptedByUserId: userId,
+      acceptedByUsername: username,
+    })
+
+    if (typeof callback === 'function') callback({ ok: true })
+  })
+
+  socket.on('dm:call:reject', ({ dmChannelId }: { dmChannelId: string }, callback?: Function) => {
+    if (!userId) {
+      if (typeof callback === 'function') callback({ error: 'Not authenticated' })
+      return
+    }
+    const call = dmCalls.get(dmChannelId)
+    if (!call) {
+      if (typeof callback === 'function') callback({ error: 'No pending call' })
+      return
+    }
+    const isCaller = call.callerId === userId
+    const isCallee = call.calleeId === userId
+    if (!isCaller && !isCallee) {
+      if (typeof callback === 'function') callback({ error: 'Not a participant' })
+      return
+    }
+    const otherUserId = isCaller ? call.calleeId : call.callerId
+    io.to(`user:${otherUserId}`).emit('dm:call:rejected', { dmChannelId })
+    dmCalls.delete(dmChannelId)
+
+    if (typeof callback === 'function') callback({ ok: true })
+  })
+
+  socket.on('dm:call:end', ({ dmChannelId }: { dmChannelId: string }, callback?: Function) => {
+    if (!userId) {
+      if (typeof callback === 'function') callback({ error: 'Not authenticated' })
+      return
+    }
+    const call = dmCalls.get(dmChannelId)
+    if (!call) {
+      if (typeof callback === 'function') callback({ ok: true })
+      return
+    }
+    const isCaller = call.callerId === userId
+    const isCallee = call.calleeId === userId
+    if (!isCaller && !isCallee) {
+      if (typeof callback === 'function') callback({ ok: true })
+      return
+    }
+    const otherUserId = isCaller ? call.calleeId : call.callerId
+    io.to(`user:${otherUserId}`).emit('dm:call:ended', { dmChannelId })
+    dmCalls.delete(dmChannelId)
+
+    if (typeof callback === 'function') callback({ ok: true })
+  })
+
   socket.on('user:joined', () => {
     if (!userId) return
     ;(socket as any).userId = userId
@@ -548,6 +723,14 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
   socket.on('disconnect', () => {
     if (!userId) return
 
+    for (const [dmChannelId, call] of dmCalls) {
+      if (call.callerId === userId || call.calleeId === userId) {
+        const otherUserId = call.callerId === userId ? call.calleeId : call.callerId
+        io.to(`user:${otherUserId}`).emit('dm:call:ended', { dmChannelId })
+        dmCalls.delete(dmChannelId)
+      }
+    }
+
     const socks = userConnections.get(userId)
     if (socks) {
       socks.delete(socket.id)
@@ -594,8 +777,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
     if (!msgInfo.isDM) {
       const perms = getUserPermissions(userId)
-      if (!perms || !hasPermission(perms, 'send_messages')) return
-      if (!canWriteToChannel(userId, msgInfo.channel_id)) return
+      if (!perms || !hasPermission(perms, 'add_reactions')) return
     }
 
     const existing = db.prepare(

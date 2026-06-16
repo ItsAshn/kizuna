@@ -605,6 +605,40 @@
   color: var(--brand);
 }
 
+.server-menu__role-flags {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.server-menu__role-flag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.server-menu__role-flag input[type="checkbox"] {
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+.server-menu__role-tag {
+  font-size: 8px;
+  font-family: var(--font-mono);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
 .server-menu__role-create-btn {
   padding: 4px 12px;
   background: var(--brand);

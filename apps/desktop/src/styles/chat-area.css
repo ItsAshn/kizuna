@@ -64,6 +64,41 @@
   white-space: nowrap;
 }
 
+.chat-area__call-btn {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.chat-area__call-btn:hover {
+  background: var(--color-accent, #7289da);
+  color: #fff;
+}
+
+.chat-area__call-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chat-area__call-btn--active {
+  background: #f04747;
+  color: #fff;
+}
+
+.chat-area__call-btn--active:hover {
+  background: #d84040;
+}
+
 .chat-area__messages {
   flex: 1;
   min-height: 0;

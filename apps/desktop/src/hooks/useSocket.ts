@@ -4,6 +4,7 @@ import { io } from 'socket.io-client'
 import type { Socket } from 'socket.io-client'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
+import type { DMIncomingCall } from '../store/chatStore'
 import { decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
 import type { Message, Channel, DMChannelData, UserStatus, MessageReaction, Member } from '@kizuna/shared'
@@ -324,6 +325,35 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     socket.on('voice:userLeftChannel', ({ channelId, userId }: { channelId: string; userId: string }) => {
       useChatStore.getState().removeVoiceChannelUser(channelId, userId)
+    })
+
+    socket.on('dm:call:incoming', (call: DMIncomingCall) => {
+      useChatStore.getState().setIncomingCall(call)
+      showNotification({
+        type: 'dmcall',
+        title: `${call.callerUsername} is calling you`,
+        body: 'Click to accept or decline',
+      })
+    })
+
+    socket.on('dm:call:accepted', ({ dmChannelId }: { dmChannelId: string }) => {
+      const store = useChatStore.getState()
+      if (store.dmCallStatus === 'ringing-outgoing' && store.dmCallChannelId === dmChannelId) {
+        store.setDMCallStatus('active')
+      }
+    })
+
+    socket.on('dm:call:rejected', () => {
+      useChatStore.getState().clearDMCall()
+    })
+
+    socket.on('dm:call:ended', () => {
+      const store = useChatStore.getState()
+      if (store.dmCallStatus === 'active' || store.dmCallStatus === 'ringing-outgoing' || store.dmCallStatus === 'ringing-incoming') {
+        store.setDMCallShouldCleanup(true)
+      } else {
+        store.clearDMCall()
+      }
     })
 
     const heartbeatInterval = setInterval(() => {

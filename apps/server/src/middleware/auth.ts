@@ -53,6 +53,17 @@ export function isUserHost(userId: string): boolean {
   return !!row
 }
 
+export function assignDefaultRoles(userId: string): void {
+  const db = getDb()
+  const defaultRoles = db.prepare(
+    'SELECT id FROM roles WHERE default_on_join = 1'
+  ).all() as { id: string }[]
+  const stmt = db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)')
+  for (const role of defaultRoles) {
+    stmt.run(userId, role.id)
+  }
+}
+
 export function getUserInfo(userId: string): AuthUser | null {
   const db = getDb()
   const user = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(userId) as { id: string; username: string; display_name: string } | undefined
@@ -78,16 +89,26 @@ export function getUserPermissions(userId: string): { role: string; permissions:
       role: 'admin',
       permissions: {
         send_messages: true,
-        manage_channels: true,
+        send_dm_messages: true,
+        add_reactions: true,
+        upload_attachments: true,
         delete_messages: true,
+        manage_channels: true,
+        manage_roles: true,
         kick_members: true,
         manage_invites: true,
+        use_voice: true,
+        initiate_dm_calls: true,
       },
     }
   }
 
   let permissions: Record<string, boolean> = {
     send_messages: true,
+    send_dm_messages: true,
+    add_reactions: true,
+    upload_attachments: true,
+    use_voice: true,
   }
 
   const roles = db.prepare(`
@@ -101,6 +122,7 @@ export function getUserPermissions(userId: string): { role: string; permissions:
     JOIN roles r ON sm.custom_role_id = r.id
     WHERE sm.user_id = ? AND sm.custom_role_id IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM member_roles mr2 WHERE mr2.user_id = sm.user_id AND mr2.role_id = sm.custom_role_id)
+    ORDER BY r.position ASC
   `).all(userId, userId) as { permissions: string }[]
 
   for (const role of roles) {
@@ -179,6 +201,37 @@ export function getUserChannelPermissions(userId: string, channelId: string): { 
   `).get(userId, channel.write_role_id, userId, channel.write_role_id, userId, channel.write_role_id)
 
   return { can_write: !!hasRole, locked: true, write_role_id: channel.write_role_id, write_role_name: writeRoleName }
+}
+
+export function getUserChannelPermission(userId: string, channelId: string, permission: string): boolean {
+  if (isUserAdmin(userId)) return true
+
+  const basePerms = getUserPermissions(userId)
+  if (!basePerms) return false
+
+  const baseValue = basePerms.permissions[permission] === true
+
+  const db = getDb()
+  const overrides = db.prepare(`
+    SELECT cro.allow_permissions, cro.deny_permissions
+    FROM channel_role_overrides cro
+    JOIN member_roles mr ON mr.role_id = cro.role_id AND mr.user_id = ?
+    JOIN roles r ON r.id = cro.role_id
+    WHERE cro.channel_id = ?
+    ORDER BY r.position ASC
+  `).all(userId, channelId) as { allow_permissions: string; deny_permissions: string }[]
+
+  let resolved = baseValue
+  for (const override of overrides) {
+    try {
+      const allow = JSON.parse(override.allow_permissions || '{}')
+      const deny = JSON.parse(override.deny_permissions || '{}')
+      if (deny[permission] === true) resolved = false
+      if (allow[permission] === true) resolved = true
+    } catch { /* skip malformed JSON */ }
+  }
+
+  return resolved
 }
 
 export async function authMiddleware(c: Context, next: Next): Promise<Response | void> {
