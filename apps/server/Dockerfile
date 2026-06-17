@@ -31,7 +31,6 @@ FROM base AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 \
-    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -45,7 +44,7 @@ RUN pnpm install --prod --frozen-lockfile
 
 COPY --from=builder /app/apps/server/dist apps/server/dist
 
-RUN groupadd --system kizuna && useradd --system --gid kizuna kizuna
+RUN groupadd --system kizuna && useradd --system --gid kizuna --shell /bin/sh kizuna
 
 EXPOSE 5000
 
