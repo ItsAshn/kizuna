@@ -44,8 +44,6 @@ RUN pnpm install --prod --frozen-lockfile
 
 COPY --from=builder /app/apps/server/dist apps/server/dist
 
-RUN groupadd --system kizuna && useradd --system --gid kizuna --shell /bin/sh kizuna
-
 EXPOSE 5000
 
 COPY apps/server/docker-entrypoint.sh /entrypoint.sh
@@ -54,6 +52,6 @@ RUN chmod +x /entrypoint.sh
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://localhost:5000/health').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"
 
-USER kizuna
+USER node
 
 ENTRYPOINT ["/entrypoint.sh"]
