@@ -1,3 +1,10 @@
+# ─── Migrating from named volumes to bind mounts ─────────────────────────────────
+# If you previously used Docker named volumes (kizuna_data, kizuna_uploads),
+# run scripts/migrate-volumes.sh to copy your data to the new ./data and
+# ./uploads directories before starting the container.
+#
+#   chmod +x scripts/migrate-volumes.sh && ./scripts/migrate-volumes.sh
+
 services:
   kizuna:
     image: ghcr.io/itsashn/kizuna:latest
@@ -23,8 +30,8 @@ services:
       SERVER_URL: ${SERVER_URL:-}
       UPNP_ENABLED: ${UPNP_ENABLED:-false}
     volumes:
-      - kizuna_data:/data
-      - kizuna_uploads:/app/uploads
+      - ./data:/data
+      - ./uploads:/app/uploads
 
   caddy:
     image: caddy:2-alpine
@@ -40,7 +47,5 @@ services:
       - caddy_config:/config
 
 volumes:
-  kizuna_data:
-  kizuna_uploads:
   caddy_data:
   caddy_config:

@@ -1,0 +1,53 @@
+node_modules/
+.git/
+.github/
+dist/
+out/
+target/
+.cache/
+.turbo/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Uploads
+uploads/
+data/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.AppImage
+*.msi
+*.dmg
+*.deb
+*.rpm
+latest*.yml
+
+# Logs
+*.log
+
+# Docs
+README.md
+REQUIREMENTS.md
+LICENSE
+Logo.*
+
+# Extraneous
+*.md
+.gitignore
+.dockerignore

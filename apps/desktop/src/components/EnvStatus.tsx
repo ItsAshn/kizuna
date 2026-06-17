@@ -47,21 +47,21 @@ export default function EnvStatus({ onOpenWizard }: { onOpenWizard: () => void }
         display: 'flex',
         alignItems: 'center',
         gap: 4,
-        background: hasIssues ? 'rgba(248,113,113,0.12)' : 'rgba(74,222,128,0.12)',
+        background: hasIssues ? 'var(--error-bg)' : 'var(--success-bg)',
         border: 'none',
         borderRadius: 6,
         padding: '3px 8px',
         cursor: 'pointer',
         fontSize: 10,
         fontFamily: 'monospace',
-        color: hasIssues ? '#fca5a5' : '#86efac',
+        color: hasIssues ? 'var(--error-faded)' : 'var(--success-faded)',
       }}
     >
       <span style={{
         width: 6,
         height: 6,
         borderRadius: '50%',
-        background: hasIssues ? '#f87171' : '#4ade80',
+        background: hasIssues ? 'var(--error)' : 'var(--success)',
         flexShrink: 0,
       }} />
       {diagnostic.compositor}

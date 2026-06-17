@@ -1,0 +1,56 @@
+/* ══════════════════════════════════════════════════════════════
+   Mobile-specific overrides — only applies below 768px
+   ══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 767px) {
+  /* ── Safe area insets ──────────────────────────────────── */
+
+  :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+  }
+
+  body {
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+
+  /* ── Prevent iOS zoom on text inputs ──────────────────────── */
+
+  input[type="text"],
+  input[type="search"],
+  input[type="email"],
+  input[type="password"],
+  input[type="url"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* ── Minimum touch target size (safety net) ──────────────── */
+
+  button, [role="button"] {
+    min-height: 44px;
+  }
+
+  /* ── Smooth momentum scrolling on iOS ──────────────────── */
+
+  .chat-layout,
+  .sidebar__content,
+  .chat-area__messages,
+  .member-list__body,
+  .welcome,
+  .landing {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Prevent pull-to-refresh on chat ───────────────────── */
+
+  .chat-layout {
+    overscroll-behavior: contain;
+  }
+}

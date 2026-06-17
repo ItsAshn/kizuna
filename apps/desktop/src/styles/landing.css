@@ -727,3 +727,24 @@
     padding: 10px;
   }
 }
+
+@media (max-width: 380px) {
+  .landing-nav__name {
+    font-size: 15px;
+  }
+
+  .landing-nav__cta {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  .landing-hero__title {
+    font-size: 28px;
+  }
+
+  .landing-hero__btn {
+    padding: 10px 18px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+}

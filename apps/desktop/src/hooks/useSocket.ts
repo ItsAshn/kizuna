@@ -4,7 +4,10 @@ import { io } from 'socket.io-client'
 import type { Socket } from 'socket.io-client'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import type { DMIncomingCall } from '../store/chatStore'
+import { useVoiceStore } from '../store/voiceStore'
+import { useCallStore } from '../store/callStore'
+import { useSettingsStore } from '../store/settingsStore'
+import type { DMIncomingCall } from '../store/callStore'
 import { decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
 import type { Message, Channel, DMChannelData, UserStatus, MessageReaction, Member } from '@kizuna/shared'
@@ -48,14 +51,14 @@ export function useSocket(): MutableRefObject<Socket | null> {
     socketRef.current = socket
 
     socket.on('connect', () => {
-      useChatStore.getState().setSocketConnected(true)
+      useSettingsStore.getState().setSocketConnected(true)
       socket.emit('user:subscribe')
       socket.emit('notification:subscribe')
       socket.emit('user:joined')
       socket.emit('channel:mute:sync')
       socket.emit('voice:getOccupancy', (res: { channels: Record<string, { userId: string; username: string }[]> }) => {
         if (res?.channels) {
-          useChatStore.getState().setVoiceChannelUsers(res.channels)
+          useVoiceStore.getState().setVoiceChannelUsers(res.channels)
         }
       })
       if ('Notification' in window && Notification.permission === 'default') {
@@ -64,20 +67,20 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('disconnect', () => {
-      useChatStore.getState().setSocketConnected(false)
+      useSettingsStore.getState().setSocketConnected(false)
     })
 
     socket.io.on('reconnect_attempt', (attempt) => {
-      useChatStore.getState().setSocketReconnecting(true)
-      useChatStore.getState().setSocketReconnectAttempts(attempt)
+      useSettingsStore.getState().setSocketReconnecting(true)
+      useSettingsStore.getState().setSocketReconnectAttempts(attempt)
     })
 
     socket.io.on('reconnect', () => {
-      useChatStore.getState().setSocketReconnectAttempts(0)
+      useSettingsStore.getState().setSocketReconnectAttempts(0)
     })
 
     socket.on('connect_error', (err) => {
-      useChatStore.getState().setSocketConnected(false)
+      useSettingsStore.getState().setSocketConnected(false)
       const msg = err.message || ''
       if (msg.includes('Invalid or expired token') || msg.includes('Authentication required') || msg.includes('User not found')) {
         ;(async () => {
@@ -106,7 +109,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
         if (existing.some((m) => m.id === message.id)) return {}
 
         const serverId = useServerStore.getState().activeSession?.serverId
-        const notif = serverId ? state.notificationSettings[serverId] : undefined
+        const notif = serverId ? useSettingsStore.getState().notificationSettings[serverId] : undefined
         const skipUnread = notif?.level === 'none' || notif?.level === 'mentions'
 
         const newState: any = {
@@ -165,7 +168,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     socket.on('message:mention', (mention: any) => {
       const serverId = useServerStore.getState().activeSession?.serverId
-      const notif = serverId ? useChatStore.getState().notificationSettings[serverId] : undefined
+      const notif = serverId ? useSettingsStore.getState().notificationSettings[serverId] : undefined
       const isEveryone = mention.mention_type === 'everyone' || mention.mention_type === 'here'
       const suppress = notif?.suppressEveryone && isEveryone
 
@@ -207,9 +210,20 @@ export function useSocket(): MutableRefObject<Socket | null> {
       if (store.activeChannelId === id) {
         store.setActiveChannel(null)
       }
-      if (store.activeVoiceChannelId === id) {
-        store.setActiveVoiceChannel(null)
+      if (useVoiceStore.getState().activeVoiceChannelId === id) {
+        useVoiceStore.getState().setActiveVoiceChannel(null)
       }
+    })
+
+    socket.on('channel:reordered', ({ order }: { order: { id: string; position: number }[] }) => {
+      const store = useChatStore.getState()
+      const posMap = new Map(order.map((o) => [o.id, o.position]))
+      const sorted = [...store.channels].sort((a, b) => {
+        const pa = posMap.get(a.id) ?? a.position
+        const pb = posMap.get(b.id) ?? b.position
+        return pa - pb
+      })
+      store.setChannels(sorted)
     })
 
     socket.on('server:announce', ({ title, body }: { title: string; body: string }) => {
@@ -289,15 +303,15 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('user:online', ({ userId, status }: { userId: string; status: UserStatus }) => {
-      useChatStore.getState().setUserStatus(userId, status)
+      useVoiceStore.getState().setUserStatus(userId, status)
     })
 
     socket.on('user:offline', ({ userId }: { userId: string }) => {
-      useChatStore.getState().setUserStatus(userId, 'offline')
+      useVoiceStore.getState().setUserStatus(userId, 'offline')
     })
 
     socket.on('users:online', (onlineList: Record<string, { username: string; status: UserStatus }>) => {
-      const store = useChatStore.getState()
+      const store = useVoiceStore.getState()
       const statuses: Record<string, UserStatus> = {}
       for (const [uid, info] of Object.entries(onlineList)) {
         statuses[uid] = info.status
@@ -306,7 +320,14 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('user:status', ({ userId, status }: { userId: string; status: UserStatus }) => {
-      useChatStore.getState().setUserStatus(userId, status)
+      useVoiceStore.getState().setUserStatus(userId, status)
+    })
+
+    socket.on('member:added', (member: Member) => {
+      const store = useChatStore.getState()
+      if (!store.members.find(m => m.id === member.id)) {
+        store.setMembers([...store.members, member])
+      }
     })
 
     socket.on('member:updated', (updatedMember: Member) => {
@@ -330,15 +351,15 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('voice:userJoinedChannel', ({ channelId, userId, username }: { channelId: string; userId: string; username: string }) => {
-      useChatStore.getState().addVoiceChannelUser(channelId, { userId, username })
+      useVoiceStore.getState().addVoiceChannelUser(channelId, { userId, username })
     })
 
     socket.on('voice:userLeftChannel', ({ channelId, userId }: { channelId: string; userId: string }) => {
-      useChatStore.getState().removeVoiceChannelUser(channelId, userId)
+      useVoiceStore.getState().removeVoiceChannelUser(channelId, userId)
     })
 
     socket.on('dm:call:incoming', (call: DMIncomingCall) => {
-      useChatStore.getState().setIncomingCall(call)
+      useCallStore.getState().setIncomingCall(call)
       showNotification({
         type: 'dmcall',
         title: `${call.callerUsername} is calling you`,
@@ -347,18 +368,18 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('dm:call:accepted', ({ dmChannelId }: { dmChannelId: string }) => {
-      const store = useChatStore.getState()
+      const store = useCallStore.getState()
       if (store.dmCallStatus === 'ringing-outgoing' && store.dmCallChannelId === dmChannelId) {
         store.setDMCallStatus('active')
       }
     })
 
     socket.on('dm:call:rejected', () => {
-      useChatStore.getState().clearDMCall()
+      useCallStore.getState().clearDMCall()
     })
 
     socket.on('dm:call:ended', () => {
-      const store = useChatStore.getState()
+      const store = useCallStore.getState()
       if (store.dmCallStatus === 'active' || store.dmCallStatus === 'ringing-outgoing' || store.dmCallStatus === 'ringing-incoming') {
         store.setDMCallShouldCleanup(true)
       } else {

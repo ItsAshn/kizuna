@@ -1,5 +1,6 @@
 import { useRef, useCallback, useEffect, useState } from 'react'
-import { useChatStore } from '../store/chatStore'
+import { useVoiceStore } from '../store/voiceStore'
+import { useCallStore } from '../store/callStore'
 import { Monitor, X, GripHorizontal } from 'lucide-react'
 import '../styles/screenshare.css'
 
@@ -9,7 +10,8 @@ interface ScreenShareOverlayProps {
 }
 
 export default function ScreenShareOverlay({ videoElRef, stopScreenshare }: ScreenShareOverlayProps) {
-  const { screenSharePeerId, screenShareUsername, isScreenSharing, activeVoiceChannelId } = useChatStore()
+  const { screenSharePeerId, screenShareUsername, isScreenSharing } = useCallStore()
+  const { activeVoiceChannelId } = useVoiceStore()
   const containerRef = useRef<HTMLDivElement>(null)
   const videoContainerRef = useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = useState(false)
@@ -104,7 +106,7 @@ export default function ScreenShareOverlay({ videoElRef, stopScreenshare }: Scre
             <button
               className="screenshare-overlay__btn screenshare-overlay__btn--close"
               onClick={() => {
-                useChatStore.getState().clearScreenSharePeer()
+                useCallStore.getState().clearScreenSharePeer()
               }}
               title="Close"
             >

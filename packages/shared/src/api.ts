@@ -14,6 +14,7 @@ import type {
   AdminInfo,
   ChannelMute,
   GifInfo,
+  LinkEmbed,
 } from './types'
 
 function normalizeUrl(url: string): string {
@@ -154,11 +155,11 @@ export async function getMe(serverUrl: string): Promise<User> {
 export async function uploadPublicKey(
   serverUrl: string,
   publicKey: string,
-  keySalt?: number[],
+  keySalt?: Uint8Array,
 ): Promise<void> {
   await client(serverUrl).put('/api/auth/public-key', {
     public_key: publicKey,
-    key_salt: keySalt != null ? JSON.stringify(keySalt) : undefined,
+    key_salt: keySalt != null ? JSON.stringify(Array.from(keySalt)) : undefined,
   })
 }
 
@@ -235,7 +236,7 @@ export async function resolveInviteCode(
 ): Promise<{ serverUrl: string; name: string; description: string }> {
   const parts = code.toUpperCase().split('.')
   if (parts.length !== 2) throw new Error('Invalid invite code format')
-  const [encodedUrl] = parts
+  const encodedUrl = parts[0]!;
   let serverUrl: string
   try {
     serverUrl = atob(encodedUrl.replace(/-/g, '+').replace(/_/g, '/'))
@@ -274,6 +275,13 @@ export async function deleteChannel(
   id: string,
 ): Promise<void> {
   await client(serverUrl).delete(`/api/channels/${id}`)
+}
+
+export async function reorderChannels(
+  serverUrl: string,
+  order: { id: string; position: number }[],
+): Promise<void> {
+  await client(serverUrl).patch('/api/channels/reorder', { order })
 }
 
 export async function lockChannel(
@@ -344,7 +352,7 @@ export async function sendMessage(
   attachmentIds?: string[],
   replyToMessageId?: string,
 ): Promise<Message> {
-  const body: Record<string, any> = { content }
+  const body: Record<string, unknown> = { content }
   if (attachmentIds?.length) body.attachment_ids = attachmentIds
   if (replyToMessageId) body.reply_to_message_id = replyToMessageId
   const res = await client(serverUrl).post(`/api/messages/${channelId}`, body)
@@ -884,7 +892,7 @@ export async function searchMessages(
 export async function fetchPinnedMessages(
   serverUrl: string,
   channelId: string,
-): Promise<any[]> {
+): Promise<Message[]> {
   const res = await client(serverUrl).get(`/api/pins/${channelId}`)
   return res.data.pins ?? []
 }
@@ -938,7 +946,7 @@ export async function deleteCategory(
 export async function unfurlUrls(
   serverUrl: string,
   urls: string[],
-): Promise<Record<string, any>> {
+): Promise<Record<string, LinkEmbed>> {
   const res = await client(serverUrl).post('/api/embeds/unfurl', { urls })
   return res.data.embeds ?? {}
 }

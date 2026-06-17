@@ -1,6 +1,6 @@
 {
   "name": "@kizuna/desktop",
-  "version": "0.18.3",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,12 +15,8 @@
   "dependencies": {
     "@kizuna/shared": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
-    "@tauri-apps/plugin-notification": "^2.0.0",
     "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-shell": "^2.0.0",
     "@tauri-apps/plugin-updater": "^2.0.0",
-    "axios": "^1.7.0",
-    "date-fns": "^3.3.1",
     "dompurify": "^3.4.9",
     "lucide-react": "^1.17.0",
     "marked": "^18.0.5",

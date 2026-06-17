@@ -5,6 +5,9 @@
     "jsx": "react-jsx",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noUncheckedIndexedAccess": false,
     "paths": {
       "@/*": ["./src/*"],
       "@kizuna/shared": ["../../packages/shared/src/index.ts"]

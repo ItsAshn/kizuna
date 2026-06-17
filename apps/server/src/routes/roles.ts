@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, isUserAdmin } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 

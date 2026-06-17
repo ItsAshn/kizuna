@@ -1,0 +1,17 @@
+node_modules/
+dist/
+out/
+pnpm-lock.yaml
+target/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.AppImage
+*.msi
+*.dmg
+*.deb
+*.rpm
+*.log
+.cache/
+.turbo/

@@ -1,7 +1,8 @@
 import { useRef, useCallback } from 'react'
 import type { Socket } from 'socket.io-client'
 import type { Transport, Producer } from 'mediasoup-client/types'
-import { useChatStore } from '../store/chatStore'
+import { useCallStore } from '../store/callStore'
+import { useVoiceStore } from '../store/voiceStore'
 
 interface ScreenFramePayload {
   jpeg_base64: string
@@ -22,7 +23,8 @@ export function useScreenshare(
   const streamRef = useRef<MediaStream | null>(null)
   const unlistenRef = useRef<(() => void) | null>(null)
 
-  const store = useChatStore
+  const callStore = useCallStore
+  const voiceStore = useVoiceStore
 
   const base64ToUint8 = (b64: string): Uint8Array => {
     const binary = atob(b64)
@@ -56,8 +58,8 @@ export function useScreenshare(
       )
     }
 
-    store.getState().setIsScreenSharing(false)
-    store.getState().setScreenShareVideoProducerId(null)
+    callStore.getState().setIsScreenSharing(false)
+    callStore.getState().setScreenShareVideoProducerId(null)
   }, [])
 
   const startScreenshare = useCallback(async (
@@ -126,7 +128,7 @@ export function useScreenshare(
         })
       })
 
-      store.getState().setIsScreenSharing(true)
+      callStore.getState().setIsScreenSharing(true)
       return null
     } catch (err: any) {
       cleanupLocal()
@@ -137,7 +139,7 @@ export function useScreenshare(
   const stopScreenshare = useCallback(() => {
     const socket = socketRef.current
     if (socket) {
-      socket.emit('screen:stop', { channelId: store.getState().activeVoiceChannelId })
+      socket.emit('screen:stop', { channelId: voiceStore.getState().activeVoiceChannelId })
     }
     cleanupLocal()
   }, [socketRef, cleanupLocal])

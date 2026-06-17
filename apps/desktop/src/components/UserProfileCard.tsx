@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useChatStore } from '../store/chatStore'
+import { useVoiceStore } from '../store/voiceStore'
 import { useServerStore } from '../store/serverStore'
 import { getOrCreateDMChannel } from '@kizuna/shared'
 import { MessageCircle } from 'lucide-react'
+import { hexToRgba } from '../utils/color'
 import '../styles/user-profile-card.css'
 
 interface UserProfileCardProps {
@@ -17,7 +19,7 @@ interface UserProfileCardProps {
 export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, onMention }: UserProfileCardProps) {
   const members = useChatStore((s) => s.members)
   const session = useServerStore((s) => s.activeSession)
-  const userStatuses = useChatStore((s) => s.userStatuses)
+  const userStatuses = useVoiceStore((s) => s.userStatuses)
   const setDMChannels = useChatStore((s) => s.setDMChannels)
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
@@ -81,9 +83,9 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
 
   return createPortal(
     <div ref={ref} className="user-profile-card" style={{ position: 'fixed', top: pos?.top ?? 0, left: pos?.left ?? 0, visibility: pos ? 'visible' : 'hidden' }}>
-      <div className="user-profile-card__banner" style={member.banner ? { backgroundImage: `url(${member.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { backgroundColor: member.custom_role_color || (member.role === 'admin' ? '#f59e0b' : '#374151') }} />
+      <div className="user-profile-card__banner" style={member.banner ? { backgroundImage: `url(${member.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { backgroundColor: member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)') }} />
       <div className="user-profile-card__avatar-wrap">
-        <div className="user-profile-card__avatar" style={{ backgroundColor: member.custom_role_color || (member.role === 'admin' ? '#f59e0b' : '#374151') }}>
+        <div className="user-profile-card__avatar" style={{ backgroundColor: member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)') }}>
           {member.avatar ? (
             <img src={member.avatar} alt="" className="user-profile-card__avatar-img" />
           ) : displayName[0]?.toUpperCase()}
@@ -98,7 +100,7 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
 
       <div className="user-profile-card__roles">
         {member.custom_roles?.map((r) => (
-          <span key={r.id} className="user-profile-card__role-badge" style={{ color: r.color || '#5865f2', borderColor: (r.color || '#5865f2') + '66', backgroundColor: (r.color || '#5865f2') + '22' }}>
+          <span key={r.id} className="user-profile-card__role-badge" style={{ color: r.color || '#4c6ef5', borderColor: hexToRgba(r.color || '#4c6ef5', 0.4), backgroundColor: hexToRgba(r.color || '#4c6ef5', 34 / 255) }}>
             {r.name}
           </span>
         ))}

@@ -31,6 +31,7 @@ FROM base AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -45,15 +46,15 @@ RUN pnpm install --prod --frozen-lockfile
 COPY --from=builder /app/apps/server/dist apps/server/dist
 
 RUN groupadd --system kizuna && useradd --system --gid kizuna kizuna
-RUN mkdir -p /data && chown kizuna:kizuna /data
-ENV SERVER_DB_PATH=/data/server.db
-RUN mkdir -p /app/uploads && chown kizuna:kizuna /app/uploads
 
 EXPOSE 5000
 
-USER kizuna
+COPY apps/server/docker-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://localhost:5000/health').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"
 
-CMD ["node", "apps/server/dist/index.js"]
+USER kizuna
+
+ENTRYPOINT ["/entrypoint.sh"]

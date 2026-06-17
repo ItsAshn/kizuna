@@ -220,11 +220,11 @@
   padding: 6px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
+  background: none;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
 .settings-modal__radio-option:hover {
-  color: var(--text-primary);
   background: var(--bg-tertiary);
 }
 
@@ -321,6 +321,63 @@
 
 .settings-modal__toggle input:checked + .settings-modal__toggle-track .settings-modal__toggle-thumb {
   transform: translateX(18px);
+}
+
+/* ── Mobile ────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .settings-modal {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    border: none;
+  }
+
+  .settings-modal__header {
+    padding: 14px 16px;
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  }
+
+  .settings-modal__body {
+    padding: 16px;
+  }
+
+  .settings-modal__footer {
+    padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .settings-modal__header-title {
+    font-size: 15px;
+  }
+
+  .settings-modal__select {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .settings-modal__radio-option {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .settings-modal__keybind-btn {
+    min-height: 44px;
+    font-size: 13px;
+  }
+
+  .settings-modal__done-btn {
+    min-height: 44px;
+    font-size: 14px;
+    padding: 8px 24px;
+  }
+
+  .settings-modal__check-btn {
+    min-height: 44px;
+    font-size: 14px;
+  }
 }
 
 .settings-modal__slider-section {

@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useChatStore } from '../store/chatStore'
+import { useVoiceStore } from '../store/voiceStore'
+import { useCallStore } from '../store/callStore'
 import type { ConnectionQuality } from '@kizuna/shared'
 import { Volume2, Mic, MicOff, PhoneOff, Monitor, MonitorOff } from 'lucide-react'
 import MonitorPicker from './MonitorPicker'
@@ -44,20 +46,24 @@ function ConnectionQualityBars({ quality }: { quality: ConnectionQuality | null 
 
 export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare, dmCallOtherUsername }: VoiceOverlayProps) {
   const {
+    channels,
+  } = useChatStore()
+  const {
     activeVoiceChannelId,
     voicePeers,
     isMuted,
     isSpeaking,
-    channels,
     localConnectionQuality,
     serverVoiceBitrateKbps,
     voiceError,
-    isScreenSharing,
-    screenSharePeerId,
     setVoiceError,
     peerVolumes,
     setPeerVolume,
-  } = useChatStore()
+  } = useVoiceStore()
+  const {
+    isScreenSharing,
+    screenSharePeerId,
+  } = useCallStore()
   const [closing, setClosing] = useState(false)
   const [showMonitorPicker, setShowMonitorPicker] = useState(false)
   const [screenShareError, setScreenShareError] = useState<string | null>(null)

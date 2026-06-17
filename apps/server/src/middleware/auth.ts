@@ -116,7 +116,7 @@ export function getUserPermissions(userId: string): { role: string; permissions:
     }
   }
 
-  let permissions: Record<string, boolean> = {
+  const permissions: Record<string, boolean> = {
     send_messages: true,
     send_dm_messages: true,
     add_reactions: true,

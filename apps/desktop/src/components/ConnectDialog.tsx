@@ -76,7 +76,7 @@ export default function ConnectDialog({ onClose }: Props) {
         const { challenge, difficulty } = await getChallenge(url.trim())
         const { nonce } = await solvePoW(challenge, difficulty)
         const { publicKey, salt } = await generateAndStoreKey(url.trim(), password)
-        result = await register(url.trim(), username.trim(), password, displayName || username, serverPassword || undefined, publicKey, JSON.stringify(salt), challenge, nonce)
+        result = await register(url.trim(), username.trim(), password, displayName || username, serverPassword || undefined, publicKey, JSON.stringify(Array.from(salt)), challenge, nonce)
 
         const serverId = url.trim()
         addServer({
@@ -104,11 +104,6 @@ export default function ConnectDialog({ onClose }: Props) {
         return
       } else {
         result = await login(url.trim(), username.trim(), password)
-        const serverSalt = result.user.key_salt ? JSON.parse(result.user.key_salt) : null
-        const { publicKey, salt } = await initializeCrypto(url.trim(), password, serverSalt, result.user.public_key)
-        if (userNeedsKeyUpload(result.user.public_key, url.trim())) {
-          await uploadPublicKey(url.trim(), publicKey, salt)
-        }
 
         const serverId = url.trim()
         addServer({
@@ -125,6 +120,16 @@ export default function ConnectDialog({ onClose }: Props) {
           token: result.token,
           user: result.user,
         })
+
+        const serverSalt = result.user.key_salt ? new Uint8Array(JSON.parse(result.user.key_salt)) : null
+        const { publicKey, salt } = await initializeCrypto(url.trim(), password, serverSalt, result.user.public_key)
+        if (userNeedsKeyUpload(result.user.public_key, url.trim())) {
+          try {
+            await uploadPublicKey(url.trim(), publicKey, salt)
+          } catch {
+            console.warn('[Auth] Failed to upload public key after login')
+          }
+        }
 
         onClose()
       }

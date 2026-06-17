@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { searchMessages } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
-import { useChatStore } from '../store/chatStore'
 import { X, Search, Loader2 } from 'lucide-react'
 import type { Message } from '@kizuna/shared'
 import '../styles/search.css'

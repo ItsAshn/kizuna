@@ -3,7 +3,8 @@ import type { Socket } from 'socket.io-client'
 import { Device } from 'mediasoup-client'
 import type { Transport, Producer, Consumer } from 'mediasoup-client/types'
 import { useServerStore } from '../store/serverStore'
-import { useChatStore } from '../store/chatStore'
+import { useVoiceStore } from '../store/voiceStore'
+import { useCallStore } from '../store/callStore'
 import type { ConnectionQuality } from '@kizuna/shared'
 
 const SPEAKING_RMS_THRESHOLD = 8
@@ -96,7 +97,7 @@ function startSpeakingDetection(
   const poll = () => {
     if (stopped) return
     if (ctx.state === 'suspended') {
-      ctx.resume().then(() => { timer = setTimeout(poll, SPEAKING_POLL_MS) }).catch(() => { timer = setTimeout(poll, 200) })
+      ctx.resume().then(() => { timer = setTimeout(poll, SPEAKING_POLL_MS) }).catch((err) => { console.error('Failed to resume AudioContext (local speaking):', err); timer = setTimeout(poll, 200) })
       return
     }
     analyser.getByteTimeDomainData(buf)
@@ -220,7 +221,7 @@ function startRemoteSpeakingDetection(
   const poll = () => {
     if (stopped) return
     if (ctx.state === 'suspended') {
-      ctx.resume().then(() => { timer = setTimeout(poll, SPEAKING_POLL_MS) }).catch(() => { timer = setTimeout(poll, 200) })
+      ctx.resume().then(() => { timer = setTimeout(poll, SPEAKING_POLL_MS) }).catch((err) => { console.error('Failed to resume AudioContext (remote speaking):', err); timer = setTimeout(poll, 200) })
       return
     }
     analyser.getByteFrequencyData(buf)
@@ -294,17 +295,19 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     audioInputDeviceId, audioOutputDeviceId,
     setAudioInputDeviceId,
     setVoiceError,
-    setScreenSharePeer, clearScreenSharePeer,
     voiceInputMode,
     pushToTalkKey,
     noiseSuppression, autoGainControl,
     noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
     inputVolume, outputVolume,
     setLiveAudioLevel,
+  } = useVoiceStore()
+  const {
+    setScreenSharePeer, clearScreenSharePeer,
     setDMCallStatus, setDMCallChannelId, setDMCallOtherUser,
     setIncomingCall, clearDMCall,
     dmCallChannelId,
-  } = useChatStore()
+  } = useCallStore()
 
   const cleanupVoice = useCallback(() => {
     vlog('cleanup', 'starting')
@@ -424,8 +427,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         updateVoicePeer(peerId, {
           connectionQuality: computeQualityFromStats(stats),
         })
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.error('Failed to get peer RTC stats:', err)
       }
     }
     pollPeerQuality()
@@ -470,7 +473,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       videoEl.srcObject = new MediaStream([consumer.track])
       videoEl.style.width = '100%'
       videoEl.style.height = '100%'
-      await videoEl.play().catch(() => {})
+      await videoEl.play().catch((err) => { console.error('Failed to play screen share video:', err) })
       videoElRef.current = videoEl
 
       setScreenSharePeer(sharerPeerId, username)
@@ -549,7 +552,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
             case 'PeerLeft': {
               removeVoicePeer(ev.data.peer_id)
               import('@tauri-apps/api/core').then(({ invoke }) =>
-                invoke('voice_remove_peer', { peerId: ev.data.peer_id }).catch(() => {})
+                invoke('voice_remove_peer', { peerId: ev.data.peer_id }).catch((err) => { console.error('Failed to remove voice peer (native):', err) })
               )
               break
             }
@@ -635,7 +638,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       })
       socket.on('voice:peerLeft', ({ peerId }: { peerId: string }) => {
         removeVoicePeer(peerId)
-        invoke('voice_remove_peer', { peerId }).catch(() => {})
+        invoke('voice_remove_peer', { peerId }).catch((err) => { console.error('Failed to remove voice peer (socket handler):', err) })
       })
       socket.on('voice:peerSpeaking', ({ peerId, speaking }: { peerId: string; speaking: boolean }) => {
         updateVoicePeer(peerId, { speaking })
@@ -670,7 +673,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       vlog('joinVoiceNative', 'enabled socket RTP forwarding')
       socket?.on('voice:socketRtp', async (payload: ArrayBuffer, peerId: string) => {
         const { invoke: inv } = await import('@tauri-apps/api/core')
-        inv('voice_inject_opus', { peerId, opusData: Array.from(new Uint8Array(payload)) }).catch(() => {})
+        inv('voice_inject_opus', { peerId, opusData: Array.from(new Uint8Array(payload)) }).catch((err) => { console.error('Failed to inject opus data:', err) })
       })
 
       const iceServers = joinResult.iceServers || []
@@ -781,7 +784,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       verr('joinVoiceNative', 'failed', e)
       setVoiceError(err)
       socket?.emit('voice:leave', { channelId })
-      try { await invoke('voice_leave') } catch {}
+      try { await invoke('voice_leave') } catch (e) {
+        console.error('Failed to leave voice after join error:', e)
+      }
       channelIdRef.current = null
       return err
     }
@@ -1108,8 +1113,8 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       try {
         const stats = await sendTransportRef.current.getStats()
         setLocalConnectionQuality(computeQualityFromStats(stats))
-      } catch {
-        // ignore transient errors
+      } catch (err) {
+        console.error('Failed to get local transport stats:', err)
       }
     }
     pollLocalQuality()
@@ -1433,7 +1438,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     let prevInputVolume = inputVolume
     let prevOutputVolume = outputVolume
 
-    const unsub = useChatStore.subscribe((state) => {
+    const unsub = useVoiceStore.subscribe((state) => {
       if (state.inputVolume !== prevInputVolume) {
         prevInputVolume = state.inputVolume
         if (gainNodeRef.current) {
@@ -1447,7 +1452,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         })
         // Sync native audio output volume
         import('@tauri-apps/api/core').then(({ invoke }) =>
-          invoke('voice_set_output_volume', { volume: state.outputVolume / 100 }).catch(() => {})
+          invoke('voice_set_output_volume', { volume: state.outputVolume / 100 }).catch((err) => { console.error('Failed to set output volume:', err) })
         )
       }
     })

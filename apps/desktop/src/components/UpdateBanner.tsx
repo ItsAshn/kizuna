@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { useChatStore } from '../store/chatStore'
+import { useSettingsStore } from '../store/settingsStore'
 import { useUpdaterActions } from '../hooks/useUpdater'
 import '../styles/update-banner.css'
 
 export default function UpdateBanner() {
-  const updateState = useChatStore((s) => s.updateState)
-  const updateProgress = useChatStore((s) => s.updateProgress)
-  const updateVersion = useChatStore((s) => s.updateVersion)
-  const updateError = useChatStore((s) => s.updateError)
+  const updateState = useSettingsStore((s) => s.updateState)
+  const updateProgress = useSettingsStore((s) => s.updateProgress)
+  const updateVersion = useSettingsStore((s) => s.updateVersion)
+  const updateError = useSettingsStore((s) => s.updateError)
   const { installUpdate } = useUpdaterActions()
   const [dismissed, setDismissed] = useState(false)
   const prevStateRef = useRef(updateState)

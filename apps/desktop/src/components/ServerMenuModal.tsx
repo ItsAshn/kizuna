@@ -2,6 +2,8 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { MoreHorizontal } from 'lucide-react'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
+import { useVoiceStore } from '../store/voiceStore'
+import { useSettingsStore } from '../store/settingsStore'
 import QRCode from 'qrcode'
 import {
   updateProfile,
@@ -31,6 +33,7 @@ import {
   deleteStickerPack,
 } from '@kizuna/shared'
 import type { Member, CustomRole, Permission, UserStatus, GifInfo } from '@kizuna/shared'
+import { hexToRgba } from '../utils/color'
 import '../styles/server-menu.css'
 
 interface Props {
@@ -95,8 +98,8 @@ const EXPIRY_OPTIONS = [
 
 function NotificationSettings() {
   const session = useServerStore((s) => s.activeSession)
-  const settings = useChatStore((s) => s.notificationSettings)
-  const setNotificationSettings = useChatStore((s) => s.setNotificationSettings)
+  const settings = useSettingsStore((s) => s.notificationSettings)
+  const setNotificationSettings = useSettingsStore((s) => s.setNotificationSettings)
   const serverId = session?.serverId || ''
   const current = settings[serverId] || { level: 'all' as const, suppressEveryone: false }
 
@@ -133,7 +136,8 @@ function NotificationSettings() {
 
 export default function ServerMenuModal({ onClose }: Props) {
   const { activeSession: session, updateServerInfo, servers } = useServerStore()
-  const { members, setMembers, userStatuses } = useChatStore()
+  const { members, setMembers } = useChatStore()
+  const { userStatuses } = useVoiceStore()
   const serverUrl = session?.url
   const isAdmin = session?.user?.role === 'admin'
   const [closing, setClosing] = useState(false)
@@ -213,7 +217,8 @@ export default function ServerMenuModal({ onClose }: Props) {
       setCustomCss(info.customCss || '')
       setVoiceBitrateKbps(info.voiceBitrateKbps ?? 64)
       setInfoLoading(false)
-    }).catch(() => {
+    }).catch((err) => {
+      console.error('Failed to fetch server info:', err)
       if (mountedRef.current) {
         clearTimeout(delay)
         setInfoLoading(false)
@@ -253,7 +258,11 @@ export default function ServerMenuModal({ onClose }: Props) {
       if (!url) return
       try {
         await updateServerSettings(url, undefined, undefined, undefined, undefined, kbps)
-      } catch {}
+      } catch (err) {
+        console.error('Failed to save voice bitrate:', err)
+        const { activeSession } = useServerStore.getState()
+        if (activeSession) setServerMsg(handleApiErr(err))
+      }
     }, 300)
   }, [])
 
@@ -265,7 +274,10 @@ export default function ServerMenuModal({ onClose }: Props) {
     const timer = setTimeout(async () => {
       try {
         await updateServerSettings(serverUrl, undefined, undefined, bgBlur)
-      } catch {}
+      } catch (err) {
+        console.error('Failed to save background blur:', err)
+        setServerMsg(handleApiErr(err))
+      }
     }, 400)
     return () => clearTimeout(timer)
   }, [bgBlur, serverUrl])
@@ -301,12 +313,13 @@ export default function ServerMenuModal({ onClose }: Props) {
   const [newExpiry, setNewExpiry] = useState('0')
   const [creatingInvite, setCreatingInvite] = useState(false)
   const [activeQr, setActiveQr] = useState<{ code: string; dataUrl: string } | null>(null)
+  const [inviteError, setInviteError] = useState<string | null>(null)
 
   // ─── Roles ───────────────────────────────────────────
   const [roles, setRoles] = useState<CustomRole[]>([])
   const [rolesLoading, setRolesLoading] = useState(false)
   const [newRoleName, setNewRoleName] = useState('')
-  const [newRoleColor, setNewRoleColor] = useState('#5865f2')
+  const [newRoleColor, setNewRoleColor] = useState('#4c6ef5')
   const [newRolePerms, setNewRolePerms] = useState<Partial<Record<Permission, boolean>>>({})
   const [newRoleHoist, setNewRoleHoist] = useState(false)
   const [newRoleMentionable, setNewRoleMentionable] = useState(false)
@@ -323,6 +336,7 @@ export default function ServerMenuModal({ onClose }: Props) {
   const [assigningRole, setAssigningRole] = useState<Record<string, boolean>>({})
   const [showCreateRole, setShowCreateRole] = useState(false)
   const [reorderingRoles, setReorderingRoles] = useState(false)
+  const [roleError, setRoleError] = useState<string | null>(null)
 
   // ─── GIFs & Stickers ────────────────────────────────
   const [gifsList, setGifsList] = useState<GifInfo[]>([])
@@ -359,14 +373,18 @@ export default function ServerMenuModal({ onClose }: Props) {
   async function loadInvites() {
     if (!serverUrl) return
     setInvitesLoading(true)
-    try { if (mountedRef.current) setInvites(await fetchInvites(serverUrl)) } catch {}
+    try { if (mountedRef.current) setInvites(await fetchInvites(serverUrl)) } catch (err) {
+      console.error('Failed to fetch invites:', err)
+    }
     if (mountedRef.current) setInvitesLoading(false)
   }
 
   async function loadRoles() {
     if (!serverUrl) return
     setRolesLoading(true)
-    try { if (mountedRef.current) setRoles(await fetchRoles(serverUrl)) } catch {}
+    try { if (mountedRef.current) setRoles(await fetchRoles(serverUrl)) } catch (err) {
+      console.error('Failed to fetch roles:', err)
+    }
     if (mountedRef.current) setRolesLoading(false)
   }
 
@@ -376,7 +394,9 @@ export default function ServerMenuModal({ onClose }: Props) {
     try {
       const gifs = await fetchGifs(serverUrl, { limit: 200 })
       if (mountedRef.current) setGifsList(gifs)
-    } catch {}
+    } catch (err) {
+      console.error('Failed to fetch gifs:', err)
+    }
     if (mountedRef.current) setGifsLoading(false)
   }
 
@@ -587,7 +607,10 @@ export default function ServerMenuModal({ onClose }: Props) {
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: true }))
     try {
       await addMemberRole(serverUrl, userId, roleId)
-    } catch {}
+    } catch (err) {
+      console.error('Failed to add member role:', err)
+      setMemberMsg(prev => ({ ...prev, [userId]: handleApiErr(err) }))
+    }
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: false }))
   }
 
@@ -596,7 +619,10 @@ export default function ServerMenuModal({ onClose }: Props) {
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: true }))
     try {
       await removeMemberRole(serverUrl, userId, roleId)
-    } catch {}
+    } catch (err) {
+      console.error('Failed to remove member role:', err)
+      setMemberMsg(prev => ({ ...prev, [userId]: handleApiErr(err) }))
+    }
     setAssigningRole(prev => ({ ...prev, [userId + roleId]: false }))
   }
 
@@ -615,7 +641,9 @@ export default function ServerMenuModal({ onClose }: Props) {
     for (const m of targets) {
       try {
         await setMemberRole(serverUrl, m.id, targetRole)
-      } catch {}
+      } catch (err) {
+        console.error('Bulk toggle admin failed for member:', m.id, err)
+      }
     }
     clearSelection()
   }
@@ -626,7 +654,9 @@ export default function ServerMenuModal({ onClose }: Props) {
     for (const m of targets) {
       try {
         await kickMember(serverUrl, m.id)
-      } catch {}
+      } catch (err) {
+        console.error('Bulk kick failed for member:', m.id, err)
+      }
     }
     clearSelection()
   }
@@ -640,7 +670,9 @@ export default function ServerMenuModal({ onClose }: Props) {
     for (const m of targets) {
       try {
         await addMemberRole(serverUrl, m.id, roleId)
-      } catch {}
+      } catch (err) {
+        console.error('Bulk add role failed for member:', m.id, err)
+      }
     }
     clearSelection()
   }
@@ -663,7 +695,11 @@ export default function ServerMenuModal({ onClose }: Props) {
       setActiveQr({ code: invite.code, dataUrl: qrDataUrl })
       setNewMaxUses('')
       setNewExpiry('0')
-    } catch {}
+      setInviteError(null)
+    } catch (err) {
+      console.error('Failed to create invite:', err)
+      setInviteError(handleApiErr(err))
+    }
     setCreatingInvite(false)
   }
 
@@ -686,7 +722,10 @@ export default function ServerMenuModal({ onClose }: Props) {
     try {
       await revokeInvite(serverUrl, code)
       setInvites(prev => prev.filter(i => i.code !== code))
-    } catch {}
+    } catch (err) {
+      console.error('Failed to revoke invite:', err)
+      setInviteError(handleApiErr(err))
+    }
   }
 
   // ─── Role handlers ──────────────────────────────────
@@ -697,13 +736,17 @@ export default function ServerMenuModal({ onClose }: Props) {
       const role = await createRole(serverUrl, newRoleName.trim(), newRoleColor, newRolePerms, newRoleHoist, newRoleMentionable, newRoleDefaultOnJoin)
       setRoles(prev => [...prev, role])
       setNewRoleName('')
-      setNewRoleColor('#5865f2')
+      setNewRoleColor('#4c6ef5')
       setNewRolePerms({})
       setNewRoleHoist(false)
       setNewRoleMentionable(false)
       setNewRoleDefaultOnJoin(false)
       setShowCreateRole(false)
-    } catch {}
+      setRoleError(null)
+    } catch (err) {
+      console.error('Failed to create role:', err)
+      setRoleError(handleApiErr(err))
+    }
     setCreatingRole(false)
   }
 
@@ -731,7 +774,11 @@ export default function ServerMenuModal({ onClose }: Props) {
         custom_roles: (m.custom_roles || []).map(r => r.id === id ? { ...r, name: updated.name, color: updated.color } : r),
       })))
       setEditingRoleId(null)
-    } catch {}
+      setRoleError(null)
+    } catch (err) {
+      console.error('Failed to save role:', err)
+      setRoleError(handleApiErr(err))
+    }
     setSavingRoleId(null)
   }
 
@@ -751,7 +798,11 @@ export default function ServerMenuModal({ onClose }: Props) {
         custom_roles: (m.custom_roles || []).filter(r => r.id !== id),
       })))
       if (editingRoleId === id) setEditingRoleId(null)
-    } catch {}
+      setRoleError(null)
+    } catch (err) {
+      console.error('Failed to delete role:', err)
+      setRoleError(handleApiErr(err))
+    }
   }
 
   // ─── GIF/sticker handlers ───────────────────────────
@@ -908,8 +959,8 @@ export default function ServerMenuModal({ onClose }: Props) {
               <label className="server-menu__toggle-switch">
                 <input
                   type="checkbox"
-                  checked={useChatStore(s => s.serverBackgroundEnabled)}
-                  onChange={(e) => useChatStore.getState().setServerBackgroundEnabled(e.target.checked)}
+                  checked={useSettingsStore(s => s.serverBackgroundEnabled)}
+                  onChange={(e) => useSettingsStore.getState().setServerBackgroundEnabled(e.target.checked)}
                 />
                 <span className="server-menu__toggle-track">
                   <span className="server-menu__toggle-thumb" />
@@ -921,8 +972,8 @@ export default function ServerMenuModal({ onClose }: Props) {
               <label className="server-menu__toggle-switch">
                 <input
                   type="checkbox"
-                  checked={useChatStore(s => s.customCssEnabled)}
-                  onChange={(e) => useChatStore.getState().setCustomCssEnabled(e.target.checked)}
+                  checked={useSettingsStore(s => s.customCssEnabled)}
+                  onChange={(e) => useSettingsStore.getState().setCustomCssEnabled(e.target.checked)}
                 />
                 <span className="server-menu__toggle-track">
                   <span className="server-menu__toggle-thumb" />
@@ -954,7 +1005,7 @@ export default function ServerMenuModal({ onClose }: Props) {
 
               <div className="server-menu__tab-bar">
                 {(['settings', 'members', 'invites', 'roles', 'css', 'gifs'] as AdminTab[]).map(t => (
-                  <button key={t} onClick={() => setAdminTab(t)}
+                  <button key={t} onClick={() => { setAdminTab(t); setInviteError(null); setRoleError(null) }}
                     className={`server-menu__tab ${adminTab === t ? 'server-menu__tab--active' : ''}`}>
                     {t}
                   </button>
@@ -1116,12 +1167,12 @@ export default function ServerMenuModal({ onClose }: Props) {
                               <p className="server-menu__member-name">
                                 {m.display_name || m.username}
                                 {isSelf && <span className="server-menu__member-self">(you)</span>}
-                                {m.is_host && <span className="server-menu__member-badge" style={{ color: '#f59e0b', borderColor: '#f59e0b66', backgroundColor: '#f59e0b22', marginLeft: '4px' }}>host</span>}
+                                {m.is_host && <span className="server-menu__member-badge" style={{ color: '#fab005', borderColor: hexToRgba('#fab005', 0.4), backgroundColor: hexToRgba('#fab005', 34 / 255), marginLeft: '4px' }}>host</span>}
                               </p>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                 {(m.custom_roles || []).map((r) => (
                                   <span key={r.id} className="server-menu__member-badge"
-                                    style={{ color: r.color || '#5865f2', borderColor: (r.color || '#5865f2') + '66', backgroundColor: (r.color || '#5865f2') + '22' }}>
+                                    style={{ color: r.color || '#4c6ef5', borderColor: hexToRgba(r.color || '#4c6ef5', 0.4), backgroundColor: hexToRgba(r.color || '#4c6ef5', 34 / 255) }}>
                                     {r.name}
                                     {!(m.is_host && r.id === 'admin-role') && (
                                     <button
@@ -1139,7 +1190,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                             </div>
                             {memberMsg[m.id] && <span className="server-menu__member-msg">{memberMsg[m.id]}</span>}
                             {m.reset_requested_at && (
-                              <span className="server-menu__member-badge" style={{ color: '#fbbf24', borderColor: '#fbbf2466', backgroundColor: '#fbbf2422' }}>
+                              <span className="server-menu__member-badge" style={{ color: '#fbbf24', borderColor: hexToRgba('#fbbf24', 0.4), backgroundColor: hexToRgba('#fbbf24', 34 / 255) }}>
                                 reset
                               </span>
                             )}
@@ -1285,6 +1336,9 @@ export default function ServerMenuModal({ onClose }: Props) {
                     <button onClick={handleCreateInvite} disabled={creatingInvite} className="server-menu__role-create-btn">
                       {creatingInvite ? '...' : 'generate invite code'}
                     </button>
+                    {inviteError && (
+                      <span className="server-menu__save-msg server-menu__save-msg--err" style={{ marginTop: '6px', display: 'block' }}>{inviteError}</span>
+                    )}
                   </div>
 
                   {activeQr && (
@@ -1382,6 +1436,9 @@ export default function ServerMenuModal({ onClose }: Props) {
                         className="server-menu__role-create-btn">
                         {creatingRole ? '...' : 'create role'}
                       </button>
+                      {roleError && (
+                        <span className="server-menu__save-msg server-menu__save-msg--err" style={{ marginTop: '6px' }}>{roleError}</span>
+                      )}
                     </div>
                   )}
 
@@ -1467,7 +1524,9 @@ export default function ServerMenuModal({ onClose }: Props) {
                                               newRoles[idx - 1] = { ...prev, position: myPos }
                                               newRoles.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
                                               setRoles(newRoles)
-                                            } catch {}
+                                            } catch (err) {
+                                              console.error('Failed to reorder role up:', err)
+                                            }
                                           }
                                           setReorderingRoles(false)
                                         }}
@@ -1494,7 +1553,9 @@ export default function ServerMenuModal({ onClose }: Props) {
                                               newRoles[idx + 1] = { ...next, position: myPos }
                                               newRoles.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
                                               setRoles(newRoles)
-                                            } catch {}
+                                            } catch (err) {
+                                              console.error('Failed to reorder role down:', err)
+                                            }
                                           }
                                           setReorderingRoles(false)
                                         }}
@@ -1524,6 +1585,9 @@ export default function ServerMenuModal({ onClose }: Props) {
                         </div>
                       )
                     })
+                  )}
+                  {!showCreateRole && roleError && (
+                    <span className="server-menu__save-msg server-menu__save-msg--err" style={{ marginTop: '8px', display: 'block' }}>{roleError}</span>
                   )}
                 </div>
               )}

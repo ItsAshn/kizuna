@@ -10,7 +10,7 @@ import { getAllPeers } from '../socket/voiceHandler'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
-function getMemberById(userId: string) {
+export function getMemberById(userId: string) {
   const db = getDb()
   const user = db.prepare(`
     SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.reset_requested_at, sm.is_host
@@ -147,7 +147,7 @@ function generateInviteCode(serverUrl: string): string {
 function decodeServerUrl(code: string): string {
   const [encodedUrl] = code.split('.')
   try {
-    return Buffer.from(encodedUrl.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8')
+    return Buffer.from((encodedUrl ?? '').replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8')
   } catch {
     throw new Error('Invalid invite code')
   }
@@ -365,6 +365,7 @@ serverInfoRoutes.post('/join/:code', async (c) => {
 
     db.prepare('INSERT OR REPLACE INTO server_members (user_id, role) VALUES (?, ?)').run(userId, 'member')
     assignDefaultRoles(userId)
+    try { const io: any = c.get('io' as never); if (io) io.emit('member:added', getMemberById(userId)) } catch {}
     return c.json({ ok: true, alreadyMember: false })
   }
 
@@ -601,7 +602,7 @@ serverInfoRoutes.get('/background', (c) => {
   let bgFile: string | null = null
   try {
     const files = fs.readdirSync(BACKGROUNDS_DIR)
-    if (files.length > 0) bgFile = files[0]
+    if (files.length > 0) bgFile = files[0] ?? null
   } catch {}
 
   if (!bgFile) return c.json({ error: 'No background image' }, 404)

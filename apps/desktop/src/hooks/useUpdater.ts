@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from 'react'
-import { useChatStore } from '../store/chatStore'
+import { useSettingsStore } from '../store/settingsStore'
 
 export function useUpdater(): void {
   // Tauri updater events are handled via check() / downloadAndInstall()
@@ -7,10 +7,10 @@ export function useUpdater(): void {
 }
 
 export function useUpdaterActions() {
-  const setUpdateState = useChatStore((s) => s.setUpdateState)
-  const setUpdateProgress = useChatStore((s) => s.setUpdateProgress)
-  const setUpdateVersion = useChatStore((s) => s.setUpdateVersion)
-  const setUpdateError = useChatStore((s) => s.setUpdateError)
+  const setUpdateState = useSettingsStore((s) => s.setUpdateState)
+  const setUpdateProgress = useSettingsStore((s) => s.setUpdateProgress)
+  const setUpdateVersion = useSettingsStore((s) => s.setUpdateVersion)
+  const setUpdateError = useSettingsStore((s) => s.setUpdateError)
 
   const checkForUpdates = useCallback(async () => {
     try {

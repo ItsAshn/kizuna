@@ -75,7 +75,6 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 // POST /attachments/:channelId — upload file via multipart/form-data
 attachmentRoutes.post('/:channelId', uploadLimiter as never, authMiddleware, async (c) => {
   const user = getAuth(c)
-  const channelId = c.req.param('channelId')
 
   const userPerms = getUserPermissions(user.userId)
   if (!userPerms || !hasPermission(userPerms, 'upload_attachments')) {

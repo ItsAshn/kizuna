@@ -42,12 +42,12 @@ function fetchReactionsForMessages(db: any, messageIds: string[]): Record<string
   const map: Record<string, any[]> = {}
   for (const r of rows) {
     if (!map[r.message_id]) map[r.message_id] = []
-    const existing = map[r.message_id].find((e: any) => e.reaction_key === r.reaction_key && e.reaction_type === r.reaction_type)
+    const existing = map[r.message_id]!.find((e: any) => e.reaction_key === r.reaction_key && e.reaction_type === r.reaction_type)
     if (existing) {
       existing.count++
       existing.users.push({ user_id: r.user_id, username: r.username })
     } else {
-      map[r.message_id].push({
+      map[r.message_id]!.push({
         reaction_key: r.reaction_key,
         reaction_type: r.reaction_type,
         count: 1,

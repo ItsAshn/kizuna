@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import { Settings } from 'lucide-react'
+import { Settings, ChevronLeft } from 'lucide-react'
 import '../styles/server-panel.css'
 
 interface ServerPanelProps {
@@ -10,9 +10,10 @@ interface ServerPanelProps {
   onOpenSettings?: () => void
   onOpenExport?: () => void
   onAddServer?: () => void
+  onBackToServers?: () => void
 }
 
-export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExport, onAddServer }: ServerPanelProps) {
+export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExport, onAddServer, onBackToServers }: ServerPanelProps) {
   const navigate = useNavigate()
   const {
     servers,

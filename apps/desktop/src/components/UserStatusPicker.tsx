@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useChatStore } from '../store/chatStore'
+import { useVoiceStore } from '../store/voiceStore'
 import { useServerStore } from '../store/serverStore'
 import type { UserStatus } from '@kizuna/shared'
 import '../styles/status-picker.css'
@@ -18,7 +18,7 @@ const STATUS_OPTIONS: { value: UserStatus; label: string }[] = [
 
 export default function UserStatusPicker({ socketRef, children }: Props) {
   const session = useServerStore((s) => s.activeSession)
-  const userStatuses = useChatStore((s) => s.userStatuses)
+  const userStatuses = useVoiceStore((s) => s.userStatuses)
   const [open, setOpen] = useState(false)
   const [coords, setCoords] = useState({ top: 0, left: 0 })
   const wrapperRef = useRef<HTMLDivElement>(null)

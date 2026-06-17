@@ -1,10 +1,13 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
+import { useCallStore } from '../store/callStore'
+import { useSettingsStore } from '../store/settingsStore'
 import { useSocket } from '../hooks/useSocket'
 import { useVoice } from '../hooks/useVoice'
 import { useScreenshare } from '../hooks/useScreenshare'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { useMobile } from '../hooks/useMobile'
 import { fetchChannels, fetchMembers, fetchDMChannels, fetchServerInfo, fetchChannelMutes } from '@kizuna/shared'
 import { restoreFromSession } from '../store/keyStore'
 import { Loader2, Users } from 'lucide-react'
@@ -13,6 +16,7 @@ import UpdateBanner from '../components/UpdateBanner'
 import Sidebar from '../components/Sidebar'
 import ChatArea from '../components/ChatArea'
 import MemberList from '../components/MemberList'
+import VoiceOverlay from '../components/VoiceOverlay'
 import ScreenShareOverlay from '../components/ScreenShareOverlay'
 import ServerMenuModal from '../components/ServerMenuModal'
 import EnvStatus from '../components/EnvStatus'
@@ -28,17 +32,22 @@ import '../styles/chat.css'
 
 export default function Chat({ onOpenSettings }: { onOpenSettings: () => void }) {
   const navigate = useNavigate()
+  const isMobile = useMobile()
   const session = useServerStore((s) => s.activeSession)
   const refreshSessionUser = useServerStore((s) => s.refreshSessionUser)
   const servers = useServerStore((s) => s.servers)
+  const setActiveServer = useServerStore((s) => s.setActiveServer)
   const {
     setChannels, setMembers, setDMChannels,
     activeChannelId, activeDMChannelId,
     setActiveChannel, setActiveDMChannel,
-    serverBackgroundEnabled, customCssEnabled,
-    setChannelMutes, socketConnected, socketReconnecting, socketReconnectAttempts,
+    setChannelMutes,
     members, channels, dmChannels,
   } = useChatStore()
+  const {
+    serverBackgroundEnabled, customCssEnabled,
+    socketConnected, socketReconnecting, socketReconnectAttempts,
+  } = useSettingsStore()
   const socketRef = useSocket()
   const {
     joinVoice,
@@ -57,9 +66,9 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     dmCallStatus, dmCallChannelId, dmCallOtherUserId, dmCallOtherUsername,
     incomingCall, setIncomingCall, dmCallShouldCleanup, setDMCallShouldCleanup,
     clearDMCall,
-  } = useChatStore()
+  } = useCallStore()
   const dmCallConnectedRef = useRef(false)
-  const [showMembers, setShowMembers] = useState(true)
+  const [showMembers, setShowMembers] = useState(!isMobile)
   const [showMenu, setShowMenu] = useState(false)
   const [showEnvWizard, setShowEnvWizard] = useState(false)
   const [loginForServerId, setLoginForServerId] = useState<string | null>(null)
@@ -68,8 +77,30 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const [showConnect, setShowConnect] = useState(false)
   const [bgInfo, setBgInfo] = useState<{ hasBackground: boolean; backgroundBlur: number; customCss: string | null } | null>(null)
   const [initialLoading, setInitialLoading] = useState(true)
+  const [mobileView, setMobileView] = useState<'sidebar' | 'chat'>('sidebar')
 
   const chatOpen = !!(activeChannelId || activeDMChannelId)
+
+  const handleMobileBackToSidebar = useCallback(() => {
+    setMobileView('sidebar')
+  }, [])
+
+  const handleMobileBackToServers = useCallback(() => {
+    setActiveServer(null)
+    navigate('/')
+  }, [setActiveServer, navigate])
+
+  useEffect(() => {
+    if (isMobile && (activeChannelId || activeDMChannelId)) {
+      setMobileView('chat')
+    }
+  }, [isMobile, activeChannelId, activeDMChannelId])
+
+  useEffect(() => {
+    if (isMobile) {
+      setMobileView('sidebar')
+    }
+  }, [isMobile, session?.serverId])
 
   const channelNavList = useMemo(() => {
     const list: { id: string; type: 'channel' | 'dm' }[] = [
@@ -132,24 +163,57 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     async function load() {
       try {
         await refreshSessionUser()
-        const [channelsList, membersList, dms, info, mutes] = await Promise.all([
+
+        const results = await Promise.allSettled([
           fetchChannels(session!.url),
           fetchMembers(session!.url),
           fetchDMChannels(session!.url),
           fetchServerInfo(session!.url),
           fetchChannelMutes(session!.url),
         ])
-        setChannels(channelsList)
-        setMembers(membersList)
-        setDMChannels(dms)
-        setBgInfo({ hasBackground: info.hasBackground, backgroundBlur: info.backgroundBlur, customCss: info.customCss })
-        const mutesMap: Record<string, number | null> = {}
-        for (const m of mutes) {
-          mutesMap[m.channel_id] = m.muted_until
+
+        const [channelsResult, membersResult, dmsResult, infoResult, mutesResult] = results
+
+        if (channelsResult.status === 'fulfilled') {
+          setChannels(channelsResult.value)
+        } else {
+          console.error('[Chat] Failed to fetch channels:', channelsResult.reason)
+          setChannels([])
         }
-        setChannelMutes(mutesMap)
+
+        if (membersResult.status === 'fulfilled') {
+          setMembers(membersResult.value)
+        } else {
+          console.error('[Chat] Failed to fetch members:', membersResult.reason)
+          setMembers([])
+        }
+
+        if (dmsResult.status === 'fulfilled') {
+          setDMChannels(dmsResult.value)
+        } else {
+          console.error('[Chat] Failed to fetch DMs:', dmsResult.reason)
+          setDMChannels([])
+        }
+
+        if (infoResult.status === 'fulfilled') {
+          setBgInfo({ hasBackground: infoResult.value.hasBackground, backgroundBlur: infoResult.value.backgroundBlur, customCss: infoResult.value.customCss })
+        } else {
+          console.error('[Chat] Failed to fetch server info:', infoResult.reason)
+        }
+
+        if (mutesResult.status === 'fulfilled') {
+          const mutesMap: Record<string, number | null> = {}
+          for (const m of mutesResult.value) {
+            mutesMap[m.channel_id] = m.muted_until
+          }
+          setChannelMutes(mutesMap)
+        } else {
+          console.error('[Chat] Failed to fetch channel mutes:', mutesResult.reason)
+        }
+
         setInitialLoading(false)
-      } catch {
+      } catch (err) {
+        console.error('[Chat] Failed to load server data:', err)
         setChannels([])
         setMembers([])
         setDMChannels([])
@@ -210,6 +274,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         '--bg-image': `url(${session.url}/api/server/background)`,
         '--bg-blur': `${bgInfo?.backgroundBlur ?? 0}px`,
       } as React.CSSProperties : undefined}
+      data-mobile-view={isMobile ? mobileView : undefined}
     >
       {!socketConnected && (
         <div className="connection-banner">
@@ -228,7 +293,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           )}
         </div>
       )}
-      {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={onOpenSettings} onOpenExport={() => setShowExport(true)} onAddServer={() => setShowConnect(true)} />}
+      {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={onOpenSettings} onOpenExport={() => setShowExport(true)} onAddServer={() => setShowConnect(true)} onBackToServers={isMobile ? handleMobileBackToServers : undefined} />}
       <Sidebar
         joinVoice={joinVoice}
         leaveVoice={leaveVoice}
@@ -237,6 +302,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         startScreenshare={startScreenshare}
         stopScreenshare={stopScreenshare}
         onOpenMenu={() => setShowMenu(true)}
+        onBackToServers={isMobile ? handleMobileBackToServers : undefined}
       />
       <div className="chat-main">
         <UpdateBanner />
@@ -261,6 +327,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
                 socketRef={socketRef}
                 onStartDMCall={startDMCall}
                 onEndDMCall={endDMCall}
+                onBackToSidebar={isMobile ? handleMobileBackToSidebar : undefined}
               />
             </>
           ) : (
@@ -282,7 +349,15 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           )}
         </div>
       </div>
-      <MemberList visible={showMembers} />
+      <MemberList visible={showMembers} onClose={() => setShowMembers(false)} />
+      <VoiceOverlay
+        leaveVoice={leaveVoice}
+        toggleMute={toggleMute}
+        socketRef={socketRef}
+        startScreenshare={startScreenshare}
+        stopScreenshare={stopScreenshare}
+        dmCallOtherUsername={dmCallOtherUsername}
+      />
       <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
       <NotificationContainer />
     </div>

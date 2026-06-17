@@ -1,12 +1,16 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useChatStore } from '../store/chatStore'
+import { useVoiceStore } from '../store/voiceStore'
 import { useServerStore } from '../store/serverStore'
+import { useMobile } from '../hooks/useMobile'
 import type { Member, CustomRole } from '@kizuna/shared'
+import { X } from 'lucide-react'
 import UserProfileCard from './UserProfileCard'
 import '../styles/member-list.css'
 
 interface Props {
   visible: boolean
+  onClose?: () => void
 }
 
 interface HoistGroup {
@@ -14,24 +18,32 @@ interface HoistGroup {
   members: Member[]
 }
 
-export default function MemberList({ visible }: Props) {
+export default function MemberList({ visible, onClose }: Props) {
   const members = useChatStore((s) => s.members)
   const session = useServerStore((s) => s.activeSession)
-  const userStatuses = useChatStore((s) => s.userStatuses)
+  const isMobile = useMobile()
+  const userStatuses = useVoiceStore((s) => s.userStatuses)
   const [search, setSearch] = useState('')
   const [closing, setClosing] = useState(false)
   const [profileUserId, setProfileUserId] = useState<string | null>(null)
   const profileAnchorRef = useRef<HTMLElement | null>(null)
+  const prevVisible = useRef(visible)
+
+  if (prevVisible.current !== visible) {
+    if (!visible) {
+      setClosing(true)
+    } else {
+      setClosing(false)
+    }
+    prevVisible.current = visible
+  }
 
   useEffect(() => {
     if (!visible) {
-      setClosing(true)
       const timer = setTimeout(() => setClosing(false), 200)
       return () => clearTimeout(timer)
     }
   }, [visible])
-
-  if (!visible && !closing) return null
 
   function memberRank(m: Member): number {
     if (m.role === 'admin') return -10000
@@ -86,6 +98,8 @@ export default function MemberList({ visible }: Props) {
       })
   }, [members, hoistGroups])
 
+  if (!visible && !closing) return null
+
   const filteredMembers = search.trim()
     ? members.filter(m =>
         m.username.toLowerCase().includes(search.toLowerCase()) ||
@@ -117,7 +131,7 @@ export default function MemberList({ visible }: Props) {
         <div className="member-list__member-avatar-wrap">
           <div
             className="member-list__member-avatar"
-            style={{ backgroundColor: member.custom_role_color || (member.role === 'admin' ? '#f59e0b' : '#374151') }}
+            style={{ backgroundColor: member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)') }}
           >
             {member.avatar ? (
               <img src={member.avatar} alt="" className="member-list__member-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
@@ -144,6 +158,15 @@ export default function MemberList({ visible }: Props) {
     <div className={`member-list${closing ? ' member-list--closing' : ''}`} role="complementary" aria-label="Members">
       <div className="member-list__header">
         <h3 className="member-list__title">Members — {members.length}</h3>
+        {isMobile && onClose && (
+          <button
+            className="member-list__close-btn"
+            onClick={onClose}
+            aria-label="Close member list"
+          >
+            <X size={20} />
+          </button>
+        )}
         <input
           className="member-list__search"
           placeholder="Search..."

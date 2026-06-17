@@ -58,9 +58,9 @@ export function restoreFromSession(serverUrl: string): boolean {
 export async function generateAndStoreKey(
   serverUrl: string,
   password: string,
-  existingSalt?: number[],
-): Promise<{ publicKey: string; salt: number[] }> {
-  const salt = existingSalt || Array.from(window.crypto.getRandomValues(new Uint8Array(16)))
+  existingSalt?: Uint8Array,
+): Promise<{ publicKey: string; salt: Uint8Array }> {
+  const salt = existingSalt || window.crypto.getRandomValues(new Uint8Array(16));
   const kp = await deriveKeyPair(password, salt)
 
   const encoded = encodeSecretKey(kp.secretKey)
@@ -69,7 +69,7 @@ export async function generateAndStoreKey(
 
   localStorage.setItem(`${LS_PREFIX}${serverUrl}`, JSON.stringify({
     publicKey: kp.publicKeyString,
-    salt,
+    salt: Array.from(salt),
   }))
 
   state.publicKey = kp.publicKeyString
@@ -82,9 +82,9 @@ export async function generateAndStoreKey(
 export async function initializeCrypto(
   serverUrl: string,
   password: string,
-  serverSalt?: number[] | null,
+  serverSalt?: Uint8Array | null,
   serverPublicKey?: string | null,
-): Promise<{ publicKey: string; salt: number[] }> {
+): Promise<{ publicKey: string; salt: Uint8Array }> {
   if (serverSalt != null) {
     try {
       const kp = await deriveKeyPair(password, serverSalt)
@@ -92,7 +92,7 @@ export async function initializeCrypto(
       localStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}-pub`, kp.publicKeyString)
       localStorage.setItem(`${LS_PREFIX}${serverUrl}`, JSON.stringify({
         publicKey: kp.publicKeyString,
-        salt: serverSalt,
+        salt: Array.from(serverSalt),
       }))
       state.publicKey = kp.publicKeyString
       state.secretKey = kp.secretKey
@@ -130,11 +130,12 @@ export function clearCryptoState(): void {
   state.publicKey = null
   state.secretKey = null
   state.initialized = false
-  // Clear all stored keys from localStorage and sessionStorage
   for (const key of Object.keys(localStorage)) {
-    if (key.startsWith(LS_PREFIX)) localStorage.removeItem(key)
+    if (key.startsWith(LS_PREFIX) || key.startsWith(SS_KEY_PREFIX)) {
+      localStorage.removeItem(key)
+    }
   }
-  for (const key of Object.keys(localStorage)) {
-    if (key.startsWith(SS_KEY_PREFIX)) localStorage.removeItem(key)
+  for (const key of Object.keys(sessionStorage)) {
+    if (key.startsWith(SS_KEY_PREFIX)) sessionStorage.removeItem(key)
   }
 }

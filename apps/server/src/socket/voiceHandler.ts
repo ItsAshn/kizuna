@@ -1,11 +1,11 @@
 import type { Server, Socket } from 'socket.io'
-import { ensureRouter, createTransport, connectTransport, produceOnTransport, consumeOnTransport, closeRouter } from '../media/router'
+import { ensureRouter, createTransport, connectTransport, produceOnTransport, closeRouter } from '../media/router'
 import type { types as mediasoupTypes } from 'mediasoup'
 import { getDb } from '../db'
 import { getUserPermissions, hasPermission } from '../middleware/auth'
 
 function vts(): string {
-  return new Date().toISOString().split('T')[1].slice(0, 12)
+  return new Date().toISOString().split('T')[1]?.slice(0, 12) ?? ''
 }
 function vlog(tag: string, msg: string, extras?: Record<string, unknown>) {
   const extra = extras ? ' ' + JSON.stringify(extras) : ''
@@ -88,8 +88,8 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     channelId: string
   }, callback?: Function) => {
     const joinTs = Date.now()
-    let userId = socket.data.userId
-    let username = socket.data.username
+    const userId = socket.data.userId
+    const username = socket.data.username
     if (!userId) {
       vlog('join', 'rejected: not authenticated')
       if (typeof callback === 'function') callback({ error: 'Authentication required' })
@@ -175,7 +175,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('voice:createTransport', async ({ channelId, direction }: {
+  socket.on('voice:createTransport', async ({ channelId: _channelId, direction }: {
     channelId: string
     direction: string
   }, callback?: Function) => {
@@ -223,7 +223,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('voice:createDirectTransport', async ({ channelId }: {
+  socket.on('voice:createDirectTransport', async ({ channelId: _channelId }: {
     channelId: string
   }, callback?: Function) => {
     try {
@@ -252,7 +252,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('voice:connectTransport', async ({ channelId, transportId, dtlsParameters }: {
+  socket.on('voice:connectTransport', async ({ channelId: _channelId, transportId, dtlsParameters }: {
     channelId: string
     transportId: string
     dtlsParameters: mediasoupTypes.DtlsParameters
@@ -318,7 +318,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('voice:consume', async ({ channelId, peerId, rtpCapabilities, kind }: {
+  socket.on('voice:consume', async ({ channelId: _channelId, peerId, rtpCapabilities, kind }: {
     channelId: string
     peerId: string
     rtpCapabilities: mediasoupTypes.RtpCapabilities
@@ -389,8 +389,8 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         const forwardingSocket = socket
         const forwardingPeerId = peerId
           consumer.on('rtp', (rtpPacket: Buffer) => {
-            const hasExtension = (rtpPacket[0] & 0x10) !== 0
-            const csrcCount = rtpPacket[0] & 0x0f
+            const hasExtension = (rtpPacket[0]! & 0x10) !== 0
+            const csrcCount = rtpPacket[0]! & 0x0f
             let offset = 12 + csrcCount * 4
             if (hasExtension && offset + 4 <= rtpPacket.length) {
               const extLen = rtpPacket.readUInt16BE(offset + 2)
@@ -418,7 +418,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('voice:resumeConsumer', async ({ channelId, consumerId }: {
+  socket.on('voice:resumeConsumer', async ({ channelId: _channelId, consumerId }: {
     channelId: string
     consumerId: string
   }, callback?: Function) => {
@@ -509,7 +509,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     for (const [, peer] of peers) {
       if (!peer.announced) continue
       if (!channels[peer.channelId]) channels[peer.channelId] = []
-      channels[peer.channelId].push({ userId: peer.userId, username: peer.username })
+      channels[peer.channelId]!.push({ userId: peer.userId, username: peer.username })
     }
     if (typeof callback === 'function') callback({ channels })
   })
@@ -534,8 +534,8 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         const forwardingSocket = socket
         const forwardingPeerId = producerPeerId
         consumer.on('rtp', (rtpPacket: Buffer) => {
-          const hasExtension = (rtpPacket[0] & 0x10) !== 0
-          const csrcCount = rtpPacket[0] & 0x0f
+          const hasExtension = (rtpPacket[0]! & 0x10) !== 0
+          const csrcCount = rtpPacket[0]! & 0x0f
           let offset = 12 + csrcCount * 4
           if (hasExtension && offset + 4 <= rtpPacket.length) {
             const extLen = rtpPacket.readUInt16BE(offset + 2)

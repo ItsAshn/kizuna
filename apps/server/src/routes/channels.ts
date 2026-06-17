@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, getUserChannelPermissions, getUserChannelPermission, canWriteToChannel } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission, getUserChannelPermissions, getUserChannelPermission } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
@@ -61,6 +61,34 @@ channelRoutes.post('/', authMiddleware, async (c) => {
   } catch { /* best-effort */ }
 
   return c.json({ channel: mapChannel(channel) }, 201)
+})
+
+// PATCH /channels/reorder — reorder channels by position (manage_channels permission)
+channelRoutes.patch('/reorder', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  const userPerms = getUserPermissions(user.userId)
+  if (!userPerms || !hasPermission(userPerms, 'manage_channels')) {
+    return c.json({ error: 'Forbidden' }, 403)
+  }
+  const body = await c.req.json() as { order: { id: string; position: number }[] }
+  const { order } = body
+  if (!Array.isArray(order)) return c.json({ error: 'Invalid order' }, 400)
+
+  const db = getDb()
+  const stmt = db.prepare('UPDATE channels SET position = ? WHERE id = ?')
+  const tx = db.transaction(() => {
+    for (const item of order) {
+      stmt.run(item.position, item.id)
+    }
+  })
+  tx()
+
+  try {
+    const io: any = c.get('io' as never)
+    if (io) io.emit('channel:reordered', { order })
+  } catch { /* best-effort */ }
+
+  return c.json({ ok: true })
 })
 
 // PATCH /channels/:id — update channel name/topic/lock (manage_channels permission)

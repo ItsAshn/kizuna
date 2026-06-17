@@ -57,6 +57,7 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
   const id = uuidv4()
   db.prepare('INSERT INTO bans (id, user_id, banned_by, reason) VALUES (?, ?, ?, ?)').run(id, targetUserId, user.userId, reason)
   db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
+  try { const io: any = c.get('io' as never); if (io) io.emit('member:removed', { userId: targetUserId }) } catch {}
 
   logAuditEvent(db, 'member_ban', user.userId, targetUserId, JSON.stringify({ reason }))
 

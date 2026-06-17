@@ -1667,3 +1667,72 @@
 .server-menu__gif-delete:hover {
   background: var(--red);
 }
+
+/* ── Mobile ────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .modal-overlay {
+    align-items: stretch;
+  }
+
+  .server-menu {
+    width: 100vw;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    border: none;
+  }
+
+  .server-menu__header {
+    padding: 14px 16px;
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  }
+
+  .server-menu__body {
+    padding: 16px;
+  }
+
+  .server-menu__footer {
+    padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .server-menu__header-title {
+    font-size: 15px;
+  }
+
+  .server-menu__tab {
+    min-height: 44px;
+    font-size: 13px;
+  }
+
+  .server-menu__input {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .server-menu__select {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .server-menu__save-btn {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .server-menu__done-btn {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .server-menu__invite-row {
+    grid-template-columns: 1fr;
+  }
+
+  .server-menu__css-editor {
+    min-height: 200px;
+    font-size: 13px;
+  }
+}

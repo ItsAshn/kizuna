@@ -168,3 +168,35 @@
   background: var(--bg-hover);
   color: var(--text-primary);
 }
+
+/* ── Mobile ────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .user-profile-card {
+    width: calc(100vw - 32px);
+    max-width: 360px;
+  }
+
+  .user-profile-card__avatar {
+    width: 72px;
+    height: 72px;
+    font-size: 26px;
+  }
+
+  .user-profile-card__name {
+    font-size: 17px;
+  }
+
+  .user-profile-card__username {
+    font-size: 14px;
+  }
+
+  .user-profile-card__action-btn {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .user-profile-card__meta-item {
+    font-size: 13px;
+  }
+}

@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from 'react'
+import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { RotateCcw } from 'lucide-react'
 
 interface Props {
@@ -18,6 +18,10 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('[ErrorBoundary] Uncaught error:', error, errorInfo)
   }
 
   handleReload = () => {
@@ -71,7 +75,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               textAlign: 'left',
               fontFamily: 'var(--font-mono)',
             }}>
-              {this.state.error.message}
+              {this.state.error.stack ?? this.state.error.message}
             </pre>
           )}
           <button

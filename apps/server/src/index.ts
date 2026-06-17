@@ -71,7 +71,7 @@ async function start(): Promise<void> {
     console.error('[!] Failed to start mediasoup worker:', err.message)
   }
 
-  const { server } = createApp(PORT)
+  const { server: _server } = createApp(PORT)
 
   console.log(`\n[✓] Server "${config.SERVER_NAME}" running`)
   console.log(`[i] HTTP:       http://localhost:${PORT}`)

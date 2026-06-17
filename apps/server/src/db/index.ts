@@ -97,10 +97,11 @@ function validateSchema(database: Database.Database): void {
   }
 
   if (missing.length > 0) {
-    console.error('[DB] Schema validation failed — missing tables/columns:')
-    for (const m of missing) console.error(m)
-    console.error('[DB] The database is out of sync with the current server version.')
-    console.error('[DB] Ensure all migrations have run or restore from a backup.')
+    console.error('[DB] Schema validation failed — missing tables/columns:');
+    for (const m of missing) console.error(m);
+    console.error('[DB] The database is out of sync with the current server version.');
+    console.error('[DB] Ensure all migrations have run or restore from a backup.');
+    process.exit(1);
   }
 }
 

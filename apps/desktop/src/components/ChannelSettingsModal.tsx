@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
 import { useServerStore } from '../store/serverStore'
-import { useChatStore } from '../store/chatStore'
 import {
   fetchRoles,
   fetchChannelOverrides,

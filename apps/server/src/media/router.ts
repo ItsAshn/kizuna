@@ -1,6 +1,6 @@
 import type { types as mediasoupTypes } from 'mediasoup'
 import type { Server as IoServer } from 'socket.io'
-import { createWorker, getWorker } from './worker'
+import { getWorker } from './worker'
 
 function rlog(msg: string) {
   console.log(`[mediasoup] ${msg}`)
@@ -56,9 +56,6 @@ export async function createRouter(channelId: string): Promise<mediasoupTypes.Ro
   return router
 }
 
-function getCachedRouter(channelId: string): mediasoupTypes.Router | undefined {
-  return routers.get(channelId)
-}
 
 export { ensureRouter as getOrCreateRouter }
 

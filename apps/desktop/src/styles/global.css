@@ -26,6 +26,14 @@
   --green-dim-border: rgba(64, 192, 87, 0.20);
   --yellow: #fab005;
   --gray: #6b7280;
+  --avatar-bg-default: #374151;
+  --success: #4ade80;
+  --error: #f87171;
+  --warning: #fbbf24;
+  --success-faded: #86efac;
+  --error-faded: #fca5a5;
+  --error-bg: rgba(248, 113, 113, 0.12);
+  --success-bg: rgba(74, 222, 128, 0.12);
   --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -48,6 +56,14 @@ html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+a, button, [role="button"], [tabindex] {
+  touch-action: manipulation;
 }
 
 body {
@@ -234,6 +250,22 @@ select:focus:not(:focus-visible) {
 .icon-md {
   width: 20px;
   height: 20px;
+}
+
+@media (max-width: 767px) {
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    min-height: 44px;
+    padding: 10px 20px;
+    font-size: 16px;
+  }
+
+  .input-field {
+    min-height: 44px;
+    font-size: 16px;
+    padding: 10px 14px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

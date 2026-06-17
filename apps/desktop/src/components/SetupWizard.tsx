@@ -24,7 +24,7 @@ function isTauri(): boolean {
 }
 
 function StatusIcon({ ok }: { ok: boolean }) {
-  return <span style={{ color: ok ? '#4ade80' : '#f87171', fontWeight: 700 }}>{ok ? 'OK' : '!'}</span>
+  return <span style={{ color: ok ? 'var(--success)' : 'var(--error)', fontWeight: 700 }}>{ok ? 'OK' : '!'}</span>
 }
 
 export default function SetupWizard({ onClose }: { onClose: () => void }) {
@@ -130,14 +130,14 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
         </div>
 
         {!hasIssues && (
-          <p style={{ color: '#4ade80', fontSize: 12, textAlign: 'center', marginBottom: 16 }}>
+          <p style={{ color: 'var(--success)', fontSize: 12, textAlign: 'center', marginBottom: 16 }}>
             environment looks good — you're all set
           </p>
         )}
 
         {criticalIssues.length > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <p style={{ color: '#f87171', fontWeight: 600, fontSize: 12, marginBottom: 8 }}>
+            <p style={{ color: 'var(--error)', fontWeight: 600, fontSize: 12, marginBottom: 8 }}>
               issues found ({criticalIssues.length})
             </p>
             {criticalIssues.map((issue, i) => (
@@ -148,7 +148,7 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
 
         {warnings.length > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <p style={{ color: '#fbbf24', fontWeight: 600, fontSize: 12, marginBottom: 8 }}>
+            <p style={{ color: 'var(--warning)', fontWeight: 600, fontSize: 12, marginBottom: 8 }}>
               warnings ({warnings.length})
             </p>
             {warnings.map((issue, i) => (
@@ -179,7 +179,7 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
             style={{
               background: 'var(--accent-color)',
               border: 'none',
-              color: '#fff',
+              color: 'var(--text-primary)',
               padding: '6px 18px',
               borderRadius: 6,
               cursor: 'pointer',
@@ -218,7 +218,7 @@ function IssueCard({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
         <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{issue.component}</span>
         <span style={{
-          color: issue.severity === 'error' ? '#f87171' : '#fbbf24',
+          color: issue.severity === 'error' ? 'var(--error)' : 'var(--warning)',
           fontSize: 9,
           textTransform: 'uppercase',
           fontWeight: 600,
@@ -250,9 +250,9 @@ function IssueCard({
           <button
             onClick={() => onCopy(issue.fix_command!)}
             style={{
-              background: copiedCmd === issue.fix_command ? '#4ade80' : 'var(--border-color)',
+              background: copiedCmd === issue.fix_command ? 'var(--success)' : 'var(--border-color)',
               border: 'none',
-              color: copiedCmd === issue.fix_command ? '#000' : 'var(--text-secondary)',
+              color: copiedCmd === issue.fix_command ? 'var(--bg-primary)' : 'var(--text-secondary)',
               padding: '4px 8px',
               borderRadius: 4,
               cursor: 'pointer',

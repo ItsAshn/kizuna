@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useChatStore, type VoiceInputMode } from '../store/chatStore'
+import { useVoiceStore, type VoiceInputMode } from '../store/voiceStore'
+import { useSettingsStore } from '../store/settingsStore'
 import { useUpdaterActions } from '../hooks/useUpdater'
+import { clearCryptoState } from '../store/keyStore'
 import '../styles/settings.css'
 
 interface AudioDataPayload {
@@ -74,8 +76,10 @@ export default function UserSettingsModal({ onClose }: Props) {
     inputVolume, setInputVolume,
     outputVolume, setOutputVolume,
     liveAudioLevel, setLiveAudioLevel,
+  } = useVoiceStore()
+  const {
     updateState, updateProgress, updateVersion, updateError,
-  } = useChatStore()
+  } = useSettingsStore()
   const { checkForUpdates, installUpdate, getVersion } = useUpdaterActions()
 
   const [inputDevices, setInputDevices] = useState<AudioDevice[] | null>(null)
@@ -163,7 +167,8 @@ export default function UserSettingsModal({ onClose }: Props) {
               default_sample_rate: 48000,
             }))
         )
-      } catch {
+      } catch (err) {
+        console.error('Failed to enumerate audio devices:', err)
         if (!unmountedRef.current) {
           setInputDevices([])
           setOutputDevices([])
@@ -212,7 +217,8 @@ export default function UserSettingsModal({ onClose }: Props) {
               default_sample_rate: 48000,
             }))
         )
-      } catch {
+      } catch (err) {
+        console.error('Failed to get user media for device labels:', err)
         if (!unmountedRef.current) setPermissionDenied(true)
       }
     }
@@ -243,7 +249,7 @@ export default function UserSettingsModal({ onClose }: Props) {
     const { listen } = await import('@tauri-apps/api/event')
 
     // Stop any existing capture first
-    try { await invoke('stop_audio_capture') } catch {}
+    try { await invoke('stop_audio_capture') } catch (err) { console.error('Failed to stop prior audio capture:', err) }
 
     // Start capture with the currently selected device
     try {
@@ -267,7 +273,7 @@ export default function UserSettingsModal({ onClose }: Props) {
 
     audioLevelCleanupRef.current = () => {
       unlisten()
-      invoke('stop_audio_capture').catch(() => {})
+      invoke('stop_audio_capture').catch((err) => { console.error('Failed to stop audio capture on cleanup:', err) })
     }
   }, [audioInputDeviceId, setLiveAudioLevel])
 
@@ -288,6 +294,7 @@ export default function UserSettingsModal({ onClose }: Props) {
   }, [setAudioInputDeviceId, setAudioOutputDeviceId])
 
   const handleResetDatabase = useCallback(() => {
+    clearCryptoState()
     localStorage.removeItem('kizuna-voice-settings')
     localStorage.removeItem('kizuna-servers')
     window.location.reload()
@@ -370,7 +377,7 @@ export default function UserSettingsModal({ onClose }: Props) {
                 >
                   <span className="settings-modal__radio-dot" />
                   <div style={{ textAlign: 'left' }}>
-                    <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{mode.label}</div>
+                    <div style={{ fontWeight: 500 }}>{mode.label}</div>
                     <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>{mode.desc}</div>
                   </div>
                 </button>

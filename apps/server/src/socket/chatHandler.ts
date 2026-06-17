@@ -25,9 +25,22 @@ setInterval(() => {
   }
 }, 60_000).unref()
 
+const dmCalls = new Map<
+  string,
+  {
+    dmChannelId: string
+    callerId: string
+    callerUsername: string
+    calleeId: string
+    calleeUsername: string
+    status: 'ringing' | 'active'
+    startedAt: number
+  }
+>()
+
 interface MentionResult {
-  type: 'everyone' | 'here' | 'user' | 'role'
-  target: string | null
+  type: 'everyone' | 'here' | 'user' | 'role';
+  target: string | null;
 }
 
 type UserStatus = 'online' | 'idle' | 'busy' | 'offline'
@@ -48,10 +61,10 @@ export function parseMentions(content: string): MentionResult[] {
     seen.add('here')
   }
 
-  const userPattern = /@([\w.\-]+)/g
+  const userPattern = /@([\w.-]+)/g
   let match
   while ((match = userPattern.exec(content)) !== null) {
-    const username = match[1].toLowerCase()
+    const username = match[1]!.toLowerCase()
     if (username === 'everyone' || username === 'here') continue
     if (!seen.has(username)) {
       results.push({ type: 'user', target: username })
@@ -143,6 +156,45 @@ function getSocketUserId(socket: Socket): string {
 
 function getSocketUsername(socket: Socket): string {
   return socket.data.username || (socket as any).username || 'unknown'
+}
+
+export function getMessageInfo(
+  db: ReturnType<typeof getDb>,
+  messageId: string,
+): { channel_id: string; isDM: boolean; participants?: { user1_id: string; user2_id: string } } | null {
+  const msg = db.prepare('SELECT channel_id FROM messages WHERE id = ?').get(messageId) as any;
+  if (msg) return { channel_id: msg.channel_id, isDM: false };
+
+  const dm = db
+    .prepare(
+      `SELECT dm.channel_id, dc.user1_id, dc.user2_id
+       FROM direct_messages dm
+       JOIN dm_channels dc ON dc.id = dm.channel_id
+       WHERE dm.id = ?`,
+    )
+    .get(messageId) as any;
+  if (dm)
+    return {
+      channel_id: dm.channel_id,
+      isDM: true,
+      participants: { user1_id: dm.user1_id, user2_id: dm.user2_id },
+    };
+
+  return null;
+}
+
+export function broadcastReaction(
+  io: Server,
+  msgInfo: { channel_id: string; isDM: boolean; participants?: { user1_id: string; user2_id: string } },
+  event: string,
+  payload: unknown,
+) {
+  if (msgInfo.isDM && msgInfo.participants) {
+    io.to(`dm:${msgInfo.participants.user1_id}`).emit(event, payload);
+    io.to(`dm:${msgInfo.participants.user2_id}`).emit(event, payload);
+  } else {
+    io.to(msgInfo.channel_id).emit(event, payload);
+  }
 }
 
 function getSocketUsernameById(userId: string, db: ReturnType<typeof getDb>): string {
@@ -535,15 +587,6 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
   })
 
   // ─── DM Voice Calls ──────────────────────────────────
-  const dmCalls = new Map<string, {
-    dmChannelId: string
-    callerId: string
-    callerUsername: string
-    calleeId: string
-    calleeUsername: string
-    status: 'ringing' | 'active'
-    startedAt: number
-  }>()
 
   socket.on('dm:call:start', ({ dmChannelId }: { dmChannelId: string }, callback?: Function) => {
     if (!userId || !username) {
@@ -743,29 +786,6 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
   })
 
   // ─── Reactions ───────────────────────────────────────
-  function getMessageInfo(db: ReturnType<typeof getDb>, messageId: string): { channel_id: string; isDM: boolean; participants?: { user1_id: string; user2_id: string } } | null {
-    const msg = db.prepare('SELECT channel_id FROM messages WHERE id = ?').get(messageId) as any
-    if (msg) return { channel_id: msg.channel_id, isDM: false }
-
-    const dm = db.prepare(`
-      SELECT dm.channel_id, dc.user1_id, dc.user2_id
-      FROM direct_messages dm
-      JOIN dm_channels dc ON dc.id = dm.channel_id
-      WHERE dm.id = ?
-    `).get(messageId) as any
-    if (dm) return { channel_id: dm.channel_id, isDM: true, participants: { user1_id: dm.user1_id, user2_id: dm.user2_id } }
-
-    return null
-  }
-
-  function broadcastReaction(io: Server, msgInfo: { channel_id: string; isDM: boolean; participants?: { user1_id: string; user2_id: string } }, event: string, payload: any) {
-    if (msgInfo.isDM && msgInfo.participants) {
-      io.to(`dm:${msgInfo.participants.user1_id}`).emit(event, payload)
-      io.to(`dm:${msgInfo.participants.user2_id}`).emit(event, payload)
-    } else {
-      io.to(msgInfo.channel_id).emit(event, payload)
-    }
-  }
 
   socket.on('message:react', ({ messageId, reactionKey, reactionType }: { messageId: string; reactionKey: string; reactionType?: string }) => {
     if (!userId || !username) return

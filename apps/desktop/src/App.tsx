@@ -14,6 +14,7 @@ import SetupWizard from './components/SetupWizard'
 import UserSettingsModal from './components/UserSettingsModal'
 import './styles/global.css'
 import './styles/app.css'
+import './styles/mobile.css'
 
 const WIZARD_KEY = 'kizuna-setup-wizard-dismissed'
 

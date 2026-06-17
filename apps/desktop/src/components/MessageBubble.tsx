@@ -6,6 +6,8 @@ import DOMPurify from 'dompurify'
 import type { Message, Member } from '@kizuna/shared'
 import { reactToMessage, unreactToMessage } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
+import { useMobile } from '../hooks/useMobile'
+import { useLongPress } from '../hooks/useLongPress'
 import ReactionPills from './ReactionPills'
 import ReactionBar from './ReactionBar'
 import ReactionPicker from './ReactionPicker'
@@ -173,6 +175,23 @@ function MessageBubble({
   const profileAnchorRef = useRef<HTMLElement | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const editInputRef = useRef<HTMLTextAreaElement>(null)
+  const isMobile = useMobile()
+  const [mobileActionsVisible, setMobileActionsVisible] = useState(false)
+
+  const longPressHandlers = useLongPress({
+    onLongPress: useCallback(() => {
+      if (!isMobile) return
+      const rect = contentRef.current?.getBoundingClientRect()
+      if (rect) {
+        setContextMenuPos({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
+      }
+    }, [isMobile]),
+    onTap: useCallback(() => {
+      if (!isMobile) return
+      setMobileActionsVisible((v) => !v)
+    }, [isMobile]),
+    enabled: isMobile,
+  })
   const displayName = message.display_name || message.username || 'Unknown'
   const { text, attachments } = useMemo(() => parseAttachments(message.content), [message.content])
   const renderedHtml = useMemo(() => renderMessageHtml(text, currentUsername), [text, currentUsername])
@@ -186,14 +205,15 @@ function MessageBubble({
   const session = useServerStore((s) => s.activeSession)
 
   useEffect(() => {
-    if (hovered || pickerOpen || barHovered) {
+    const show = isMobile ? mobileActionsVisible || pickerOpen : (hovered || pickerOpen || barHovered)
+    if (show) {
       clearTimeout(barTimer.current)
       setBarMounted(true)
     } else {
       barTimer.current = setTimeout(() => setBarMounted(false), 180)
     }
     return () => clearTimeout(barTimer.current)
-  }, [hovered, pickerOpen, barHovered])
+  }, [hovered, pickerOpen, barHovered, isMobile, mobileActionsVisible])
 
   useEffect(() => {
     if (!barMounted || !contentRef.current) { setBarPos(null); return }
@@ -212,7 +232,7 @@ function MessageBubble({
     }
   }, [barMounted])
 
-  const showMeta = hovered || !!message.edited_at || confirmDelete || editing
+  const showMeta = isMobile ? (mobileActionsVisible || editing) : (hovered || !!message.edited_at || confirmDelete || editing)
 
   const handleToggleReaction = useCallback(async (reactionKey: string, reactionType: string) => {
     if (!session) return
@@ -319,7 +339,7 @@ function MessageBubble({
       })
     }
 
-    if (canDelete && !isStickerOnly) {
+    if (canDelete) {
       actionItems.push({
         label: 'Delete',
         onClick: () => { onDelete(message.id); setConfirmDelete(false) },
@@ -354,8 +374,9 @@ function MessageBubble({
       <div
         className="msg-bubble__content"
         ref={contentRef}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        onMouseEnter={() => { if (!isMobile) setHovered(true) }}
+        onMouseLeave={() => { if (!isMobile) setHovered(false) }}
+        {...(isMobile ? longPressHandlers : {})}
       >
         <div
           className={`msg-bubble__bubble ${isOwn ? 'msg-bubble__bubble--own' : 'msg-bubble__bubble--other'} ${isGrouped && !isOwn ? 'msg-bubble__bubble--grouped' : ''} ${editing ? 'msg-bubble__bubble--editing' : ''} ${isMediaOnly ? 'msg-bubble__bubble--media-only' : ''} ${isStickerOnly ? 'msg-bubble__bubble--sticker-only' : ''}`}
@@ -424,7 +445,7 @@ function MessageBubble({
                     <button className="msg-bubble__delete-confirm-btn msg-bubble__delete-confirm-btn--yes" onClick={() => { onDelete(message.id); setConfirmDelete(false) }}>confirm</button>
                     <button className="msg-bubble__delete-confirm-btn msg-bubble__delete-confirm-btn--no" onClick={() => setConfirmDelete(false)}>cancel</button>
                   </span>
-                ) : canDelete && !isStickerOnly ? (
+                ) : canDelete ? (
                   <button className="msg-bubble__delete-btn" onClick={() => setConfirmDelete(true)} title="Delete message">
                     <Trash2 size={12} />
                   </button>

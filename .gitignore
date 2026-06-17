@@ -44,3 +44,18 @@ latest*.yml
 
 # Logs
 *.log
+
+# Coverage
+coverage/
+
+# Turbo
+.turbo/
+
+# Package archives
+*.tgz
+
+# pnpm debug
+*.pnpm-debug.log
+
+# Docker
+.docker/

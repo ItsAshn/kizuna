@@ -18,11 +18,15 @@ let prngInitialized = false
 
 function ensurePRNG(): void {
   if (prngInitialized) return
-  if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+  const cryptoApi: { getRandomValues?: (array: Uint8Array) => Uint8Array } =
+    (typeof globalThis !== 'undefined' && globalThis.crypto) ||
+    (typeof window !== 'undefined' && window.crypto) ||
+    {}
+  if (cryptoApi.getRandomValues) {
     nacl.setPRNG((x, n) => {
       const bytes = new Uint8Array(n)
-      window.crypto.getRandomValues(bytes)
-      for (let i = 0; i < n; i++) x[i] = bytes[i]
+      cryptoApi.getRandomValues!(bytes)
+      for (let i = 0; i < n; i++) x[i] = bytes[i]!
     })
   }
   prngInitialized = true
@@ -40,7 +44,7 @@ export function generateKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Arra
 
 export async function deriveKeyPair(
   password: string,
-  salt: number[],
+  salt: Uint8Array,
 ): Promise<{ publicKey: Uint8Array; secretKey: Uint8Array; publicKeyString: string }> {
   const seed = await deriveKey(password, salt)
   const kp = nacl.box.keyPair.fromSecretKey(seed)
@@ -111,7 +115,7 @@ export function decryptPrivateKey(encrypted: string, passwordKey: Uint8Array): U
   return decrypted
 }
 
-export async function deriveKey(password: string, salt: number[]): Promise<Uint8Array> {
+export async function deriveKey(password: string, salt: Uint8Array): Promise<Uint8Array> {
   const enc = new TextEncoder()
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
@@ -124,7 +128,7 @@ export async function deriveKey(password: string, salt: number[]): Promise<Uint8
     {
       name: 'PBKDF2',
       hash: 'SHA-256',
-      salt: new Uint8Array(salt),
+      salt: salt as BufferSource,
       iterations: 600_000,
     },
     keyMaterial,
@@ -133,6 +137,6 @@ export async function deriveKey(password: string, salt: number[]): Promise<Uint8
   return new Uint8Array(bits)
 }
 
-function encodeUTF8(bytes: Uint8Array): string {
+export function encodeUTF8(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes)
 }

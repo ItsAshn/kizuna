@@ -1,14 +1,10 @@
 import { Hono } from 'hono'
 import { getDb } from '../db'
 import { authMiddleware } from '../middleware/auth'
-import type { AuthUser } from '../middleware/auth'
-
-function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const searchRoutes = new Hono()
 
 searchRoutes.get('/', authMiddleware, (c) => {
-  const user = getAuth(c)
   const query = c.req.query('query')?.trim()
   if (!query || query.length < 2) {
     return c.json({ results: [], hasMore: false })

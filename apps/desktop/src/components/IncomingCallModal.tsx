@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Phone, PhoneOff } from 'lucide-react'
-import type { DMIncomingCall } from '../store/chatStore'
+import type { DMIncomingCall } from '../store/callStore'
 import '../styles/incoming-call.css'
 
 interface IncomingCallModalProps {

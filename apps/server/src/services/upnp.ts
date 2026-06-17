@@ -2,7 +2,7 @@ import natUpnp from 'nat-upnp'
 
 const client = natUpnp.createClient()
 export const upnpClient: ReturnType<typeof natUpnp.createClient> = client
-let mappedPorts: { public: number; private: { host: string; port: number }; ttl: number }[] = []
+const mappedPorts: { public: number; private: { host: string; port: number }; ttl: number }[] = []
 export function getMappedPorts() { return mappedPorts }
 
 export async function openPorts(options: {
@@ -25,7 +25,7 @@ export async function openPorts(options: {
     console.log(`[i] UPnP gateway found: ${externalIp}`)
 
     // Map HTTP port
-    await new Promise<void>((resolve, reject) => {
+    await new Promise<void>((resolve, _reject) => {
       client.portMapping({
         public: options.httpPort,
         private: options.httpPort,
@@ -38,7 +38,6 @@ export async function openPorts(options: {
     })
 
     // Map RTC port range (UDP)
-    const rangeSize = options.rtcMaxPort - options.rtcMinPort + 1
     for (let port = options.rtcMinPort; port <= options.rtcMaxPort; port++) {
       await new Promise<void>((resolve) => {
         client.portMapping({

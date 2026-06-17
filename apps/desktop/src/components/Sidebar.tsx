@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
+import { useVoiceStore } from '../store/voiceStore'
+import { useMobile } from '../hooks/useMobile'
 import { useNavigate } from 'react-router-dom'
-import { createChannel, lockChannel, fetchRoles, setChannelMute, deleteChannelMute } from '@kizuna/shared'
+import { createChannel, lockChannel, fetchRoles, setChannelMute, deleteChannelMute, deleteChannel, reorderChannels } from '@kizuna/shared'
 import type { CustomRole, Channel } from '@kizuna/shared'
-import { Lock, Unlock, BellOff } from 'lucide-react'
-import VoiceOverlay from './VoiceOverlay'
+import { Lock, Unlock, BellOff, ChevronLeft } from 'lucide-react'
 import UserStatusPicker from './UserStatusPicker'
 import ContextMenu from './ContextMenu'
 import ChannelSettingsModal from './ChannelSettingsModal'
@@ -19,21 +21,27 @@ interface SidebarProps {
   startScreenshare: (channelId: string, monitorIndex: number, fps: number) => Promise<string | null>
   stopScreenshare: () => void
   onOpenMenu: () => void
+  onBackToServers?: () => void
 }
 
-export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare, onOpenMenu }: SidebarProps) {
+export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare, onOpenMenu, onBackToServers }: SidebarProps) {
   const navigate = useNavigate()
+  const isMobile = useMobile()
   const session = useServerStore((s) => s.activeSession)
+  const servers = useServerStore((s) => s.servers)
   const setActiveSession = useServerStore((s) => s.setActiveSession)
   const {
     channels,
     dmChannels, activeChannelId, activeDMChannelId,
-    activeVoiceChannelId, unreadCounts, mentionCounts,
-    setActiveChannel, setActiveDMChannel,
+    unreadCounts, mentionCounts,
+    setActiveChannel, setActiveDMChannel, setChannels,
     channelMutes,
-    voiceChannelUsers, members,
-    dmCallOtherUsername,
+    members,
   } = useChatStore()
+  const {
+    activeVoiceChannelId,
+    voiceChannelUsers,
+  } = useVoiceStore()
   const [newChannelName, setNewChannelName] = useState('')
   const [newChannelType, setNewChannelType] = useState<'text' | 'voice'>('text')
   const [creating, setCreating] = useState(false)
@@ -45,6 +53,66 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   const lockMenuRef = useRef<HTMLDivElement | null>(null)
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false)
   const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null)
+  const [drag, setDrag] = useState<{ channelId: string; type: 'text' | 'voice' } | null>(null)
+  const [dragOver, setDragOver] = useState<{ channelId: string; position: 'above' | 'below' } | null>(null)
+
+  function handleDragStart(e: React.DragEvent, ch: Channel) {
+    if (isMobile) return
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', ch.id)
+    setDrag({ channelId: ch.id, type: ch.type })
+  }
+
+  function handleDragEnd() {
+    setDrag(null)
+    setDragOver(null)
+  }
+
+  function handleDragOver(e: React.DragEvent, ch: Channel) {
+    if (!drag || drag.type !== ch.type || drag.channelId === ch.id) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    setDragOver({ channelId: ch.id, position: e.clientY < rect.top + rect.height / 2 ? 'above' : 'below' })
+  }
+
+  function handleDragLeave(e: React.DragEvent, ch: Channel) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+      setDragOver((prev) => (prev?.channelId === ch.id ? null : prev))
+    }
+  }
+
+  function handleDrop(e: React.DragEvent, targetCh: Channel) {
+    e.preventDefault()
+    if (!drag || !dragOver || !session) return
+    if (drag.type !== targetCh.type) return
+
+    const sameType = channels.filter((c) => c.type === drag.type)
+    const otherType = channels.filter((c) => c.type !== drag.type)
+    const fromIdx = sameType.findIndex((c) => c.id === drag.channelId)
+    if (fromIdx === -1) return
+
+    const reordered = [...sameType]
+    reordered.splice(fromIdx, 1)
+
+    let insertAt = reordered.findIndex((c) => c.id === targetCh.id)
+    if (dragOver.position === 'below') insertAt++
+    if (insertAt < 0) insertAt = reordered.length
+    reordered.splice(insertAt, 0, sameType[fromIdx])
+
+    const basePos = drag.type === 'text' ? 0 : otherType.length
+    const order = reordered.map((c, i) => ({ id: c.id, position: basePos + i }))
+
+    const allOrdered = drag.type === 'text'
+      ? [...reordered, ...otherType]
+      : [...otherType, ...reordered]
+
+    setChannels(allOrdered)
+    setDrag(null)
+    setDragOver(null)
+    reorderChannels(session.url, order).catch((err) => { console.error('Failed to reorder channels:', err) })
+  }
 
   useEffect(() => {
     if (!lockMenuChannelId) return
@@ -95,7 +163,9 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
     if (!session) return
     try {
       await lockChannel(session.url, ch.id, locked, write_role_id ?? null)
-    } catch {}
+    } catch (err) {
+      console.error('Failed to toggle channel lock:', err)
+    }
     setLockMenuChannelId(null)
   }
 
@@ -112,24 +182,31 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
 
     if (ch && isAdmin) {
       sections.push({
-        items: [{ label: 'Edit Channel', onClick: () => { setContextMenuChannelId(null); setSettingsChannel(ch) } }],
+        items: [
+          { label: 'Edit Channel', onClick: () => { setContextMenuChannelId(null); setSettingsChannel(ch) } },
+          { label: 'Delete Channel', danger: true, onClick: () => {
+            if (confirm(`Delete #${ch.name}? This will permanently delete the channel and all its messages.`)) {
+              if (session) deleteChannel(session.url, ch.id).catch((err) => { console.error('Failed to delete channel:', err) })
+            }
+          }},
+        ],
       })
     }
 
     if (isMuted) {
       sections.push({
-        items: [{ label: 'Unmute Channel', onClick: () => { if (session) deleteChannelMute(session.url, channelId).catch(() => {}) } }],
+        items: [{ label: 'Unmute Channel', onClick: () => { if (session) deleteChannelMute(session.url, channelId).catch((err) => { console.error('Failed to unmute channel:', err) }) } }],
       })
     } else {
       const now = Date.now()
       sections.push({
         items: [
-          { label: 'Mute for 15 minutes', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 15 * 60 * 1000).catch(() => {}) } },
-          { label: 'Mute for 1 hour', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 60 * 60 * 1000).catch(() => {}) } },
-          { label: 'Mute for 3 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 3 * 60 * 60 * 1000).catch(() => {}) } },
-          { label: 'Mute for 8 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 8 * 60 * 60 * 1000).catch(() => {}) } },
-          { label: 'Mute for 24 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 24 * 60 * 60 * 1000).catch(() => {}) } },
-          { label: 'Mute forever', onClick: () => { if (session) setChannelMute(session.url, channelId, null).catch(() => {}) } },
+          { label: 'Mute for 15 minutes', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 15 * 60 * 1000).catch((err) => { console.error('Failed to mute channel:', err) }) } },
+          { label: 'Mute for 1 hour', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 60 * 60 * 1000).catch((err) => { console.error('Failed to mute channel:', err) }) } },
+          { label: 'Mute for 3 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 3 * 60 * 60 * 1000).catch((err) => { console.error('Failed to mute channel:', err) }) } },
+          { label: 'Mute for 8 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 8 * 60 * 60 * 1000).catch((err) => { console.error('Failed to mute channel:', err) }) } },
+          { label: 'Mute for 24 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 24 * 60 * 60 * 1000).catch((err) => { console.error('Failed to mute channel:', err) }) } },
+          { label: 'Mute forever', onClick: () => { if (session) setChannelMute(session.url, channelId, null).catch((err) => { console.error('Failed to mute channel:', err) }) } },
         ],
       })
     }
@@ -143,36 +220,61 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
         const r = await fetchRoles(session.url)
         setRoles(r)
         setRolesLoaded(true)
-      } catch {}
+      } catch (err) {
+        console.error('Failed to fetch roles for lock menu:', err)
+      }
     }
     setLockMenuChannelId(lockMenuChannelId === channelId ? null : channelId)
   }
 
   return (
     <div className="sidebar" role="navigation" aria-label="Channels and direct messages">
-      <div className="sidebar__header">
-        <div className="sidebar__user-row">
-          <UserStatusPicker socketRef={socketRef}>
-            <div className="sidebar__user-avatar">
-              {session?.user.avatar ? (
-                <img src={session.user.avatar} alt="" className="sidebar__user-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-              ) : session?.user.display_name?.[0]?.toUpperCase()}
-            </div>
-          </UserStatusPicker>
-          <div className="sidebar__user-info">
-            <p className="sidebar__user-displayname">{session?.user.display_name || session?.user.username}</p>
-            <p className="sidebar__user-subtitle">@{session?.user.username}{isAdmin ? ' · admin' : ''}</p>
-          </div>
+      {isMobile && onBackToServers && (
+        <div className="sidebar__mobile-header">
+          <button
+            className="sidebar__mobile-back"
+            onClick={onBackToServers}
+            aria-label="Back to servers"
+          >
+            <ChevronLeft className="icon-md" />
+          </button>
+          <span className="sidebar__mobile-server-name">
+            {servers.find(s => s.id === session?.serverId)?.name || 'Kizuna'}
+          </span>
           <button
             onClick={onOpenMenu}
-            className="sidebar__channel-icon"
-            style={{ marginLeft: 'auto', fontSize: '14px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
-            title="server menu"
+            className="sidebar__mobile-menu-btn"
+            aria-label="Server menu"
           >
             ···
           </button>
         </div>
-      </div>
+      )}
+      {!isMobile && (
+        <div className="sidebar__header">
+          <div className="sidebar__user-row">
+            <UserStatusPicker socketRef={socketRef}>
+              <div className="sidebar__user-avatar">
+                {session?.user.avatar ? (
+                  <img src={session.user.avatar} alt="" className="sidebar__user-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                ) : session?.user.display_name?.[0]?.toUpperCase()}
+              </div>
+            </UserStatusPicker>
+            <div className="sidebar__user-info">
+              <p className="sidebar__user-displayname">{session?.user.display_name || session?.user.username}</p>
+              <p className="sidebar__user-subtitle">@{session?.user.username}{isAdmin ? ' · admin' : ''}</p>
+            </div>
+            <button
+              onClick={onOpenMenu}
+              className="sidebar__channel-icon"
+              style={{ marginLeft: 'auto', fontSize: '14px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+              title="server menu"
+            >
+              ···
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="sidebar__content">
         {textChannels.length > 0 && (
@@ -181,9 +283,25 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
             {textChannels.map((ch) => {
               const mentionBadge = mentionCounts[ch.id]
               const unreadOnly = !mentionBadge && unreadCounts[ch.id]
+              const isDragging = drag?.channelId === ch.id
+              const isDropAbove = dragOver?.channelId === ch.id && dragOver.position === 'above'
+              const isDropBelow = dragOver?.channelId === ch.id && dragOver.position === 'below'
+              let wrapClass = 'sidebar__channel-wrap'
+              if (isDragging) wrapClass += ' sidebar__channel-wrap--dragging'
+              if (isDropAbove) wrapClass += ' sidebar__channel-wrap--drop-above'
+              if (isDropBelow) wrapClass += ' sidebar__channel-wrap--drop-below'
               return (
-                <div key={ch.id} className="sidebar__channel-wrap">
+                <div
+                  key={ch.id}
+                  className={wrapClass}
+                    onDragOver={(e) => { if (isAdmin && !isMobile) handleDragOver(e, ch) }}
+                    onDragLeave={(e) => { if (isAdmin && !isMobile) handleDragLeave(e, ch) }}
+                    onDrop={(e) => { if (isAdmin && !isMobile) handleDrop(e, ch) }}
+                >
                   <button
+                    draggable={isAdmin && !isMobile}
+                    onDragStart={(e) => { if (isAdmin && !isMobile) handleDragStart(e, ch) }}
+                    onDragEnd={handleDragEnd}
                     onClick={() => { setActiveChannel(ch.id); setLockMenuChannelId(null) }}
                     onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
                     className={`sidebar__channel ${activeChannelId === ch.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
@@ -244,9 +362,25 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
             <h3 className="sidebar__section-title">Voice Channels</h3>
             {voiceChannels.map((ch) => {
               const voiceUsers = voiceChannelUsers[ch.id] || []
+              const isDragging = drag?.channelId === ch.id
+              const isDropAbove = dragOver?.channelId === ch.id && dragOver.position === 'above'
+              const isDropBelow = dragOver?.channelId === ch.id && dragOver.position === 'below'
+              let wrapClass = 'sidebar__channel-wrap'
+              if (isDragging) wrapClass += ' sidebar__channel-wrap--dragging'
+              if (isDropAbove) wrapClass += ' sidebar__channel-wrap--drop-above'
+              if (isDropBelow) wrapClass += ' sidebar__channel-wrap--drop-below'
               return (
-                <div key={ch.id} className="sidebar__channel-wrap">
+                <div
+                  key={ch.id}
+                  className={wrapClass}
+                    onDragOver={(e) => { if (isAdmin && !isMobile) handleDragOver(e, ch) }}
+                    onDragLeave={(e) => { if (isAdmin && !isMobile) handleDragLeave(e, ch) }}
+                    onDrop={(e) => { if (isAdmin && !isMobile) handleDrop(e, ch) }}
+                >
                   <button
+                    draggable={isAdmin && !isMobile}
+                    onDragStart={(e) => { if (isAdmin && !isMobile) handleDragStart(e, ch) }}
+                    onDragEnd={handleDragEnd}
                     onClick={async () => {
                       if (activeVoiceChannelId === ch.id) { await leaveVoice() }
                       else { if (activeVoiceChannelId) await leaveVoice(); joinVoice(ch.id) }
@@ -356,15 +490,6 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
         )}
       </div>
 
-      <VoiceOverlay
-        leaveVoice={leaveVoice}
-        toggleMute={toggleMute}
-        socketRef={socketRef}
-        startScreenshare={startScreenshare}
-        stopScreenshare={stopScreenshare}
-        dmCallOtherUsername={dmCallOtherUsername}
-      />
-
       <div className="sidebar__footer">
         {showDisconnectConfirm ? (
           <div className="sidebar__disconnect-confirm">
@@ -388,11 +513,12 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
         />
       )}
 
-      {settingsChannel && (
+      {settingsChannel && createPortal(
         <ChannelSettingsModal
           channel={settingsChannel}
           onClose={() => setSettingsChannel(null)}
-        />
+        />,
+        document.body,
       )}
     </div>
   )

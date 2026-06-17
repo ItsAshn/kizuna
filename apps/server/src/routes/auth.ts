@@ -7,6 +7,7 @@ import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getUse
 import type { AuthUser, JwtPayload } from '../middleware/auth'
 import { generateChallenge, verifyPoW } from '../middleware/pow'
 import { sensitiveAuthLimiter } from '../middleware/rateLimiter'
+import { getMemberById } from '../routes/serverInfo'
 import jwt from 'jsonwebtoken'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
@@ -40,7 +41,7 @@ authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
     return c.json({ error: 'Username must be 2-32 characters' }, 400)
   }
 
-  if (!/^[\w.\-]+$/.test(username)) {
+  if (!/^[\w.-]+$/.test(username)) {
     return c.json({
       error: 'Username may only contain letters, numbers, underscores, hyphens, and dots',
     }, 400)
@@ -96,6 +97,8 @@ authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
     'Set-Cookie',
     `kizuna_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
   )
+  try { const io: any = c.get('io' as never); if (io) io.emit('member:added', getMemberById(id)) } catch {}
+
   return c.json(
       {
         token,
@@ -160,6 +163,7 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
     if (!member) {
       member = { role: 'member', is_host: 0 }
     }
+    try { const io: any = c.get('io' as never); if (io) io.emit('member:added', getMemberById(user.id)) } catch {}
   }
 
   const tokenId = uuidv4()
@@ -281,7 +285,7 @@ authRoutes.get('/users', authMiddleware, (c) => {
   const rolesByUser: Record<string, { id: string; name: string; color: string; permissions: Record<string, boolean>; is_admin: boolean; position: number; hoist: boolean }[]> = {}
   for (const row of memberRoles) {
     if (!rolesByUser[row.user_id]) rolesByUser[row.user_id] = []
-    rolesByUser[row.user_id].push({
+    rolesByUser[row.user_id]!.push({
       id: row.id,
       name: row.name,
       color: row.color,
@@ -302,8 +306,8 @@ authRoutes.get('/users', authMiddleware, (c) => {
 
   for (const row of legacyRoles) {
     if (!rolesByUser[row.user_id]) rolesByUser[row.user_id] = []
-    if (!rolesByUser[row.user_id].some(r => r.id === row.id)) {
-      rolesByUser[row.user_id].push({
+    if (!rolesByUser[row.user_id]!.some(r => r.id === row.id)) {
+    rolesByUser[row.user_id]!.push({
         id: row.id,
         name: row.name,
         color: row.color,
@@ -489,7 +493,7 @@ authRoutes.post('/logout', authMiddleware, (c) => {
     const match = cookieHeader.match(/(?:^|;\s*)kizuna_token=([^;]*)/)
     if (match) {
       try {
-        const payload = jwt.decode(match[1]) as { tokenId?: string } | null
+        const payload = jwt.decode(match[1]!) as { tokenId?: string } | null
         if (payload?.tokenId) {
           db.prepare('UPDATE sessions SET revoked_at = ? WHERE token_id = ?').run(now, payload.tokenId)
         }

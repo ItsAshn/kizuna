@@ -5,6 +5,7 @@
 *.db-wal
 *.db-shm
 uploads/
+data/
 backgrounds/
 node_modules/
 .git/

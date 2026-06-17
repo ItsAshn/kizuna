@@ -4,10 +4,12 @@ import type { Socket } from 'socket.io-client'
 import { Virtuoso } from 'react-virtuoso'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
+import { useCallStore } from '../store/callStore'
+import { useMobile } from '../hooks/useMobile'
 import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import { Lock, Paperclip, Send, Sticker, Phone } from 'lucide-react'
+import { Lock, Paperclip, Send, Sticker, Phone, ChevronLeft } from 'lucide-react'
 import type { Message, Member, DMChannelData, CustomRole } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
@@ -20,6 +22,7 @@ interface ChatAreaProps {
   socketRef: MutableRefObject<Socket | null>
   onStartDMCall?: (dmChannelId: string, otherUserId: string, otherUsername: string) => void
   onEndDMCall?: () => void
+  onBackToSidebar?: () => void
 }
 
 function getAtQuery(text: string, cursor: number): string | null {
@@ -53,8 +56,9 @@ function formatDateSeparator(date: Date): string {
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: ChatAreaProps) {
+export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBackToSidebar }: ChatAreaProps) {
   const session = useServerStore((s) => s.activeSession)
+  const isMobile = useMobile()
   const channels = useChatStore((s) => s.channels)
   const dmChannels = useChatStore((s) => s.dmChannels)
   const members = useChatStore((s) => s.members)
@@ -65,8 +69,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
   const addMessage = useChatStore((s) => s.addMessage)
   const typingUsers = useChatStore((s) => s.typingUsers)
   const hasMoreMessages = useChatStore((s) => s.hasMoreMessages)
-  const dmCallStatus = useChatStore((s) => s.dmCallStatus)
-  const dmCallChannelId = useChatStore((s) => s.dmCallChannelId)
+  const dmCallStatus = useCallStore((s) => s.dmCallStatus)
+  const dmCallChannelId = useCallStore((s) => s.dmCallChannelId)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -116,7 +120,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
     try {
       const freshKey = await getUserPublicKey(session.url, dm.other_user_id)
       if (freshKey) return freshKey
-    } catch { /* fall through to cached key */ }
+    } catch (err) { console.error('Failed to get user public key, falling back to cached:', err) }
     return dm.other_public_key ?? null
   }, [session])
 
@@ -142,7 +146,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
     if (session) {
       fetchRoles(session.url).then(roles => {
         setMentionableRoles(roles.filter(r => r.mentionable))
-      }).catch(() => {})
+      }).catch((err) => { console.error('Failed to fetch mentionable roles:', err) })
     }
   }, [session])
 
@@ -153,18 +157,27 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
 
   useEffect(() => {
     if (activeChannelId) {
+      let cancelled = false
       setLoading(true)
       setChannelPerms(null)
       fetchMessages(session!.url, activeChannelId)
         .then(({ messages: msgs, hasMore }) => {
+          if (cancelled) return
           useChatStore.getState().setMessages(activeChannelId, msgs)
           useChatStore.getState().setHasMoreMessages(activeChannelId, hasMore)
         })
-        .finally(() => setLoading(false))
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
 
       fetchChannelPermissions(session!.url, activeChannelId)
-        .then(setChannelPerms)
-        .catch(() => setChannelPerms(null))
+        .then((perms) => {
+          if (!cancelled) setChannelPerms(perms)
+        })
+        .catch((err) => {
+          console.error('Failed to fetch channel permissions:', err)
+          if (!cancelled) setChannelPerms(null)
+        })
 
       useChatStore.setState((state) => ({
         unreadCounts: { ...state.unreadCounts, [activeChannelId]: 0 },
@@ -174,12 +187,14 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
       socketRef.current?.emit('channel:join', activeChannelId)
       socketRef.current?.emit('mentions:read', { channelId: activeChannelId })
       socketRef.current?.emit('channel:read', { channelId: activeChannelId }, (res: { last_read_at?: number }) => {
+        if (cancelled) return
         if (res?.last_read_at) {
           useChatStore.getState().setChannelLastReadAt(activeChannelId, res.last_read_at)
         }
       })
 
       return () => {
+        cancelled = true
         socketRef.current?.emit('channel:leave', activeChannelId)
         socketRef.current?.emit('typing:stop', { channelId: activeChannelId })
       }
@@ -188,15 +203,19 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
 
   useEffect(() => {
     if (activeDMChannelId) {
+      let cancelled = false
       setLoading(true)
       setChannelPerms(null)
       fetchDMMessages(session!.url, activeDMChannelId)
         .then(({ messages: msgs, hasMore }) => {
+          if (cancelled) return
           const decrypted = msgs.map((m) => tryDecryptDM(m))
           useChatStore.getState().setMessages(activeDMChannelId, decrypted)
           useChatStore.getState().setHasMoreMessages(activeDMChannelId, hasMore)
         })
-        .finally(() => setLoading(false))
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
 
       useChatStore.setState((state) => ({
         unreadCounts: { ...state.unreadCounts, [activeDMChannelId]: 0 },
@@ -205,12 +224,14 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
 
       socketRef.current?.emit('channel:join', activeDMChannelId)
       socketRef.current?.emit('dm:read', { channelId: activeDMChannelId }, (res: { last_read_at?: number }) => {
+        if (cancelled) return
         if (res?.last_read_at) {
           useChatStore.getState().setChannelLastReadAt(activeDMChannelId, res.last_read_at)
         }
       })
 
       return () => {
+        cancelled = true
         socketRef.current?.emit('channel:leave', activeDMChannelId)
         socketRef.current?.emit('typing:stop', { channelId: activeDMChannelId })
       }
@@ -252,7 +273,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
         const decrypted = activeDMChannelId ? olderMsgs.map(m => tryDecryptDM(m)) : olderMsgs
         store.prependMessages(channelId, decrypted)
         store.setHasMoreMessages(channelId, hasMore)
-      } catch {
+      } catch (err) {
+        console.error('Failed to load more messages:', err)
         store.setHasMoreMessages(channelId, true)
       }
     })()
@@ -464,7 +486,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
       } else {
         await deleteMessage(session.url, messageId)
       }
-    } catch { /* ignore */ }
+    } catch (err) { console.error('Failed to delete message:', err) }
   }, [session, activeChannelId, activeDMChannelId])
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -515,7 +537,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
       } else {
         await editMessage(session.url, messageId, content)
       }
-    } catch { /* ignore */ }
+    } catch (err) { console.error('Failed to edit message:', err) }
   }, [session, activeChannelId, activeDMChannelId, dmChannels, resolveRecipientPublicKey])
 
   const formatFileSize = (bytes: number): string => {
@@ -626,6 +648,15 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
         </div>
       )}
       <div className="chat-area__header">
+        {isMobile && onBackToSidebar && (
+          <button
+            className="chat-area__mobile-back"
+            onClick={onBackToSidebar}
+            aria-label="Back to channels"
+          >
+            <ChevronLeft className="icon-sm" />
+          </button>
+        )}
         <span className="chat-area__header-prefix">{activeDMChannelId ? '@' : '#'}</span>
         <h2 className="chat-area__header-title">{headerTitle}</h2>
         {activeDMChannelId && activeDM && canCall && (
@@ -693,7 +724,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall }: Chat
             ref={virtuosoRef}
             data={displayMessages}
             itemContent={renderMessageItem}
-            followOutput="smooth"
+            followOutput={(isAtBottom) => isAtBottom ? "smooth" : false}
             atBottomStateChange={(isAtBottom) => setAtBottom(isAtBottom)}
             startReached={loadMoreMessages}
             initialTopMostItemIndex={displayMessages.length > 0 ? displayMessages.length - 1 : 0}

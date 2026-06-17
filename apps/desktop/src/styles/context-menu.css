@@ -85,3 +85,43 @@
   background: var(--border-color);
   margin: 4px 8px;
 }
+
+/* ── Mobile bottom sheet ───────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .context-menu {
+    position: fixed !important;
+    bottom: 0;
+    left: 0 !important;
+    right: 0;
+    top: auto !important;
+    min-width: 0;
+    max-width: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 12px 8px 24px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
+    animation: contextMenuSlideUp 0.2s ease-out;
+  }
+
+  .context-menu__item {
+    font-size: 15px;
+    padding: 12px 12px;
+    border-radius: var(--radius-sm);
+    min-height: 44px;
+  }
+
+  .context-menu__title {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  .context-menu__shortcut {
+    font-size: 12px;
+  }
+}
+
+@keyframes contextMenuSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}

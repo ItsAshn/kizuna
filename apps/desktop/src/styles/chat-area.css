@@ -46,7 +46,7 @@
   display: flex;
   align-items: center;
   padding: 0 16px;
-  background: var(--bg-secondary);
+  background: var(--modal-bg);
   flex-shrink: 0;
 }
 
@@ -149,7 +149,7 @@
   flex-shrink: 0;
   padding: 0 16px 12px;
   border-top: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  background: var(--modal-bg);
 }
 
 .chat-area__input-row {
@@ -527,4 +527,95 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--brand);
+}
+
+/* ── Mobile styles ──────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .chat-area__header {
+    height: 52px;
+    padding: 0 12px;
+  }
+
+  .chat-area__mobile-back {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    margin-left: -8px;
+    margin-right: 4px;
+  }
+
+  .chat-area__mobile-back:active {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .chat-area__header-prefix {
+    margin-right: 4px;
+  }
+
+  .chat-area__header-title {
+    font-size: 15px;
+  }
+
+  .chat-area__messages {
+    padding: 4px 0 8px;
+  }
+
+  .chat-area__input-bar {
+    padding: 0 8px 8px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .chat-area__input-row {
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  .chat-area__input {
+    font-size: 16px;
+    padding: 10px 12px;
+  }
+
+  .chat-area__send-btn {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
+  }
+
+  .chat-area__attach-btn,
+  .chat-area__gif-btn {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
+  }
+
+  .chat-area__call-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .chat-area__scroll-bottom {
+    bottom: 16px;
+  }
+
+  .chat-area__empty-title {
+    font-size: 16px;
+  }
+
+  .chat-area__empty-subtitle {
+    font-size: 14px;
+  }
+
+  .chat-area__input-hint {
+    font-size: 11px;
+  }
 }

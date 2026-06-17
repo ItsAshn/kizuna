@@ -56,7 +56,7 @@ export default function Login() {
         const { publicKey, salt } = await generateAndStoreKey(serverUrl, password)
         result = await register(
           serverUrl, username.trim(), password, displayName || username,
-          serverPassword || undefined, publicKey, JSON.stringify(salt), challenge, nonce,
+          serverPassword || undefined, publicKey, JSON.stringify(Array.from(salt)), challenge, nonce,
         )
 
         setActiveSession({
@@ -73,11 +73,6 @@ export default function Login() {
         }
       } else {
         result = await login(serverUrl, username.trim(), password)
-        const serverSalt = result.user.key_salt ? JSON.parse(result.user.key_salt) : null
-        const { publicKey, salt } = await initializeCrypto(serverUrl, password, serverSalt, result.user.public_key)
-        if (userNeedsKeyUpload(result.user.public_key, serverUrl)) {
-          await uploadPublicKey(serverUrl, publicKey, salt)
-        }
 
         setActiveSession({
           serverId: serverUrl,
@@ -85,6 +80,16 @@ export default function Login() {
           token: result.token,
           user: result.user,
         })
+
+        const serverSalt = result.user.key_salt ? new Uint8Array(JSON.parse(result.user.key_salt)) : null
+        const { publicKey, salt } = await initializeCrypto(serverUrl, password, serverSalt, result.user.public_key)
+        if (userNeedsKeyUpload(result.user.public_key, serverUrl)) {
+          try {
+            await uploadPublicKey(serverUrl, publicKey, salt)
+          } catch {
+            console.warn('[Auth] Failed to upload public key after login')
+          }
+        }
       }
 
       navigate('/chat')

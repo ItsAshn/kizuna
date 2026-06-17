@@ -173,7 +173,7 @@ reactionRoutes.get('/popular', authMiddleware, (c) => {
     LIMIT 3
   `).all(user.userId) as { reaction_key: string; cnt: number; stored_filename: string | null }[]
 
-  let emojis: string[] = userTop.map(r => r.reaction_key)
+  const emojis: string[] = userTop.map(r => r.reaction_key)
   if (emojis.length < 5) {
     for (const e of DEFAULT_EMOJIS) {
       if (!emojis.includes(e)) emojis.push(e)

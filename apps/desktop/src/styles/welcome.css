@@ -403,4 +403,77 @@
   background: var(--bg-tertiary);
 }
 
+/* ── Mobile ────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .welcome {
+    padding: 8px;
+  }
+
+  .welcome__container {
+    max-width: none;
+  }
+
+  .welcome__branding {
+    margin-bottom: 20px;
+  }
+
+  .welcome__logo {
+    width: 56px;
+  }
+
+  .welcome__title {
+    font-size: 24px;
+  }
+
+  .welcome__subtitle {
+    font-size: 15px;
+  }
+
+  .welcome__card {
+    padding: 16px;
+    border-radius: var(--radius-md);
+  }
+
+  .welcome__card-title {
+    font-size: 16px;
+  }
+
+  .welcome--dashboard {
+    gap: 16px;
+  }
+
+  .welcome__dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    max-width: none;
+  }
+
+  .welcome__dashboard-panel {
+    border-radius: var(--radius-md);
+  }
+
+  .welcome__server-item {
+    padding: 12px;
+    min-height: 52px;
+  }
+
+  .welcome__server-name {
+    font-size: 15px;
+  }
+
+  .welcome__saved-server {
+    padding: 12px;
+    min-height: 48px;
+    font-size: 15px;
+  }
+
+  .welcome__settings-btn {
+    bottom: 16px;
+    right: 16px;
+    width: 48px;
+    height: 48px;
+  }
+}
+
 
