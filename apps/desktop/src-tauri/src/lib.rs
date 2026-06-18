@@ -31,6 +31,8 @@ fn list_monitors() -> Result<Vec<MonitorInfo>, String> {
         SessionType::Wayland => {
             tauri::async_runtime::block_on(capture::wayland::list_sources())
         }
+        #[cfg(target_os = "macos")]
+        SessionType::MacOS => capture::macos::list_monitors(),
         #[cfg(not(target_os = "windows"))]
         SessionType::X11 => capture::x11::list_monitors(),
         _ => capture::windows::list_monitors(),
@@ -54,6 +56,8 @@ fn start_screen_capture(
         SessionType::Wayland => tauri::async_runtime::block_on(
             capture::wayland::start_capture(app, monitor_index, fps),
         )?,
+        #[cfg(target_os = "macos")]
+        SessionType::MacOS => capture::macos::start_capture(app, monitor_index, fps)?,
         #[cfg(not(target_os = "windows"))]
         SessionType::X11 => capture::x11::start_capture(app, monitor_index, fps)?,
         _ => capture::windows::start_capture(app, monitor_index, fps)?,
@@ -371,6 +375,8 @@ async fn voice_screen_share_start(app: tauri::AppHandle, monitor_index: usize, f
     let session = match get_session_type() {
         #[cfg(target_os = "linux")]
         SessionType::Wayland => capture::wayland::start_capture(app, monitor_index, fps).await?,
+        #[cfg(target_os = "macos")]
+        SessionType::MacOS => capture::macos::start_capture(app.clone(), monitor_index, fps)?,
         #[cfg(not(target_os = "windows"))]
         SessionType::X11 => capture::x11::start_capture(app.clone(), monitor_index, fps)?,
         _ => capture::windows::start_capture(app, monitor_index, fps)?,

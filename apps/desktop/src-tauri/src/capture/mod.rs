@@ -1,3 +1,5 @@
+#[cfg(target_os = "macos")]
+pub mod macos;
 pub mod media;
 #[cfg(target_os = "linux")]
 pub mod wayland;
@@ -51,6 +53,7 @@ pub enum SessionType {
     X11,
     Wayland,
     Windows,
+    MacOS,
 }
 
 pub fn detect_session_type() -> SessionType {
@@ -58,7 +61,11 @@ pub fn detect_session_type() -> SessionType {
     {
         return SessionType::Windows;
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        return SessionType::MacOS;
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let session = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
         let wayland_display = std::env::var("WAYLAND_DISPLAY").is_ok();

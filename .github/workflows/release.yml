@@ -233,8 +233,67 @@ jobs:
               --clobber
           fi
 
+  build-desktop-macos:
+    needs: create-release
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set version from git tag (macOS)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Setting tauri.conf.json version to $VERSION"
+          node -e "
+            const fs = require('fs');
+            const conf = JSON.parse(fs.readFileSync('apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
+            conf.version = process.argv[1];
+            conf.bundle.targets = ['app', 'dmg'];
+            fs.writeFileSync('apps/desktop/src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
+          " "$VERSION"
+
+      - name: Build Tauri (macOS)
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: pnpm tauri build --target aarch64-apple-darwin
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s nullglob
+          FILES=(
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+          )
+          if [ ${#FILES[@]} -gt 0 ]; then
+            gh release upload "$GITHUB_REF_NAME" "${FILES[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          fi
+
   publish-release:
-    needs: [build-docker, build-desktop-windows, build-desktop-linux]
+    needs: [build-docker, build-desktop-windows, build-desktop-linux, build-desktop-macos]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     permissions:
@@ -271,6 +330,13 @@ jobs:
                 sig_content=$(curl -sL "$url")
                 PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$sig_content" --arg u "$bundle_url" '. + {"linux-x86_64": {signature: $sig, url: $u}}')
                 echo "  Added linux-x86_64: $bundle_name"
+                ;;
+              *.app.tar.gz.sig)
+                bundle_name="${name%.sig}"
+                bundle_url=$(echo "$ASSETS_JSON" | jq -r --arg n "$bundle_name" '.[] | select(.name == $n) | .browser_download_url')
+                sig_content=$(curl -sL "$url")
+                PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$sig_content" --arg u "$bundle_url" '. + {"darwin-aarch64": {signature: $sig, url: $u}}')
+                echo "  Added darwin-aarch64: $bundle_name"
                 ;;
               *.msi.sig)
                 bundle_name="${name%.sig}"

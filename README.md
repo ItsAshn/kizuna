@@ -18,7 +18,7 @@ Self-hosted Discord alternative with text chat, voice channels, and screen shari
 - **File uploads & attachments** — images, video, audio, PDFs, and more with drag-and-drop
 - **Invite codes** — generate join links with usage limits and expiry, with QR codes
 - **Cross-server** — connect to multiple self-hosted Kizuna servers from one client
-- **Desktop client** — Windows + Linux via Tauri v2 with auto-updates and background notifications
+- **Desktop client** — Windows, macOS (Apple Silicon), and Linux via Tauri v2 with auto-updates and background notifications
 - **Docker deployment** — one-command deploy with automatic HTTPS via Caddy
 
 ## Hosting a Server

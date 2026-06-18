@@ -302,16 +302,66 @@ install_deb() {
   echo ""
 }
 
-# ── macOS (placeholder) ───────────────────────────────────────────────────
+# ── macOS install ───────────────────────────────────────────────────────────
 
 install_macos() {
-  warn "Pre-built macOS binaries are not yet available."
+  log "Installing Kizuna desktop for macOS..."
+
+  if [ "$ARCH" != "aarch64" ]; then
+    err "Pre-built macOS binaries are only available for Apple Silicon (arm64)."
+    info "On Intel Macs, build from source:"
+    echo "  curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install.sh | bash"
+    exit 1
+  fi
+
+  DMG_URL=$(find_asset_url ".dmg" "$RELEASE")
+  if [ -z "$DMG_URL" ]; then
+    err "No .dmg found in the latest release."
+    exit 1
+  fi
+
+  log "Found: $(basename "$DMG_URL")"
+
+  DMG_PATH="/tmp/kizuna-${TAG_NAME}.dmg"
+  log "Downloading to ${DMG_PATH} ..."
+  curl -L --progress-bar -o "$DMG_PATH" "$DMG_URL"
+
+  # ── Mount, copy app, unmount ──────────────────────────────────────────────
+  log "Mounting disk image..."
+  MOUNT_POINT=$(hdiutil attach -nobrowse -noverify -noautoopen "$DMG_PATH" | grep -o '/Volumes/.*' | head -1)
+  if [ -z "$MOUNT_POINT" ]; then
+    err "Failed to mount disk image."
+    rm -f "$DMG_PATH"
+    exit 1
+  fi
+
+  APP_SRC=$(find "$MOUNT_POINT" -maxdepth 1 -name "*.app" | head -1)
+  if [ -z "$APP_SRC" ]; then
+    err "No .app bundle found inside the disk image."
+    hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 || true
+    rm -f "$DMG_PATH"
+    exit 1
+  fi
+
+  APP_NAME="$(basename "$APP_SRC")"
+  APP_DEST="/Applications/${APP_NAME}"
+  log "Installing ${APP_NAME} to /Applications ..."
+  rm -rf "$APP_DEST"
+  cp -R "$APP_SRC" "$APP_DEST"
+
+  hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 || true
+  rm -f "$DMG_PATH"
+
+  # ── Clear Gatekeeper quarantine (build is unsigned) ───────────────────────
+  warn "This build is unsigned. Removing the Gatekeeper quarantine attribute..."
+  xattr -dr com.apple.quarantine "$APP_DEST" 2>/dev/null || \
+    warn "Could not clear quarantine. You may need to right-click the app and choose Open."
+
   echo ""
-  info "You can build Kizuna from source:"
-  echo "  curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install.sh | bash"
+  log "Kizuna Desktop ${TAG_NAME} installed successfully!"
   echo ""
-  info "Or download from GitHub Releases once macOS builds are published:"
-  echo "  https://github.com/ItsAshn/kizuna/releases/latest"
+  echo "  Launch from Applications, or run:"
+  echo "    open \"${APP_DEST}\""
   echo ""
 }
 
