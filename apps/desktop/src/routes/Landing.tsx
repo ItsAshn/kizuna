@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FaWindows, FaLinux, FaGithub, FaDocker } from 'react-icons/fa'
+import { FaWindows, FaLinux, FaApple, FaGithub, FaDocker } from 'react-icons/fa'
 import { MessageCircle, Mic, Monitor, Lock, Code, Download, ExternalLink, ArrowRight, Server } from 'lucide-react'
 import '../styles/landing.css'
 
@@ -9,6 +9,7 @@ interface LandingProps {
 }
 
 const LINUX_CMD = 'curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install-desktop.sh | bash'
+const MAC_CMD = 'curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install-desktop.sh | bash'
 const WIN_CMD = 'irm https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install-desktop.ps1 | iex'
 const DOCKER_COMPOSE = `git clone https://github.com/ItsAshn/kizuna.git
 cd kizuna
@@ -50,13 +51,13 @@ const FEATURES = [
 ]
 
 const STEPS = [
-  { step: '1', title: 'Download', desc: 'Get the desktop app for Linux or Windows, or jump straight into the web app.' },
+  { step: '1', title: 'Download', desc: 'Get the desktop app for Linux, macOS, or Windows, or jump straight into the web app.' },
   { step: '2', title: 'Connect', desc: 'Try the official test server at server.use-kizuna.com or connect to any self-hosted instance.' },
   { step: '3', title: 'Chat & Voice', desc: 'Send messages, hop into voice channels, and share your screen with your community.' },
 ]
 
 export default function Landing({ onConnect, onEnterApp }: LandingProps) {
-  const [installTab, setInstallTab] = useState<'linux' | 'windows'>('linux')
+  const [installTab, setInstallTab] = useState<'linux' | 'macos' | 'windows'>('linux')
   const [copied, setCopied] = useState(false)
   const [dockerCopied, setDockerCopied] = useState(false)
 
@@ -65,6 +66,8 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
     setter(true)
     setTimeout(() => setter(false), 2000)
   }
+
+  const installCmd = installTab === 'linux' ? LINUX_CMD : installTab === 'macos' ? MAC_CMD : WIN_CMD
 
   return (
     <div className="landing">
@@ -140,7 +143,7 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
 
       <section className="landing-download" id="download">
         <h2 className="landing-section__title">Download the desktop app</h2>
-        <p className="landing-section__subtitle">Available for Linux and Windows.</p>
+        <p className="landing-section__subtitle">Available for Linux, macOS, and Windows.</p>
         <div className="landing-download__card">
           <div className="landing-download__tabs">
             <button
@@ -151,6 +154,13 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
               <span>Linux</span>
             </button>
             <button
+              className={`landing-download__tab ${installTab === 'macos' ? 'landing-download__tab--active' : ''}`}
+              onClick={() => setInstallTab('macos')}
+            >
+              <FaApple size={13} />
+              <span>macOS</span>
+            </button>
+            <button
               className={`landing-download__tab ${installTab === 'windows' ? 'landing-download__tab--active' : ''}`}
               onClick={() => setInstallTab('windows')}
             >
@@ -159,14 +169,19 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
             </button>
           </div>
           <div className="landing-download__code">
-            <code className="landing-download__cmd">{installTab === 'linux' ? LINUX_CMD : WIN_CMD}</code>
+            <code className="landing-download__cmd">{installCmd}</code>
             <button
               className="landing-download__copy"
-              onClick={() => handleCopy(installTab === 'linux' ? LINUX_CMD : WIN_CMD, setCopied)}
+              onClick={() => handleCopy(installCmd, setCopied)}
             >
               {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
+          {installTab === 'macos' && (
+            <p className="landing-download__note">
+              Apple Silicon only. The build is unsigned — the installer clears the Gatekeeper quarantine flag automatically.
+            </p>
+          )}
         </div>
         <a
           href="https://github.com/ItsAshn/kizuna/releases/latest"

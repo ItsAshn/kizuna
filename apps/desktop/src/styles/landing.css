@@ -445,6 +445,14 @@
   color: var(--text-primary);
 }
 
+.landing-download__note {
+  padding: 12px 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-primary);
+}
+
 .landing-download__gh-link {
   display: inline-flex;
   align-items: center;
