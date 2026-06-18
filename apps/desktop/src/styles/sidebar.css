@@ -10,7 +10,7 @@
 }
 
 .sidebar {
-  width: 240px;
+  width: clamp(200px, 22vw, 260px);
   background: var(--modal-bg);
   display: flex;
   flex-direction: column;

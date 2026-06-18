@@ -202,3 +202,16 @@
     font-size: 18px;
   }
 }
+
+/* Landscape phones: shrink the top server bar to reclaim vertical space. */
+@media (max-width: 1023px) and (max-height: 480px) and (orientation: landscape) {
+  .server-panel {
+    height: 44px;
+  }
+
+  .server-panel__icon,
+  .server-panel__settings-btn {
+    width: 36px;
+    height: 36px;
+  }
+}

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useServerStore } from '../store/serverStore'
-import { useMobile } from '../hooks/useMobile'
+import { useMobile, useTablet } from '../hooks/useMobile'
 import type { Member, CustomRole } from '@kizuna/shared'
 import { X } from 'lucide-react'
 import UserProfileCard from './UserProfileCard'
@@ -22,6 +22,9 @@ export default function MemberList({ visible, onClose }: Props) {
   const members = useChatStore((s) => s.members)
   const session = useServerStore((s) => s.activeSession)
   const isMobile = useMobile()
+  const isTablet = useTablet()
+  // On phone and tablet the list is an overlay drawer that needs its own close affordance.
+  const isOverlay = isMobile || isTablet
   const userStatuses = useVoiceStore((s) => s.userStatuses)
   const [search, setSearch] = useState('')
   const [closing, setClosing] = useState(false)
@@ -158,7 +161,7 @@ export default function MemberList({ visible, onClose }: Props) {
     <div className={`member-list${closing ? ' member-list--closing' : ''}`} role="complementary" aria-label="Members">
       <div className="member-list__header">
         <h3 className="member-list__title">Members — {members.length}</h3>
-        {isMobile && onClose && (
+        {isOverlay && onClose && (
           <button
             className="member-list__close-btn"
             onClick={onClose}

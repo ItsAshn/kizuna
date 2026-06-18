@@ -1,4 +1,22 @@
+/* ══════════════════════════════════════════════════════════════
+   Canonical breakpoints (keep in sync with hooks/breakpoints.ts):
+     sm  480px  — small ↔ large phone
+     md  768px  — phone ↔ tablet  (the "mobile" cutoff)
+     lg 1024px  — tablet ↔ desktop
+     xl 1280px  — wide desktop
+   CSS media queries can't read custom properties, so use these
+   literal values everywhere and treat this comment as the source.
+   ══════════════════════════════════════════════════════════════ */
+
 :root {
+  /* Spacing scale (px values, just named) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
   --bg-primary: #0a0a0a;
   --bg-secondary: #111111;
   --bg-tertiary: #1a1a1a;
@@ -271,6 +289,15 @@ select:focus:not(:focus-visible) {
     min-height: 44px;
     font-size: 16px;
     padding: 10px 14px;
+  }
+}
+
+/* Small phones: scale the large radii down proportionally so big rounded
+   corners don't eat horizontal content space — keeps the modal look. */
+@media (max-width: 480px) {
+  :root {
+    --radius-lg: 12px;
+    --radius-xl: 18px;
   }
 }
 

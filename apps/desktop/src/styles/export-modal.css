@@ -171,6 +171,7 @@
     width: calc(100vw - 16px);
     max-width: 480px;
     max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);

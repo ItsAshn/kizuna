@@ -8,7 +8,6 @@ export function useKeyboard() {
     function update() {
       const keyboardHeight = Math.max(0, window.innerHeight - vv!.height)
       document.documentElement.style.setProperty('--keyboard-height', `${keyboardHeight}px`)
-      document.documentElement.style.setProperty('--keyboard-padding', `${Math.max(keyboardHeight, parseFloat(getComputedStyle(document.documentElement).getPropertyValue('env(safe-area-inset-bottom)').replace('px', '')) || 0)}px`)
     }
 
     update()
@@ -19,7 +18,6 @@ export function useKeyboard() {
       vv.removeEventListener('resize', update)
       vv.removeEventListener('scroll', update)
       document.documentElement.style.removeProperty('--keyboard-height')
-      document.documentElement.style.removeProperty('--keyboard-padding')
     }
   }, [])
 }

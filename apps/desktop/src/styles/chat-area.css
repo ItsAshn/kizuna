@@ -620,3 +620,19 @@
     font-size: 11px;
   }
 }
+
+/* Landscape phones: vertical space is scarce — shrink the header and
+   tighten the message padding so the conversation keeps room. */
+@media (max-width: 1023px) and (max-height: 480px) and (orientation: landscape) {
+  .chat-area__header {
+    height: 40px;
+  }
+
+  .chat-area__messages {
+    padding-top: 2px;
+  }
+
+  .chat-area__input-row {
+    padding-top: 4px;
+  }
+}

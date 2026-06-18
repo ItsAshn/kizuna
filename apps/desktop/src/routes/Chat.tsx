@@ -7,7 +7,7 @@ import { useSocket } from '../hooks/useSocket'
 import { useVoice } from '../hooks/useVoice'
 import { useScreenshare } from '../hooks/useScreenshare'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
-import { useMobile } from '../hooks/useMobile'
+import { useMobile, useTablet } from '../hooks/useMobile'
 import { fetchChannels, fetchMembers, fetchDMChannels, fetchServerInfo, fetchChannelMutes } from '@kizuna/shared'
 import { restoreFromSession } from '../store/keyStore'
 import { Loader2, Users } from 'lucide-react'
@@ -33,6 +33,7 @@ import '../styles/chat.css'
 export default function Chat({ onOpenSettings }: { onOpenSettings: () => void }) {
   const navigate = useNavigate()
   const isMobile = useMobile()
+  const isTablet = useTablet()
   const session = useServerStore((s) => s.activeSession)
   const refreshSessionUser = useServerStore((s) => s.refreshSessionUser)
   const servers = useServerStore((s) => s.servers)
@@ -68,7 +69,8 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     clearDMCall,
   } = useCallStore()
   const dmCallConnectedRef = useRef(false)
-  const [showMembers, setShowMembers] = useState(!isMobile)
+  // Member list is inline only on full desktop; on tablet/phone it opens as an overlay drawer.
+  const [showMembers, setShowMembers] = useState(!isMobile && !isTablet)
   const [showMenu, setShowMenu] = useState(false)
   const [showEnvWizard, setShowEnvWizard] = useState(false)
   const [loginForServerId, setLoginForServerId] = useState<string | null>(null)

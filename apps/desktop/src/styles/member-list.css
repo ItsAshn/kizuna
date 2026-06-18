@@ -23,7 +23,7 @@
 }
 
 .member-list {
-  width: 208px;
+  width: clamp(180px, 18vw, 220px);
   background: var(--modal-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-xl);
@@ -268,7 +268,8 @@
   padding: 16px 0;
 }
 
-@media (max-width: 767px) {
+/* Phone + tablet: member list is an overlay drawer (shared treatment). */
+@media (max-width: 1023px) {
   .member-list {
     position: fixed;
     top: 4px;
@@ -333,6 +334,22 @@
   .member-list__close-btn:active {
     background: var(--bg-hover);
     color: var(--text-primary);
+  }
+}
+
+/* Tablet: anchor the overlay as a right-side drawer instead of full-screen. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .member-list {
+    top: 8px;
+    right: 8px;
+    bottom: 8px;
+    left: auto;
+    width: min(320px, 70vw);
+    border-radius: var(--radius-xl);
+  }
+
+  .member-list__header {
+    padding-top: 12px;
   }
 }
 
