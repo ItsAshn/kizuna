@@ -1,0 +1,25 @@
+{
+  "name": "Kizuna",
+  "short_name": "Kizuna",
+  "description": "Self-hosted Discord alternative with chat, voice, and screen sharing",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "categories": ["social", "productivity"],
+  "icons": [
+    {
+      "src": "/Logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/Logo.webp",
+      "sizes": "128x128",
+      "type": "image/webp",
+      "purpose": "any"
+    }
+  ]
+}

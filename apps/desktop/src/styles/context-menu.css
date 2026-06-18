@@ -101,19 +101,19 @@
     padding: 12px 8px 24px;
     padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
-    animation: contextMenuSlideUp 0.2s ease-out;
+    animation: contextMenuSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .context-menu__item {
-    font-size: 15px;
-    padding: 12px 12px;
-    border-radius: var(--radius-sm);
-    min-height: 44px;
+    font-size: 16px;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    min-height: 48px;
   }
 
   .context-menu__title {
     font-size: 12px;
-    padding: 8px 12px;
+    padding: 8px 16px;
   }
 
   .context-menu__shortcut {

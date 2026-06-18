@@ -74,10 +74,11 @@
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  padding: 4px 10px;
+  padding: 6px 12px;
   font-size: 12px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  min-height: 32px;
 }
 
 .chat-toolbar__members-btn:hover {
@@ -219,29 +220,60 @@
 @media (max-width: 767px) {
   .chat-layout {
     flex-direction: column;
-    padding: 0;
-    gap: 0;
+    padding: 4px;
+    gap: 4px;
   }
 
   .chat-main {
     margin: 0;
     flex: 1;
     min-height: 0;
+    position: relative;
+    border-radius: var(--radius-md);
+    overflow: hidden;
   }
 
   .chat-main__content {
-    border-radius: 0;
-    border-left: none;
-    border-right: none;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
   }
 
-  /* Single-panel mobile navigation */
-  .chat-layout[data-mobile-view="sidebar"] .chat-main {
-    display: none;
+  .sidebar {
+    position: absolute;
+    top: calc(56px + env(safe-area-inset-top, 0px));
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    z-index: 5;
+    width: auto;
+    margin: 0;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+    background: var(--bg-secondary);
+    flex: none;
+    transform: translateX(-30%);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease-out;
+    will-change: transform;
+  }
+
+  .sidebar .sidebar__mobile-header {
+    padding-top: 4px;
+  }
+
+  .chat-layout[data-mobile-view="sidebar"] .sidebar {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .chat-layout[data-mobile-view="chat"] .sidebar {
-    display: none;
+    transform: translateX(-120%);
+    opacity: 0;
+    pointer-events: none;
   }
 
   .chat-toolbar {
@@ -249,8 +281,15 @@
     padding: 0 12px;
   }
 
+  .chat-toolbar__members-btn {
+    padding: 8px 14px;
+    font-size: 13px;
+    min-height: 36px;
+  }
+
   .chat-placeholder {
     padding: 32px 16px;
+    padding-top: calc(48px + env(safe-area-inset-top, 0px));
   }
 
   .chat-placeholder__title {
@@ -259,5 +298,9 @@
 
   .chat-placeholder__stats {
     gap: 16px;
+  }
+
+  .connection-banner {
+    padding-top: calc(8px + env(safe-area-inset-top, 0px));
   }
 }

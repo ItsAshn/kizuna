@@ -155,13 +155,15 @@
     align-items: center;
     flex-shrink: 0;
     margin: 0;
-    border-radius: 0;
+    border-radius: var(--radius-md);
     padding: 0 8px;
     gap: 4px;
-    border: none;
-    border-bottom: 1px solid var(--border-color);
-    box-shadow: none;
+    border: 1px solid var(--border-color);
+    background: var(--modal-bg);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
     padding-top: env(safe-area-inset-top, 0px);
+    position: relative;
+    z-index: 10;
   }
 
   .server-panel__list {

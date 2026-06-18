@@ -1,0 +1,100 @@
+import { pipeline, env } from '@xenova/transformers'
+import sharp from 'sharp'
+import path from 'node:path'
+import os from 'node:os'
+import fs from 'node:fs'
+import { v4 as uuidv4 } from 'uuid'
+import { TAG_CANDIDATES } from './tagCandidates'
+
+env.allowLocalModels = false
+
+let taggerPromise: Promise<any> | null = null
+let modelLoaded = false
+
+function getTagger() {
+  if (!taggerPromise) {
+    console.log('[tagGenerator] Loading CLIP ViT-B/32 model (~600MB download, ~1.2-1.5GB RAM)...')
+    taggerPromise = pipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32')
+      .then((p: any) => {
+        modelLoaded = true
+        console.log('[tagGenerator] CLIP model loaded successfully')
+        return p
+      })
+      .catch((err: Error) => {
+        console.error('[tagGenerator] Failed to load CLIP model:', err.message)
+        taggerPromise = null
+        throw err
+      })
+  }
+  return taggerPromise
+}
+
+export function isTaggingEnabled(): boolean {
+  return process.env.AUTO_TAGGING_ENABLED === 'true'
+}
+
+export function isModelLoaded(): boolean {
+  return modelLoaded
+}
+
+function formatTags(suggested: { tag: string; confidence: number }[]): string {
+  return suggested.map(s => s.tag).join(', ')
+}
+
+export async function generateTags(
+  imageBuffer: Buffer,
+  options?: { topK?: number; threshold?: number },
+): Promise<{ tag: string; confidence: number }[]> {
+  const topK = options?.topK ?? 5
+  const threshold = options?.threshold ?? 0.2
+
+  const metadata = await sharp(imageBuffer).metadata()
+  let tmpPath: string | null = null
+
+  try {
+    if (metadata.format === 'gif') {
+      tmpPath = path.join(os.tmpdir(), `kizuna-tag-${uuidv4()}.png`)
+      await sharp(imageBuffer, { animated: true, page: 0 })
+        .png()
+        .toFile(tmpPath)
+    } else {
+      tmpPath = path.join(os.tmpdir(), `kizuna-tag-${uuidv4()}.png`)
+      await sharp(imageBuffer).png().toFile(tmpPath)
+    }
+
+    const tagger = await getTagger()
+    const results = (await tagger(tmpPath, TAG_CANDIDATES)) as Array<{ label: string; score: number }>
+
+    return results
+      .filter(r => r.score >= threshold)
+      .slice(0, topK)
+      .map(r => ({
+        tag: r.label,
+        confidence: Math.round(r.score * 100) / 100,
+      }))
+  } finally {
+    if (tmpPath) {
+      try { fs.unlinkSync(tmpPath) } catch { /* ignore */ }
+    }
+  }
+}
+
+export async function generateAndStoreTags(
+  db: any,
+  gifId: string,
+  imageBuffer: Buffer,
+): Promise<void> {
+  if (!isTaggingEnabled()) return
+
+  try {
+    const suggested = await generateTags(imageBuffer)
+    if (suggested.length > 0) {
+      const tagsStr = formatTags(suggested)
+      db.prepare('UPDATE gifs SET suggested_tags = ? WHERE id = ?').run(tagsStr, gifId)
+    }
+  } catch (err: any) {
+    console.error('[tagGenerator] Auto-tagging failed:', err.message)
+  }
+}
+
+export { TAG_CANDIDATES }

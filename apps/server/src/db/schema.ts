@@ -192,6 +192,7 @@ export const SCHEMA_SQL = `
     display_name TEXT NOT NULL,
     category TEXT DEFAULT 'uncategorized',
     tags TEXT DEFAULT '',
+    suggested_tags TEXT DEFAULT '',
     pack_name TEXT DEFAULT NULL,
     stored_filename TEXT NOT NULL,
     original_filename TEXT NOT NULL,

@@ -50,7 +50,7 @@
 
 .auth-form__tab {
   flex: 1;
-  padding: 8px 0;
+  padding: 12px 0;
   border-radius: var(--radius-md);
   font-size: 13px;
   font-weight: 500;
@@ -59,6 +59,7 @@
   transition: all 0.15s ease;
   background: var(--bg-tertiary);
   color: var(--text-secondary);
+  min-height: 44px;
 }
 
 .auth-form__tab--active {
@@ -73,8 +74,8 @@
 .auth-form__back-btn {
   width: 100%;
   text-align: center;
-  padding: 8px 0;
-  margin-top: 8px;
+  padding: 10px 0;
+  margin-top: 12px;
   background: none;
   border: none;
   cursor: pointer;
@@ -97,8 +98,8 @@
 .auth-form__forgot-btn {
   width: 100%;
   text-align: center;
-  padding: 6px 0;
-  margin-top: 4px;
+  padding: 10px 0;
+  margin-top: 8px;
   background: none;
   border: none;
   cursor: pointer;

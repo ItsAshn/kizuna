@@ -6,6 +6,8 @@ import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useCallStore } from '../store/callStore'
 import { useMobile } from '../hooks/useMobile'
+import { useSwipeBack } from '../hooks/useSwipeBack'
+import { useKeyboard } from '../hooks/useKeyboard'
 import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
@@ -87,6 +89,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const [isDragOver, setIsDragOver] = useState(false)
   const [channelPerms, setChannelPerms] = useState<{ can_write: boolean; locked: boolean; write_role_name: string | null } | null>(null)
   const virtuosoRef = useRef<any>(null)
+  const chatAreaRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -98,6 +101,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const [showSearch, setShowSearch] = useState(false)
   const [mentionableRoles, setMentionableRoles] = useState<CustomRole[]>([])
+  useSwipeBack(chatAreaRef, onBackToSidebar || (() => {}), !!isMobile && !!onBackToSidebar)
+  useKeyboard()
   const tryDecryptDM = useCallback((msg: Message): Message => {
     if (!msg.encrypted) return msg
     const parsed = isEncryptedContent(msg.content)
@@ -397,6 +402,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       setInput('')
       setReplyTo(null)
       setSendError(null)
+      if ('vibrate' in navigator) navigator.vibrate(10)
       if (inputRef.current) { inputRef.current.style.height = 'auto'; inputRef.current.focus() }
     } catch (err: any) {
       const status = err?.response?.status
@@ -634,6 +640,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
 
   return (
     <div
+      ref={chatAreaRef}
       className="chat-area"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}

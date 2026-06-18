@@ -64,6 +64,7 @@ html {
 
 a, button, [role="button"], [tabindex] {
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -253,6 +254,11 @@ select:focus:not(:focus-visible) {
 }
 
 @media (max-width: 767px) {
+  body {
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
   .btn-primary,
   .btn-secondary,
   .btn-danger {

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { MoreHorizontal } from 'lucide-react'
+import { MoreHorizontal, Pencil, X } from 'lucide-react'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
@@ -31,6 +31,8 @@ import {
   fetchGifs,
   deleteGif,
   deleteStickerPack,
+  updateGif,
+  generateGifTags,
 } from '@kizuna/shared'
 import type { Member, CustomRole, Permission, UserStatus, GifInfo } from '@kizuna/shared'
 import { hexToRgba } from '../utils/color'
@@ -347,6 +349,11 @@ export default function ServerMenuModal({ onClose }: Props) {
   const [gifName, setGifName] = useState('')
   const [gifCategory, setGifCategory] = useState('')
   const [gifTags, setGifTags] = useState('')
+  const [editingGifId, setEditingGifId] = useState<string | null>(null)
+  const [gifEditName, setGifEditName] = useState('')
+  const [gifEditCategory, setGifEditCategory] = useState('')
+  const [gifEditTags, setGifEditTags] = useState('')
+  const [generatingTags, setGeneratingTags] = useState<Set<string>>(new Set())
   const gifFileRef = useRef<HTMLInputElement>(null)
   const gifPackFileRef = useRef<HTMLInputElement>(null)
   const stickerPackFileRef = useRef<HTMLInputElement>(null)
@@ -867,6 +874,93 @@ export default function ServerMenuModal({ onClose }: Props) {
       setGifsList(prev => prev.filter(g => g.id !== id))
     } catch (err) {
       setGifMsg(handleApiErr(err))
+    }
+  }
+
+  const handleStartEdit = (gif: GifInfo) => {
+    setEditingGifId(gif.id)
+    setGifEditName(gif.display_name)
+    setGifEditCategory(gif.category)
+    setGifEditTags(gif.tags)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingGifId(null)
+    setGifEditName('')
+    setGifEditCategory('')
+    setGifEditTags('')
+  }
+
+  const handleSaveEdit = async () => {
+    if (!serverUrl || !editingGifId) return
+    const name = gifEditName.trim()
+    if (!name) return
+    try {
+      await updateGif(serverUrl, editingGifId, {
+        display_name: name,
+        category: gifEditCategory.trim() || undefined,
+        tags: gifEditTags.trim() || undefined,
+      })
+      setEditingGifId(null)
+      setGifEditName('')
+      setGifEditCategory('')
+      setGifEditTags('')
+      loadGifs()
+    } catch (err) {
+      setGifMsg(handleApiErr(err))
+    }
+  }
+
+  const handleGenerateTags = async (gifId: string) => {
+    if (!serverUrl) return
+    setGeneratingTags(prev => new Set(prev).add(gifId))
+    try {
+      const updated = await generateGifTags(serverUrl, gifId)
+      setGifsList(prev => prev.map(g => g.id === gifId ? updated : g))
+    } catch (err) {
+      setGifMsg('Auto-tagging is not enabled on the server. Set AUTO_TAGGING_ENABLED=true in env.')
+    } finally {
+      setGeneratingTags(prev => {
+        const next = new Set(prev)
+        next.delete(gifId)
+        return next
+      })
+    }
+  }
+
+  const handleAcceptSuggestedTag = (gif: GifInfo, tag: string) => {
+    const existing = gifEditTags.split(',').map(t => t.trim()).filter(Boolean)
+    if (existing.includes(tag)) return
+    setGifEditTags([...existing, tag].join(', '))
+  }
+
+  const handleDismissSuggestedTags = async (gifId: string) => {
+    if (!serverUrl) return
+    try {
+      const updated = await updateGif(serverUrl, gifId, { suggested_tags: '' })
+      setGifsList(prev => prev.map(g => g.id === gifId ? updated : g))
+    } catch (err) {
+      setGifMsg(handleApiErr(err))
+    }
+  }
+
+  const handleGenerateAllTags = async () => {
+    if (!serverUrl) return
+    const gifs = gifsList.filter(g => g.type === 'gif')
+    for (const gif of gifs) {
+      setGeneratingTags(prev => new Set(prev).add(gif.id))
+      try {
+        const updated = await generateGifTags(serverUrl, gif.id)
+        setGifsList(prev => prev.map(g => g.id === gif.id ? updated : g))
+      } catch {
+        break
+      } finally {
+        setGeneratingTags(prev => {
+          const next = new Set(prev)
+          next.delete(gif.id)
+          return next
+        })
+      }
     }
   }
 
@@ -1663,9 +1757,10 @@ export default function ServerMenuModal({ onClose }: Props) {
                           <label className="server-menu__label">tags — comma separated (optional)</label>
                           <input className="server-menu__input" value={gifTags} onChange={(e) => setGifTags(e.target.value)} placeholder="e.g. funny, cat" />
                         </div>
-                        <button onClick={() => gifFileRef.current?.click()} disabled={gifUploading} className="server-menu__upload-btn">
+                        <button onClick={() => gifFileRef.current?.click()} disabled={gifUploading || !gifName.trim()} className="server-menu__upload-btn">
                           {gifUploading ? 'uploading...' : 'choose .gif file'}
                         </button>
+                        {!gifName.trim() && <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>name is required</span>}
                         <input ref={gifFileRef} type="file" accept=".gif" style={{ display: 'none' }} onChange={handleGifFile} />
                       </div>
 
@@ -1687,6 +1782,15 @@ export default function ServerMenuModal({ onClose }: Props) {
                       )}
 
                       <p className="server-menu__section-title" style={{ marginBottom: '6px', fontSize: '11px' }}>gif library ({gifsList.filter(g => g.type === 'gif').length})</p>
+                      <button
+                        onClick={handleGenerateAllTags}
+                        disabled={generatingTags.size > 0}
+                        className="server-menu__upload-btn"
+                        style={{ marginBottom: '8px', fontSize: '11px', padding: '4px 8px' }}
+                        title="Generate AI tags for all GIFs that don't have suggested tags yet"
+                      >
+                        {generatingTags.size > 0 ? 'generating tags...' : '✨ generate tags for all'}
+                      </button>
                       {gifsLoading ? (
                         <p className="server-menu__loading">loading...</p>
                       ) : gifsList.filter(g => g.type === 'gif').length === 0 ? (
@@ -1695,6 +1799,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                         <div className="server-menu__gif-grid">
                           {gifsList.filter(g => g.type === 'gif').map(gif => {
                             const resolvedUrl = gif.file_url.startsWith('/') ? `${serverUrl}${gif.file_url}` : gif.file_url
+                            const isEditing = editingGifId === gif.id
                             return (
                               <div key={gif.id} className="server-menu__gif-item">
                                 <img src={resolvedUrl} alt={gif.display_name} className="server-menu__gif-thumb" />
@@ -1703,12 +1808,72 @@ export default function ServerMenuModal({ onClose }: Props) {
                                   <span className="server-menu__gif-item-cat">{gif.category}</span>
                                 </div>
                                 <button
+                                  onClick={() => handleStartEdit(gif)}
+                                  className="server-menu__gif-edit"
+                                  title="Edit GIF"
+                                >
+                                  <Pencil size={12} />
+                                </button>
+                                <button
+                                  onClick={() => handleGenerateTags(gif.id)}
+                                  className="server-menu__gif-edit"
+                                  title="Generate tags with AI"
+                                  disabled={generatingTags.has(gif.id)}
+                                  style={{ marginRight: '4px' }}
+                                >
+                                  {generatingTags.has(gif.id) ? '...' : <span style={{ fontSize: '10px' }}>AI</span>}
+                                </button>
+                                <button
                                   onClick={() => handleDeleteGif(gif.id)}
                                   className="server-menu__gif-delete"
                                   title="Delete GIF"
                                 >
-                                  x
+                                  <X size={12} />
                                 </button>
+                                {isEditing && (
+                                  <div className="server-menu__gif-popover">
+                                    <input value={gifEditName} onChange={e => setGifEditName(e.target.value)} placeholder="name" />
+                                    <input value={gifEditCategory} onChange={e => setGifEditCategory(e.target.value)} placeholder="category" />
+                                    <input value={gifEditTags} onChange={e => setGifEditTags(e.target.value)} placeholder="tags (comma separated)" />
+                                    {gif.suggested_tags && (
+                                      <div className="server-menu__gif-suggested">
+                                        <div className="server-menu__gif-suggested-header">
+                                          <span>suggested tags</span>
+                                          <button
+                                            onClick={() => handleDismissSuggestedTags(gif.id)}
+                                            className="server-menu__gif-suggested-dismiss"
+                                            title="Dismiss all suggestions"
+                                          >
+                                            dismiss all
+                                          </button>
+                                        </div>
+                                        <div className="server-menu__gif-suggested-list">
+                                          {gif.suggested_tags.split(',').map((t: string) => {
+                                            const tag = t.trim()
+                                            if (!tag) return null
+                                            const currentTags = gifEditTags.split(',').map((ct: string) => ct.trim()).filter(Boolean)
+                                            const alreadyAdded = currentTags.includes(tag)
+                                            return (
+                                              <button
+                                                key={tag}
+                                                onClick={() => handleAcceptSuggestedTag(gif, tag)}
+                                                className={`server-menu__gif-suggested-tag ${alreadyAdded ? 'server-menu__gif-suggested-tag--accepted' : ''}`}
+                                                disabled={alreadyAdded}
+                                                title={alreadyAdded ? 'Already added' : 'Click to accept'}
+                                              >
+                                                {alreadyAdded ? '✓' : '+'} {tag}
+                                              </button>
+                                            )
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
+                                    <div className="server-menu__gif-popover-actions">
+                                      <button onClick={handleCancelEdit} className="server-menu__gif-popover-btn server-menu__gif-popover-btn--cancel">cancel</button>
+                                      <button onClick={handleSaveEdit} disabled={!gifEditName.trim()} className="server-menu__gif-popover-btn server-menu__gif-popover-btn--save">save</button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )
                           })}

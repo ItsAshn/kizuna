@@ -829,11 +829,37 @@ export async function uploadStickerPack(
   return res.data
 }
 
+export async function updateGif(
+  serverUrl: string,
+  gifId: string,
+  data: { display_name?: string; category?: string; tags?: string; suggested_tags?: string },
+): Promise<GifInfo> {
+  const res = await client(serverUrl).patch(`/api/gifs/${gifId}`, data)
+  return res.data
+}
+
 export async function deleteGif(
   serverUrl: string,
   gifId: string,
 ): Promise<void> {
   await client(serverUrl).delete(`/api/gifs/${gifId}`)
+}
+
+export async function generateGifTags(
+  serverUrl: string,
+  gifId: string,
+): Promise<GifInfo> {
+  const res = await client(serverUrl).post(`/api/gifs/${gifId}/generate-tags`)
+  return res.data
+}
+
+export async function confirmGifTags(
+  serverUrl: string,
+  gifId: string,
+  accepted: string[],
+): Promise<GifInfo> {
+  const res = await client(serverUrl).post(`/api/gifs/${gifId}/confirm-tags`, { accepted })
+  return res.data
 }
 
 export async function deleteStickerPack(

@@ -640,7 +640,7 @@
 
 /* ── Responsive ───────────────────────────────────────────── */
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .landing-hero {
     padding: 56px 20px 64px;
   }

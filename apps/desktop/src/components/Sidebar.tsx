@@ -227,6 +227,8 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
     setLockMenuChannelId(lockMenuChannelId === channelId ? null : channelId)
   }
 
+  const activeServer = servers.find(s => s.id === session?.serverId)
+
   return (
     <div className="sidebar" role="navigation" aria-label="Channels and direct messages">
       {isMobile && onBackToServers && (
@@ -238,8 +240,11 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
           >
             <ChevronLeft className="icon-md" />
           </button>
+          {activeServer && activeServer.icon && (
+            <img src={activeServer.icon} alt="" className="sidebar__mobile-server-icon" />
+          )}
           <span className="sidebar__mobile-server-name">
-            {servers.find(s => s.id === session?.serverId)?.name || 'Kizuna'}
+            {activeServer?.name || 'Kizuna'}
           </span>
           <button
             onClick={onOpenMenu}

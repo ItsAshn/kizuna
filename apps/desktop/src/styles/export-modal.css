@@ -168,11 +168,13 @@
 
 @media (max-width: 767px) {
   .export-modal {
-    width: 100vw;
-    max-width: 100vw;
-    max-height: 100vh;
-    border-radius: 0;
-    border: none;
+    width: calc(100vw - 16px);
+    max-width: 480px;
+    max-height: calc(100vh - 32px);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    align-self: center;
   }
 
   .export-modal__header {

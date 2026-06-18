@@ -1212,13 +1212,13 @@
   }
 
   .msg-bubble__delete-btn {
-    min-width: 36px;
-    min-height: 36px;
+    min-width: 40px;
+    min-height: 40px;
   }
 
   .msg-bubble__edit-btn {
-    min-width: 36px;
-    min-height: 36px;
+    min-width: 40px;
+    min-height: 40px;
   }
 
   .msg-bubble__time {

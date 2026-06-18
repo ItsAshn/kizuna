@@ -199,5 +199,6 @@
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     font-size: 12px;
     gap: 12px;
+    justify-content: center;
   }
 }

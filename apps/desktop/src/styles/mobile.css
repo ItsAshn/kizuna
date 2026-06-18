@@ -19,6 +19,12 @@
     padding-right: var(--safe-right);
   }
 
+  .app-shell {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+  }
+
   /* ── Prevent iOS zoom on text inputs ──────────────────────── */
 
   input[type="text"],
@@ -52,5 +58,17 @@
 
   .chat-layout {
     overscroll-behavior: contain;
+  }
+
+  /* ── Prevent accidental text selection on touch targets ───── */
+
+  .sidebar__channel,
+  .member-list__member,
+  .msg-bubble__reaction,
+  .server-panel__icon,
+  .welcome__server-item,
+  .quick-switcher__item {
+    user-select: none;
+    -webkit-user-select: none;
   }
 }

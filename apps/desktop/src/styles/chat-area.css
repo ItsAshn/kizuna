@@ -191,7 +191,7 @@
   justify-content: center;
   background: var(--brand);
   color: var(--text-primary);
-  padding: 8px 14px;
+  padding: 8px 16px;
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -214,7 +214,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: none;
   background: none;
   cursor: pointer;
@@ -239,7 +239,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: none;
   background: none;
   cursor: pointer;
@@ -572,7 +572,8 @@
 
   .chat-area__input-bar {
     padding: 0 8px 8px;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px) + var(--keyboard-height, 0px));
+    box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.4);
   }
 
   .chat-area__input-row {
@@ -586,15 +587,15 @@
   }
 
   .chat-area__send-btn {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 10px;
+    min-width: 48px;
+    min-height: 48px;
+    padding: 10px 16px;
   }
 
   .chat-area__attach-btn,
   .chat-area__gif-btn {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 48px;
+    min-height: 48px;
     padding: 10px;
   }
 

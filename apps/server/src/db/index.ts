@@ -468,6 +468,7 @@ function runMigrations(database: Database.Database): void {
        FOREIGN KEY (role_id) REFERENCES roles(id)
      )` },
     { name: 'users_add_banner', sql: `ALTER TABLE users ADD COLUMN banner TEXT DEFAULT NULL` },
+    { name: 'gifs_add_suggested_tags', sql: `ALTER TABLE gifs ADD COLUMN suggested_tags TEXT DEFAULT ''` },
   ]
 
   const insertStmt = database.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)')

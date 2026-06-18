@@ -469,8 +469,8 @@
   }
 
   .welcome__settings-btn {
-    bottom: 16px;
-    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    right: calc(16px + env(safe-area-inset-right, 0px));
     width: 48px;
     height: 48px;
   }

@@ -320,6 +320,7 @@ export interface GifInfo {
   display_name: string;
   category: string;
   tags: string;
+  suggested_tags: string;
   pack_name: string | null;
   file_url: string;
   file_size: number;

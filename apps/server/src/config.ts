@@ -28,6 +28,13 @@ const envSchema = z.object({
   MAX_GIF_SIZE: z.coerce.number().int().positive().default(52428800),
   MAX_PACK_SIZE: z.coerce.number().int().positive().default(15728640),
   MAX_BODY_SIZE: z.coerce.number().int().positive().default(1048576),
+  AUTO_TAGGING_ENABLED: z.coerce.boolean().default(false).describe(
+    'Enable AI-powered auto-tagging for uploaded GIFs. When enabled, a CLIP ViT-B/32 vision model ' +
+    'is loaded on first use (~600MB disk download, cached). The model consumes ~1.2-1.5GB of ' +
+    'additional RAM while loaded and stays in memory after first inference. Tags are generated ' +
+    'as suggestions only — an admin must confirm them before they go live. ' +
+    'Set to "true" to enable, default is "false" (no model loaded, zero overhead).',
+  ),
 })
 
 export type EnvConfig = z.infer<typeof envSchema>

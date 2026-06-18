@@ -7,6 +7,7 @@ import { getDb } from '../db'
 import { authMiddleware, isUserAdmin } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 import { processImage, shouldProcessImage } from '../media/imageProcessor'
+import { isTaggingEnabled, generateAndStoreTags, generateTags } from '../media/tagGenerator'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const gifRoutes = new Hono()
@@ -57,6 +58,7 @@ function gifRowToResponse(row: any): Record<string, unknown> {
     display_name: row.display_name,
     category: row.category,
     tags: row.tags,
+    suggested_tags: row.suggested_tags || '',
     pack_name: row.pack_name || null,
     file_url: `/api/gifs/${row.id}/file`,
     file_size: row.file_size,
@@ -64,6 +66,10 @@ function gifRowToResponse(row: any): Record<string, unknown> {
     height: row.height || null,
     created_at: row.created_at,
   }
+}
+
+function normalizeTags(tags: string): string {
+  return [...new Set(tags.split(',').map(t => t.trim()).filter(Boolean))].join(', ')
 }
 
 async function saveFile(buffer: Buffer, originalFilename: string, allowedExts: string[]): Promise<{ storedFilename: string; ext: string; size: number } | null> {
@@ -168,9 +174,11 @@ gifRoutes.post('/upload', authMiddleware, async (c) => {
   const file = formData.get('file') as File | null
   if (!file) return c.json({ error: 'No file provided' }, 400)
 
-  const displayName = (formData.get('display_name') as string) || path.basename(file.name, path.extname(file.name))
+  const displayName = ((formData.get('display_name') as string) || path.basename(file.name, path.extname(file.name))).trim()
+  if (!displayName) return c.json({ error: 'Display name is required' }, 400)
+
   const category = (formData.get('category') as string) || 'uncategorized'
-  const tags = (formData.get('tags') as string) || ''
+  const tags = normalizeTags((formData.get('tags') as string) || '')
 
   if (file.size > MAX_GIF_SIZE) {
     return c.json({ error: `File too large. Maximum size is ${MAX_GIF_SIZE} bytes` }, 413)
@@ -188,6 +196,12 @@ gifRoutes.post('/upload', authMiddleware, async (c) => {
   ).run(id, displayName, category, tags, result.storedFilename, file.name, result.size, user.userId)
 
   const row = db.prepare('SELECT * FROM gifs WHERE id = ?').get(id) as any
+
+  if (isTaggingEnabled()) {
+    generateAndStoreTags(db, id, buffer).catch(err =>
+      console.error('[gifs] Auto-tagging failed:', err.message))
+  }
+
   return c.json(gifRowToResponse(row), 201)
 })
 
@@ -261,6 +275,12 @@ gifRoutes.post('/pack', authMiddleware, async (c) => {
            VALUES (?, 'gif', ?, ?, ?, NULL, ?, ?, ?, ?)`
         ).run(id, displayName, category, tags, storedFilename, name, processed.buffer.length, user.userId)
         imported++
+
+        if (isTaggingEnabled()) {
+          generateAndStoreTags(db, id, processed.buffer as unknown as Buffer).catch(err =>
+            console.error('[gifs] Pack auto-tagging failed:', err.message))
+        }
+
         continue
       } catch (imgErr: any) {
         console.error('[gifs] Pack GIF processing failed, storing original:', imgErr.message)
@@ -280,6 +300,11 @@ gifRoutes.post('/pack', authMiddleware, async (c) => {
        VALUES (?, 'gif', ?, ?, ?, NULL, ?, ?, ?, ?)`
     ).run(id, displayName, category, tags, storedFilename, name, data.length, user.userId)
     imported++
+
+    if (isTaggingEnabled()) {
+      generateAndStoreTags(db, id, data).catch(err =>
+        console.error('[gifs] Pack auto-tagging failed:', err.message))
+    }
   }
 
   return c.json({ imported }, 201)
@@ -361,6 +386,12 @@ gifRoutes.post('/sticker-pack', authMiddleware, async (c) => {
            VALUES (?, 'sticker', ?, '', '', ?, ?, ?, ?, ?)`
         ).run(id, displayName, packName.trim(), storedFilename, name, processed.buffer.length, user.userId)
         imported++
+
+        if (isTaggingEnabled()) {
+          generateAndStoreTags(db, id, processed.buffer as unknown as Buffer).catch(err =>
+            console.error('[gifs] Sticker auto-tagging failed:', err.message))
+        }
+
         continue
       } catch (imgErr: any) {
         console.error('[gifs] Sticker processing failed, storing original:', imgErr.message)
@@ -379,9 +410,97 @@ gifRoutes.post('/sticker-pack', authMiddleware, async (c) => {
        VALUES (?, 'sticker', ?, '', '', ?, ?, ?, ?, ?)`
     ).run(id, displayName, packName.trim(), storedFilename, name, data.length, user.userId)
     imported++
+
+    if (isTaggingEnabled()) {
+      generateAndStoreTags(db, id, data).catch(err =>
+        console.error('[gifs] Sticker auto-tagging failed:', err.message))
+    }
   }
 
   return c.json({ imported }, 201)
+})
+
+// POST /api/gifs/:id/generate-tags — manually trigger tag generation (admin only)
+gifRoutes.post('/:id/generate-tags', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+
+  const id = c.req.param('id')
+  if (!id) return c.json({ error: 'ID is required' }, 400)
+
+  const db = getDb()
+  const row = db.prepare('SELECT * FROM gifs WHERE id = ?').get(id) as any
+  if (!row) return c.json({ error: 'Not found' }, 404)
+
+  if (!isTaggingEnabled()) return c.json({ error: 'Auto-tagging is not enabled. Set AUTO_TAGGING_ENABLED=true in env.' }, 400)
+
+  const filePath = path.join(GIFS_DIR, row.stored_filename)
+  if (!fs.existsSync(filePath)) return c.json({ error: 'File not found on disk' }, 404)
+
+  try {
+    const fileBuffer = fs.readFileSync(filePath)
+    const suggested = await generateTags(fileBuffer)
+    const tagsStr = suggested.map(s => s.tag).join(', ')
+    db.prepare('UPDATE gifs SET suggested_tags = ? WHERE id = ?').run(tagsStr, id)
+
+    const updated = db.prepare('SELECT * FROM gifs WHERE id = ?').get(id) as any
+    return c.json(gifRowToResponse(updated))
+  } catch (err: any) {
+    console.error('[gifs] Tag generation failed:', err.message)
+    return c.json({ error: 'Tag generation failed: ' + err.message }, 500)
+  }
+})
+
+// POST /api/gifs/:id/confirm-tags — accept suggested tags (admin only)
+gifRoutes.post('/:id/confirm-tags', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+
+  const id = c.req.param('id')
+  if (!id) return c.json({ error: 'ID is required' }, 400)
+
+  const db = getDb()
+  const row = db.prepare('SELECT * FROM gifs WHERE id = ?').get(id) as any
+  if (!row) return c.json({ error: 'Not found' }, 404)
+
+  const body = await c.req.json()
+  const accepted: string[] = Array.isArray(body.accepted) ? body.accepted : []
+
+  if (accepted.length === 0) return c.json({ error: 'No tags provided in "accepted" array' }, 400)
+
+  const existingTags = (row.tags || '').split(',').map((t: string) => t.trim()).filter(Boolean)
+  const merged = [...new Set([...existingTags, ...accepted])].join(', ')
+  db.prepare('UPDATE gifs SET tags = ?, suggested_tags = ? WHERE id = ?').run(merged, '', id)
+
+  const updated = db.prepare('SELECT * FROM gifs WHERE id = ?').get(id) as any
+  return c.json(gifRowToResponse(updated))
+})
+
+// PATCH /api/gifs/:id — update gif/sticker metadata (admin only)
+gifRoutes.patch('/:id', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+
+  const id = c.req.param('id')
+  if (!id) return c.json({ error: 'ID is required' }, 400)
+
+  const body = await c.req.json()
+  const db = getDb()
+  const row = db.prepare('SELECT * FROM gifs WHERE id = ?').get(id) as any
+  if (!row) return c.json({ error: 'Not found' }, 404)
+
+  const displayName = body.display_name !== undefined ? body.display_name.trim() : row.display_name
+  if (!displayName) return c.json({ error: 'Display name cannot be empty' }, 400)
+
+  const category = body.category !== undefined ? (body.category.trim() || 'uncategorized') : row.category
+  const tags = body.tags !== undefined ? normalizeTags(body.tags) : row.tags
+  const suggestedTags = body.suggested_tags !== undefined ? normalizeTags(body.suggested_tags) : row.suggested_tags
+
+  db.prepare('UPDATE gifs SET display_name = ?, category = ?, tags = ?, suggested_tags = ? WHERE id = ?')
+    .run(displayName, category, tags, suggestedTags, id)
+
+  const updated = db.prepare('SELECT * FROM gifs WHERE id = ?').get(id) as any
+  return c.json(gifRowToResponse(updated))
 })
 
 // DELETE /api/gifs/pack/:packName — delete an entire sticker pack (admin only)
