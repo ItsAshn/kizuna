@@ -9,12 +9,16 @@
 }
 
 .voice-overlay {
-  background: var(--bg-tertiary);
-  border-top: 1px solid var(--border-color);
+  background: var(--modal-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
   display: flex;
   flex-direction: column;
   animation: voiceSlideUp 0.15s ease-out;
   flex-shrink: 0;
+  margin: 0 8px 8px 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .voice-overlay--closing {
@@ -407,6 +411,8 @@
     left: 0;
     right: 0;
     z-index: 90;
+    margin: 0;
+    border-width: 1px 0 0 0;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
     padding-bottom: env(safe-area-inset-bottom, 0px);

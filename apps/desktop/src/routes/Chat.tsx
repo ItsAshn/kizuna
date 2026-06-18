@@ -294,16 +294,26 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         </div>
       )}
       {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={onOpenSettings} onOpenExport={() => setShowExport(true)} onAddServer={() => setShowConnect(true)} onBackToServers={isMobile ? handleMobileBackToServers : undefined} />}
-      <Sidebar
-        joinVoice={joinVoice}
-        leaveVoice={leaveVoice}
-        toggleMute={toggleMute}
-        socketRef={socketRef}
-        startScreenshare={startScreenshare}
-        stopScreenshare={stopScreenshare}
-        onOpenMenu={() => setShowMenu(true)}
-        onBackToServers={isMobile ? handleMobileBackToServers : undefined}
-      />
+      <div className="sidebar-shell">
+        <Sidebar
+          joinVoice={joinVoice}
+          leaveVoice={leaveVoice}
+          toggleMute={toggleMute}
+          socketRef={socketRef}
+          startScreenshare={startScreenshare}
+          stopScreenshare={stopScreenshare}
+          onOpenMenu={() => setShowMenu(true)}
+          onBackToServers={isMobile ? handleMobileBackToServers : undefined}
+        />
+        <VoiceOverlay
+          leaveVoice={leaveVoice}
+          toggleMute={toggleMute}
+          socketRef={socketRef}
+          startScreenshare={startScreenshare}
+          stopScreenshare={stopScreenshare}
+          dmCallOtherUsername={dmCallOtherUsername}
+        />
+      </div>
       <div className="chat-main">
         <UpdateBanner />
         <div className="chat-main__content">
@@ -350,14 +360,6 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         </div>
       </div>
       <MemberList visible={showMembers} onClose={() => setShowMembers(false)} />
-      <VoiceOverlay
-        leaveVoice={leaveVoice}
-        toggleMute={toggleMute}
-        socketRef={socketRef}
-        startScreenshare={startScreenshare}
-        stopScreenshare={stopScreenshare}
-        dmCallOtherUsername={dmCallOtherUsername}
-      />
       <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
       <NotificationContainer />
     </div>
