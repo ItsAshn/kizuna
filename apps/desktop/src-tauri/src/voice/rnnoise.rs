@@ -42,16 +42,22 @@ impl RnnoiseSuppressor {
             return;
         }
 
+        // nnnoiseless follows the original RNNoise convention: samples are f32 but
+        // scaled to the i16 range (±32768), NOT normalized [-1, 1]. Feeding raw
+        // normalized audio makes its VAD treat everything as silence. Scale in/out.
+        const SCALE: f32 = 32768.0;
         for chunk in frame.chunks_exact_mut(480) {
-            let input = chunk.to_vec();
+            let input: Vec<f32> = chunk.iter().map(|s| s * SCALE).collect();
             let mut output = [0.0f32; 480];
             self.state.process_frame(&mut output, &input);
 
             if self.strength >= 0.999 {
-                chunk.copy_from_slice(&output);
+                for (c, &o) in chunk.iter_mut().zip(output.iter()) {
+                    *c = o / SCALE;
+                }
             } else {
-                for (o, (c, &s)) in output.iter().zip(chunk.iter_mut().zip(input.iter())) {
-                    *c = o * self.strength + s * (1.0 - self.strength);
+                for (c, (&o, &s)) in chunk.iter_mut().zip(output.iter().zip(input.iter())) {
+                    *c = (o * self.strength + s * (1.0 - self.strength)) / SCALE;
                 }
             }
         }

@@ -1141,14 +1141,18 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     bitrateKbps: number,
   ) => {
     vlog('browserMic', `starting | inputDeviceId=${audioInputDeviceId} | inputVolume=${inputVolume} | noiseSupp=${noiseSuppression} | agc=${autoGainControl} | bitrate=${bitrateKbps}`)
+    // Let the browser's built-in (well-tuned) WebRTC audio processing handle
+    // echo cancellation, noise suppression and AGC. The custom worklet below
+    // only applies the optional noise gate — the old multiband suppressor and
+    // worklet AGC were broken (coloration + speech-as-noise) and double-processed.
+    const baseAudioProcessing = {
+      echoCancellation: { ideal: true },
+      noiseSuppression: { ideal: noiseSuppression },
+      autoGainControl: { ideal: autoGainControl },
+    }
     const micConstraints: MediaTrackConstraints = audioInputDeviceId
-      ? {
-          deviceId: { exact: audioInputDeviceId },
-          noiseSuppression: { ideal: noiseSuppression },
-        }
-      : {
-          noiseSuppression: { ideal: noiseSuppression },
-        }
+      ? { deviceId: { exact: audioInputDeviceId }, ...baseAudioProcessing }
+      : { ...baseAudioProcessing }
 
     vlog('browserMic', 'calling getUserMedia')
     let stream: MediaStream
@@ -1165,9 +1169,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         setAudioInputDeviceId(null)
         stream = await Promise.race([
           navigator.mediaDevices.getUserMedia({
-            audio: {
-              noiseSuppression: { ideal: noiseSuppression },
-            },
+            audio: { ...baseAudioProcessing },
           }),
           new Promise<MediaStream>((_, reject) =>
             setTimeout(() => reject(new Error('Microphone access timed out')), 5000)
@@ -1197,9 +1199,11 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         parameterData: {
           gateEnabled: noiseGateEnabled ? 1 : 0,
           gateThresholdDb: -(noiseGateThreshold * 0.6),
-          suppressionEnabled: noiseSuppression ? 1 : 0,
+          // Suppression and AGC are handled by the browser's getUserMedia
+          // processing above; the broken worklet implementations stay disabled.
+          suppressionEnabled: 0,
           suppressionStrength: noiseSuppressionStrength / 100,
-          agcEnabled: autoGainControl ? 1 : 0,
+          agcEnabled: 0,
         },
       })
       workletRef.current = workletNode

@@ -177,6 +177,13 @@ fn mix_next_frame(inner: &mut OutputInner, out: &mut [f32]) -> MixResult {
 fn output_thread(inner: Arc<Mutex<OutputInner>>, cancel: Arc<AtomicBool>) {
     let period = std::time::Duration::from_millis(20);
     let mut mix_buf = vec![0.0f32; FRAME_SAMPLES];
+    // Absolute-deadline scheduling. Sleeping a fixed `period` each iteration
+    // drifts slow: oversleep plus mix/write time pushes the real cadence above
+    // 20ms, so we feed the sink fewer than 48000 samples/s. That starves paplay
+    // (gaps/clicks) AND overflows the jitter buffer (dropped frames) — choppy,
+    // unintelligible audio. Pacing to a fixed deadline keeps the long-run rate
+    // at exactly 50 frames/s regardless of per-iteration jitter.
+    let mut next = std::time::Instant::now() + period;
 
     eprintln!("[AudioOutput] output thread started");
 
@@ -199,7 +206,17 @@ fn output_thread(inner: Arc<Mutex<OutputInner>>, cancel: Arc<AtomicBool>) {
             MixResult::NoPeers => { /* nothing to output */ }
         }
 
-        std::thread::sleep(period);
+        let now = std::time::Instant::now();
+        if next > now {
+            std::thread::sleep(next - now);
+        }
+        next += period;
+        // If a scheduler stall left us far behind, resync rather than bursting to
+        // catch up (which would just dump backlog into the sink).
+        let now = std::time::Instant::now();
+        if now > next + period * 4 {
+            next = now + period;
+        }
     }
 
     eprintln!("[AudioOutput] output thread stopped");

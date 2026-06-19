@@ -2,6 +2,7 @@ mod capture;
 mod env;
 mod voice;
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 use capture::{CaptureSession, MonitorInfo, SessionType};
@@ -13,7 +14,10 @@ use voice::VoiceController;
 static CAPTURE_SESSION: Mutex<Option<CaptureSession>> = Mutex::new(None);
 static SESSION_TYPE: Mutex<Option<SessionType>> = Mutex::new(None);
 static VOICE_CONTROLLER: Mutex<Option<VoiceController>> = Mutex::new(None);
-static VOICE_DECODER: Mutex<Option<opus2::Decoder>> = Mutex::new(None);
+// One Opus decoder per peer. Opus decoders are stateful (inter-frame overlap,
+// PLC/FEC history); sharing one across peers garbles audio when more than one
+// person speaks at once.
+static VOICE_DECODERS: Mutex<Option<HashMap<String, opus2::Decoder>>> = Mutex::new(None);
 static AUDIO_OUTPUT: Mutex<Option<AudioOutput>> = Mutex::new(None);
 
 fn get_session_type() -> SessionType {
@@ -246,14 +250,14 @@ fn voice_flush_peers() -> Result<(), String> {
 
 #[tauri::command]
 fn voice_inject_opus(_app: tauri::AppHandle, peer_id: String, opus_data: Vec<u8>) -> Result<(), String> {
-    let mut guard = VOICE_DECODER.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if guard.is_none() {
-        *guard = Some(
-            opus2::Decoder::new(48000, opus2::Channels::Mono)
-                .map_err(|e| format!("Opus decoder: {e}"))?,
-        );
+    let mut guard = VOICE_DECODERS.lock().map_err(|e| format!("Lock error: {e}"))?;
+    let decoders = guard.get_or_insert_with(HashMap::new);
+    if !decoders.contains_key(&peer_id) {
+        let d = opus2::Decoder::new(48000, opus2::Channels::Mono)
+            .map_err(|e| format!("Opus decoder: {e}"))?;
+        decoders.insert(peer_id.clone(), d);
     }
-    let decoder = guard.as_mut().unwrap();
+    let decoder = decoders.get_mut(&peer_id).expect("decoder just inserted");
 
     let frame_size = 48000 * 60 / 1000;
     let mut pcm = vec![0.0f32; frame_size];
@@ -265,6 +269,8 @@ fn voice_inject_opus(_app: tauri::AppHandle, peer_id: String, opus_data: Vec<u8>
     for s in &mut pcm {
         *s = s.clamp(-1.0, 1.0);
     }
+
+    drop(guard);
 
     // Push to native audio output (replaces voice:remote_audio event)
     let out_guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
@@ -360,6 +366,11 @@ fn voice_remove_peer(peer_id: String) -> Result<(), String> {
     let guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
     if let Some(ref output) = *guard {
         output.remove_peer(&peer_id);
+    }
+    if let Ok(mut decoders) = VOICE_DECODERS.lock() {
+        if let Some(map) = decoders.as_mut() {
+            map.remove(&peer_id);
+        }
     }
     Ok(())
 }

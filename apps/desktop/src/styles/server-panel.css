@@ -12,7 +12,9 @@
   margin: 8px;
   padding: 10px 0;
   gap: 6px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .server-panel__list {
@@ -40,7 +42,11 @@
   font-weight: 700;
   color: var(--text-secondary);
   position: relative;
-  transition: border-radius 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    border-radius 0.15s,
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
   flex-shrink: 0;
 }
 
@@ -202,7 +208,6 @@
     font-size: 18px;
   }
 }
-
 /* Landscape phones: shrink the top server bar to reclaim vertical space. */
 @media (max-width: 1023px) and (max-height: 480px) and (orientation: landscape) {
   .server-panel {

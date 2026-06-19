@@ -232,7 +232,10 @@ impl VoiceController {
         processor.set_gate_enabled(gate_enabled);
         processor.set_gate_threshold_db(gate_threshold_db);
         if suppression_enabled {
-            processor.set_suppression_mode(NoiseSuppressionMode::Spectral);
+            // Use RNNoise (DNN-based). The legacy `Spectral` multiband suppressor
+            // colors the voice (non-reconstructing crossover) and tracks speech as
+            // noise, making audio robotic/choppy. See voice/dsp.rs SpectralGate.
+            processor.set_suppression_mode(NoiseSuppressionMode::Rnnoise);
         }
         processor.set_suppression_strength(suppression_strength);
         processor.set_agc_enabled(auto_gain_enabled);
@@ -298,7 +301,7 @@ impl VoiceController {
 
     pub async fn set_noise_suppression(&self, enabled: bool) {
         let mode = if enabled {
-            NoiseSuppressionMode::Spectral
+            NoiseSuppressionMode::Rnnoise
         } else {
             NoiseSuppressionMode::Off
         };
