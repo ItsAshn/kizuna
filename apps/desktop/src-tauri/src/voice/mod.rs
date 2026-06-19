@@ -1,14 +1,20 @@
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod signaling;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod transport;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod encode;
 pub mod dsp;
 pub mod rnnoise;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod device;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod output;
 
-use serde::Serialize;
-
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use signaling::VoiceController;
+
+use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
 #[allow(dead_code)]

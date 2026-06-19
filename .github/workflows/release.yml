@@ -292,8 +292,88 @@ jobs:
               --clobber
           fi
 
+  build-desktop-android:
+    needs: create-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-35 platform-tools ndk;27.2.12479018 build-tools;35.0.1'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set version from git tag (Android)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Setting tauri.conf.json version to $VERSION"
+          node -e "
+            const fs = require('fs');
+            const conf = JSON.parse(fs.readFileSync('apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
+            conf.version = process.argv[1];
+            fs.writeFileSync('apps/desktop/src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
+          " "$VERSION"
+
+      - name: Decode Android keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > apps/desktop/src-tauri/gen/android/app/release.keystore
+            echo "ANDROID_KEYSTORE_FILE=apps/desktop/src-tauri/gen/android/app/release.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 not set, APK will be unsigned"
+          fi
+
+      - name: Build Android APK
+        working-directory: apps/desktop
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: pnpm tauri android build --apk
+
+      - name: Upload APK to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s nullglob
+          APK_FILES=(
+            apps/desktop/src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
+          )
+          if [ ${#APK_FILES[@]} -gt 0 ]; then
+            gh release upload "$GITHUB_REF_NAME" "${APK_FILES[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          fi
+
   publish-release:
-    needs: [build-docker, build-desktop-windows, build-desktop-linux, build-desktop-macos]
+    needs: [build-docker, build-desktop-windows, build-desktop-linux, build-desktop-macos, build-desktop-android]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     permissions:

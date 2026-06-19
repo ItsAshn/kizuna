@@ -39,6 +39,9 @@
     "createUpdaterArtifacts": true,
     "macOS": {
       "minimumSystemVersion": "11.0"
+    },
+    "android": {
+      "minSdkVersion": 24
     }
   },
   "plugins": {

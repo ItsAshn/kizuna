@@ -42,6 +42,12 @@ function isTauri(): boolean {
   return !!(window as any).__TAURI_INTERNALS__
 }
 
+function isMobileTauri(): boolean {
+  if (!isTauri()) return false
+  const ua = navigator.userAgent || ''
+  return /android/i.test(ua) || /iphone|ipad|ipod/i.test(ua)
+}
+
 function computeQualityFromStats(report: RTCStatsReport): ConnectionQuality {
   let rttMs = 0
   let jitterMs = 0
@@ -837,7 +843,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const joinVoice = useCallback(async (channelId: string): Promise<string | null> => {
     vlog('joinVoice', `starting | channelId=${channelId} | isTauri=${isTauri()} | socket=${!!socketRef.current} | session=${!!session}`)
 
-    if (isTauri()) {
+    if (isTauri() && !isMobileTauri()) {
       return joinVoiceNative(channelId)
     }
 
@@ -1323,7 +1329,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
 
   const leaveVoice = useCallback(async () => {
     const channelId = channelIdRef.current
-    if (isTauri()) {
+    if (isTauri() && !isMobileTauri()) {
       await leaveVoiceNative()
       setActiveVoiceChannel(null)
       setIsMuted(false)
@@ -1358,7 +1364,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
 
   const toggleMute = useCallback(() => {
     if (voiceInputMode === 'push-to-talk') return
-    if (isTauri()) {
+    if (isTauri() && !isMobileTauri()) {
       toggleMuteNative()
       return
     }

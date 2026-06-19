@@ -63,3 +63,7 @@ coverage/
 # AI agent instructions (local, not shared)
 CLAUDE.md
 AGENTS.md
+
+# Secrets / credentials
+secrets/
+SECRETS.md

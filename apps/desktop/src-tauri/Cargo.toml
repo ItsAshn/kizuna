@@ -20,22 +20,12 @@ tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-xcap = "0.9"
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
-base64 = "0.22"
 
-cpal = "0.17"
 libc = "0.2"
 bytemuck = "1"
 
 tokio = { version = "1", features = ["full"] }
-webrtc = "0.17"
 futures-util = "0.3"
-opus2 = "0.4"
-bytes = "1"
-openssl-probe = "0.1"
-nnnoiseless = "0.4"
-ringbuf = "0.5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 pipewire = "0.9"
@@ -50,6 +40,18 @@ windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_System_Threading",
 ] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+cpal = "0.17"
+xcap = "0.9"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+base64 = "0.22"
+openssl-probe = "0.1"
+webrtc = "0.17"
+opus2 = "0.4"
+bytes = "1"
+nnnoiseless = "0.4"
+ringbuf = "0.5"
 
 [features]
 default = ["custom-protocol"]
