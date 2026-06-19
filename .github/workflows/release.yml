@@ -344,8 +344,9 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > apps/desktop/src-tauri/gen/android/app/release.keystore
-            echo "ANDROID_KEYSTORE_FILE=apps/desktop/src-tauri/gen/android/app/release.keystore" >> "$GITHUB_ENV"
+            KEYSTORE_PATH="$GITHUB_WORKSPACE/apps/desktop/src-tauri/gen/android/app/release.keystore"
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+            echo "ANDROID_KEYSTORE_FILE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
           else
             echo "::warning::ANDROID_KEYSTORE_BASE64 not set, APK will be unsigned"
           fi
