@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useCallStore } from '../store/callStore'
+import { useVoiceStore } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useSocket } from '../hooks/useSocket'
 import { useVoice } from '../hooks/useVoice'
@@ -38,6 +39,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const refreshSessionUser = useServerStore((s) => s.refreshSessionUser)
   const servers = useServerStore((s) => s.servers)
   const setActiveServer = useServerStore((s) => s.setActiveServer)
+  const activeVoiceChannelId = useVoiceStore((s) => s.activeVoiceChannelId)
   const {
     setChannels, setMembers, setDMChannels,
     activeChannelId, activeDMChannelId,
@@ -277,6 +279,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         '--bg-blur': `${bgInfo?.backgroundBlur ?? 0}px`,
       } as React.CSSProperties : undefined}
       data-mobile-view={isMobile ? mobileView : undefined}
+      data-voice={activeVoiceChannelId ? 'true' : undefined}
     >
       {!socketConnected && (
         <div className="connection-banner">
@@ -296,6 +299,9 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         </div>
       )}
       {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={onOpenSettings} onOpenExport={() => setShowExport(true)} onAddServer={() => setShowConnect(true)} onBackToServers={isMobile ? handleMobileBackToServers : undefined} />}
+      {isMobile && mobileView === 'sidebar' && chatOpen && (
+        <div className="mobile-drawer-backdrop" onClick={() => setMobileView('chat')} aria-hidden="true" />
+      )}
       <div className="sidebar-shell">
         <Sidebar
           joinVoice={joinVoice}
@@ -306,6 +312,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           stopScreenshare={stopScreenshare}
           onOpenMenu={() => setShowMenu(true)}
           onBackToServers={isMobile ? handleMobileBackToServers : undefined}
+          onOpenChat={isMobile ? () => setMobileView('chat') : undefined}
         />
         <VoiceOverlay
           leaveVoice={leaveVoice}
@@ -321,25 +328,29 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         <div className="chat-main__content">
           {chatOpen ? (
             <>
-              <div className="chat-toolbar">
-                <div className="chat-toolbar__left">
-                  <EnvStatus onOpenWizard={() => setShowEnvWizard(true)} />
+              {!isMobile && (
+                <div className="chat-toolbar">
+                  <div className="chat-toolbar__left">
+                    <EnvStatus onOpenWizard={() => setShowEnvWizard(true)} />
+                  </div>
+                  <button
+                    onClick={() => setShowMembers(!showMembers)}
+                    className={`chat-toolbar__members-btn${showMembers ? ' chat-toolbar__members-btn--active' : ''}`}
+                    title={showMembers ? 'Hide member list' : 'Show member list'}
+                    aria-label={showMembers ? 'Hide member list' : 'Show member list'}
+                  >
+                    <Users size={14} />
+                    <span>{members.length}</span>
+                  </button>
                 </div>
-                <button
-                  onClick={() => setShowMembers(!showMembers)}
-                  className={`chat-toolbar__members-btn${showMembers ? ' chat-toolbar__members-btn--active' : ''}`}
-                  title={showMembers ? 'Hide member list' : 'Show member list'}
-                  aria-label={showMembers ? 'Hide member list' : 'Show member list'}
-                >
-                  <Users size={14} />
-                  <span>{members.length}</span>
-                </button>
-              </div>
+              )}
               <ChatArea
                 socketRef={socketRef}
                 onStartDMCall={startDMCall}
                 onEndDMCall={endDMCall}
                 onBackToSidebar={isMobile ? handleMobileBackToSidebar : undefined}
+                onToggleMembers={isMobile ? () => setShowMembers((v) => !v) : undefined}
+                membersOpen={showMembers}
               />
             </>
           ) : (

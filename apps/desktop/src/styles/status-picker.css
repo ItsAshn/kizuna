@@ -68,7 +68,9 @@
   cursor: pointer;
   border-radius: 4px;
   text-align: left;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
 }
 
 .status-picker__option:hover {
@@ -101,4 +103,17 @@
 
 .status-picker__dot--offline {
   background: var(--gray);
+}
+
+@media (max-width: 767px) {
+  .status-picker__dropdown {
+    min-width: 200px;
+    padding: 6px;
+  }
+
+  .status-picker__option {
+    min-height: 44px;
+    font-size: 15px;
+    padding: 10px 12px;
+  }
 }

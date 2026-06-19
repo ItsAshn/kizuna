@@ -70,6 +70,7 @@ export default function UserSettingsModal({ onClose }: Props) {
     pushToTalkKey, setPushToTalkKey,
     noiseSuppression, setNoiseSuppression,
     autoGainControl, setAutoGainControl,
+    echoCancellation, setEchoCancellation,
     noiseGateEnabled, setNoiseGateEnabled,
     noiseGateThreshold, setNoiseGateThreshold,
     noiseSuppressionStrength, setNoiseSuppressionStrength,
@@ -90,6 +91,7 @@ export default function UserSettingsModal({ onClose }: Props) {
   const [isDev, setIsDev] = useState(true)
   const [listeningForKey, setListeningForKey] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
+  const [monitoring, setMonitoring] = useState(false)
   const unmountedRef = useRef(false)
   const audioLevelCleanupRef = useRef<(() => void) | null>(null)
 
@@ -277,16 +279,19 @@ export default function UserSettingsModal({ onClose }: Props) {
     }
   }, [audioInputDeviceId, setLiveAudioLevel])
 
-  // Start monitoring when devices are loaded and stop on unmount.
-  // Also restart when the selected input device changes.
+  // Only capture the mic while the user explicitly enables the level meter.
+  // Opening the mic forces Bluetooth headsets out of A2DP into the headset
+  // profile, which pauses other audio — so we never grab it automatically.
+  // Restart when the selected input device changes while monitoring is on.
   useEffect(() => {
-    if (!inputDevices) return // wait for device list
+    if (!monitoring) return
     startAudioMonitoring()
     return () => {
       audioLevelCleanupRef.current?.()
       audioLevelCleanupRef.current = null
+      setLiveAudioLevel(0)
     }
-  }, [inputDevices, audioInputDeviceId, startAudioMonitoring])
+  }, [monitoring, audioInputDeviceId, startAudioMonitoring, setLiveAudioLevel])
 
   const handleResetAudio = useCallback(() => {
     setAudioInputDeviceId(null)
@@ -421,6 +426,13 @@ export default function UserSettingsModal({ onClose }: Props) {
                 </label>
               </div>
               <div style={{ marginTop: '6px' }}>
+                <button
+                  onClick={() => setMonitoring((m) => !m)}
+                  className="settings-modal__check-btn"
+                  style={{ marginBottom: '6px' }}
+                >
+                  {monitoring ? 'stop mic test' : 'test microphone'}
+                </button>
                 <div className="settings-modal__meter-bar">
                   <div
                     className={`settings-modal__meter-fill${meterLevel < noiseGateThreshold ? ' settings-modal__meter-fill--low' : meterLevel < noiseGateThreshold * 1.5 ? ' settings-modal__meter-fill--mid' : ' settings-modal__meter-fill--high'}`}
@@ -499,6 +511,24 @@ export default function UserSettingsModal({ onClose }: Props) {
               </div>
               <p className="settings-modal__hint">
                 automatically normalizes your microphone volume to a consistent level
+              </p>
+
+              <p className="settings-modal__subsection-title" style={{ marginTop: '8px' }}>echo cancellation</p>
+              <div className="settings-modal__toggle-row">
+                <span className="settings-modal__toggle-label">enable echo cancellation</span>
+                <label className="settings-modal__toggle">
+                  <input
+                    type="checkbox"
+                    checked={echoCancellation}
+                    onChange={(e) => setEchoCancellation(e.target.checked)}
+                  />
+                  <span className="settings-modal__toggle-track">
+                    <span className="settings-modal__toggle-thumb" />
+                  </span>
+                </label>
+              </div>
+              <p className="settings-modal__hint">
+                removes echo when using speakers instead of headphones. leaving this off prevents other apps' audio from being paused when you join a voice channel
               </p>
             </div>
             <p className="settings-modal__hint" style={{ marginTop: '8px' }}>

@@ -11,7 +11,7 @@ import { useKeyboard } from '../hooks/useKeyboard'
 import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import { Lock, Paperclip, Send, Sticker, Phone, ChevronLeft } from 'lucide-react'
+import { Lock, Paperclip, Send, Sticker, Phone, ChevronLeft, Users } from 'lucide-react'
 import type { Message, Member, DMChannelData, CustomRole } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
@@ -25,6 +25,8 @@ interface ChatAreaProps {
   onStartDMCall?: (dmChannelId: string, otherUserId: string, otherUsername: string) => void
   onEndDMCall?: () => void
   onBackToSidebar?: () => void
+  onToggleMembers?: () => void
+  membersOpen?: boolean
 }
 
 function getAtQuery(text: string, cursor: number): string | null {
@@ -58,7 +60,7 @@ function formatDateSeparator(date: Date): string {
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBackToSidebar }: ChatAreaProps) {
+export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBackToSidebar, onToggleMembers, membersOpen }: ChatAreaProps) {
   const session = useServerStore((s) => s.activeSession)
   const isMobile = useMobile()
   const channels = useChatStore((s) => s.channels)
@@ -696,6 +698,16 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             <Lock size={12} className="chat-area__locked-badge-icon" />
             {channelPerms.can_write ? 'Locked' : `Locked to ${channelPerms.write_role_name || 'a role'}`}
           </span>
+        )}
+        {onToggleMembers && activeChannelId && (
+          <button
+            className={`chat-area__header-members-btn${membersOpen ? ' chat-area__header-members-btn--active' : ''}`}
+            onClick={onToggleMembers}
+            aria-label="Show members"
+          >
+            <Users className="icon-sm" />
+            <span>{members.length}</span>
+          </button>
         )}
       </div>
 

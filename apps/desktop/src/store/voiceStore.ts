@@ -19,6 +19,7 @@ interface VoiceState {
   pushToTalkKey: string;
   noiseSuppression: boolean;
   autoGainControl: boolean;
+  echoCancellation: boolean;
   noiseGateEnabled: boolean;
   noiseGateThreshold: number;
   noiseSuppressionStrength: number;
@@ -50,6 +51,7 @@ interface VoiceState {
   setPushToTalkKey: (key: string) => void;
   setNoiseSuppression: (enabled: boolean) => void;
   setAutoGainControl: (enabled: boolean) => void;
+  setEchoCancellation: (enabled: boolean) => void;
   setNoiseGateEnabled: (enabled: boolean) => void;
   setNoiseGateThreshold: (threshold: number) => void;
   setNoiseSuppressionStrength: (strength: number) => void;
@@ -75,6 +77,7 @@ export const useVoiceStore = create<VoiceState>()(
       pushToTalkKey: 'AltLeft',
       noiseSuppression: true,
       autoGainControl: true,
+      echoCancellation: false,
       noiseGateEnabled: false,
       noiseGateThreshold: 30,
       noiseSuppressionStrength: 50,
@@ -131,6 +134,7 @@ export const useVoiceStore = create<VoiceState>()(
       setPushToTalkKey: (pushToTalkKey) => set({ pushToTalkKey }),
       setNoiseSuppression: (noiseSuppression) => set({ noiseSuppression }),
       setAutoGainControl: (autoGainControl) => set({ autoGainControl }),
+      setEchoCancellation: (echoCancellation) => set({ echoCancellation }),
       setNoiseGateEnabled: (noiseGateEnabled) => set({ noiseGateEnabled }),
       setNoiseGateThreshold: (noiseGateThreshold) => set({ noiseGateThreshold }),
       setNoiseSuppressionStrength: (noiseSuppressionStrength) => set({ noiseSuppressionStrength }),
@@ -148,6 +152,7 @@ export const useVoiceStore = create<VoiceState>()(
         pushToTalkKey: state.pushToTalkKey,
         noiseSuppression: state.noiseSuppression,
         autoGainControl: state.autoGainControl,
+        echoCancellation: state.echoCancellation,
         noiseGateEnabled: state.noiseGateEnabled,
         noiseGateThreshold: state.noiseGateThreshold,
         noiseSuppressionStrength: state.noiseSuppressionStrength,

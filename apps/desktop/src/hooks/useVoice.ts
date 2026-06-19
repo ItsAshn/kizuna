@@ -297,7 +297,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setVoiceError,
     voiceInputMode,
     pushToTalkKey,
-    noiseSuppression, autoGainControl,
+    noiseSuppression, autoGainControl, echoCancellation,
     noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
     inputVolume, outputVolume,
     setLiveAudioLevel,
@@ -1129,7 +1129,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     audioInputDeviceId, audioOutputDeviceId, setVoiceError, consumePeer,
     consumeScreenShare, stopScreenConsume, setScreenSharePeer,
     setLiveAudioLevel, voiceInputMode,
-    pushToTalkKey, noiseSuppression, autoGainControl,
+    pushToTalkKey, noiseSuppression, autoGainControl, echoCancellation,
     noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
     inputVolume,
   ])
@@ -1146,7 +1146,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     // only applies the optional noise gate — the old multiband suppressor and
     // worklet AGC were broken (coloration + speech-as-noise) and double-processed.
     const baseAudioProcessing = {
-      echoCancellation: { ideal: true },
+      echoCancellation: { ideal: echoCancellation },
       noiseSuppression: { ideal: noiseSuppression },
       autoGainControl: { ideal: autoGainControl },
     }
@@ -1253,7 +1253,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     if (voiceInputMode === 'push-to-talk') {
       setupPushToTalk(socket, channelId, producer)
     }
-  }, [audioInputDeviceId, noiseSuppression, autoGainControl,
+  }, [audioInputDeviceId, noiseSuppression, autoGainControl, echoCancellation,
       noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
       inputVolume, voiceInputMode,
       setLiveAudioLevel, setIsSpeaking, pushToTalkKey, setAudioInputDeviceId])

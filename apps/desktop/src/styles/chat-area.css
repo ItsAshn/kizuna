@@ -15,8 +15,12 @@
 }
 
 @keyframes chatFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .chat-area__empty {
@@ -126,7 +130,9 @@
   font-weight: 600;
   cursor: pointer;
   opacity: 0.92;
-  transition: opacity 0.15s ease, background 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    background 0.15s ease;
   z-index: 10;
   white-space: nowrap;
   width: fit-content;
@@ -195,7 +201,9 @@
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background 0.15s ease, opacity 0.15s ease;
+  transition:
+    background 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .chat-area__send-btn:hover {
@@ -219,7 +227,9 @@
   background: none;
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .chat-area__attach-btn:hover {
@@ -244,7 +254,9 @@
   background: none;
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .chat-area__gif-btn:hover {
@@ -357,7 +369,9 @@
   cursor: pointer;
   padding: 2px 6px;
   border-radius: var(--radius-xs);
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .chat-area__reply-bar-close:hover {
@@ -507,8 +521,12 @@
 }
 
 @keyframes dropOverlayFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .chat-area__drop-overlay-content {
@@ -564,6 +582,29 @@
 
   .chat-area__header-title {
     font-size: 15px;
+  }
+
+  .chat-area__header-members-btn {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 36px;
+    padding: 0 10px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .chat-area__header-members-btn--active {
+    border-color: var(--brand-dim-border);
+    background: var(--brand-dim);
+    color: var(--brand);
   }
 
   .chat-area__messages {

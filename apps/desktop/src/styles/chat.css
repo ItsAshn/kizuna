@@ -6,24 +6,24 @@
   padding: clamp(var(--space-1), 1vw, var(--space-2));
   gap: clamp(var(--space-1), 1vw, var(--space-2));
   position: relative;
+  /* Own stacking context so the blurred bg ::before (z-index: -1) stays
+     contained and every child can stack in natural tree order. Avoid forcing
+     children into their own z-index:1 contexts — that traps the mobile drawer
+     behind .chat-main and overrides MemberList's fixed positioning. */
+  isolation: isolate;
 }
 
 .chat-layout--has-bg::before {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   background-image: var(--bg-image);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
   filter: blur(var(--bg-blur, 0px));
   pointer-events: none;
-}
-
-.chat-layout--has-bg > * {
-  position: relative;
-  z-index: 1;
 }
 
 .sidebar-shell {
@@ -84,7 +84,10 @@
   padding: 6px 12px;
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
   min-height: 32px;
 }
 
@@ -175,13 +178,23 @@
 /* ── Connection banner ────────────────────────────────────── */
 
 @keyframes connectionBannerSlideDown {
-  from { transform: translateY(-100%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .connection-banner {
@@ -208,9 +221,9 @@
 }
 
 .connection-banner__reconnect {
-  background: rgba(255,255,255,0.15);
+  background: rgba(255, 255, 255, 0.15);
   color: var(--text-primary);
-  border: 1px solid rgba(255,255,255,0.3);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: var(--radius-sm);
   padding: 4px 12px;
   font-size: 12px;
@@ -221,7 +234,7 @@
 }
 
 .connection-banner__reconnect:hover {
-  background: rgba(255,255,255,0.25);
+  background: rgba(255, 255, 255, 0.25);
 }
 
 @media (max-width: 767px) {
@@ -238,6 +251,32 @@
     position: relative;
     border-radius: var(--radius-md);
     overflow: hidden;
+  }
+
+  /* Reserve room for the fixed voice call sheet so it never covers the
+     composer. --voice-sheet-h is set from the overlay's measured height
+     while it's shown, and removed otherwise (falling back to 0). */
+  .chat-main {
+    padding-bottom: var(--voice-sheet-h, 0px);
+    transition: padding-bottom 0.15s ease;
+  }
+
+  /* Dim the chat behind the channel drawer; tap to return to the chat. */
+  .mobile-drawer-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    background: rgba(0, 0, 0, 0.45);
+    animation: drawerBackdropFade 0.2s ease-out;
+  }
+
+  @keyframes drawerBackdropFade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   .chat-main__content {
@@ -257,13 +296,17 @@
     margin: 0;
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.5),
+      0 2px 8px rgba(0, 0, 0, 0.3);
     background: var(--bg-secondary);
     flex: none;
     transform: translateX(-30%);
     opacity: 0;
     pointer-events: none;
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease-out;
+    transition:
+      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 0.2s ease-out;
     will-change: transform;
   }
 
@@ -271,13 +314,13 @@
     padding-top: 4px;
   }
 
-  .chat-layout[data-mobile-view="sidebar"] .sidebar {
+  .chat-layout[data-mobile-view='sidebar'] .sidebar {
     transform: translateX(0);
     opacity: 1;
     pointer-events: auto;
   }
 
-  .chat-layout[data-mobile-view="chat"] .sidebar {
+  .chat-layout[data-mobile-view='chat'] .sidebar {
     transform: translateX(-120%);
     opacity: 0;
     pointer-events: none;

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
@@ -78,6 +78,7 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
         setTimeout(() => {
           setVoiceError(null)
           leaveVoice()
+          setClosing(false)
         }, 250)
       }
     }
@@ -90,8 +91,30 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
     setTimeout(() => {
       setVoiceError(null)
       leaveVoice()
+      setClosing(false)
     }, 250)
   }, [leaveVoice, setVoiceError])
+
+  // Publish the call sheet's height so the mobile chat column can reserve
+  // space for it (it's a fixed bottom sheet there) and not hide the composer.
+  const overlayRef = useRef<HTMLDivElement | null>(null)
+  const overlayShown = !!(activeVoiceChannelId || voiceError || closing)
+  useEffect(() => {
+    const root = document.documentElement
+    const el = overlayRef.current
+    if (!overlayShown || !el) {
+      root.style.removeProperty('--voice-sheet-h')
+      return
+    }
+    const update = () => root.style.setProperty('--voice-sheet-h', `${el.offsetHeight}px`)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      root.style.removeProperty('--voice-sheet-h')
+    }
+  }, [overlayShown])
 
   if (!activeVoiceChannelId && !voiceError && !closing) return null
 
@@ -105,7 +128,7 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
   }
 
   return (
-    <div className={`voice-overlay${closing ? ' voice-overlay--closing' : ''}`}>
+    <div ref={overlayRef} className={`voice-overlay${closing ? ' voice-overlay--closing' : ''}`}>
       {voiceError && (
         <div className="voice-error">
           <div className="voice-error__label">Voice Error</div>

@@ -27,19 +27,24 @@
 
   /* ── Prevent iOS zoom on text inputs ──────────────────────── */
 
-  input[type="text"],
-  input[type="search"],
-  input[type="email"],
-  input[type="password"],
-  input[type="url"],
+  input[type='text'],
+  input[type='search'],
+  input[type='email'],
+  input[type='password'],
+  input[type='url'],
   textarea,
   select {
     font-size: 16px !important;
   }
 
-  /* ── Minimum touch target size (safety net) ──────────────── */
+  /* ── Minimum touch target size ───────────────────────────────
+     Scoped to primary/standalone controls only. A blanket rule on
+     every button inflates inline controls (reaction pills, emoji and
+     overflow toggles, small icon buttons) and makes them overlap, so
+     touch sizing lives on the relevant components instead. This is a
+     safety net for full-width form/menu buttons that opt in. */
 
-  button, [role="button"] {
+  .touch-target {
     min-height: 44px;
   }
 

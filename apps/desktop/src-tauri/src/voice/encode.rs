@@ -36,8 +36,14 @@ pub fn start_native_audio_capture(
             .map(|id| id.starts_with("alsa_input.") || id.starts_with("alsa_output."))
             .unwrap_or(true);
 
-        let parec_device = device_id.as_deref().unwrap_or("default");
         if use_parec {
+            // When no specific mic is selected, don't let "default" resolve to a
+            // Bluetooth headset's HFP mic: capturing it forces the headset off
+            // the high-quality A2DP profile onto mono HFP, which tears down the
+            // A2DP sink (pausing other apps' audio) and wrecks playback quality.
+            // An explicit user selection is always honored verbatim.
+            let resolved = resolve_non_bluetooth_source(device_id.as_deref());
+            let parec_device = resolved.as_deref().unwrap_or("default");
             eprintln!("[AudioCapture] trying parec (device: {parec_device}) — avoids CPAL ALSA/PipeWire corruption");
             if try_parec_capture(parec_device, sample_rate, channels, &pcm_tx, &cancel) {
                 eprintln!("[AudioCapture] using parec subprocess for device: {parec_device}");
@@ -151,6 +157,13 @@ pub fn start_native_audio_capture(
             || (lower.contains("output") && !lower.contains("wave") && !lower.contains("usb"))
             || lower.contains("pipewire")
             || lower.contains("pulseaudio")
+            // Skip Bluetooth headset mics: opening them forces the A2DP→HFP
+            // profile switch that degrades playback and pauses other audio.
+            || lower.contains("bluez")
+            || lower.contains("bluetooth")
+            || lower.contains("hands-free")
+            || lower.contains("hfp")
+            || lower.contains("hsp")
         {
             eprintln!("[AudioCapture] skipped virtual/plugin device: {dname}");
             continue;
@@ -182,6 +195,86 @@ pub fn start_native_audio_capture(
     }
 
     Err("No working audio input device found".into())
+}
+
+/// Returns true if a PulseAudio/PipeWire source name looks like a Bluetooth
+/// headset mic (HFP/HSP). Capturing these forces the device off A2DP.
+fn is_bluetooth_source(name: &str) -> bool {
+    let n = name.to_lowercase();
+    n.contains("bluez")
+        || n.contains("bluetooth")
+        || n.contains(".hfp")
+        || n.contains(".hsp")
+        || n.contains("hands-free")
+}
+
+/// Resolves which source `parec` should capture from.
+///
+/// An explicit user selection is honored verbatim. Otherwise, the PipeWire
+/// "default" source is often a Bluetooth headset's HFP mic; capturing it forces
+/// the headset off the high-quality A2DP profile onto mono HFP, which tears
+/// down the A2DP sink (pausing other apps' audio, e.g. a browser's video) and
+/// degrades headphone playback. To avoid that, when the default would be a
+/// Bluetooth source we pick a concrete non-Bluetooth input source instead.
+///
+/// Returns `None` to mean "use parec's `default`" (the default isn't Bluetooth,
+/// or no better source could be found).
+fn resolve_non_bluetooth_source(requested: Option<&str>) -> Option<String> {
+    // Honor an explicit selection as-is — including Bluetooth, if the user
+    // genuinely has no other mic and chose it deliberately.
+    if let Some(id) = requested {
+        return Some(id.to_string());
+    }
+
+    // Find the current default source via pactl (ships alongside parec/paplay).
+    let default_source = Command::new("pactl")
+        .args(["get-default-source"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+
+    // If the default isn't Bluetooth, keep parec's normal "default" behavior.
+    if !default_source.is_empty() && !is_bluetooth_source(&default_source) {
+        return None;
+    }
+
+    // Default is a Bluetooth (or unknown) source — pick a non-Bluetooth,
+    // non-monitor input source instead.
+    let sources = Command::new("pactl")
+        .args(["list", "short", "sources"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+
+    for line in sources.lines() {
+        // Format: "<index>\t<name>\t<driver>\t<format>\t<state>"
+        let name = match line.split('\t').nth(1) {
+            Some(n) => n,
+            None => continue,
+        };
+        let lower = name.to_lowercase();
+        if lower.ends_with(".monitor") {
+            continue; // output monitor, not a real microphone
+        }
+        if is_bluetooth_source(&lower) {
+            continue; // skip Bluetooth HFP/HSP mics
+        }
+        eprintln!(
+            "[AudioCapture] default source is Bluetooth/unknown ('{default_source}'); using non-Bluetooth source instead: {name}"
+        );
+        return Some(name.to_string());
+    }
+
+    if is_bluetooth_source(&default_source) {
+        eprintln!(
+            "[AudioCapture] WARNING: the only microphone is Bluetooth ('{default_source}'); capturing it will switch the headset to low-quality HFP and may pause other audio"
+        );
+    }
+    None
 }
 
 /// Fallback capture using `parec` subprocess (PulseAudio/pipewire-pulse).

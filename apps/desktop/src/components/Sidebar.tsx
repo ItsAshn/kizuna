@@ -22,9 +22,10 @@ interface SidebarProps {
   stopScreenshare: () => void
   onOpenMenu: () => void
   onBackToServers?: () => void
+  onOpenChat?: () => void
 }
 
-export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare, onOpenMenu, onBackToServers }: SidebarProps) {
+export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare, onOpenMenu, onBackToServers, onOpenChat }: SidebarProps) {
   const navigate = useNavigate()
   const isMobile = useMobile()
   const session = useServerStore((s) => s.activeSession)
@@ -307,7 +308,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
                     draggable={isAdmin && !isMobile}
                     onDragStart={(e) => { if (isAdmin && !isMobile) handleDragStart(e, ch) }}
                     onDragEnd={handleDragEnd}
-                    onClick={() => { setActiveChannel(ch.id); setLockMenuChannelId(null) }}
+                    onClick={() => { setActiveChannel(ch.id); setLockMenuChannelId(null); onOpenChat?.() }}
                     onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
                     className={`sidebar__channel ${activeChannelId === ch.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
                     aria-label={(ch.type === 'voice' ? 'Voice' : 'Text') + ' channel ' + ch.name + (mentionBadge ? ' — ' + mentionBadge + ' mentions' : '') + (unreadOnly ? ' — unread' : '')}
@@ -444,7 +445,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
               return (
               <button
                 key={dm.id}
-                onClick={() => setActiveDMChannel(dm.id)}
+                onClick={() => { setActiveDMChannel(dm.id); onOpenChat?.() }}
                 className={`sidebar__channel ${activeDMChannelId === dm.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
               >
                 <div className="sidebar__dm-avatar">
