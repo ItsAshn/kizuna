@@ -1,10 +1,12 @@
 .welcome {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   background: var(--bg-primary);
   padding: 16px;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .welcome__container {
@@ -129,6 +131,9 @@
 .welcome--dashboard {
   flex-direction: column;
   gap: 24px;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 24px;
 }
 
 .welcome__dashboard-grid {
@@ -415,19 +420,19 @@
   }
 
   .welcome__branding {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
   }
 
   .welcome__logo {
-    width: 56px;
+    width: 48px;
   }
 
   .welcome__title {
-    font-size: 24px;
+    font-size: 22px;
   }
 
   .welcome__subtitle {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .welcome__card {
@@ -440,7 +445,8 @@
   }
 
   .welcome--dashboard {
-    gap: 16px;
+    gap: 12px;
+    padding-top: 16px;
   }
 
   .welcome__dashboard-grid {

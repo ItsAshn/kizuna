@@ -5,6 +5,7 @@ import { createApp } from './app'
 import { initDb, closeDb } from './db'
 import { createWorker, closeWorker } from './media'
 import { loadConfig, validateJwtSecret } from './config'
+import { setTaggingEnabled } from './media/tagGenerator'
 import { openPorts, upnpClient, getMappedPorts } from './services/upnp'
 import { resolvePublicAddress, startIpWatcher } from './services/publicAddress'
 
@@ -40,6 +41,7 @@ async function start(): Promise<void> {
 
   const config = loadConfig()
   validateJwtSecret(config)
+  setTaggingEnabled(config.AUTO_TAGGING_ENABLED)
 
   console.log('[✓] Configuration validated')
 

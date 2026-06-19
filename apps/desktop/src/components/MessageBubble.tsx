@@ -14,7 +14,7 @@ import ReactionPicker from './ReactionPicker'
 import ContextMenu, { type ContextMenuSection } from './ContextMenu'
 import UserProfileCard from './UserProfileCard'
 import EmbedCard from './EmbedCard'
-import '../styles/message-bubble.css'
+import './MessageBubble.css'
 
 interface MessageBubbleProps {
   message: Message

@@ -1,57 +1,12 @@
 .export-modal {
-  background: var(--modal-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
   width: 380px;
-  max-width: 90vw;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
-  transition: opacity 0.2s, transform 0.2s;
 }
 
-.export-modal--closing {
-  opacity: 0;
-  transform: scale(0.95);
-}
 
-.export-modal__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border-color);
-}
 
-.export-modal__title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-}
 
-.export-modal__close-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 11px;
-  cursor: pointer;
-  font-family: var(--font-mono);
-  transition: color 0.15s ease;
-}
 
-.export-modal__close-btn:hover {
-  color: var(--text-primary);
-}
 
-.export-modal__body {
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  overflow-y: auto;
-}
 
 .export-modal__json {
   width: 100%;
@@ -141,28 +96,8 @@
   background: #ef444411;
 }
 
-.export-modal__footer {
-  padding: 12px 20px;
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  justify-content: flex-end;
-}
 
-.export-modal__done-btn {
-  padding: 4px 16px;
-  font-size: 11px;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  background: var(--brand);
-  color: var(--text-primary);
-  transition: background 0.15s ease;
-}
 
-.export-modal__done-btn:hover {
-  background: var(--brand-hover);
-}
 
 /* ── Mobile ────────────────────────────────────────────────── */
 

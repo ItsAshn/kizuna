@@ -1,5 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { MoreHorizontal, Pencil, X } from 'lucide-react'
+import Modal from './ui/Modal'
+import Tabs from './ui/Tabs'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
@@ -33,10 +35,13 @@ import {
   deleteStickerPack,
   updateGif,
   generateGifTags,
+  loadTagger,
+  unloadTagger,
+  getTaggerStatus,
 } from '@kizuna/shared'
-import type { Member, CustomRole, Permission, UserStatus, GifInfo } from '@kizuna/shared'
+import type { Member, CustomRole, Permission, UserStatus, GifInfo, TaggerStatus } from '@kizuna/shared'
 import { hexToRgba } from '../utils/color'
-import '../styles/server-menu.css'
+import './ServerMenuModal.css'
 
 interface Props {
   onClose: () => void
@@ -74,6 +79,20 @@ function fileToDataUrl(file: File, maxSize = 512): Promise<string> {
 }
 
 type AdminTab = 'settings' | 'members' | 'invites' | 'roles' | 'css' | 'gifs'
+
+const ADMIN_TABS: { key: AdminTab; label: string }[] = [
+  { key: 'settings', label: 'settings' },
+  { key: 'members', label: 'members' },
+  { key: 'invites', label: 'invites' },
+  { key: 'roles', label: 'roles' },
+  { key: 'css', label: 'css' },
+  { key: 'gifs', label: 'gifs' },
+]
+
+const GIF_TABS: { key: 'gif' | 'sticker'; label: string }[] = [
+  { key: 'gif', label: 'gif' },
+  { key: 'sticker', label: 'sticker' },
+]
 
 const ALL_PERMISSIONS: { key: Permission; label: string; desc: string }[] = [
   { key: 'send_messages', label: 'send', desc: 'Post messages in guild text channels' },
@@ -142,24 +161,11 @@ export default function ServerMenuModal({ onClose }: Props) {
   const { userStatuses } = useVoiceStore()
   const serverUrl = session?.url
   const isAdmin = session?.user?.role === 'admin'
-  const [closing, setClosing] = useState(false)
   const mountedRef = useRef(false)
   mountedRef.current = true
   useEffect(() => {
     return () => { mountedRef.current = false }
   }, [])
-
-  const handleClose = useCallback(() => {
-    if (closing) return
-    setClosing(true)
-    setTimeout(() => { if (mountedRef.current) onClose() }, 200)
-  }, [closing, onClose])
-
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose() }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [handleClose])
 
   // ─── Profile ─────────────────────────────────────────
   const [displayName, setDisplayName] = useState(session?.user?.display_name ?? '')
@@ -343,6 +349,9 @@ export default function ServerMenuModal({ onClose }: Props) {
   // ─── GIFs & Stickers ────────────────────────────────
   const [gifsList, setGifsList] = useState<GifInfo[]>([])
   const [gifsLoading, setGifsLoading] = useState(false)
+  const [taggerStatus, setTaggerStatus] = useState<TaggerStatus>({ loaded: false, loading: false, enabled: false })
+  const [taggerLoading, setTaggerLoading] = useState(false)
+  const [showTaggerWarning, setShowTaggerWarning] = useState(false)
   const [gifUploading, setGifUploading] = useState(false)
   const [gifMsg, setGifMsg] = useState<string | null>(null)
   const [gifTab, setGifTab] = useState<'gif' | 'sticker'>('gif')
@@ -374,6 +383,7 @@ export default function ServerMenuModal({ onClose }: Props) {
       loadRoles()
     } else if (adminTab === 'gifs') {
       loadGifs()
+      loadTaggerStatus()
     }
   }, [adminTab, isAdmin, serverUrl])
 
@@ -405,6 +415,41 @@ export default function ServerMenuModal({ onClose }: Props) {
       console.error('Failed to fetch gifs:', err)
     }
     if (mountedRef.current) setGifsLoading(false)
+  }
+
+  async function loadTaggerStatus() {
+    if (!serverUrl) return
+    try {
+      const status = await getTaggerStatus(serverUrl)
+      if (mountedRef.current) setTaggerStatus(status)
+    } catch {
+      // ignore — server might not have tagging or the endpoint yet
+    }
+  }
+
+  async function handleLoadTagger() {
+    if (!serverUrl) return
+    setShowTaggerWarning(false)
+    setTaggerLoading(true)
+    try {
+      await loadTagger(serverUrl)
+      if (mountedRef.current) setTaggerStatus({ loaded: true, loading: false, enabled: true })
+    } catch (err) {
+      setGifMsg(handleApiErr(err))
+      if (mountedRef.current) setTaggerStatus({ loaded: false, loading: false, enabled: true })
+    } finally {
+      if (mountedRef.current) setTaggerLoading(false)
+    }
+  }
+
+  async function handleUnloadTagger() {
+    if (!serverUrl) return
+    try {
+      await unloadTagger(serverUrl)
+      if (mountedRef.current) setTaggerStatus({ loaded: false, loading: false, enabled: true })
+    } catch (err) {
+      setGifMsg(handleApiErr(err))
+    }
   }
 
   // ─── Profile handlers ───────────────────────────────
@@ -918,7 +963,7 @@ export default function ServerMenuModal({ onClose }: Props) {
       const updated = await generateGifTags(serverUrl, gifId)
       setGifsList(prev => prev.map(g => g.id === gifId ? updated : g))
     } catch (err) {
-      setGifMsg('Auto-tagging is not enabled on the server. Set AUTO_TAGGING_ENABLED=true in env.')
+      setGifMsg(handleApiErr(err))
     } finally {
       setGeneratingTags(prev => {
         const next = new Set(prev)
@@ -952,7 +997,8 @@ export default function ServerMenuModal({ onClose }: Props) {
       try {
         const updated = await generateGifTags(serverUrl, gif.id)
         setGifsList(prev => prev.map(g => g.id === gif.id ? updated : g))
-      } catch {
+      } catch (err) {
+        setGifMsg(handleApiErr(err))
         break
       } finally {
         setGeneratingTags(prev => {
@@ -993,17 +1039,18 @@ export default function ServerMenuModal({ onClose }: Props) {
   const statusFor = (memberId: string): UserStatus => userStatuses[memberId] || 'offline'
 
   return (
-    <div className={`modal-overlay${closing ? ' modal-overlay--closing' : ''}`} onClick={handleClose}>
-      <div className={`server-menu${closing ? ' server-menu--closing' : ''}`} onClick={(e) => e.stopPropagation()}>
-        <div className="server-menu__header">
-          <span className="server-menu__header-title">// server menu</span>
-          <button onClick={handleClose} className="server-menu__close-btn">[esc]</button>
-        </div>
-
-        <div className="server-menu__body">
-          {/* Profile */}
-          <section>
-            <p className="server-menu__section-title">your profile</p>
+    <Modal
+      open
+      onClose={onClose}
+      title="// server menu"
+      className="server-menu"
+      footer={(handleClose) => (
+        <button onClick={handleClose} className="server-menu__done-btn">done</button>
+      )}
+    >
+        {/* Profile */}
+        <section>
+          <p className="server-menu__section-title">your profile</p>
 
             <div className="server-menu__profile-preview">
               <div className="server-menu__profile-banner" onClick={() => bannerFileRef.current?.click()} title="change banner">
@@ -1097,14 +1144,12 @@ export default function ServerMenuModal({ onClose }: Props) {
             <section style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
               <p className="server-menu__section-title">admin</p>
 
-              <div className="server-menu__tab-bar">
-                {(['settings', 'members', 'invites', 'roles', 'css', 'gifs'] as AdminTab[]).map(t => (
-                  <button key={t} onClick={() => { setAdminTab(t); setInviteError(null); setRoleError(null) }}
-                    className={`server-menu__tab ${adminTab === t ? 'server-menu__tab--active' : ''}`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
+              <Tabs
+                tabs={ADMIN_TABS}
+                activeKey={adminTab}
+                onChange={(key) => { setAdminTab(key as AdminTab); setInviteError(null); setRoleError(null) }}
+                variant="pill"
+              />
 
               {/* Settings tab */}
               {adminTab === 'settings' && (
@@ -1725,18 +1770,12 @@ export default function ServerMenuModal({ onClose }: Props) {
                   <p className="server-menu__section-title" style={{ marginBottom: '8px' }}>gifs & stickers</p>
 
                   <div className="server-menu__tab-bar" style={{ marginBottom: '12px' }}>
-                    <button
-                      onClick={() => setGifTab('gif')}
-                      className={`server-menu__tab ${gifTab === 'gif' ? 'server-menu__tab--active' : ''}`}
-                    >
-                      gif
-                    </button>
-                    <button
-                      onClick={() => setGifTab('sticker')}
-                      className={`server-menu__tab ${gifTab === 'sticker' ? 'server-menu__tab--active' : ''}`}
-                    >
-                      sticker
-                    </button>
+                    <Tabs
+                      tabs={GIF_TABS}
+                      activeKey={gifTab}
+                      onChange={(key) => setGifTab(key as 'gif' | 'sticker')}
+                      variant="pill"
+                    />
                   </div>
 
                   {gifTab === 'gif' && (
@@ -1781,7 +1820,47 @@ export default function ServerMenuModal({ onClose }: Props) {
                         </span>
                       )}
 
+                      {taggerStatus.enabled && !taggerStatus.loaded && !taggerStatus.loading && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                          {showTaggerWarning ? (
+                            <>
+                              <span style={{ fontSize: '11px', color: '#e8b851', flex: 1 }}>
+                                This will load a CLIP ViT-B/32 model using ~1.5 GB of RAM. Continue?
+                              </span>
+                              <button onClick={handleLoadTagger} disabled={taggerLoading} className="server-menu__upload-btn" style={{ fontSize: '11px', padding: '4px 8px' }}>
+                                {taggerLoading ? 'loading...' : 'yes, load it'}
+                              </button>
+                              <button onClick={() => setShowTaggerWarning(false)} className="server-menu__upload-btn" style={{ fontSize: '11px', padding: '4px 8px' }}>
+                                cancel
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setShowTaggerWarning(true)}
+                              disabled={taggerLoading}
+                              className="server-menu__upload-btn"
+                              style={{ fontSize: '11px', padding: '4px 8px' }}
+                              title="Load the CLIP AI model for auto-tagging GIFs"
+                            >
+                              {taggerLoading ? 'loading...' : 'load tagging model'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {taggerStatus.loading && (
+                        <p style={{ fontSize: '11px', color: '#888', margin: '0 0 8px 0' }}>loading tagging model... this may take a minute</p>
+                      )}
+                      {taggerStatus.loaded && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '11px', color: '#6f6' }}>model loaded</span>
+                          <button onClick={handleUnloadTagger} disabled={generatingTags.size > 0} className="server-menu__upload-btn" style={{ fontSize: '11px', padding: '4px 8px' }}>
+                            unload
+                          </button>
+                        </div>
+                      )}
+
                       <p className="server-menu__section-title" style={{ marginBottom: '6px', fontSize: '11px' }}>gif library ({gifsList.filter(g => g.type === 'gif').length})</p>
+                      {taggerStatus.loaded && (
                       <button
                         onClick={handleGenerateAllTags}
                         disabled={generatingTags.size > 0}
@@ -1791,6 +1870,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                       >
                         {generatingTags.size > 0 ? 'generating tags...' : '✨ generate tags for all'}
                       </button>
+                      )}
                       {gifsLoading ? (
                         <p className="server-menu__loading">loading...</p>
                       ) : gifsList.filter(g => g.type === 'gif').length === 0 ? (
@@ -1814,6 +1894,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                                 >
                                   <Pencil size={12} />
                                 </button>
+                                {taggerStatus.loaded && (
                                 <button
                                   onClick={() => handleGenerateTags(gif.id)}
                                   className="server-menu__gif-edit"
@@ -1823,6 +1904,7 @@ export default function ServerMenuModal({ onClose }: Props) {
                                 >
                                   {generatingTags.has(gif.id) ? '...' : <span style={{ fontSize: '10px' }}>AI</span>}
                                 </button>
+                                )}
                                 <button
                                   onClick={() => handleDeleteGif(gif.id)}
                                   className="server-menu__gif-delete"
@@ -1934,12 +2016,6 @@ export default function ServerMenuModal({ onClose }: Props) {
               )}
             </section>
           )}
-        </div>
-
-        <div className="server-menu__footer">
-          <button onClick={handleClose} className="server-menu__done-btn">done</button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

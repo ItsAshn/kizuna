@@ -1,0 +1,90 @@
+/* ══════════════════════════════════════════════════════════════
+   Shared Tabs component styles
+   ══════════════════════════════════════════════════════════════ */
+
+.tabs--underline {
+  display: flex;
+  gap: 0;
+  margin-top: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tabs--underline .tabs__tab {
+  padding: 6px 14px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.tabs--underline .tabs__tab:hover {
+  color: var(--text-primary);
+}
+
+.tabs--underline .tabs__tab--active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+
+/* ── Pill variant ──────────────────────────────────────────── */
+
+.tabs--pill {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+
+.tabs--pill .tabs__tab {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-muted);
+  background: none;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.tabs--pill .tabs__tab:hover {
+  color: var(--text-primary);
+}
+
+.tabs--pill .tabs__tab--active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.tabs--pill .tabs__tab--active::after {
+  content: '';
+  position: absolute;
+  bottom: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: var(--brand);
+  border-radius: 1px;
+}
+
+/* ── Mobile ────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .tabs--underline .tabs__tab {
+    min-height: 40px;
+    font-size: 14px;
+  }
+
+  .tabs--pill .tabs__tab {
+    min-height: 44px;
+    font-size: 13px;
+  }
+}

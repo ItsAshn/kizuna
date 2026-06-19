@@ -2,15 +2,16 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import { fetchServerInfo, login, register, fetchDMChannels, resolveInviteCode, uploadPublicKey, getChallenge } from '@kizuna/shared'
-import { solvePoW } from '@kizuna/shared/pow'
-import { generateAndStoreKey, initializeCrypto, userNeedsKeyUpload, getPublicKey } from '../store/keyStore'
+import { fetchDMChannels, fetchServerInfo, resolveInviteCode } from '@kizuna/shared'
+import { useAuth } from '../hooks/useAuth'
+import { useMobile } from '../hooks/useMobile'
 import type { DMChannelData } from '@kizuna/shared'
 import { Settings } from 'lucide-react'
 import AuthForm from '../components/AuthForm'
 import BackupTokenModal from '../components/BackupTokenModal'
+import ServerConnectForm from '../components/ServerConnectForm'
 import Landing from './Landing'
-import '../styles/welcome.css'
+import './Welcome.css'
 
 const INVITE_CODE_RE = /^[A-Za-z0-9+\-_=]+\.[A-Za-z0-9+\-_=]+$/
 
@@ -26,6 +27,7 @@ interface ServerDMs {
 
 export default function Welcome({ isLanding = false, onOpenSettings }: { isLanding?: boolean; onOpenSettings: () => void }) {
   const navigate = useNavigate()
+  const isMobile = useMobile()
   const { addServer, setActiveSession, servers } = useServerStore()
   const mentionCounts = useChatStore((s) => s.mentionCounts)
   const [serverDMs, setServerDMs] = useState<ServerDMs[]>([])
@@ -33,17 +35,16 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
 
   const [showLanding, setShowLanding] = useState(isLanding)
   const [showConnect, setShowConnect] = useState(false)
-  const [url, setUrl] = useState('')
+  const [serverUrl, setServerUrl] = useState('')
+  const [serverInfo, setServerInfo] = useState<any>(null)
+
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [serverPassword, setServerPassword] = useState('')
   const [isRegister, setIsRegister] = useState(false)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [serverInfo, setServerInfo] = useState<any>(null)
-  const [connecting, setConnecting] = useState(false)
-  const [showBackupToken, setShowBackupToken] = useState<string | null>(null)
+
+  const { authenticate, loading, error, setError, backupToken, clearBackupToken } = useAuth(serverUrl)
 
   useEffect(() => {
     async function loadDMs() {
@@ -66,107 +67,66 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
 
   async function handleConnect(urlToUse: string) {
     if (!urlToUse.trim()) return
-    setConnecting(true)
     setError('')
     try {
       if (isInviteCode(urlToUse)) {
         const resolved = await resolveInviteCode(urlToUse.trim())
         setServerInfo(resolved)
-        setUrl(resolved.serverUrl)
+        setServerUrl(resolved.serverUrl)
       } else {
-        const info = await fetchServerInfo(urlToUse.trim())
-        setServerInfo(info)
-        setUrl(urlToUse.trim())
+        const resolved = await fetchServerInfo(urlToUse.trim())
+        setServerInfo(resolved)
+        setServerUrl(urlToUse.trim())
       }
       setShowConnect(true)
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Could not reach server. Check the URL or invite code and try again.')
     }
-    setConnecting(false)
   }
 
   async function handleAuth() {
-    if (!username.trim() || !password.trim()) return
-    setLoading(true)
-    setError('')
-    try {
-      let result
-      if (isRegister) {
-        const { challenge, difficulty } = await getChallenge(url.trim())
-        const { nonce } = await solvePoW(challenge, difficulty)
-        const { publicKey, salt } = await generateAndStoreKey(url.trim(), password)
-        result = await register(url.trim(), username.trim(), password, displayName || username, serverPassword || undefined, publicKey, JSON.stringify(Array.from(salt)), challenge, nonce)
+    const { success, result } = await authenticate({
+      username,
+      password,
+      isRegister,
+      displayName,
+      serverPassword,
+    })
+    if (!success) return
 
-        const serverId = url.trim()
-        addServer({
-          id: serverId,
-          name: serverInfo?.name || url,
-          url: serverId,
-          icon: serverInfo?.icon || undefined,
-          addedAt: Date.now(),
-        })
+    const id = serverUrl.trim()
+    addServer({
+      id,
+      name: serverInfo?.name || serverUrl,
+      url: id,
+      icon: serverInfo?.icon || undefined,
+      addedAt: Date.now(),
+    })
 
-        setActiveSession({
-          serverId,
-          url: serverId,
-          token: result.token,
-          user: result.user,
-        })
+    setActiveSession({
+      serverId: id,
+      url: id,
+      token: result.token,
+      user: result.user,
+    })
 
-        if (result.backuptoken) {
-          setShowBackupToken(result.backuptoken)
-          setLoading(false)
-          return
-        }
-
-        navigate('/chat')
-        return
-      } else {
-        result = await login(url.trim(), username.trim(), password)
-
-        const serverId = url.trim()
-        addServer({
-          id: serverId,
-          name: serverInfo?.name || url,
-          url: serverId,
-          icon: serverInfo?.icon || undefined,
-          addedAt: Date.now(),
-        })
-
-        setActiveSession({
-          serverId,
-          url: serverId,
-          token: result.token,
-          user: result.user,
-        })
-
-        const serverSalt = result.user.key_salt ? new Uint8Array(JSON.parse(result.user.key_salt)) : null
-        const { publicKey, salt } = await initializeCrypto(url.trim(), password, serverSalt, result.user.public_key)
-        if (userNeedsKeyUpload(result.user.public_key, url.trim())) {
-          try {
-            await uploadPublicKey(url.trim(), publicKey, salt)
-          } catch {
-            console.warn('[Auth] Failed to upload public key after login')
-          }
-        }
-
-        navigate('/chat')
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Authentication failed')
+    if (!result.backuptoken) {
+      navigate('/chat')
     }
-    setLoading(false)
   }
 
   const totalMentions = Object.values(mentionCounts).reduce((sum, n) => sum + n, 0)
 
-  if (showConnect && serverInfo) {
+  if (showConnect && serverUrl) {
     return (
       <div className="welcome">
-        {showBackupToken && (
+        {backupToken && (
           <BackupTokenModal
-            backuptoken={showBackupToken}
-            onComplete={() => navigate('/chat')}
+            backuptoken={backupToken}
+            onComplete={() => {
+              clearBackupToken()
+              navigate('/chat')
+            }}
           />
         )}
         <div className="welcome__container">
@@ -179,7 +139,7 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
           <div className="welcome__card">
             <AuthForm
               serverName={serverInfo.name}
-              serverUrl={url}
+              serverUrl={serverUrl}
               serverIcon={serverInfo.icon}
               serverDescription={serverInfo.description}
               isRegister={isRegister}
@@ -196,9 +156,9 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
               error={error}
               loading={loading}
               onSubmit={handleAuth}
-              onBack={() => { setShowConnect(false); setServerInfo(null); setError('') }}
+              onBack={() => { setShowConnect(false); setServerInfo(null); setServerUrl(''); setError('') }}
               backLabel="Back to Dashboard"
-              onForgotPassword={() => navigate(`/reset-password/${encodeURIComponent(url)}`)}
+              onForgotPassword={() => navigate(`/reset-password/${encodeURIComponent(serverUrl)}`)}
             />
           </div>
         </div>
@@ -218,25 +178,15 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
 
           <div className="welcome__card">
             <h2 className="welcome__card-title">Connect to a Server</h2>
-            <input className="input-field welcome__input-spacer" placeholder="Server URL or invite code..." value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleConnect(url)} />
-            <button className="btn-primary" style={{ width: '100%' }} onClick={() => handleConnect(url)} disabled={connecting || !url.trim()}>
-              {connecting ? 'Connecting...' : 'Connect'}
-            </button>
-
-            {servers.length > 0 && (
-              <div>
-                <h3 className="welcome__saved-header">Saved Servers</h3>
-                {servers.map((server) => (
-                  <button key={server.id} className="welcome__saved-server" onClick={() => handleConnect(server.url)}>
-                    {server.name}
-                    <span className="welcome__saved-server-url">{server.url}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <button className="welcome__back-btn" onClick={() => { setShowConnect(false); setError('') }}>Back to Dashboard</button>
-            {error && <p className="welcome__error">{error}</p>}
+            <ServerConnectForm
+              onConnect={(resolvedUrl, info) => {
+                setServerUrl(resolvedUrl)
+                setServerInfo(info)
+              }}
+              savedServers={servers.map((s) => ({ id: s.id, name: s.name, url: s.url }))}
+              onBack={() => { setShowConnect(false); setError('') }}
+              backLabel="Back to Dashboard"
+            />
           </div>
         </div>
       </div>
@@ -298,71 +248,75 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
           </div>
         </div>
 
-        <div className="welcome__dashboard-panel">
-          <div className="welcome__dashboard-panel-header">
-            <span className="welcome__dashboard-panel-label">Direct Messages</span>
-          </div>
-          <div className="welcome__dashboard-panel-body">
-            {dmsLoading ? (
-              <p className="welcome__dashboard-empty-text">Loading...</p>
-            ) : serverDMs.length === 0 ? (
-              <div className="welcome__dashboard-empty">
-                <p className="welcome__dashboard-empty-text">No recent conversations</p>
-                <p className="welcome__dashboard-empty-sub">Join a server to start chatting</p>
+        {!isMobile && (
+          <>
+            <div className="welcome__dashboard-panel">
+              <div className="welcome__dashboard-panel-header">
+                <span className="welcome__dashboard-panel-label">Direct Messages</span>
               </div>
-            ) : (
-              serverDMs.map((sd) => (
-                <div key={sd.serverId} style={{ marginBottom: sd.channels.length > 0 ? '12px' : '0' }}>
-                  <p className="welcome__dm-group-label">{sd.serverName}</p>
-                  {sd.channels.map((ch) => (
-                    <div key={ch.id} className="welcome__dm-item">
-                      <div className="welcome__dm-avatar">{ch.other_display_name?.[0]?.toUpperCase()}</div>
-                      <div>
-                        <p className="welcome__dm-name">{ch.other_display_name}</p>
-                        <p className="welcome__dm-username">@{ch.other_username}</p>
-                      </div>
+              <div className="welcome__dashboard-panel-body">
+                {dmsLoading ? (
+                  <p className="welcome__dashboard-empty-text">Loading...</p>
+                ) : serverDMs.length === 0 ? (
+                  <div className="welcome__dashboard-empty">
+                    <p className="welcome__dashboard-empty-text">No recent conversations</p>
+                    <p className="welcome__dashboard-empty-sub">Join a server to start chatting</p>
+                  </div>
+                ) : (
+                  serverDMs.map((sd) => (
+                    <div key={sd.serverId} style={{ marginBottom: sd.channels.length > 0 ? '12px' : '0' }}>
+                      <p className="welcome__dm-group-label">{sd.serverName}</p>
+                      {sd.channels.map((ch) => (
+                        <div key={ch.id} className="welcome__dm-item">
+                          <div className="welcome__dm-avatar">{ch.other_display_name?.[0]?.toUpperCase()}</div>
+                          <div>
+                            <p className="welcome__dm-name">{ch.other_display_name}</p>
+                            <p className="welcome__dm-username">@{ch.other_username}</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="welcome__dashboard-panel">
-          <div className="welcome__dashboard-panel-header">
-            <span className="welcome__dashboard-panel-label">Status</span>
-          </div>
-          <div className="welcome__dashboard-panel-body">
-            <div className="welcome__status-row">
-              <span className="welcome__status-label">Servers</span>
-              <span className="welcome__status-value">{servers.length}</span>
-            </div>
-            {totalMentions > 0 && (
-              <div className="welcome__status-row">
-                <span className="welcome__status-label">Mentions</span>
-                <span className="welcome__status-value welcome__status-value--danger">{totalMentions}</span>
+                  ))
+                )}
               </div>
-            )}
-          </div>
-        </div>
-
-        <div className="welcome__dashboard-panel">
-          <div className="welcome__dashboard-panel-header">
-            <span className="welcome__dashboard-panel-label">About</span>
-          </div>
-          <div className="welcome__dashboard-panel-body">
-            <p className="welcome__server-name">Kizuna <span className="welcome__dashboard-panel-label">v0.1.0</span></p>
-            <p className="welcome__subtitle" style={{ marginTop: '4px' }}>Self-hosted voice & chat</p>
-            <div className="welcome__tech-tags">
-              <span className="welcome__tech-tag">webrtc</span>
-              <span className="welcome__tech-tag">mediasoup</span>
-              <span className="welcome__tech-tag">react</span>
-              <span className="welcome__tech-tag">sqlite</span>
-              <span className="welcome__tech-tag">tauri</span>
             </div>
-          </div>
-        </div>
+
+            <div className="welcome__dashboard-panel">
+              <div className="welcome__dashboard-panel-header">
+                <span className="welcome__dashboard-panel-label">Status</span>
+              </div>
+              <div className="welcome__dashboard-panel-body">
+                <div className="welcome__status-row">
+                  <span className="welcome__status-label">Servers</span>
+                  <span className="welcome__status-value">{servers.length}</span>
+                </div>
+                {totalMentions > 0 && (
+                  <div className="welcome__status-row">
+                    <span className="welcome__status-label">Mentions</span>
+                    <span className="welcome__status-value welcome__status-value--danger">{totalMentions}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="welcome__dashboard-panel">
+              <div className="welcome__dashboard-panel-header">
+                <span className="welcome__dashboard-panel-label">About</span>
+              </div>
+              <div className="welcome__dashboard-panel-body">
+                <p className="welcome__server-name">Kizuna <span className="welcome__dashboard-panel-label">v0.1.0</span></p>
+                <p className="welcome__subtitle" style={{ marginTop: '4px' }}>Self-hosted voice & chat</p>
+                <div className="welcome__tech-tags">
+                  <span className="welcome__tech-tag">webrtc</span>
+                  <span className="welcome__tech-tag">mediasoup</span>
+                  <span className="welcome__tech-tag">react</span>
+                  <span className="welcome__tech-tag">sqlite</span>
+                  <span className="welcome__tech-tag">tauri</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <button className="welcome__dashboard-cta" onClick={() => setShowConnect(true)}>Connect to Server</button>

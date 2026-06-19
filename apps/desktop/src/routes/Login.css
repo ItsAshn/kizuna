@@ -1,12 +1,14 @@
 .login {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   background: var(--bg-primary);
   padding: 16px;
   padding-top: calc(16px + env(safe-area-inset-top, 0px));
   padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .login__card {
@@ -17,6 +19,18 @@
   padding: 24px;
   border: 1px solid var(--border-color);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  margin: auto;
+}
+
+@media (max-width: 767px) {
+  .login {
+    padding: 8px;
+  }
+
+  .login__card {
+    padding: 16px;
+    border-radius: var(--radius-md);
+  }
 }
 
 .login__not-found {

@@ -3,7 +3,7 @@ import { searchMessages } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
 import { X, Search, Loader2 } from 'lucide-react'
 import type { Message } from '@kizuna/shared'
-import '../styles/search.css'
+import './SearchBar.css'
 
 interface SearchBarProps {
   channelId: string

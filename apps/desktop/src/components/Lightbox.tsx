@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight, Download } from 'lucide-react'
-import '../styles/lightbox.css'
+import './Lightbox.css'
 
 interface LightboxImage {
   url: string

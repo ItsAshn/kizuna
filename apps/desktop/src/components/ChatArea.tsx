@@ -18,7 +18,7 @@ import GifPicker from './GifPicker'
 import Skeleton from './Skeleton'
 import Lightbox from './Lightbox'
 import SearchBar from './SearchBar'
-import '../styles/chat-area.css'
+import './ChatArea.css'
 
 interface ChatAreaProps {
   socketRef: MutableRefObject<Socket | null>

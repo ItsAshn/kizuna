@@ -3,7 +3,8 @@ import { useVoiceStore, type VoiceInputMode } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useUpdaterActions } from '../hooks/useUpdater'
 import { clearCryptoState } from '../store/keyStore'
-import '../styles/settings.css'
+import Modal from './ui/Modal'
+import './UserSettingsModal.css'
 
 interface AudioDataPayload {
   samples_f32: number[]
@@ -306,19 +307,20 @@ export default function UserSettingsModal({ onClose }: Props) {
   }, [])
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="settings-modal__header">
-          <span className="settings-modal__header-title">// user settings</span>
-          <button onClick={onClose} className="settings-modal__close-btn">[esc]</button>
-        </div>
-
-        <div className="settings-modal__body">
-          {permissionDenied && (
-            <p className="settings-modal__permission-warning">
-              microphone permission denied — device labels unavailable
-            </p>
-          )}
+    <Modal
+      open
+      onClose={onClose}
+      title="// user settings"
+      className="settings-modal"
+      footer={(handleClose) => (
+        <button onClick={handleClose} className="settings-modal__done-btn">done</button>
+      )}
+    >
+      {permissionDenied && (
+        <p className="settings-modal__permission-warning">
+          microphone permission denied — device labels unavailable
+        </p>
+      )}
 
           <section>
             <p className="settings-modal__section-title">audio devices</p>
@@ -656,12 +658,6 @@ export default function UserSettingsModal({ onClose }: Props) {
               )}
             </section>
           )}
-        </div>
-
-        <div className="settings-modal__footer">
-          <button onClick={onClose} className="settings-modal__done-btn">done</button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

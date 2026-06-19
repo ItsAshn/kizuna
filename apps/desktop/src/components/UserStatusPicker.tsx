@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useVoiceStore } from '../store/voiceStore'
 import { useServerStore } from '../store/serverStore'
 import type { UserStatus } from '@kizuna/shared'
-import '../styles/status-picker.css'
+import './UserStatusPicker.css'
 
 interface Props {
   socketRef: React.MutableRefObject<any>

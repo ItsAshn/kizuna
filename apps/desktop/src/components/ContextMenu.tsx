@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import '../styles/context-menu.css'
+import './ContextMenu.css'
 
 export interface ContextMenuItem {
   label: string

@@ -10,8 +10,19 @@ env.allowLocalModels = false
 
 let taggerPromise: Promise<any> | null = null
 let modelLoaded = false
+let _taggingEnabled = false
 
-function getTagger() {
+export function setTaggingEnabled(enabled: boolean): void {
+  _taggingEnabled = enabled
+}
+
+export function isTaggingEnabled(): boolean {
+  return _taggingEnabled
+}
+
+export async function loadTagger(): Promise<void> {
+  if (modelLoaded) return
+
   if (!taggerPromise) {
     console.log('[tagGenerator] Loading CLIP ViT-B/32 model (~600MB download, ~1.2-1.5GB RAM)...')
     taggerPromise = pipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32')
@@ -26,15 +37,26 @@ function getTagger() {
         throw err
       })
   }
+
+  await taggerPromise
+}
+
+export function unloadTagger(): void {
+  taggerPromise = null
+  modelLoaded = false
+  console.log('[tagGenerator] CLIP model unloaded')
+}
+
+export function getTaggerStatus(): { loaded: boolean; loading: boolean } {
+  return {
+    loaded: modelLoaded,
+    loading: taggerPromise !== null && !modelLoaded,
+  }
+}
+
+async function getTagger(): Promise<any> {
+  if (!taggerPromise) throw new Error('Tagging model is not loaded. Call POST /api/gifs/load-tagger first.')
   return taggerPromise
-}
-
-export function isTaggingEnabled(): boolean {
-  return process.env.AUTO_TAGGING_ENABLED === 'true'
-}
-
-export function isModelLoaded(): boolean {
-  return modelLoaded
 }
 
 function formatTags(suggested: { tag: string; confidence: number }[]): string {
@@ -85,6 +107,10 @@ export async function generateAndStoreTags(
   imageBuffer: Buffer,
 ): Promise<void> {
   if (!isTaggingEnabled()) return
+  if (!modelLoaded) {
+    console.log('[tagGenerator] Skipping auto-tag: model not loaded')
+    return
+  }
 
   try {
     const suggested = await generateTags(imageBuffer)

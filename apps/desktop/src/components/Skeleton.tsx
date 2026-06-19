@@ -1,4 +1,4 @@
-import '../styles/skeleton.css'
+import './Skeleton.css'
 
 interface SkeletonProps {
   width?: string | number

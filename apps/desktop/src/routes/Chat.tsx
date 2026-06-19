@@ -29,7 +29,7 @@ import IncomingCallModal from '../components/IncomingCallModal'
 import ExportModal from '../components/ExportModal'
 import ConnectDialog from '../components/ConnectDialog'
 import { useNavigate } from 'react-router-dom'
-import '../styles/chat.css'
+import './Chat.css'
 
 export default function Chat({ onOpenSettings }: { onOpenSettings: () => void }) {
   const navigate = useNavigate()

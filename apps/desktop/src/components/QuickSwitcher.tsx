@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { Hash, Volume2, AtSign } from 'lucide-react'
-import '../styles/quick-switcher.css'
+import './QuickSwitcher.css'
 
 interface QuickSwitcherProps {
   onClose: () => void

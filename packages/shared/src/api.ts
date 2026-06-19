@@ -15,6 +15,7 @@ import type {
   ChannelMute,
   GifInfo,
   LinkEmbed,
+  TaggerStatus,
 } from './types'
 
 function normalizeUrl(url: string): string {
@@ -850,6 +851,27 @@ export async function generateGifTags(
   gifId: string,
 ): Promise<GifInfo> {
   const res = await client(serverUrl).post(`/api/gifs/${gifId}/generate-tags`)
+  return res.data
+}
+
+export async function loadTagger(
+  serverUrl: string,
+): Promise<{ message: string }> {
+  const res = await client(serverUrl).post('/api/gifs/load-tagger')
+  return res.data
+}
+
+export async function unloadTagger(
+  serverUrl: string,
+): Promise<{ message: string }> {
+  const res = await client(serverUrl).post('/api/gifs/unload-tagger')
+  return res.data
+}
+
+export async function getTaggerStatus(
+  serverUrl: string,
+): Promise<TaggerStatus> {
+  const res = await client(serverUrl).get('/api/gifs/tagger-status')
   return res.data
 }
 

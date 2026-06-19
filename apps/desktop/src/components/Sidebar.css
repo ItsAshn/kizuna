@@ -480,6 +480,11 @@
     flex-shrink: 0;
     min-width: 32px;
     min-height: 32px;
+    opacity: 0;
+  }
+
+  .sidebar__channel-wrap:hover .sidebar__lock-btn {
+    opacity: 1;
   }
 
 .sidebar__lock-btn:hover {

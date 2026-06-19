@@ -2,7 +2,7 @@ import { useRef, useCallback, useEffect, useState } from 'react'
 import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
 import { Monitor, X, GripHorizontal } from 'lucide-react'
-import '../styles/screenshare.css'
+import './ScreenShareOverlay.css'
 
 interface ScreenShareOverlayProps {
   videoElRef: React.MutableRefObject<HTMLVideoElement | null>

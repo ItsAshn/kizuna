@@ -1,6 +1,6 @@
 import { useNotificationStore } from '../store/notificationStore'
 import NotificationToast from './NotificationToast'
-import '../styles/notification-toast.css'
+import './NotificationContainer.css'
 
 export default function NotificationContainer() {
   const notifications = useNotificationStore((s) => s.notifications)

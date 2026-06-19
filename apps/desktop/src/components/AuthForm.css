@@ -50,7 +50,7 @@
 
 .auth-form__tab {
   flex: 1;
-  padding: 12px 0;
+  padding: 10px 0;
   border-radius: var(--radius-md);
   font-size: 13px;
   font-weight: 500;
@@ -59,7 +59,7 @@
   transition: all 0.15s ease;
   background: var(--bg-tertiary);
   color: var(--text-secondary);
-  min-height: 44px;
+  min-height: 40px;
 }
 
 .auth-form__tab--active {
@@ -146,6 +146,37 @@
 }
 
 /* ── Spinner ──────────────────────────────────────────────── */
+
+/* ── Mobile ──────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .auth-form__server-header {
+    margin-bottom: 14px;
+  }
+
+  .auth-form__server-icon {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 8px;
+  }
+
+  .auth-form__server-name {
+    font-size: 16px;
+  }
+
+  .auth-form__tabs {
+    margin-bottom: 12px;
+  }
+
+  .auth-form__tab {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .auth-form__input-spacer {
+    margin-bottom: 10px;
+  }
+}
 
 @keyframes spinner-rotate {
   to {

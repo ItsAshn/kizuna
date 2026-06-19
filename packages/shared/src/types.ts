@@ -355,3 +355,9 @@ export interface LinkEmbed {
   site_name?: string;
   favicon?: string;
 }
+
+export interface TaggerStatus {
+  loaded: boolean;
+  loading: boolean;
+  enabled: boolean;
+}

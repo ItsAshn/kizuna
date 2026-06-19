@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { Settings, ChevronLeft } from 'lucide-react'
-import '../styles/server-panel.css'
+import './ServerPanel.css'
 
 interface ServerPanelProps {
   onLoginRequired?: (serverId: string) => void

@@ -6,7 +6,7 @@ import { useMobile, useTablet } from '../hooks/useMobile'
 import type { Member, CustomRole } from '@kizuna/shared'
 import { X } from 'lucide-react'
 import UserProfileCard from './UserProfileCard'
-import '../styles/member-list.css'
+import './MemberList.css'
 
 interface Props {
   visible: boolean

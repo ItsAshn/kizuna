@@ -7,7 +7,7 @@ import { getDb } from '../db'
 import { authMiddleware, isUserAdmin } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 import { processImage, shouldProcessImage } from '../media/imageProcessor'
-import { isTaggingEnabled, generateAndStoreTags, generateTags } from '../media/tagGenerator'
+import { isTaggingEnabled, generateAndStoreTags, generateTags, loadTagger, unloadTagger, getTaggerStatus } from '../media/tagGenerator'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const gifRoutes = new Hono()
@@ -420,6 +420,43 @@ gifRoutes.post('/sticker-pack', authMiddleware, async (c) => {
   return c.json({ imported }, 201)
 })
 
+// POST /api/gifs/load-tagger — load the CLIP tagging model into memory (admin only)
+gifRoutes.post('/load-tagger', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+
+  if (!isTaggingEnabled()) return c.json({ error: 'Auto-tagging is not enabled. Set AUTO_TAGGING_ENABLED=true in env.' }, 400)
+
+  const status = getTaggerStatus()
+  if (status.loaded) return c.json({ message: 'Model already loaded' })
+
+  try {
+    await loadTagger()
+    return c.json({ message: 'Model loaded successfully' })
+  } catch (err: any) {
+    console.error('[gifs] Failed to load tagger:', err.message)
+    return c.json({ error: 'Failed to load tagging model: ' + err.message }, 500)
+  }
+})
+
+// POST /api/gifs/unload-tagger — unload the CLIP tagging model from memory (admin only)
+gifRoutes.post('/unload-tagger', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+
+  unloadTagger()
+  return c.json({ message: 'Model unloaded' })
+})
+
+// GET /api/gifs/tagger-status — check if the tagging model is loaded
+gifRoutes.get('/tagger-status', async (c) => {
+  const enabled = isTaggingEnabled()
+  if (!enabled) return c.json({ loaded: false, loading: false, enabled: false })
+
+  const status = getTaggerStatus()
+  return c.json({ ...status, enabled })
+})
+
 // POST /api/gifs/:id/generate-tags — manually trigger tag generation (admin only)
 gifRoutes.post('/:id/generate-tags', authMiddleware, async (c) => {
   const user = getAuth(c)
@@ -433,6 +470,9 @@ gifRoutes.post('/:id/generate-tags', authMiddleware, async (c) => {
   if (!row) return c.json({ error: 'Not found' }, 404)
 
   if (!isTaggingEnabled()) return c.json({ error: 'Auto-tagging is not enabled. Set AUTO_TAGGING_ENABLED=true in env.' }, 400)
+
+  const taggerStatus = getTaggerStatus()
+  if (!taggerStatus.loaded) return c.json({ error: 'Tagging model is not loaded. Call POST /api/gifs/load-tagger first.' }, 400)
 
   const filePath = path.join(GIFS_DIR, row.stored_filename)
   if (!fs.existsSync(filePath)) return c.json({ error: 'File not found on disk' }, 404)

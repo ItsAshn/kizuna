@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSettingsStore } from '../store/settingsStore'
 import { useUpdaterActions } from '../hooks/useUpdater'
-import '../styles/update-banner.css'
+import './UpdateBanner.css'
 
 export default function UpdateBanner() {
   const updateState = useSettingsStore((s) => s.updateState)

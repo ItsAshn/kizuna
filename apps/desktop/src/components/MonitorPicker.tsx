@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { MonitorInfo } from '@kizuna/shared'
 import { Monitor } from 'lucide-react'
-import '../styles/screenshare.css'
+import './ScreenShareOverlay.css'
 
 interface MonitorPickerProps {
   onSelect: (monitorIndex: number) => void

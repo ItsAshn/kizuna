@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Search, X } from 'lucide-react'
 import { fetchGifs, fetchGifCategories, fetchStickerPacks } from '@kizuna/shared'
 import type { GifInfo, GifType } from '@kizuna/shared'
-import '../styles/gif-picker.css'
+import './GifPicker.css'
 
 interface GifPickerProps {
   serverUrl: string

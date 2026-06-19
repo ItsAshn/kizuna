@@ -6,7 +6,7 @@ import type { ConnectionQuality } from '@kizuna/shared'
 import { Volume2, Mic, MicOff, PhoneOff, Monitor, MonitorOff } from 'lucide-react'
 import MonitorPicker from './MonitorPicker'
 import { getVoiceLogLines } from '../hooks/useVoice'
-import '../styles/voice-overlay.css'
+import './VoiceOverlay.css'
 
 interface VoiceOverlayProps {
   leaveVoice: () => void

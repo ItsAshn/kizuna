@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
-import { login, register, fetchServerInfo, uploadPublicKey, getChallenge } from '@kizuna/shared'
-import { solvePoW } from '@kizuna/shared/pow'
-import { generateAndStoreKey, initializeCrypto, userNeedsKeyUpload, getPublicKey } from '../store/keyStore'
+import { fetchServerInfo } from '@kizuna/shared'
+import { useAuth } from '../hooks/useAuth'
 import AuthForm from '../components/AuthForm'
 import BackupTokenModal from '../components/BackupTokenModal'
-import '../styles/login.css'
+import './Login.css'
 
 export default function Login() {
   const { serverId } = useParams()
@@ -20,10 +19,9 @@ export default function Login() {
   const [displayName, setDisplayName] = useState('')
   const [serverPassword, setServerPassword] = useState('')
   const [isRegister, setIsRegister] = useState(false)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
   const [serverInfo, setServerInfo] = useState<any>(null)
-  const [showBackupToken, setShowBackupToken] = useState<string | null>(null)
+
+  const { authenticate, loading, error, setError, backupToken, clearBackupToken } = useAuth(serverUrl)
 
   useEffect(() => {
     if (serverUrl) {
@@ -45,66 +43,36 @@ export default function Login() {
   }
 
   async function handleAuth() {
-    if (!username.trim() || !password.trim()) return
-    setLoading(true)
-    setError('')
-    try {
-      let result
-      if (isRegister) {
-        const { challenge, difficulty } = await getChallenge(serverUrl)
-        const { nonce } = await solvePoW(challenge, difficulty)
-        const { publicKey, salt } = await generateAndStoreKey(serverUrl, password)
-        result = await register(
-          serverUrl, username.trim(), password, displayName || username,
-          serverPassword || undefined, publicKey, JSON.stringify(Array.from(salt)), challenge, nonce,
-        )
+    const { success, result } = await authenticate({
+      username,
+      password,
+      isRegister,
+      displayName,
+      serverPassword,
+    })
+    if (!success) return
 
-        setActiveSession({
-          serverId: serverUrl,
-          url: serverUrl,
-          token: result.token,
-          user: result.user,
-        })
+    setActiveSession({
+      serverId: serverUrl,
+      url: serverUrl,
+      token: result.token,
+      user: result.user,
+    })
 
-        if (result.backuptoken) {
-          setShowBackupToken(result.backuptoken)
-          setLoading(false)
-          return
-        }
-      } else {
-        result = await login(serverUrl, username.trim(), password)
-
-        setActiveSession({
-          serverId: serverUrl,
-          url: serverUrl,
-          token: result.token,
-          user: result.user,
-        })
-
-        const serverSalt = result.user.key_salt ? new Uint8Array(JSON.parse(result.user.key_salt)) : null
-        const { publicKey, salt } = await initializeCrypto(serverUrl, password, serverSalt, result.user.public_key)
-        if (userNeedsKeyUpload(result.user.public_key, serverUrl)) {
-          try {
-            await uploadPublicKey(serverUrl, publicKey, salt)
-          } catch {
-            console.warn('[Auth] Failed to upload public key after login')
-          }
-        }
-      }
-
+    if (!result.backuptoken) {
       navigate('/chat')
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Authentication failed')
     }
-    setLoading(false)
   }
 
   return (
     <div className="login">
-      {showBackupToken && (
+      {backupToken && (
         <BackupTokenModal
-          backuptoken={showBackupToken}
-          onComplete={() => navigate('/chat')}
+          backuptoken={backupToken}
+          onComplete={() => {
+            clearBackupToken()
+            navigate('/chat')
+          }}
         />
       )}
       <div className="login__card">

@@ -1,63 +1,17 @@
-@keyframes modalOverlayFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
 
-@keyframes modalSlideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-20px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
 
 .login-dialog {
-  background: var(--modal-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
   width: 448px;
-  max-width: calc(100vw - 32px);
-  max-height: 85vh;
-  overflow-y: auto;
-  animation: modalSlideDown 0.25s ease-out;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-.login-dialog__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px 12px;
+@media (max-width: 767px) {
+  .login-dialog {
+    width: calc(100vw - 16px);
+    max-width: 480px;
+  }
 }
 
-.login-dialog__header-title {
-  font-size: 13px;
-  font-family: var(--font-mono);
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
 
-.login-dialog__close-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-family: var(--font-mono);
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  transition: color 0.15s ease, background 0.15s ease;
-}
 
-.login-dialog__close-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-tertiary);
-}
 
-.login-dialog__body {
-  padding: 0 24px 24px;
-}
+

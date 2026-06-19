@@ -6,7 +6,7 @@ import { useServerStore } from '../store/serverStore'
 import { getOrCreateDMChannel } from '@kizuna/shared'
 import { MessageCircle } from 'lucide-react'
 import { hexToRgba } from '../utils/color'
-import '../styles/user-profile-card.css'
+import './UserProfileCard.css'
 
 interface UserProfileCardProps {
   userId: string

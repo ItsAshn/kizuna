@@ -1,77 +1,15 @@
 .channel-settings {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
   width: 560px;
-  max-width: 95vw;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  animation: serverMenuFadeIn 0.2s ease;
-  overflow: hidden;
 }
 
-.channel-settings--closing {
-  animation: serverMenuFadeOut 0.15s ease forwards;
-}
 
-.channel-settings__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-}
 
-.channel-settings__header-title {
-  font-size: 13px;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--text-primary);
-}
 
-.channel-settings__close-btn {
-  font-size: 11px;
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-}
 
-.channel-settings__body {
-  padding: 0 20px 20px;
-  overflow-y: auto;
-  flex: 1;
-}
 
-.channel-settings__tab-bar {
-  display: flex;
-  gap: 0;
-  margin-top: 16px;
-  border-bottom: 1px solid var(--border-color);
-}
 
-.channel-settings__tab {
-  font-size: 10px;
-  font-family: var(--font-mono);
-  padding: 6px 14px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.15s ease;
-}
 
-.channel-settings__tab--active {
-  color: var(--brand);
-  border-bottom-color: var(--brand);
-}
 
-.channel-settings__tab:hover {
-  color: var(--text-primary);
-}
 
 .channel-settings__field {
   margin-bottom: 12px;
@@ -247,27 +185,8 @@
   opacity: 0.8;
 }
 
-.channel-settings__footer {
-  padding: 12px 20px;
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  justify-content: flex-end;
-}
 
-.channel-settings__done-btn {
-  padding: 4px 16px;
-  background: var(--brand);
-  color: var(--text-primary);
-  font-size: 10px;
-  font-family: var(--font-mono);
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
 
-.channel-settings__done-btn:hover {
-  background: var(--brand-hover);
-}
 
 @media (max-width: 767px) {
   .channel-settings {

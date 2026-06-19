@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { unfurlUrls } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
-import '../styles/embed-card.css'
+import './EmbedCard.css'
 
 interface EmbedCardProps {
   urls: string[]

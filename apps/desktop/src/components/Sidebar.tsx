@@ -11,7 +11,7 @@ import { Lock, Unlock, BellOff, ChevronLeft } from 'lucide-react'
 import UserStatusPicker from './UserStatusPicker'
 import ContextMenu from './ContextMenu'
 import ChannelSettingsModal from './ChannelSettingsModal'
-import '../styles/sidebar.css'
+import './Sidebar.css'
 
 interface SidebarProps {
   joinVoice: (channelId: string) => Promise<string | null>

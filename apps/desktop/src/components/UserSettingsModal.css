@@ -1,49 +1,11 @@
 .settings-modal {
-  background: var(--modal-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
   width: 560px;
-  max-width: calc(100vw - 32px);
-  max-height: 85vh;
-  overflow-y: auto;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-.settings-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border-color);
-}
 
-.settings-modal__header-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-}
 
-.settings-modal__close-btn {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-family: var(--font-mono);
-  border: none;
-  background: none;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
 
-.settings-modal__close-btn:hover {
-  color: var(--text-primary);
-}
 
-.settings-modal__body {
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 
 .settings-modal__section-title {
   font-size: 10px;
@@ -152,12 +114,6 @@
   padding: 8px 12px;
 }
 
-.settings-modal__footer {
-  padding: 12px 20px;
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  justify-content: flex-end;
-}
 
 .settings-modal__check-btn {
   padding: 4px 12px;
@@ -181,21 +137,7 @@
   cursor: not-allowed;
 }
 
-.settings-modal__done-btn {
-  padding: 4px 16px;
-  background: var(--brand);
-  color: var(--text-primary);
-  font-size: 11px;
-  font-family: var(--font-mono);
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
 
-.settings-modal__done-btn:hover {
-  background: var(--brand-hover);
-}
 
 .settings-modal__section-divider {
   border: none;

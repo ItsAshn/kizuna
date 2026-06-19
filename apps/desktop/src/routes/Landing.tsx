@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { FaWindows, FaLinux, FaApple, FaGithub, FaDocker } from 'react-icons/fa'
 import { MessageCircle, Mic, Monitor, Lock, Code, Download, ExternalLink, ArrowRight, Server } from 'lucide-react'
-import '../styles/landing.css'
+import './Landing.css'
 
 interface LandingProps {
   onConnect: (url: string) => void

@@ -4,7 +4,7 @@ import { useServerStore } from '../store/serverStore'
 import { requestPasswordReset, validateResetToken, resetPassword, resetWithBackupToken, getAdminList, fetchServerInfo } from '@kizuna/shared'
 import type { AdminInfo } from '@kizuna/shared'
 import BackupTokenModal from '../components/BackupTokenModal'
-import '../styles/login.css'
+import './Login.css'
 
 type Phase = 'username' | 'choice' | 'adminToken' | 'newPassword' | 'done'
 type ResetMethod = 'backuptoken' | 'admin' | null
