@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSettingsStore } from '../store/settingsStore'
-import { useUpdaterActions } from '../hooks/useUpdater'
+import { useUpdaterActions, isMobileTauri } from '../hooks/useUpdater'
 import './UpdateBanner.css'
 
 export default function UpdateBanner() {
@@ -62,9 +62,9 @@ export default function UpdateBanner() {
 
       {updateState === 'ready' && (
         <div className="update-banner-card__content update-banner-card__content--ready">
-          <span>update {updateVersion} ready</span>
+          <span>{isMobileTauri() ? `update ${updateVersion} available` : `update ${updateVersion} ready`}</span>
           <button onClick={installUpdate} className="update-banner-card__restart-btn">
-            restart now
+            {isMobileTauri() ? 'download' : 'restart now'}
           </button>
         </div>
       )}

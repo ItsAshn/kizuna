@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useVoiceStore, type VoiceInputMode } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
-import { useUpdaterActions } from '../hooks/useUpdater'
+import { useUpdaterActions, isMobileTauri } from '../hooks/useUpdater'
 import { clearCryptoState } from '../store/keyStore'
 import Modal from './ui/Modal'
 import './UserSettingsModal.css'
@@ -644,10 +644,10 @@ export default function UserSettingsModal({ onClose }: Props) {
               {updateState === 'ready' && (
                 <div className="settings-modal__version-row">
                   <span className="settings-modal__alert settings-modal__alert--success">
-                    update {updateVersion} ready — restart to apply
+                    {isMobileTauri() ? `update ${updateVersion} available` : `update ${updateVersion} ready — restart to apply`}
                   </span>
                   <button onClick={installUpdate} className="settings-modal__check-btn">
-                    restart now
+                    {isMobileTauri() ? 'download' : 'restart now'}
                   </button>
                 </div>
               )}

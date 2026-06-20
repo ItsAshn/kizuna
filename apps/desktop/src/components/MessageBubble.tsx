@@ -217,13 +217,14 @@ function MessageBubble({
 
   useEffect(() => {
     if (!barMounted || !contentRef.current) { setBarPos(null); return }
+    const el = contentRef.current
     const update = () => {
-      if (!contentRef.current) return
-      const r = contentRef.current.getBoundingClientRect()
+      if (!el) return
+      const r = el.getBoundingClientRect()
       setBarPos({ top: r.bottom + 25, left: r.left })
     }
     update()
-    const scrollContainer = contentRef.current.closest('.chat-area__messages')
+    const scrollContainer = el.closest('.chat-area__messages')
     window.addEventListener('resize', update)
     scrollContainer?.addEventListener('scroll', update, { passive: true })
     return () => {

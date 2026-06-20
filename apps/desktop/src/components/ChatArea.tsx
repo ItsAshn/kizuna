@@ -73,6 +73,10 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const addMessage = useChatStore((s) => s.addMessage)
   const typingUsers = useChatStore((s) => s.typingUsers)
   const hasMoreMessages = useChatStore((s) => s.hasMoreMessages)
+  const loadingMoreMessages = useChatStore((s) => s.loadingMoreMessages)
+  const loadMoreErrors = useChatStore((s) => s.loadMoreErrors)
+  const setLoadingMoreMessages = useChatStore((s) => s.setLoadingMoreMessages)
+  const setLoadMoreError = useChatStore((s) => s.setLoadMoreError)
   const dmCallStatus = useCallStore((s) => s.dmCallStatus)
   const dmCallChannelId = useCallStore((s) => s.dmCallChannelId)
   const [input, setInput] = useState('')
@@ -269,9 +273,11 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     const store = useChatStore.getState()
     const channelMessages = store.messages[channelId] || []
     if (!store.hasMoreMessages[channelId] || channelMessages.length === 0) return
+    if (store.loadingMoreMessages[channelId]) return
     const oldestId = channelMessages[0].id
     if (!oldestId) return
-    store.setHasMoreMessages(channelId, false)
+    store.setLoadingMoreMessages(channelId, true)
+    store.setLoadMoreError(channelId, null)
     ;(async () => {
       try {
         const { messages: olderMsgs, hasMore } = activeDMChannelId
@@ -282,10 +288,22 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
         store.setHasMoreMessages(channelId, hasMore)
       } catch (err) {
         console.error('Failed to load more messages:', err)
+        store.setLoadMoreError(channelId, 'Failed to load older messages')
         store.setHasMoreMessages(channelId, true)
+      } finally {
+        store.setLoadingMoreMessages(channelId, false)
       }
     })()
   }, [activeChannelId, activeDMChannelId, session, tryDecryptDM])
+
+  const retryLoadMoreMessages = useCallback(() => {
+    const channelId = activeChannelId || activeDMChannelId
+    if (!channelId) return
+    const store = useChatStore.getState()
+    store.setHasMoreMessages(channelId, true)
+    store.setLoadMoreError(channelId, null)
+    loadMoreMessages()
+  }, [activeChannelId, activeDMChannelId, loadMoreMessages])
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -406,6 +424,16 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       setSendError(null)
       if ('vibrate' in navigator) navigator.vibrate(10)
       if (inputRef.current) { inputRef.current.style.height = 'auto'; inputRef.current.focus() }
+      requestAnimationFrame(() => {
+        const channelId = activeChannelId || activeDMChannelId
+        if (channelId) {
+          const msgs = useChatStore.getState().messages[channelId] || []
+          if (msgs.length > 0) {
+            virtuosoRef.current?.scrollToIndex(msgs.length - 1)
+          }
+          lastCountAtBottom.current = msgs.length
+        }
+      })
     } catch (err: any) {
       const status = err?.response?.status
       const serverMsg = err?.response?.data?.error
@@ -475,6 +503,16 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       setPendingAttachmentId(null)
       setSendError(null)
       if (inputRef.current) { inputRef.current.style.height = 'auto'; inputRef.current.focus() }
+      requestAnimationFrame(() => {
+        const channelId = activeChannelId || activeDMChannelId
+        if (channelId) {
+          const msgs = useChatStore.getState().messages[channelId] || []
+          if (msgs.length > 0) {
+            virtuosoRef.current?.scrollToIndex(msgs.length - 1)
+          }
+          lastCountAtBottom.current = msgs.length
+        }
+      })
     } catch (err: any) {
       setSendError(err?.response?.data?.error || err?.message || 'Failed to upload file')
       if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
@@ -746,9 +784,32 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             followOutput={(isAtBottom) => isAtBottom ? "smooth" : false}
             atBottomStateChange={(isAtBottom) => setAtBottom(isAtBottom)}
             startReached={loadMoreMessages}
+            increaseViewportBy={{ top: 400, bottom: 200 }}
             initialTopMostItemIndex={displayMessages.length > 0 ? displayMessages.length - 1 : 0}
             style={{ flex: 1 }}
             components={{
+              Header: () => {
+                const chId = activeChannelId || activeDMChannelId || ''
+                const loadingMore = loadingMoreMessages[chId]
+                const loadError = loadMoreErrors[chId]
+                const hasMore = hasMoreMessages[chId]
+                if (!hasMore && !loadingMore && !loadError) return null
+                return (
+                  <div className="chat-area__load-more">
+                    <div className={`chat-area__load-more-spinner${loadingMore ? ' chat-area__load-more-spinner--active' : ''}`}>
+                      <span className="chat-area__load-more-spinner-icon" />
+                      <span>Loading older messages...</span>
+                    </div>
+                    <button
+                      className={`chat-area__load-more-retry${loadError ? ' chat-area__load-more-retry--visible' : ''}`}
+                      onClick={retryLoadMoreMessages}
+                      tabIndex={loadError ? 0 : -1}
+                    >
+                      {loadError || ' '}
+                    </button>
+                  </div>
+                )
+              },
               Footer: () => typingText ? <div className="chat-area__typing">{typingText}</div> : null,
             }}
           />

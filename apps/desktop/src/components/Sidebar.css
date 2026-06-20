@@ -288,6 +288,24 @@
 
 /* ── Create channel form ───────────────────────────────────── */
 
+.sidebar__create-toggle {
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sidebar__create-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 .sidebar__create-form {
   padding-top: 12px;
   margin-top: 12px;

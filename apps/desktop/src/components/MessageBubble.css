@@ -386,6 +386,29 @@
   overflow: visible;
 }
 
+/* ── Meta: instant hover reveal (no React dependency) ─────── */
+
+.msg-bubble__bubble:hover .msg-bubble__meta {
+  pointer-events: auto;
+  visibility: visible;
+  opacity: 1;
+  overflow: visible;
+}
+
+.msg-bubble__bubble--media-only:hover .msg-bubble__meta {
+  pointer-events: auto;
+  visibility: visible;
+  opacity: 1;
+  overflow: visible;
+}
+
+.msg-bubble__bubble--sticker-only:hover .msg-bubble__meta {
+  pointer-events: auto;
+  visibility: visible;
+  opacity: 1;
+  overflow: visible;
+}
+
 .msg-bubble__time {
   font-size: 10px;
   color: var(--text-secondary);

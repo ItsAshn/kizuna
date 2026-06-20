@@ -1,6 +1,18 @@
 import { useEffect, useCallback } from 'react'
 import { useSettingsStore } from '../store/settingsStore'
 
+const GITHUB_REPO = 'ItsAshn/kizuna'
+
+function isTauri(): boolean {
+  return !!(window as any).__TAURI_INTERNALS__
+}
+
+export function isMobileTauri(): boolean {
+  if (!isTauri()) return false
+  const ua = navigator.userAgent || ''
+  return /android/i.test(ua) || /iphone|ipad|ipod/i.test(ua)
+}
+
 export function useUpdater(): void {
   // Tauri updater events are handled via check() / downloadAndInstall()
   // No global event listener needed — state is managed through useUpdaterActions
@@ -16,6 +28,26 @@ export function useUpdaterActions() {
     try {
       setUpdateState('checking')
       setUpdateError(null)
+
+      if (isMobileTauri()) {
+        const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`)
+        if (!res.ok) throw new Error('failed to check for updates')
+        const release = await res.json()
+        const latestTag = release.tag_name.replace(/^v/, '')
+
+        const { getVersion } = await import('@tauri-apps/api/app')
+        const currentVersion = await getVersion()
+
+        if (latestTag === currentVersion) {
+          setUpdateState('idle')
+          return { updateAvailable: false }
+        }
+
+        setUpdateVersion(release.tag_name)
+        setUpdateState('ready')
+        return { updateAvailable: true }
+      }
+
       const { check } = await import('@tauri-apps/plugin-updater')
       const update = await check()
       if (!update) {
@@ -54,8 +86,11 @@ export function useUpdaterActions() {
   }, [setUpdateState, setUpdateProgress, setUpdateVersion, setUpdateError])
 
   const installUpdate = useCallback(async () => {
-    // Update is already downloaded and installed by downloadAndInstall()
-    // Relaunch the app to apply the update
+    if (isMobileTauri()) {
+      window.open(`https://github.com/${GITHUB_REPO}/releases/latest`, '_blank')
+      return
+    }
+
     try {
       const { relaunch } = await import('@tauri-apps/plugin-process')
       await relaunch()

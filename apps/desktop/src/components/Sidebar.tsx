@@ -46,6 +46,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   const [newChannelName, setNewChannelName] = useState('')
   const [newChannelType, setNewChannelType] = useState<'text' | 'voice'>('text')
   const [creating, setCreating] = useState(false)
+  const [showCreateForm, setShowCreateForm] = useState(false)
   const [lockMenuChannelId, setLockMenuChannelId] = useState<string | null>(null)
   const [roles, setRoles] = useState<CustomRole[]>([])
   const [rolesLoaded, setRolesLoaded] = useState(false)
@@ -462,37 +463,46 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
         )}
 
         {session && isAdmin && (
-          <form onSubmit={handleCreateChannel} className="sidebar__create-form">
-            <span className="sidebar__create-title">New Channel</span>
-            <input
-              className="sidebar__create-input"
-              placeholder="channel-name"
-              value={newChannelName}
-              onChange={(e) => setNewChannelName(e.target.value)}
-              autoFocus
-            />
-            <div className="sidebar__create-type-row">
-              <div className="sidebar__create-type-toggle">
-                <button
-                  type="button"
-                  onClick={() => setNewChannelType('text')}
-                  className={`sidebar__create-type-btn ${newChannelType === 'text' ? 'sidebar__create-type-btn--active' : ''}`}
-                >
-                  text
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNewChannelType('voice')}
-                  className={`sidebar__create-type-btn ${newChannelType === 'voice' ? 'sidebar__create-type-btn--active' : ''}`}
-                >
-                  voice
-                </button>
-              </div>
-              <button type="submit" disabled={creating} className="sidebar__create-submit">
-                {creating ? '...' : 'create'}
-              </button>
-            </div>
-          </form>
+          <>
+            <button
+              onClick={() => setShowCreateForm((v) => !v)}
+              className="sidebar__create-toggle"
+            >
+              {showCreateForm ? '—' : '+ New Channel'}
+            </button>
+            {showCreateForm && (
+              <form onSubmit={handleCreateChannel} className="sidebar__create-form">
+                <input
+                  className="sidebar__create-input"
+                  placeholder="channel-name"
+                  value={newChannelName}
+                  onChange={(e) => setNewChannelName(e.target.value)}
+                  autoFocus
+                />
+                <div className="sidebar__create-type-row">
+                  <div className="sidebar__create-type-toggle">
+                    <button
+                      type="button"
+                      onClick={() => setNewChannelType('text')}
+                      className={`sidebar__create-type-btn ${newChannelType === 'text' ? 'sidebar__create-type-btn--active' : ''}`}
+                    >
+                      text
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewChannelType('voice')}
+                      className={`sidebar__create-type-btn ${newChannelType === 'voice' ? 'sidebar__create-type-btn--active' : ''}`}
+                    >
+                      voice
+                    </button>
+                  </div>
+                  <button type="submit" disabled={creating} className="sidebar__create-submit">
+                    {creating ? '...' : 'create'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </>
         )}
       </div>
 

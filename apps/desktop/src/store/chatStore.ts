@@ -16,6 +16,8 @@ interface ChatState {
   channelMutes: Record<string, number | null>;
   channelLastReadAt: Record<string, number>;
   hasMoreMessages: Record<string, boolean>;
+  loadingMoreMessages: Record<string, boolean>;
+  loadMoreErrors: Record<string, string | null>;
 
   setChannels: (channels: Channel[]) => void;
   setDMChannels: (channels: DMChannelData[]) => void;
@@ -36,6 +38,8 @@ interface ChatState {
   removeChannelMute: (channelId: string) => void;
   setChannelLastReadAt: (channelId: string, timestamp: number) => void;
   setHasMoreMessages: (channelId: string, hasMore: boolean) => void;
+  setLoadingMoreMessages: (channelId: string, loading: boolean) => void;
+  setLoadMoreError: (channelId: string, error: string | null) => void;
   prependMessages: (channelId: string, messages: Message[]) => void;
   updateMessageReactions: (channelId: string, messageId: string, reactions: MessageReaction[]) => void;
 }
@@ -56,6 +60,8 @@ export const useChatStore = create<ChatState>()(
       channelMutes: {},
       channelLastReadAt: {},
       hasMoreMessages: {},
+      loadingMoreMessages: {},
+      loadMoreErrors: {},
 
       setChannels: (channels) => set({ channels }),
       setDMChannels: (dmChannels) => set({ dmChannels }),
@@ -65,10 +71,13 @@ export const useChatStore = create<ChatState>()(
         set((state) => {
           const existing = state.messages[channelId] || [];
           if (existing.some((m) => m.id === message.id)) return state;
+          const MAX_MESSAGES = 500
+          const appended = [...existing, message]
+          const trimmed = appended.length > MAX_MESSAGES ? appended.slice(-MAX_MESSAGES) : appended
           return {
             messages: {
               ...state.messages,
-              [channelId]: [...existing, message],
+              [channelId]: trimmed,
             },
           };
         }),
@@ -127,13 +136,28 @@ export const useChatStore = create<ChatState>()(
         set((s) => ({
           hasMoreMessages: { ...s.hasMoreMessages, [channelId]: hasMore },
         })),
-      prependMessages: (channelId, messages) =>
+      setLoadingMoreMessages: (channelId, loading) =>
         set((s) => ({
-          messages: {
-            ...s.messages,
-            [channelId]: [...messages, ...(s.messages[channelId] || [])],
-          },
+          loadingMoreMessages: { ...s.loadingMoreMessages, [channelId]: loading },
         })),
+      setLoadMoreError: (channelId, error) =>
+        set((s) => ({
+          loadMoreErrors: { ...s.loadMoreErrors, [channelId]: error },
+        })),
+      prependMessages: (channelId, messages) =>
+        set((s) => {
+          const existing = s.messages[channelId] || []
+          const existingIds = new Set(existing.map((m) => m.id))
+          const deduped = messages.filter((m) => !existingIds.has(m.id))
+          if (deduped.length === 0) return s
+          const MAX_MESSAGES = 500
+          const merged = [...deduped, ...existing]
+          const trimmed = merged.length > MAX_MESSAGES ? merged.slice(-MAX_MESSAGES) : merged
+          return {
+            messages: { ...s.messages, [channelId]: trimmed },
+            hasMoreMessages: { ...s.hasMoreMessages, [channelId]: merged.length > MAX_MESSAGES ? true : s.hasMoreMessages[channelId] },
+          }
+        }),
       updateMessageReactions: (channelId, messageId, reactions) =>
         set((state) => ({
           messages: {

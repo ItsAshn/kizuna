@@ -125,7 +125,7 @@ function NotificationSettings() {
   const current = settings[serverId] || { level: 'all' as const, suppressEveryone: false }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px', paddingBottom: '8px' }}>
       <div className="server-menu__field">
         <label className="server-menu__label">server notification level</label>
         <select
@@ -1153,70 +1153,92 @@ export default function ServerMenuModal({ onClose }: Props) {
 
               {/* Settings tab */}
               {adminTab === 'settings' && (
-                <div style={{ marginTop: '16px' }}>
+                <div className="server-menu__tab-content">
                   {infoLoading && <p className="server-menu__info-loading">loading server info...</p>}
-                  <div className="server-menu__avatar-row">
-                    <div className="server-menu__avatar" onClick={() => serverIconFileRef.current?.click()} title="click to change server icon">
-                      <span>{(serverName || '?').slice(0, 2).toUpperCase()}</span>
-                      {serverIconDisplay && (
-                        <img src={serverIconDisplay} alt="" className="server-menu__avatar-img"
-                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                      )}
-                    </div>
-                    <div className="server-menu__avatar-actions">
-                      <button onClick={() => serverIconFileRef.current?.click()} className="server-menu__upload-btn">upload icon</button>
-                      {(serverIconPreview) && (
-                        <button onClick={() => { pendingServerIconFile.current = null; setServerIconPreview(null); setServerIconChanged(true) }}
-                          className="server-menu__remove-btn">remove icon</button>
-                      )}
-                    </div>
-                    <input ref={serverIconFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleServerIconFile} />
-                  </div>
-                  <div className="server-menu__field" style={{ marginTop: '12px' }}>
-                    <label className="server-menu__label">server name</label>
-                    <input className="server-menu__input" maxLength={100} value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="server name" />
-                  </div>
-                  <div className="server-menu__field" style={{ marginTop: '16px' }}>
-                    <label className="server-menu__label">background image</label>
-                    <div className="server-menu__bg-row">
-                      {bgPreviewUrl && (
-                        <div className="server-menu__bg-preview" style={{ backgroundImage: `url(${bgPreviewUrl})` }} />
-                      )}
-                      <div className="server-menu__bg-actions">
-                        <button onClick={() => bgFileRef.current?.click()} disabled={bgUploading} className="server-menu__upload-btn">
-                          {bgUploading ? 'uploading...' : 'upload background'}
-                        </button>
-                        {bgHasImage && (
-                          <button onClick={handleRemoveBg} className="server-menu__remove-btn">remove background</button>
+
+                  {/* Identity */}
+                  <div className="server-menu__settings-group">
+                    <p className="server-menu__settings-group-title">identity</p>
+                    <div className="server-menu__avatar-row">
+                      <div className="server-menu__avatar" onClick={() => serverIconFileRef.current?.click()} title="click to change server icon">
+                        <span>{(serverName || '?').slice(0, 2).toUpperCase()}</span>
+                        {serverIconDisplay && (
+                          <img src={serverIconDisplay} alt="" className="server-menu__avatar-img"
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
                         )}
                       </div>
-                      <input ref={bgFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgFile} />
+                      <div className="server-menu__avatar-actions">
+                        <button onClick={() => serverIconFileRef.current?.click()} className="server-menu__upload-btn">upload icon</button>
+                        {(serverIconPreview) && (
+                          <button onClick={() => { pendingServerIconFile.current = null; setServerIconPreview(null); setServerIconChanged(true) }}
+                            className="server-menu__remove-btn">remove icon</button>
+                        )}
+                      </div>
+                      <input ref={serverIconFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleServerIconFile} />
+                    </div>
+                    <div className="server-menu__field" style={{ marginTop: '10px' }}>
+                      <label className="server-menu__label">server name</label>
+                      <input className="server-menu__input" maxLength={100} value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="server name" />
                     </div>
                   </div>
-                  <div className="server-menu__field" style={{ marginTop: '12px' }}>
-                    <label className="server-menu__label">background blur ({bgBlur}px)</label>
-                    <input type="range" min="0" max="20" value={bgBlur} onChange={(e) => setBgBlur(Number(e.target.value))} className="server-menu__range" />
+
+                  {/* Appearance */}
+                  <div className="server-menu__settings-group">
+                    <p className="server-menu__settings-group-title">appearance</p>
+                    <div className="server-menu__field">
+                      <label className="server-menu__label">background image</label>
+                      <div className="server-menu__bg-row">
+                        <div
+                          className={`server-menu__bg-preview${!bgPreviewUrl ? ' server-menu__bg-preview--empty' : ''}`}
+                          style={bgPreviewUrl ? { backgroundImage: `url(${bgPreviewUrl})` } : undefined}
+                        >
+                          {!bgPreviewUrl && <span className="server-menu__bg-preview-placeholder">no image</span>}
+                        </div>
+                        <div className="server-menu__bg-actions">
+                          <button onClick={() => bgFileRef.current?.click()} disabled={bgUploading} className="server-menu__upload-btn">
+                            {bgUploading ? 'uploading...' : bgHasImage ? 'change background' : 'upload background'}
+                          </button>
+                          {bgHasImage && (
+                            <button onClick={handleRemoveBg} className="server-menu__remove-btn">remove background</button>
+                          )}
+                        </div>
+                        <input ref={bgFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgFile} />
+                      </div>
+                    </div>
+                    <div className="server-menu__field" style={{ marginTop: '10px' }}>
+                      <div className="server-menu__label-row">
+                        <label className="server-menu__label">background blur</label>
+                        <span className="server-menu__value-chip">{bgBlur}px</span>
+                      </div>
+                      <input type="range" min="0" max="20" value={bgBlur} onChange={(e) => setBgBlur(Number(e.target.value))} className="server-menu__range" />
+                    </div>
                   </div>
-                  <div className="server-menu__field" style={{ marginTop: '12px' }}>
-                    <label className="server-menu__label">voice bitrate</label>
-                    <select
-                      value={voiceBitrateKbps}
-                      onChange={(e) => { const kbps = Number(e.target.value); setVoiceBitrateKbps(kbps); saveVoiceBitrate(kbps) }}
-                      className="server-menu__select"
-                    >
-                      <option value={32}>32 kbps — low bandwidth</option>
-                      <option value={64}>64 kbps — balanced</option>
-                      <option value={96}>96 kbps</option>
-                      <option value={128}>128 kbps — high quality</option>
-                      <option value={192}>192 kbps</option>
-                      <option value={256}>256 kbps</option>
-                      <option value={320}>320 kbps — max quality</option>
-                    </select>
-                    <p className="server-menu__hint">applies immediately to all connected users</p>
+
+                  {/* Voice */}
+                  <div className="server-menu__settings-group">
+                    <p className="server-menu__settings-group-title">voice</p>
+                    <div className="server-menu__field">
+                      <label className="server-menu__label">bitrate</label>
+                      <select
+                        value={voiceBitrateKbps}
+                        onChange={(e) => { const kbps = Number(e.target.value); setVoiceBitrateKbps(kbps); saveVoiceBitrate(kbps) }}
+                        className="server-menu__select"
+                      >
+                        <option value={32}>32 kbps — low bandwidth</option>
+                        <option value={64}>64 kbps — balanced</option>
+                        <option value={96}>96 kbps</option>
+                        <option value={128}>128 kbps — high quality</option>
+                        <option value={192}>192 kbps</option>
+                        <option value={256}>256 kbps</option>
+                        <option value={320}>320 kbps — max quality</option>
+                      </select>
+                      <p className="server-menu__hint">applies immediately to all connected users</p>
+                    </div>
                   </div>
+
                   <div className="server-menu__save-row">
                     <button onClick={handleSaveServer} disabled={serverSaving} className="server-menu__save-btn">
-                      {serverSaving ? '...' : 'save settings'}
+                      {serverSaving ? 'saving...' : 'save settings'}
                     </button>
                     {serverMsg && (
                       <span className={`server-menu__save-msg ${serverMsg === 'saved' || serverMsg.startsWith('background') ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`}>
@@ -1229,7 +1251,7 @@ export default function ServerMenuModal({ onClose }: Props) {
 
               {/* Members tab */}
               {adminTab === 'members' && (
-                <div style={{ marginTop: '16px' }}>
+                <div className="server-menu__tab-content">
                   <input
                     className="server-menu__member-search"
                     placeholder={`Search members (${filteredMembers.length})...`}
@@ -1457,7 +1479,7 @@ export default function ServerMenuModal({ onClose }: Props) {
 
               {/* Invites tab */}
               {adminTab === 'invites' && (
-                <div style={{ marginTop: '16px' }}>
+                <div className="server-menu__tab-content">
                   <div className="server-menu__invite-create">
                     <p className="server-menu__section-title" style={{ marginBottom: '8px' }}>create invite</p>
                     <div className="server-menu__invite-row">
@@ -1527,7 +1549,7 @@ export default function ServerMenuModal({ onClose }: Props) {
 
               {/* Roles tab */}
               {adminTab === 'roles' && (
-                <div style={{ marginTop: '16px' }}>
+                <div className="server-menu__tab-content">
                   {!showCreateRole ? (
                     <button
                       onClick={() => setShowCreateRole(true)}
@@ -1733,7 +1755,7 @@ export default function ServerMenuModal({ onClose }: Props) {
 
               {/* Custom CSS tab */}
               {adminTab === 'css' && (
-                <div style={{ marginTop: '16px' }}>
+                <div className="server-menu__tab-content">
                   <p className="server-menu__section-title" style={{ marginBottom: '4px' }}>custom css</p>
                   <p className="server-menu__css-hint">
                     Override CSS variables to theme your server. Changes preview live below.
@@ -1766,7 +1788,7 @@ export default function ServerMenuModal({ onClose }: Props) {
 
               {/* GIFs & Stickers tab */}
               {adminTab === 'gifs' && (
-                <div style={{ marginTop: '16px' }}>
+                <div className="server-menu__tab-content">
                   <p className="server-menu__section-title" style={{ marginBottom: '8px' }}>gifs & stickers</p>
 
                   <div className="server-menu__tab-bar" style={{ marginBottom: '12px' }}>
