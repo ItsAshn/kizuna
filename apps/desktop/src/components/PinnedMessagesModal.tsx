@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { X, Pin, User } from 'lucide-react'
+import { X, Pin, User, Trash2 } from 'lucide-react'
 import type { PinnedMessage } from '@kizuna/shared'
 import './PinnedMessagesModal.css'
 
@@ -8,9 +8,10 @@ interface Props {
   open: boolean
   onClose: () => void
   onJump: (messageId: string) => void
+  onUnpin: (messageId: string) => void
 }
 
-export default function PinnedMessagesModal({ pins, open, onClose, onJump }: Props) {
+export default function PinnedMessagesModal({ pins, open, onClose, onJump, onUnpin }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -50,32 +51,41 @@ export default function PinnedMessagesModal({ pins, open, onClose, onJump }: Pro
             </div>
           )}
           {pins.map((pin) => (
-            <button
-              key={pin.id}
-              className="pins-modal__item"
-              onClick={() => { onJump(pin.messageId); onClose() }}
-            >
-              <div className="pins-modal__item-header">
-                <div className="pins-modal__item-author">
-                  <div className="pins-modal__item-avatar">
-                    {pin.authorAvatar ? (
-                      <img src={pin.authorAvatar} alt={pin.authorUsername} className="pins-modal__item-avatar-img" />
-                    ) : (
-                      <span className="pins-modal__item-avatar-placeholder">
-                        {(pin.authorDisplayName || pin.authorUsername || '?').charAt(0).toUpperCase()}
-                      </span>
-                    )}
+            <div key={pin.id} className="pins-modal__item-row">
+              <button
+                className="pins-modal__item"
+                onClick={() => { onJump(pin.messageId); onClose() }}
+              >
+                <div className="pins-modal__item-header">
+                  <div className="pins-modal__item-author">
+                    <div className="pins-modal__item-avatar">
+                      {pin.authorAvatar ? (
+                        <img src={pin.authorAvatar} alt={pin.authorUsername} className="pins-modal__item-avatar-img" />
+                      ) : (
+                        <span className="pins-modal__item-avatar-placeholder">
+                          {(pin.authorDisplayName || pin.authorUsername || '?').charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <span className="pins-modal__item-name">{pin.authorDisplayName || pin.authorUsername}</span>
                   </div>
-                  <span className="pins-modal__item-name">{pin.authorDisplayName || pin.authorUsername}</span>
+                  <span className="pins-modal__item-time">
+                    {new Date(pin.pinnedAt).toLocaleDateString()}
+                  </span>
                 </div>
-                <span className="pins-modal__item-time">
-                  {new Date(pin.pinnedAt).toLocaleDateString()}
-                </span>
-              </div>
-              <p className="pins-modal__item-content">
-                {pin.content.length > 200 ? pin.content.slice(0, 200) + '...' : pin.content}
-              </p>
-            </button>
+                <p className="pins-modal__item-content">
+                  {pin.content.length > 200 ? pin.content.slice(0, 200) + '...' : pin.content}
+                </p>
+              </button>
+              <button
+                className="pins-modal__item-unpin"
+                onClick={(e) => { e.stopPropagation(); onUnpin(pin.messageId) }}
+                aria-label="Unpin message"
+                title="Unpin message"
+              >
+                <Trash2 className="icon-xs" />
+              </button>
+            </div>
           ))}
         </div>
       </div>

@@ -516,13 +516,12 @@ function MessageBubble({
           {attachments.length > 0 && attachments.map((att, i) => (
             <AttachmentPreview key={i} url={att.url} filename={att.filename} serverUrl={serverUrl} isMediaOnly={isMediaOnly} onImageClick={onImageClick} />
           ))}
-          {text && (
-            <EmbedCard
-              urls={(text.match(/(https?:\/\/[^\s<]+)/g) || [])
-                .filter(u => !/\.(jpg|jpeg|png|gif|webp|mp4|webm|mp3|ogg|wav|pdf)$/i.test(u.split('?')[0]))
-                .slice(0, 3)}
-            />
-          )}
+          {text && (() => {
+            const urls = (text.match(/(https?:\/\/[^\s<]+)/g) || [])
+              .filter(u => !/\.(jpg|jpeg|png|gif|webp|mp4|webm|mp3|ogg|wav|pdf)$/i.test(u.split('?')[0]))
+              .slice(0, 3)
+            return urls.length > 0 ? <EmbedCard urls={urls} /> : null
+          })()}
           <div className={`msg-bubble__meta ${showMeta ? 'msg-bubble__meta--visible' : ''} ${editing ? 'msg-bubble__meta--editing' : ''}`}>
             {hovered && <span className="msg-bubble__time">{time}</span>}
             {message.edited_at && <span className="msg-bubble__edited">(edited)</span>}

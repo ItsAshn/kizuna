@@ -12,7 +12,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useMobile, useTablet } from '../hooks/useMobile'
 import { fetchChannels, fetchMembers, fetchDMChannels, fetchServerInfo, fetchChannelMutes, fetchCategories } from '@kizuna/shared'
 import { restoreFromSession } from '../store/keyStore'
-import { Loader2, Users } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import ServerPanel from '../components/ServerPanel'
 import UpdateBanner from '../components/UpdateBanner'
 import Sidebar from '../components/Sidebar'
@@ -21,7 +21,6 @@ import MemberList from '../components/MemberList'
 import VoiceOverlay from '../components/VoiceOverlay'
 import ScreenShareOverlay from '../components/ScreenShareOverlay'
 import ServerMenuModal from '../components/ServerMenuModal'
-import EnvStatus from '../components/EnvStatus'
 import SetupWizard from '../components/SetupWizard'
 import LoginDialog from '../components/LoginDialog'
 import NotificationContainer from '../components/NotificationContainer'
@@ -342,32 +341,15 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         <UpdateBanner />
         <div className="chat-main__content">
           {chatOpen ? (
-            <>
-              {!isMobile && (
-                <div className="chat-toolbar">
-                  <div className="chat-toolbar__left">
-                    <EnvStatus onOpenWizard={() => setShowEnvWizard(true)} />
-                  </div>
-                  <button
-                    onClick={() => setShowMembers(!showMembers)}
-                    className={`chat-toolbar__members-btn${showMembers ? ' chat-toolbar__members-btn--active' : ''}`}
-                    title={showMembers ? 'Hide member list' : 'Show member list'}
-                    aria-label={showMembers ? 'Hide member list' : 'Show member list'}
-                  >
-                    <Users size={14} />
-                    <span>{members.length}</span>
-                  </button>
-                </div>
-              )}
-              <ChatArea
-                socketRef={socketRef}
-                onStartDMCall={startDMCall}
-                onEndDMCall={endDMCall}
-                onBackToSidebar={isMobile ? handleMobileBackToSidebar : undefined}
-                onToggleMembers={isMobile ? () => setShowMembers((v) => !v) : undefined}
-                membersOpen={showMembers}
-              />
-            </>
+            <ChatArea
+              socketRef={socketRef}
+              onStartDMCall={startDMCall}
+              onEndDMCall={endDMCall}
+              onBackToSidebar={isMobile ? handleMobileBackToSidebar : undefined}
+              onToggleMembers={() => setShowMembers((v) => !v)}
+              membersOpen={showMembers}
+              onOpenEnvWizard={() => setShowEnvWizard(true)}
+            />
           ) : (
             <div className="chat-placeholder">
               <div className="chat-placeholder__icon">

@@ -54,6 +54,13 @@
   flex-shrink: 0;
 }
 
+.chat-area__header-env {
+  display: flex;
+  align-items: center;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
 .chat-area__header-prefix {
   color: var(--text-muted);
   margin-right: 8px;

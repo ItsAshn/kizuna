@@ -11,6 +11,7 @@ interface ChatState {
   threads: Record<string, Thread[]>;
   threadMessages: Record<string, Message[]>;
   activeThreadId: string | null;
+  threadPanelVisible: boolean;
   members: Member[];
   activeChannelId: string | null;
   activeDMChannelId: string | null;
@@ -35,9 +36,11 @@ interface ChatState {
   removePinnedMessage: (channelId: string, messageId: string) => void;
   setThreads: (channelId: string, threads: Thread[]) => void;
   addThread: (channelId: string, thread: Thread) => void;
+  removeThread: (channelId: string, threadId: string) => void;
   setThreadMessages: (threadId: string, messages: Message[]) => void;
   addThreadMessage: (threadId: string, message: Message) => void;
   setActiveThreadId: (threadId: string | null) => void;
+  setThreadPanelVisible: (visible: boolean) => void;
   setMembers: (members: Member[]) => void;
   setActiveChannel: (channelId: string | null) => void;
   setActiveDMChannel: (channelId: string | null) => void;
@@ -69,6 +72,7 @@ export const useChatStore = create<ChatState>()(
       threads: {},
       threadMessages: {},
       activeThreadId: null,
+      threadPanelVisible: false,
       members: [],
       activeChannelId: null,
       activeDMChannelId: null,
@@ -149,6 +153,25 @@ export const useChatStore = create<ChatState>()(
             },
           }
         }),
+      removeThread: (channelId, threadId) =>
+        set((state) => {
+          const existing = state.threads[channelId] || []
+          const filtered = existing.filter((t) => t.id !== threadId)
+          if (filtered.length === existing.length) return state
+          const nextThreads = { ...state.threads }
+          if (filtered.length === 0) {
+            delete nextThreads[channelId]
+          } else {
+            nextThreads[channelId] = filtered
+          }
+          const nextThreadMessages = { ...state.threadMessages }
+          delete nextThreadMessages[threadId]
+          return {
+            threads: nextThreads,
+            threadMessages: nextThreadMessages,
+            activeThreadId: state.activeThreadId === threadId ? null : state.activeThreadId,
+          }
+        }),
       setThreadMessages: (threadId, messages) =>
         set((state) => ({
           threadMessages: { ...state.threadMessages, [threadId]: messages },
@@ -164,7 +187,8 @@ export const useChatStore = create<ChatState>()(
             },
           }
         }),
-      setActiveThreadId: (activeThreadId) => set({ activeThreadId }),
+      setActiveThreadId: (activeThreadId) => set({ activeThreadId, threadPanelVisible: activeThreadId !== null ? true : undefined }),
+      setThreadPanelVisible: (threadPanelVisible) => set({ threadPanelVisible }),
       setMembers: (members) => set({ members }),
       setActiveChannel: (activeChannelId) => set({ activeChannelId, activeDMChannelId: null }),
       setActiveDMChannel: (activeDMChannelId) => set({ activeDMChannelId, activeChannelId: null }),

@@ -11,7 +11,7 @@ import { useKeyboard } from '../hooks/useKeyboard'
 import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles, pinMessage, unpinMessage, fetchPinnedMessages, createThread } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import { Lock, Paperclip, Send, Sticker, Phone, ChevronLeft, Users, Pin, Mic, Square, Trash2 } from 'lucide-react'
+import { Lock, Paperclip, Send, Sticker, Phone, ChevronLeft, Users, Pin, MessageSquare, Mic, Square, Trash2 } from 'lucide-react'
 import type { Message, Member, DMChannelData, CustomRole, PinnedMessage } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
@@ -19,6 +19,7 @@ import Skeleton from './Skeleton'
 import Lightbox from './Lightbox'
 import SearchBar from './SearchBar'
 import PinnedMessagesModal from './PinnedMessagesModal'
+import EnvStatus from './EnvStatus'
 import './ChatArea.css'
 
 interface ChatAreaProps {
@@ -28,6 +29,7 @@ interface ChatAreaProps {
   onBackToSidebar?: () => void
   onToggleMembers?: () => void
   membersOpen?: boolean
+  onOpenEnvWizard?: () => void
 }
 
 function getAtQuery(text: string, cursor: number): string | null {
@@ -89,7 +91,7 @@ function formatDateSeparator(date: Date): string {
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBackToSidebar, onToggleMembers, membersOpen }: ChatAreaProps) {
+export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBackToSidebar, onToggleMembers, membersOpen, onOpenEnvWizard }: ChatAreaProps) {
   const session = useServerStore((s) => s.activeSession)
   const isMobile = useMobile()
   const channels = useChatStore((s) => s.channels)
@@ -112,6 +114,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const removePinned = useChatStore((s) => s.removePinnedMessage)
   const setActiveChannel = useChatStore((s) => s.setActiveChannel)
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
+  const threadPanelVisible = useChatStore((s) => s.threadPanelVisible)
+  const setThreadPanelVisible = useChatStore((s) => s.setThreadPanelVisible)
   const dmCallStatus = useCallStore((s) => s.dmCallStatus)
   const dmCallChannelId = useCallStore((s) => s.dmCallChannelId)
   const [input, setInput] = useState('')
@@ -799,7 +803,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const handleCreateThread = useCallback(async (messageId: string, name: string) => {
     if (!session || !activeChannelId) return
     try {
-      await createThread(session.url, activeChannelId, name, messageId)
+      const result = await createThread(session.url, activeChannelId, name, messageId)
+      useChatStore.getState().setActiveThreadId(result.id)
     } catch (err) { console.error('Failed to create thread:', err) }
   }, [session, activeChannelId])
 
@@ -981,6 +986,11 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             <ChevronLeft className="icon-sm" />
           </button>
         )}
+        {!isMobile && onOpenEnvWizard && (
+          <div className="chat-area__header-env">
+            <EnvStatus onOpenWizard={onOpenEnvWizard} />
+          </div>
+        )}
         <span className="chat-area__header-prefix">{activeDMChannelId ? '@' : '#'}</span>
         <h2 className="chat-area__header-title">{headerTitle}</h2>
         {activeDMChannelId && activeDM && canCall && (
@@ -1032,6 +1042,16 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             title="Pinned Messages"
           >
             <Pin className="icon-sm" />
+          </button>
+        )}
+        {activeChannelId && (
+          <button
+            className={`chat-area__header-pins-btn${threadPanelVisible ? ' chat-area__header-pins-btn--active' : ''}`}
+            onClick={() => setThreadPanelVisible(!threadPanelVisible)}
+            aria-label="Toggle threads"
+            title="Threads"
+          >
+            <MessageSquare className="icon-sm" />
           </button>
         )}
       </div>
@@ -1295,6 +1315,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           open={pinsOpen}
           onClose={() => setPinsOpen(false)}
           onJump={(messageId) => handleJumpToMessage(messageId, activeChannelId!)}
+          onUnpin={handleUnpinMessage}
         />
       )}
     </div>

@@ -322,12 +322,17 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     socket.on('thread:created', (thread: Thread) => {
       useChatStore.getState().addThread(thread.channel_id, thread)
+      useChatStore.getState().setActiveThreadId(thread.id)
     })
 
     socket.on('thread:message:new', (message: Message) => {
       if (message.thread_id) {
         useChatStore.getState().addThreadMessage(message.thread_id, message)
       }
+    })
+
+    socket.on('thread:deleted', ({ id, channel_id }: { id: string; channel_id: string }) => {
+      useChatStore.getState().removeThread(channel_id, id)
     })
 
     socket.on('user:online', ({ userId, status }: { userId: string; status: UserStatus }) => {

@@ -54,54 +54,6 @@
   border: 1px solid var(--border-color);
 }
 
-/* ── Toolbar ──────────────────────────────────────────────── */
-
-.chat-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 36px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--modal-bg);
-  flex-shrink: 0;
-}
-
-.chat-toolbar__left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.chat-toolbar__members-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  font-size: 12px;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease;
-  min-height: 32px;
-}
-
-.chat-toolbar__members-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.chat-toolbar__members-btn--active {
-  border-color: var(--brand-dim-border);
-  background: var(--brand-dim);
-  color: var(--brand);
-}
-
 /* ── Placeholder (no channel selected) ────────────────────── */
 
 .chat-placeholder {
@@ -326,17 +278,6 @@
     pointer-events: none;
   }
 
-  .chat-toolbar {
-    height: 44px;
-    padding: 0 12px;
-  }
-
-  .chat-toolbar__members-btn {
-    padding: 8px 14px;
-    font-size: 13px;
-    min-height: 36px;
-  }
-
   .chat-placeholder {
     padding: 32px 16px;
     padding-top: calc(48px + env(safe-area-inset-top, 0px));
@@ -393,11 +334,6 @@
     border-radius: var(--radius-lg);
   }
 
-  .chat-toolbar {
-    height: 40px;
-    padding: 0 10px;
-  }
-
   .chat-placeholder {
     padding: 24px 12px;
   }
@@ -407,9 +343,6 @@
   }
 }
 
-/* Landscape phones: trim the members toolbar height. */
+/* Landscape phones: vertical space is scarce. */
 @media (max-width: 1023px) and (max-height: 480px) and (orientation: landscape) {
-  .chat-toolbar {
-    height: 36px;
-  }
 }

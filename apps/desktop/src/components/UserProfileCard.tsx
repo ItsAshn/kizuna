@@ -96,7 +96,7 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
   const isSelf = member.id === session?.user?.id
   const displayName = member.display_name || member.username
   const joinedAt = formatDate(fullProfile?.joined_at ?? member.joined_at)
-  const createdAt = formatDate(fullProfile?.created_at ?? member.created_at)
+  const lastSeenAt = formatDate(fullProfile?.last_seen_at ?? member.last_seen_at)
   const statusText = profile.status_text || null
   const statusEmoji = profile.status_emoji || null
 
@@ -142,10 +142,10 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
             <span>Member since {joinedAt}</span>
           </div>
         )}
-        {createdAt && (
+        {lastSeenAt && (
           <div className="user-profile-card__meta-item">
             <Clock size={12} />
-            <span>Registered {createdAt}</span>
+            <span>Last online {lastSeenAt}</span>
           </div>
         )}
       </div>

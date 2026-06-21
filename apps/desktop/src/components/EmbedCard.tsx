@@ -14,7 +14,10 @@ export default function EmbedCard({ urls }: EmbedCardProps) {
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    if (!session || urls.length === 0) return
+    if (!session || urls.length === 0) {
+      setLoaded(true)
+      return
+    }
     unfurlUrls(session.url, urls).then(setEmbeds).catch(() => {}).finally(() => setLoaded(true))
   }, [urls.join(','), session?.url])
 

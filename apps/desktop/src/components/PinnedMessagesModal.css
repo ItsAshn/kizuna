@@ -163,3 +163,50 @@
   word-break: break-word;
   margin-left: 32px;
 }
+
+.pins-modal__item-row {
+  display: flex;
+  align-items: flex-start;
+  border-radius: var(--radius-md);
+}
+
+.pins-modal__item-row:hover {
+  background: var(--bg-secondary);
+}
+
+.pins-modal__item-row:hover .pins-modal__item {
+  background: none;
+}
+
+.pins-modal__item-row .pins-modal__item {
+  flex: 1;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.pins-modal__item-row .pins-modal__item:hover {
+  background: none;
+}
+
+.pins-modal__item-unpin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3) var(--space-2);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 0 var(--radius-md) var(--radius-md);
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+
+.pins-modal__item-row:hover .pins-modal__item-unpin {
+  opacity: 1;
+}
+
+.pins-modal__item-unpin:hover {
+  color: #ef4444;
+}

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
-import { authMiddleware } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
 
 function getAuth(c: any): { userId: string; username: string } { return c.get('auth' as never) }
 
@@ -63,6 +63,38 @@ threadsRoutes.post('/:channelId', authMiddleware, async (c) => {
   }
 
   return c.json({ success: true, id })
+})
+
+threadsRoutes.delete('/:channelId/:threadId', authMiddleware, (c) => {
+  const user = getAuth(c)
+  const channelId = c.req.param('channelId')
+  const threadId = c.req.param('threadId')
+  const db = getDb()
+
+  const thread = db.prepare(
+    'SELECT * FROM threads WHERE id = ? AND channel_id = ?'
+  ).get(threadId, channelId) as any
+
+  if (!thread) return c.json({ error: 'Thread not found' }, 404)
+
+  const userPerms = getUserPermissions(user.userId)
+  if (thread.creator_id !== user.userId) {
+    if (!userPerms || !hasPermission(userPerms, 'delete_messages')) {
+      return c.json({ error: 'Forbidden' }, 403)
+    }
+  }
+
+  db.prepare('DELETE FROM messages WHERE thread_id = ?').run(threadId)
+  db.prepare('DELETE FROM threads WHERE id = ?').run(threadId)
+
+  try {
+    const io: any = c.get('io' as never)
+    if (io) {
+      io.to(channelId).emit('thread:deleted', { id: threadId, channel_id: channelId })
+    }
+  } catch { /* best-effort */ }
+
+  return c.json({ ok: true })
 })
 
 threadsRoutes.get('/:channelId/:threadId/messages', authMiddleware, (c) => {

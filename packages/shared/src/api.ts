@@ -1056,3 +1056,11 @@ export async function sendThreadMessage(
   const res = await client(serverUrl).post(`/api/threads/${channelId}/${threadId}/messages`, { content })
   return res.data.message ?? res.data
 }
+
+export async function deleteThread(
+  serverUrl: string,
+  channelId: string,
+  threadId: string,
+): Promise<void> {
+  await client(serverUrl).delete(`/api/threads/${channelId}/${threadId}`)
+}
