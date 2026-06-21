@@ -41,6 +41,8 @@ export function useBackgroundNotifications(): void {
 
       socket.on('message:new', (message: Message) => {
         const store = useChatStore.getState()
+        const currentUserId = useServerStore.getState().sessions[server.id]?.user.id
+        if (message.user_id === currentUserId) return
         if (activeServerId === server.id) {
           store.addMessage(message.channel_id, message)
         }

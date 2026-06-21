@@ -1,11 +1,43 @@
 import { useNotificationStore } from '../store/notificationStore'
 import { useChatStore } from '../store/chatStore'
+import { useServerStore } from '../store/serverStore'
+import { useSettingsStore } from '../store/settingsStore'
+import type { NotificationLevel } from '../store/settingsStore'
 
 interface ShowNotificationOptions {
   type: 'announce' | 'mention' | 'message' | 'dmcall'
   title: string
   body: string
   channelId?: string
+}
+
+let audioCtx: AudioContext | null = null
+
+function playNotificationSound() {
+  const enabled = useSettingsStore.getState().notificationSoundEnabled
+  if (!enabled) return
+
+  try {
+    if (!audioCtx) audioCtx = new AudioContext()
+    const ctx = audioCtx
+
+    const now = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    osc.type = 'sine'
+    gain.gain.setValueAtTime(0.12, now)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3)
+
+    osc.frequency.setValueAtTime(880, now)
+    osc.frequency.setValueAtTime(1100, now + 0.08)
+    osc.frequency.setValueAtTime(1320, now + 0.16)
+
+    osc.start(now)
+    osc.stop(now + 0.3)
+  } catch { /* AudioContext not available */ }
 }
 
 export function showNotification(opts: ShowNotificationOptions) {
@@ -16,7 +48,21 @@ export function showNotification(opts: ShowNotificationOptions) {
       if (mute === null) return
       if (typeof mute === 'number' && mute > Date.now()) return
     }
+
+    const overrides = useSettingsStore.getState().channelNotificationLevels
+    const override = overrides[opts.channelId]
+    if (override === 'none') return
+
+    const serverId = useServerStore.getState().activeSession?.serverId
+    if (serverId) {
+      const notif = useSettingsStore.getState().notificationSettings[serverId]
+      const effectiveLevel = (override ?? notif?.level ?? 'all') as NotificationLevel
+      if (effectiveLevel === 'none') return
+      if (effectiveLevel === 'mentions' && opts.type !== 'mention') return
+    }
   }
+
+  playNotificationSound()
 
   useNotificationStore.getState().addNotification({
     type: opts.type,

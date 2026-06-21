@@ -11,7 +11,7 @@ interface SkeletonProps {
 export default function Skeleton({ width, height, variant = 'rect', lines = 1, fullWidth = false }: SkeletonProps) {
   if (variant === 'text' && lines > 1) {
     return (
-      <div className="skeleton-text-block">
+      <div className="skeleton-text-block" role="status" aria-label="Loading" aria-busy="true">
         {Array.from({ length: lines }).map((_, i) => (
           <div
             key={i}
@@ -26,6 +26,9 @@ export default function Skeleton({ width, height, variant = 'rect', lines = 1, f
   return (
     <div
       className={`skeleton skeleton--${variant}`}
+      role="status"
+      aria-label="Loading"
+      aria-busy="true"
       style={{
         width: width ?? (variant === 'circle' ? '40px' : fullWidth ? '100%' : '200px'),
         height: height ?? (variant === 'circle' ? '40px' : variant === 'text' ? '14px' : '20px'),

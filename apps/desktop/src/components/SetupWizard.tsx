@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import './SetupWizard.css'
 
 interface EnvIssue {
   severity: string
@@ -24,7 +25,7 @@ function isTauri(): boolean {
 }
 
 function StatusIcon({ ok }: { ok: boolean }) {
-  return <span style={{ color: ok ? 'var(--success)' : 'var(--error)', fontWeight: 700 }}>{ok ? 'OK' : '!'}</span>
+  return <span className={`setup-wizard__status-icon ${ok ? 'setup-wizard__status-icon--ok' : 'setup-wizard__status-icon--fail'}`}>{ok ? 'OK' : '!'}</span>
 }
 
 export default function SetupWizard({ onClose }: { onClose: () => void }) {
@@ -75,8 +76,8 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
   if (loading) {
     return (
       <div className="modal-overlay">
-        <div className="settings-modal" style={{ maxWidth: 480, padding: '24px' }}>
-          <p style={{ color: 'var(--text-muted)', textAlign: 'center' }}>checking environment...</p>
+        <div className="settings-modal setup-wizard__modal--loading">
+          <p className="setup-wizard__loading-text">checking environment...</p>
         </div>
       </div>
     )
@@ -93,32 +94,22 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
-        className="settings-modal"
+        className="settings-modal setup-wizard__modal"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 520, maxHeight: '80vh', overflow: 'auto' }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <span style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: 13 }}>
+        <div className="setup-wizard__header">
+          <span className="setup-wizard__title">
             environment check
           </span>
           <button
             onClick={onClose}
-            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}
+            className="setup-wizard__close-btn"
           >
             [esc]
           </button>
         </div>
 
-        <div style={{
-          background: 'var(--bg-secondary)',
-          borderRadius: 8,
-          padding: 12,
-          marginBottom: 16,
-          fontFamily: 'monospace',
-          fontSize: 11,
-          lineHeight: 1.6,
-          color: 'var(--text-secondary)',
-        }}>
+        <div className="setup-wizard__diagnostic-box">
           <div>session: {diagnostic.session_type} | compositor: {diagnostic.compositor}</div>
           <div>
             <StatusIcon ok={diagnostic.pipewire_ok} /> pipewire
@@ -130,14 +121,14 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
         </div>
 
         {!hasIssues && (
-          <p style={{ color: 'var(--success)', fontSize: 12, textAlign: 'center', marginBottom: 16 }}>
+          <p className="setup-wizard__status-all-ok">
             environment looks good — you're all set
           </p>
         )}
 
         {criticalIssues.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <p style={{ color: 'var(--error)', fontWeight: 600, fontSize: 12, marginBottom: 8 }}>
+          <div className="setup-wizard__issues-section">
+            <p className="setup-wizard__issues-header setup-wizard__issues-header--error">
               issues found ({criticalIssues.length})
             </p>
             {criticalIssues.map((issue, i) => (
@@ -147,8 +138,8 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
         )}
 
         {warnings.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <p style={{ color: 'var(--warning)', fontWeight: 600, fontSize: 12, marginBottom: 8 }}>
+          <div className="setup-wizard__issues-section">
+            <p className="setup-wizard__issues-header setup-wizard__issues-header--warning">
               warnings ({warnings.length})
             </p>
             {warnings.map((issue, i) => (
@@ -157,35 +148,18 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+        <div className="setup-wizard__footer">
           {hasIssues && (
             <button
               onClick={handleDontShowAgain}
-              style={{
-                background: 'none',
-                border: '1px solid var(--border-color)',
-                color: 'var(--text-muted)',
-                padding: '6px 14px',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontSize: 11,
-              }}
+              className="setup-wizard__dismiss-btn"
             >
               don't show again
             </button>
           )}
           <button
             onClick={handleDismiss}
-            style={{
-              background: 'var(--accent-color)',
-              border: 'none',
-              color: 'var(--text-primary)',
-              padding: '6px 18px',
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontSize: 11,
-              fontWeight: 600,
-            }}
+            className="setup-wizard__confirm-btn"
           >
             {hasIssues ? 'i understand' : 'got it'}
           </button>
@@ -205,60 +179,24 @@ function IssueCard({
   onCopy: (cmd: string) => void
 }) {
   return (
-    <div
-      style={{
-        background: 'var(--bg-primary)',
-        borderRadius: 6,
-        padding: 10,
-        marginBottom: 8,
-        fontSize: 11,
-        lineHeight: 1.5,
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-        <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{issue.component}</span>
-        <span style={{
-          color: issue.severity === 'error' ? 'var(--error)' : 'var(--warning)',
-          fontSize: 9,
-          textTransform: 'uppercase',
-          fontWeight: 600,
-        }}>
+    <div className="setup-wizard__issue">
+      <div className="setup-wizard__issue-header">
+        <span className="setup-wizard__issue-component">{issue.component}</span>
+        <span className={`setup-wizard__issue-severity ${issue.severity === 'error' ? 'setup-wizard__issue-severity--error' : 'setup-wizard__issue-severity--warning'}`}>
           {issue.severity}
         </span>
       </div>
-      <p style={{ color: 'var(--text-secondary)', margin: '0 0 6px 0' }}>
+      <p className="setup-wizard__issue-message">
         {issue.message}
       </p>
       {issue.fix_command && (
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <code
-            style={{
-              display: 'block',
-              background: 'var(--bg-tertiary, #1a1a2e)',
-              padding: '6px 8px',
-              borderRadius: 4,
-              fontSize: 10,
-              color: 'var(--text-muted)',
-              flex: 1,
-              overflow: 'auto',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-            }}
-          >
+        <div className="setup-wizard__issue-fix-row">
+          <code className="setup-wizard__issue-fix-cmd">
             {issue.fix_command}
           </code>
           <button
             onClick={() => onCopy(issue.fix_command!)}
-            style={{
-              background: copiedCmd === issue.fix_command ? 'var(--success)' : 'var(--border-color)',
-              border: 'none',
-              color: copiedCmd === issue.fix_command ? 'var(--bg-primary)' : 'var(--text-secondary)',
-              padding: '4px 8px',
-              borderRadius: 4,
-              cursor: 'pointer',
-              fontSize: 10,
-              whiteSpace: 'nowrap',
-            }}
+            className={`setup-wizard__issue-copy-btn ${copiedCmd === issue.fix_command ? 'setup-wizard__issue-copy-btn--copied' : ''}`}
           >
             {copiedCmd === issue.fix_command ? 'copied' : 'copy'}
           </button>

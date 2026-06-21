@@ -3,9 +3,10 @@ import { createPortal } from 'react-dom'
 import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useServerStore } from '../store/serverStore'
-import { getOrCreateDMChannel } from '@kizuna/shared'
-import { MessageCircle } from 'lucide-react'
+import { getOrCreateDMChannel, getUserProfile } from '@kizuna/shared'
+import { MessageCircle, Clock, Calendar } from 'lucide-react'
 import { hexToRgba } from '../utils/color'
+import type { Member } from '@kizuna/shared'
 import './UserProfileCard.css'
 
 interface UserProfileCardProps {
@@ -16,6 +17,11 @@ interface UserProfileCardProps {
   onMention?: (username: string) => void
 }
 
+function formatDate(ts: number | null | undefined): string | null {
+  if (!ts) return null
+  return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
 export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, onMention }: UserProfileCardProps) {
   const members = useChatStore((s) => s.members)
   const session = useServerStore((s) => s.activeSession)
@@ -23,10 +29,18 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
   const setDMChannels = useChatStore((s) => s.setDMChannels)
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const [fullProfile, setFullProfile] = useState<Member | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   const member = useMemo(() => members.find((m) => m.id === userId), [members, userId])
   const status = userStatuses[userId] || 'offline'
+
+  useEffect(() => {
+    if (!session) return
+    getUserProfile(session.url, userId)
+      .then(setFullProfile)
+      .catch(() => {})
+  }, [session, userId])
 
   useEffect(() => {
     const el = ref.current
@@ -78,8 +92,13 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
 
   if (!member) return null
 
+  const profile = fullProfile || member
   const isSelf = member.id === session?.user?.id
   const displayName = member.display_name || member.username
+  const joinedAt = formatDate(fullProfile?.joined_at ?? member.joined_at)
+  const createdAt = formatDate(fullProfile?.created_at ?? member.created_at)
+  const statusText = profile.status_text || null
+  const statusEmoji = profile.status_emoji || null
 
   return createPortal(
     <div ref={ref} className="user-profile-card" style={{ position: 'fixed', top: pos?.top ?? 0, left: pos?.left ?? 0, visibility: pos ? 'visible' : 'hidden' }}>
@@ -96,11 +115,17 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
       <div className="user-profile-card__info">
         <h3 className="user-profile-card__name">{displayName}</h3>
         <p className="user-profile-card__username">@{member.username}</p>
+        {statusText && (
+          <p className="user-profile-card__status-text">
+            {statusEmoji && <span className="user-profile-card__status-emoji">{statusEmoji}</span>}
+            {statusText}
+          </p>
+        )}
       </div>
 
       <div className="user-profile-card__roles">
         {member.custom_roles?.map((r) => (
-          <span key={r.id} className="user-profile-card__role-badge" style={{ color: r.color || '#4c6ef5', borderColor: hexToRgba(r.color || '#4c6ef5', 0.4), backgroundColor: hexToRgba(r.color || '#4c6ef5', 34 / 255) }}>
+          <span key={r.id} className="user-profile-card__role-badge" style={{ color: r.color || 'var(--brand)', borderColor: hexToRgba(r.color || '#4c6ef5', 0.4), backgroundColor: hexToRgba(r.color || '#4c6ef5', 34 / 255) }}>
             {r.name}
           </span>
         ))}
@@ -111,6 +136,18 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
           <span className={`user-profile-card__status-dot user-profile-card__status-dot--${status}`} />
           <span>{status.charAt(0).toUpperCase() + status.slice(1)}</span>
         </div>
+        {joinedAt && (
+          <div className="user-profile-card__meta-item">
+            <Calendar size={12} />
+            <span>Member since {joinedAt}</span>
+          </div>
+        )}
+        {createdAt && (
+          <div className="user-profile-card__meta-item">
+            <Clock size={12} />
+            <span>Registered {createdAt}</span>
+          </div>
+        )}
       </div>
 
       {!isSelf && (

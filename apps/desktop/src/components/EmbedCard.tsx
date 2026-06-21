@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { unfurlUrls } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
+import Skeleton from './Skeleton'
 import './EmbedCard.css'
 
 interface EmbedCardProps {
@@ -17,7 +18,20 @@ export default function EmbedCard({ urls }: EmbedCardProps) {
     unfurlUrls(session.url, urls).then(setEmbeds).catch(() => {}).finally(() => setLoaded(true))
   }, [urls.join(','), session?.url])
 
-  if (!loaded || Object.keys(embeds).length === 0) return null
+  if (!loaded) return (
+    <div className="embed-card-list">
+      <div className="embed-card embed-card--loading">
+        <div className="embed-card__accent" />
+        <div className="embed-card__body">
+          <Skeleton variant="text" width="70%" />
+          <Skeleton variant="text" width="90%" />
+          <Skeleton variant="text" width="50%" />
+        </div>
+      </div>
+    </div>
+  )
+
+  if (Object.keys(embeds).length === 0) return null
 
   return (
     <div className="embed-card-list">

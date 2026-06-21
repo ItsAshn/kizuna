@@ -6,6 +6,7 @@ import { useMobile, useTablet } from '../hooks/useMobile'
 import type { Member, CustomRole } from '@kizuna/shared'
 import { X } from 'lucide-react'
 import UserProfileCard from './UserProfileCard'
+import Skeleton from './Skeleton'
 import './MemberList.css'
 
 interface Props {
@@ -31,6 +32,11 @@ export default function MemberList({ visible, onClose }: Props) {
   const [profileUserId, setProfileUserId] = useState<string | null>(null)
   const profileAnchorRef = useRef<HTMLElement | null>(null)
   const prevVisible = useRef(visible)
+  const [hasLoaded, setHasLoaded] = useState(false)
+
+  useEffect(() => {
+    if (members.length > 0) setHasLoaded(true)
+  }, [members.length])
 
   if (prevVisible.current !== visible) {
     if (!visible) {
@@ -159,6 +165,7 @@ export default function MemberList({ visible, onClose }: Props) {
 
   return (
     <div className={`member-list${closing ? ' member-list--closing' : ''}`} role="complementary" aria-label="Members">
+      {isOverlay && <div className="member-list__drag-handle" />}
       <div className="member-list__header">
         <h3 className="member-list__title">Members — {members.length}</h3>
         {isOverlay && onClose && (
@@ -179,7 +186,14 @@ export default function MemberList({ visible, onClose }: Props) {
       </div>
 
       <div className="member-list__body">
-        {isSearching ? (
+        {!hasLoaded && members.length === 0 ? (
+          Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="skeleton--member">
+              <Skeleton variant="circle" width={24} height={24} />
+              <Skeleton variant="text" width={`${60 + (i % 3) * 15}%`} />
+            </div>
+          ))
+        ) : isSearching ? (
           filteredMembers.length === 0 ? (
             <p className="member-list__empty-text">No members found</p>
           ) : (

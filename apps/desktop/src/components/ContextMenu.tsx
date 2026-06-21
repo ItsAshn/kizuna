@@ -64,6 +64,7 @@ export default function ContextMenu({ x, y, sections, onClose, title }: ContextM
     <div
       ref={ref}
       className="context-menu"
+      role="menu"
       style={{
         position: 'fixed',
         left: adjustedPos?.left ?? x,
@@ -72,14 +73,15 @@ export default function ContextMenu({ x, y, sections, onClose, title }: ContextM
       }}
     >
       {title && (
-        <div className="context-menu__title">{title}</div>
+        <div className="context-menu__title" role="presentation">{title}</div>
       )}
       {sections.map((section, si) => (
-        <div key={si}>
-          {si > 0 && <div className="context-menu__divider" />}
+        <div key={si} role="group">
+          {si > 0 && <div className="context-menu__divider" role="separator" />}
           {section.items.map((item) => (
             <button
               key={item.label}
+              role="menuitem"
               className={`context-menu__item${item.danger ? ' context-menu__item--danger' : ''}${item.disabled ? ' context-menu__item--disabled' : ''}`}
               onClick={() => {
                 if (!item.disabled) {

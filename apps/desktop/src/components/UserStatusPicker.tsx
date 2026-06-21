@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useVoiceStore } from '../store/voiceStore'
 import { useServerStore } from '../store/serverStore'
+import { updateStatus } from '@kizuna/shared'
 import type { UserStatus } from '@kizuna/shared'
 import './UserStatusPicker.css'
 
@@ -16,12 +17,17 @@ const STATUS_OPTIONS: { value: UserStatus; label: string }[] = [
   { value: 'busy', label: 'Busy' },
 ]
 
+const STATUS_EMOJI: string[] = ['💬', '🎮', '🎵', '🍿', '💼', '✈️', '🛌', '🏃', '📚', '🛒', '🍔', '💻']
+
 export default function UserStatusPicker({ socketRef, children }: Props) {
   const session = useServerStore((s) => s.activeSession)
   const userStatuses = useVoiceStore((s) => s.userStatuses)
   const [open, setOpen] = useState(false)
   const [coords, setCoords] = useState({ top: 0, left: 0 })
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const [statusText, setStatusText] = useState(session?.user.status_text || '')
+  const [statusEmoji, setStatusEmoji] = useState(session?.user.status_emoji || '')
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
 
   const userId = session?.user.id
   const currentStatus: UserStatus = userId ? (userStatuses[userId] || 'online') : 'online'
@@ -34,13 +40,21 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
   }, [])
 
   useEffect(() => {
+    if (session?.user) {
+      setStatusText(session.user.status_text || '')
+      setStatusEmoji(session.user.status_emoji || '')
+    }
+  }, [session?.user.status_text, session?.user.status_emoji])
+
+  useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
         setOpen(false)
+        setShowEmojiPicker(false)
       }
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false)
+      if (e.key === 'Escape') { setOpen(false); setShowEmojiPicker(false) }
     }
     document.addEventListener('mousedown', handleClick)
     window.addEventListener('keydown', handleKey)
@@ -62,12 +76,36 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
     }
   }
 
+  async function handleStatusTextChange(text: string) {
+    setStatusText(text)
+    if (!session) return
+    try {
+      await updateStatus(session.url, text || null, statusEmoji || null)
+    } catch (err) {
+      console.error('Failed to update status:', err)
+    }
+  }
+
+  async function handleStatusEmojiChange(emoji: string) {
+    const newEmoji = statusEmoji === emoji ? '' : emoji
+    setStatusEmoji(newEmoji)
+    setShowEmojiPicker(false)
+    if (!session) return
+    try {
+      await updateStatus(session.url, statusText || null, newEmoji || null)
+    } catch (err) {
+      console.error('Failed to update status:', err)
+    }
+  }
+
+  const hasCustomStatus = statusText || statusEmoji
+
   return (
     <div
       ref={wrapperRef}
       className={`status-picker status-picker--${currentStatus}`}
       onClick={handleToggle}
-      title={currentStatus}
+      title={hasCustomStatus ? `${statusEmoji ? statusEmoji + ' ' : ''}${statusText}` : currentStatus}
     >
       {children}
       {open && createPortal(
@@ -82,6 +120,49 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
               {opt.label}
             </button>
           ))}
+          <div className="status-picker__divider" />
+          <div className="status-picker__custom">
+            <div className="status-picker__custom-row">
+              <button
+                className="status-picker__emoji-btn"
+                onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker) }}
+                title="Pick emoji"
+              >
+                {statusEmoji || '😊'}
+              </button>
+              <input
+                className="status-picker__text-input"
+                placeholder="Set a custom status..."
+                value={statusText}
+                maxLength={128}
+                onChange={(e) => setStatusText(e.target.value)}
+                onBlur={() => { if (statusText !== (session?.user.status_text || '')) handleStatusTextChange(statusText) }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur() } }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+            {showEmojiPicker && (
+              <div className="status-picker__emoji-grid">
+                {STATUS_EMOJI.map((emoji) => (
+                  <button
+                    key={emoji}
+                    className={`status-picker__emoji-option${statusEmoji === emoji ? ' status-picker__emoji-option--active' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); handleStatusEmojiChange(emoji) }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+            {statusText && (
+              <button
+                className="status-picker__save-btn"
+                onClick={(e) => { e.stopPropagation(); handleStatusTextChange(statusText) }}
+              >
+                Save
+              </button>
+            )}
+          </div>
         </div>,
         document.body,
       )}

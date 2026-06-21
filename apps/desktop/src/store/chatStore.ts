@@ -1,11 +1,16 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Channel, Message, Member, DMChannelData, MessageReaction } from '@kizuna/shared';
+import type { Channel, Message, Member, DMChannelData, MessageReaction, PinnedMessage, Thread } from '@kizuna/shared';
 
 interface ChatState {
   channels: Channel[];
   dmChannels: DMChannelData[];
+  categories: { id: string; name: string; position: number }[];
   messages: Record<string, Message[]>;
+  pinnedMessages: Record<string, PinnedMessage[]>;
+  threads: Record<string, Thread[]>;
+  threadMessages: Record<string, Message[]>;
+  activeThreadId: string | null;
   members: Member[];
   activeChannelId: string | null;
   activeDMChannelId: string | null;
@@ -20,10 +25,19 @@ interface ChatState {
   loadMoreErrors: Record<string, string | null>;
 
   setChannels: (channels: Channel[]) => void;
+  setCategories: (categories: { id: string; name: string; position: number }[]) => void;
   setDMChannels: (channels: DMChannelData[]) => void;
   setMessages: (channelId: string, messages: Message[]) => void;
   addMessage: (channelId: string, message: Message) => void;
   updateMessage: (channelId: string, messageId: string, message: Message) => void;
+  setPinnedMessages: (channelId: string, pins: PinnedMessage[]) => void;
+  addPinnedMessage: (channelId: string, pin: PinnedMessage) => void;
+  removePinnedMessage: (channelId: string, messageId: string) => void;
+  setThreads: (channelId: string, threads: Thread[]) => void;
+  addThread: (channelId: string, thread: Thread) => void;
+  setThreadMessages: (threadId: string, messages: Message[]) => void;
+  addThreadMessage: (threadId: string, message: Message) => void;
+  setActiveThreadId: (threadId: string | null) => void;
   setMembers: (members: Member[]) => void;
   setActiveChannel: (channelId: string | null) => void;
   setActiveDMChannel: (channelId: string | null) => void;
@@ -48,8 +62,13 @@ export const useChatStore = create<ChatState>()(
   persist(
     (set) => ({
       channels: [],
+      categories: [],
       dmChannels: [],
       messages: {},
+      pinnedMessages: {},
+      threads: {},
+      threadMessages: {},
+      activeThreadId: null,
       members: [],
       activeChannelId: null,
       activeDMChannelId: null,
@@ -64,6 +83,7 @@ export const useChatStore = create<ChatState>()(
       loadMoreErrors: {},
 
       setChannels: (channels) => set({ channels }),
+      setCategories: (categories) => set({ categories }),
       setDMChannels: (dmChannels) => set({ dmChannels }),
       setMessages: (channelId, messages) =>
         set((state) => ({ messages: { ...state.messages, [channelId]: messages } })),
@@ -90,6 +110,61 @@ export const useChatStore = create<ChatState>()(
             ),
           },
         })),
+      setPinnedMessages: (channelId, pinnedMessages) =>
+        set((state) => ({
+          pinnedMessages: { ...state.pinnedMessages, [channelId]: pinnedMessages },
+        })),
+      addPinnedMessage: (channelId, pin) =>
+        set((state) => {
+          const existing = state.pinnedMessages[channelId] || []
+          if (existing.some((p) => p.id === pin.id)) return state
+          return {
+            pinnedMessages: {
+              ...state.pinnedMessages,
+              [channelId]: [pin, ...existing],
+            },
+          }
+        }),
+      removePinnedMessage: (channelId, messageId) =>
+        set((state) => ({
+          pinnedMessages: {
+            ...state.pinnedMessages,
+            [channelId]: (state.pinnedMessages[channelId] || []).filter(
+              (p) => p.messageId !== messageId,
+            ),
+          },
+        })),
+      setThreads: (channelId, threads) =>
+        set((state) => ({
+          threads: { ...state.threads, [channelId]: threads },
+        })),
+      addThread: (channelId, thread) =>
+        set((state) => {
+          const existing = state.threads[channelId] || []
+          if (existing.some((t) => t.id === thread.id)) return state
+          return {
+            threads: {
+              ...state.threads,
+              [channelId]: [thread, ...existing],
+            },
+          }
+        }),
+      setThreadMessages: (threadId, messages) =>
+        set((state) => ({
+          threadMessages: { ...state.threadMessages, [threadId]: messages },
+        })),
+      addThreadMessage: (threadId, message) =>
+        set((state) => {
+          const existing = state.threadMessages[threadId] || []
+          if (existing.some((m) => m.id === message.id)) return state
+          return {
+            threadMessages: {
+              ...state.threadMessages,
+              [threadId]: [...existing, message],
+            },
+          }
+        }),
+      setActiveThreadId: (activeThreadId) => set({ activeThreadId }),
       setMembers: (members) => set({ members }),
       setActiveChannel: (activeChannelId) => set({ activeChannelId, activeDMChannelId: null }),
       setActiveDMChannel: (activeDMChannelId) => set({ activeDMChannelId, activeChannelId: null }),

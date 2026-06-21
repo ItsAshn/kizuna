@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import { Settings, ChevronLeft } from 'lucide-react'
+import { Settings, ChevronLeft, LayoutDashboard, Ellipsis } from 'lucide-react'
 import './ServerPanel.css'
 
 interface ServerPanelProps {
@@ -24,6 +24,8 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
   } = useServerStore()
   const serverMentionCounts = useChatStore((s) => s.serverMentionCounts)
   const [showRemove, setShowRemove] = useState<string | null>(null)
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
+
   function handleHome() {
     setActiveServer(null)
     navigate('/')
@@ -50,6 +52,57 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
     }
   }
 
+  function renderServerIcon(server: typeof servers[0]) {
+    const isActive = activeServerId === server.id
+    const isConnected = !!sessions[server.id]
+    const mentions = serverMentionCounts[server.id] ?? 0
+
+    return (
+      <button
+        key={server.id}
+        className={`server-panel__icon ${isActive ? 'server-panel__icon--active' : ''}`}
+        onClick={() => handleServerClick(server.id)}
+        aria-label={`${server.name}${isConnected ? ' — connected' : ' — not connected'}${mentions > 0 ? ` — ${mentions} mentions` : ''}`}
+        aria-current={isActive ? 'page' : undefined}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          handleRemove(e, server.id)
+        }}
+        title={server.name}
+      >
+        {server.icon ? (
+          <img
+            src={server.icon}
+            alt=""
+            className="server-panel__icon-img"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none'
+            }}
+          />
+        ) : (
+          server.name.slice(0, 2).toUpperCase()
+        )}
+        <span className={`server-panel__dot ${isConnected ? 'server-panel__dot--online' : ''}`} />
+        {mentions > 0 && (
+          <span className="server-panel__badge">
+            {mentions > 99 ? '99+' : mentions}
+          </span>
+        )}
+        {showRemove === server.id && (
+          <span
+            className="server-panel__remove-badge"
+            onClick={(e) => handleRemove(e, server.id)}
+          >
+            x
+          </span>
+        )}
+      </button>
+    )
+  }
+
+  const uncategorizedServers = servers.filter((s) => !s.folder)
+  const folderNames = [...new Set(servers.filter((s) => s.folder).map((s) => s.folder!))].sort()
+
   return (
     <div className="server-panel">
       <button
@@ -58,57 +111,86 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
         title="Home"
         aria-label="Home"
       >
-        [D]
+        <LayoutDashboard size={20} />
       </button>
 
       <div className="server-panel__divider" />
 
       <div className="server-panel__list">
-        {servers.map((server) => {
-          const isActive = activeServerId === server.id
-          const isConnected = !!sessions[server.id]
-          const mentions = serverMentionCounts[server.id] ?? 0
+        {/* Uncategorized servers */}
+        {uncategorizedServers.map((server) => renderServerIcon(server))}
 
+        {/* Folder groups */}
+        {folderNames.map((folder) => {
+          const folderServers = servers.filter((s) => s.folder === folder)
+          const isCollapsed = collapsedFolders.has(folder)
           return (
-            <button
-              key={server.id}
-              className={`server-panel__icon ${isActive ? 'server-panel__icon--active' : ''}`}
-              onClick={() => handleServerClick(server.id)}
-              aria-label={`${server.name}${isConnected ? ' — connected' : ' — not connected'}${mentions > 0 ? ` — ${mentions} mentions` : ''}`}
-              aria-current={isActive ? 'page' : undefined}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                handleRemove(e, server.id)
-              }}
-              title={server.name}
-            >
-              {server.icon ? (
-                <img
-                  src={server.icon}
-                  alt=""
-                  className="server-panel__icon-img"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).style.display = 'none'
-                  }}
-                />
-              ) : (
-                server.name.slice(0, 2).toUpperCase()
-              )}
-              <span className={`server-panel__dot ${isConnected ? 'server-panel__dot--online' : ''}`} />
-              {mentions > 0 && (
-                <span className="server-panel__badge">
-                  {mentions > 99 ? '99+' : mentions}
-                </span>
-              )}
-              {showRemove === server.id && (
-                <span
-                  className="server-panel__remove-badge"
-                  onClick={(e) => handleRemove(e, server.id)}
-                >
-                  x
-                </span>
-              )}
-            </button>
+            <div key={folder} className="server-panel__folder">
+              <button
+                className="server-panel__folder-toggle"
+                onClick={() => setCollapsedFolders((prev) => {
+                  const next = new Set(prev)
+                  if (next.has(folder)) next.delete(folder)
+                  else next.add(folder)
+                  return next
+                })}
+                title={isCollapsed ? `Expand ${folder}` : `Collapse ${folder}`}
+                aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${folder}`}
+              >
+                <span className={`server-panel__folder-arrow${isCollapsed ? ' server-panel__folder-arrow--collapsed' : ''}`}>▾</span>
+                {isCollapsed && folderServers.length > 0 && (
+                  <span className="server-panel__folder-preview">
+                    {folderServers[0].name.slice(0, 2).toUpperCase()}
+                  </span>
+                )}
+                {!isCollapsed && folderServers.map((server) => {
+                  const isActive = activeServerId === server.id
+                  const isConnected = !!sessions[server.id]
+                  const mentions = serverMentionCounts[server.id] ?? 0
+                  return (
+                    <button
+                      key={server.id}
+                      className={`server-panel__icon ${isActive ? 'server-panel__icon--active' : ''}`}
+                      onClick={() => handleServerClick(server.id)}
+                      aria-label={`${server.name}${isConnected ? ' — connected' : ' — not connected'}${mentions > 0 ? ` — ${mentions} mentions` : ''}`}
+                      aria-current={isActive ? 'page' : undefined}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        handleRemove(e, server.id)
+                      }}
+                      title={server.name}
+                    >
+                      {server.icon ? (
+                        <img
+                          src={server.icon}
+                          alt=""
+                          className="server-panel__icon-img"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = 'none'
+                          }}
+                        />
+                      ) : (
+                        server.name.slice(0, 2).toUpperCase()
+                      )}
+                      <span className={`server-panel__dot ${isConnected ? 'server-panel__dot--online' : ''}`} />
+                      {mentions > 0 && (
+                        <span className="server-panel__badge">
+                          {mentions > 99 ? '99+' : mentions}
+                        </span>
+                      )}
+                      {showRemove === server.id && (
+                        <span
+                          className="server-panel__remove-badge"
+                          onClick={(e) => handleRemove(e, server.id)}
+                        >
+                          x
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </button>
+            </div>
           )
         })}
       </div>
@@ -128,8 +210,9 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
         className="server-panel__icon server-panel__icon--action"
         onClick={onOpenExport}
         title="Export / Import"
+        aria-label="Export / Import"
       >
-        ...
+        <Ellipsis size={18} />
       </button>
 
       <button

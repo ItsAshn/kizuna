@@ -80,3 +80,7 @@
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   flex-shrink: 0;
 }
+
+.embed-card--loading .embed-card__body {
+  gap: 8px;
+}

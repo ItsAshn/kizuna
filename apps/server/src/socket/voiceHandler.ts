@@ -489,6 +489,24 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     io.to(channelId).emit('screen:peerStopped', { peerId: socket.id })
   })
 
+  socket.on('camera:started', ({ channelId }: { channelId: string }) => {
+    const peer = peers.get(socket.id)
+    if (!peer) return
+    console.log(`[Camera] START | channel=${channelId} | user=${peer.username}`)
+    socket.to(channelId).emit('camera:peerStarted', {
+      peerId: socket.id,
+      userId: peer.userId,
+      username: peer.username,
+    })
+  })
+
+  socket.on('camera:stopped', ({ channelId }: { channelId: string }) => {
+    const peer = peers.get(socket.id)
+    if (!peer) return
+    console.log(`[Camera] STOP | channel=${channelId} | user=${peer.username}`)
+    io.to(channelId).emit('camera:peerStopped', { peerId: socket.id })
+  })
+
   socket.on('voice:leave', async (payload?: { channelId?: string }) => {
     const channelId = payload?.channelId
     let peerChannelId: string | undefined

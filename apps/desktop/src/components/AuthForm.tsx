@@ -113,7 +113,6 @@ export default function AuthForm({
             type="button"
             className="password-input-wrapper__toggle"
             onClick={() => setShowPassword((v) => !v)}
-            tabIndex={-1}
             aria-label={showPassword ? 'Hide password' : 'Show password'}
           >
             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -143,7 +142,6 @@ export default function AuthForm({
                   type="button"
                   className="password-input-wrapper__toggle"
                   onClick={() => setShowServerPassword((v) => !v)}
-                  tabIndex={-1}
                   aria-label={showServerPassword ? 'Hide password' : 'Show password'}
                 >
                   {showServerPassword ? <EyeOff size={16} /> : <Eye size={16} />}

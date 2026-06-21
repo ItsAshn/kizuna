@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { searchMessages } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
-import { X, Search, Loader2 } from 'lucide-react'
+import { X, Search, Loader2, ChevronDown } from 'lucide-react'
 import type { Message } from '@kizuna/shared'
 import './SearchBar.css'
 
@@ -16,12 +16,38 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<{ message: Message; channelName: string }[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const lastQueryRef = useRef('')
 
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  const doSearch = useCallback(async (q: string, before?: string) => {
+    if (!session) return
+    const isNewSearch = !before
+    if (isNewSearch) {
+      setLoading(true)
+      setResults([])
+    } else {
+      setLoadingMore(true)
+    }
+    lastQueryRef.current = q
+    try {
+      const { results: r, hasMore: hm } = await searchMessages(session.url, q, channelId, 20, before)
+      if (lastQueryRef.current !== q) return
+      if (isNewSearch) {
+        setResults(r)
+      } else {
+        setResults(prev => [...prev, ...r])
+      }
+      setHasMore(hm)
+    } catch {}
+    setLoading(false)
+    setLoadingMore(false)
+  }, [session, channelId])
 
   useEffect(() => {
     if (!query.trim() || query.length < 2) {
@@ -30,19 +56,18 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
       return
     }
 
-    const timer = setTimeout(async () => {
-      if (!session) return
-      setLoading(true)
-      try {
-        const { results: r, hasMore: hm } = await searchMessages(session.url, query, channelId)
-        setResults(r)
-        setHasMore(hm)
-      } catch {}
-      setLoading(false)
+    const timer = setTimeout(() => {
+      doSearch(query)
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [query, channelId, session])
+  }, [query, doSearch])
+
+  function handleLoadMore() {
+    if (!hasMore || loadingMore || results.length === 0) return
+    const lastResult = results[results.length - 1]!
+    doSearch(query, lastResult.message.id)
+  }
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Escape') {
@@ -85,7 +110,12 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
               </span>
             </button>
           ))}
-          {hasMore && <div className="search-bar__more">More results available — refine your search</div>}
+          {hasMore && (
+            <button className="search-bar__load-more" onClick={handleLoadMore} disabled={loadingMore}>
+              {loadingMore ? <Loader2 size={12} className="search-bar__spinner" /> : <ChevronDown size={14} />}
+              {loadingMore ? 'Loading...' : 'Load more results'}
+            </button>
+          )}
         </div>
       )}
       {query.length >= 2 && !loading && results.length === 0 && (

@@ -3,6 +3,20 @@ import { createPortal } from 'react-dom'
 import { Trash2, Pencil, Reply, Copy, Pin, User } from 'lucide-react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import hljs from 'highlight.js/lib/core'
+import javascript from 'highlight.js/lib/languages/javascript'
+import typescript from 'highlight.js/lib/languages/typescript'
+import python from 'highlight.js/lib/languages/python'
+import rust from 'highlight.js/lib/languages/rust'
+import json from 'highlight.js/lib/languages/json'
+import xml from 'highlight.js/lib/languages/xml'
+import css from 'highlight.js/lib/languages/css'
+import bash from 'highlight.js/lib/languages/bash'
+import sql from 'highlight.js/lib/languages/sql'
+import c from 'highlight.js/lib/languages/c'
+import go from 'highlight.js/lib/languages/go'
+import yaml from 'highlight.js/lib/languages/yaml'
+import markdown from 'highlight.js/lib/languages/markdown'
 import type { Message, Member } from '@kizuna/shared'
 import { reactToMessage, unreactToMessage } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
@@ -14,7 +28,32 @@ import ReactionPicker from './ReactionPicker'
 import ContextMenu, { type ContextMenuSection } from './ContextMenu'
 import UserProfileCard from './UserProfileCard'
 import EmbedCard from './EmbedCard'
+import VoiceMessagePlayer from './VoiceMessagePlayer'
 import './MessageBubble.css'
+
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('js', javascript)
+hljs.registerLanguage('typescript', typescript)
+hljs.registerLanguage('ts', typescript)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('py', python)
+hljs.registerLanguage('rust', rust)
+hljs.registerLanguage('rs', rust)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('xml', xml)
+hljs.registerLanguage('html', xml)
+hljs.registerLanguage('css', css)
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('sh', bash)
+hljs.registerLanguage('shell', bash)
+hljs.registerLanguage('sql', sql)
+hljs.registerLanguage('c', c)
+hljs.registerLanguage('cpp', c)
+hljs.registerLanguage('go', go)
+hljs.registerLanguage('yaml', yaml)
+hljs.registerLanguage('yml', yaml)
+hljs.registerLanguage('markdown', markdown)
+hljs.registerLanguage('md', markdown)
 
 interface MessageBubbleProps {
   message: Message
@@ -28,6 +67,10 @@ interface MessageBubbleProps {
   onEdit: (messageId: string, content: string) => void
   serverUrl?: string
   onReply?: (message: Message) => void
+  onPin?: (messageId: string) => void
+  onUnpin?: (messageId: string) => void
+  isPinned?: boolean
+  onCreateThread?: (messageId: string, name: string) => void
   onUserClick?: (userId: string) => void
   onImageClick?: (imageUrl: string, filename: string) => void
 }
@@ -37,11 +80,11 @@ function isImageUrl(url: string): boolean {
 }
 
 function isVideoUrl(url: string): boolean {
-  return /\.(mp4|webm)$/i.test(url)
+  return /\.(mp4)$/i.test(url)
 }
 
 function isAudioUrl(url: string): boolean {
-  return /\.(mp3|ogg|wav)$/i.test(url)
+  return /\.(mp3|ogg|wav|webm)$/i.test(url)
 }
 
 function parseAttachments(content: string): { text: string; attachments: { url: string; filename: string }[] } {
@@ -73,11 +116,37 @@ function parseAttachments(content: string): { text: string; attachments: { url: 
 }
 
 
+function highlightCodeBlocks(html: string): string {
+  if (typeof DOMParser === 'undefined') return html
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    doc.querySelectorAll('pre code').forEach((block) => {
+      const langClass = Array.from(block.classList).find((c) => c.startsWith('language-'))
+      const lang = langClass ? langClass.replace('language-', '') : ''
+      const text = block.textContent || ''
+      try {
+        if (lang && hljs.getLanguage(lang)) {
+          block.innerHTML = hljs.highlight(text, { language: lang }).value
+        } else if (text.trim().length > 0) {
+          block.innerHTML = hljs.highlightAuto(text).value
+        }
+      } catch {
+        block.textContent = text
+      }
+      block.classList.add('hljs')
+      if (lang) block.classList.add('language-' + lang)
+    })
+    return doc.body.innerHTML
+  } catch {
+    return html
+  }
+}
+
 function renderMessageHtml(content: string, currentUsername?: string): string {
   if (!content) return ''
 
-  let html = content.replace(
-    /@(everyone|here|[\w.\-]+)/gi,
+  const html = content.replace(
+    /@(everyone|here|[\w.-]+)/gi,
     (match) => {
       const tag = match.slice(1).toLowerCase()
       const isMe = currentUsername && tag === currentUsername.toLowerCase()
@@ -94,7 +163,7 @@ function renderMessageHtml(content: string, currentUsername?: string): string {
     ALLOWED_ATTR: ['class', 'href', 'target', 'rel'],
   })
 
-  return clean
+  return highlightCodeBlocks(clean)
 }
 
 function AttachmentPreview({ url, filename, serverUrl, isMediaOnly, onImageClick }: { url: string; filename: string; serverUrl?: string; isMediaOnly?: boolean; onImageClick?: (url: string, filename: string) => void }) {
@@ -131,12 +200,12 @@ function AttachmentPreview({ url, filename, serverUrl, isMediaOnly, onImageClick
     )
   }
 
-  if (isVideoUrl(url)) {
-    return <video src={resolvedUrl} controls className={`msg-bubble__attachment-video ${isMediaOnly ? 'msg-bubble__attachment-video--media-only' : ''}`} onError={() => setLoadError(true)} />
+  if (isAudioUrl(url)) {
+    return <VoiceMessagePlayer url={resolvedUrl} />
   }
 
-  if (isAudioUrl(url)) {
-    return <audio src={resolvedUrl} controls className="msg-bubble__attachment-audio" onError={() => setLoadError(true)} />
+  if (isVideoUrl(url)) {
+    return <video src={resolvedUrl} controls className={`msg-bubble__attachment-video ${isMediaOnly ? 'msg-bubble__attachment-video--media-only' : ''}`} onError={() => setLoadError(true)} />
   }
 
   return (
@@ -158,6 +227,10 @@ function MessageBubble({
   onEdit,
   serverUrl,
   onReply,
+  onPin,
+  onUnpin,
+  isPinned,
+  onCreateThread,
   onUserClick,
   onImageClick,
 }: MessageBubbleProps) {
@@ -307,6 +380,30 @@ function MessageBubble({
         label: 'Reply',
         onClick: () => onReply(message),
         shortcut: 'R',
+      })
+    }
+
+    if (onPin && !isPinned) {
+      mainItems.push({
+        label: 'Pin Message',
+        onClick: () => onPin(message.id),
+      })
+    }
+
+    if (onUnpin && isPinned) {
+      mainItems.push({
+        label: 'Unpin Message',
+        onClick: () => onUnpin(message.id),
+      })
+    }
+
+    if (onCreateThread && !message.thread_id) {
+      mainItems.push({
+        label: 'Create Thread',
+        onClick: () => {
+          const name = message.content.slice(0, 50).replace(/\n/g, ' ') || 'Thread'
+          onCreateThread(message.id, name)
+        },
       })
     }
 

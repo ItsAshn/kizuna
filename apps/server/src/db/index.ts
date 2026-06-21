@@ -67,6 +67,7 @@ const EXPECTED_SCHEMA: Record<string, string[]> = {
   sessions: ['token_id', 'user_id', 'created_at', 'revoked_at'],
   pinned_messages: ['id', 'channel_id', 'message_id', 'pinned_by', 'pinned_at'],
   channel_categories: ['id', 'name', 'position', 'created_at'],
+  threads: ['id', 'channel_id', 'name', 'creator_id', 'created_at', 'message_count', 'last_message_at'],
   link_embeds: ['url', 'title', 'description', 'image', 'site_name', 'favicon', 'fetched_at'],
   channel_role_overrides: ['channel_id', 'role_id', 'allow_permissions', 'deny_permissions'],
   _migrations: ['name', 'applied_at'],
@@ -469,6 +470,56 @@ function runMigrations(database: Database.Database): void {
      )` },
     { name: 'users_add_banner', sql: `ALTER TABLE users ADD COLUMN banner TEXT DEFAULT NULL` },
     { name: 'gifs_add_suggested_tags', sql: `ALTER TABLE gifs ADD COLUMN suggested_tags TEXT DEFAULT ''` },
+    { name: 'users_add_status_text', sql: `ALTER TABLE users ADD COLUMN status_text TEXT DEFAULT NULL` },
+    { name: 'users_add_status_emoji', sql: `ALTER TABLE users ADD COLUMN status_emoji TEXT DEFAULT NULL` },
+    { name: 'threads_table', sql: `CREATE TABLE IF NOT EXISTS threads (
+       id TEXT PRIMARY KEY,
+       channel_id TEXT NOT NULL,
+       name TEXT NOT NULL,
+       creator_id TEXT NOT NULL,
+       created_at INTEGER DEFAULT (unixepoch()),
+       message_count INTEGER DEFAULT 1,
+       last_message_at INTEGER DEFAULT (unixepoch()),
+       FOREIGN KEY (channel_id) REFERENCES channels(id),
+       FOREIGN KEY (creator_id) REFERENCES users(id)
+     )` },
+    { name: 'messages_add_thread_id', sql: `ALTER TABLE messages ADD COLUMN thread_id TEXT DEFAULT NULL` },
+    { name: 'idx_threads_channel', sql: `CREATE INDEX IF NOT EXISTS idx_threads_channel ON threads(channel_id)` },
+    { name: 'idx_messages_thread', sql: `CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)` },
+    { name: 'messages_fts_rebuild', sql: `
+      DROP TABLE IF EXISTS messages_fts;
+      CREATE VIRTUAL TABLE messages_fts USING fts5(source, message_id, content);
+      INSERT INTO messages_fts(source, message_id, content)
+        SELECT 'channel', id, content FROM messages WHERE content IS NOT NULL AND content != '';
+      INSERT INTO messages_fts(source, message_id, content)
+        SELECT 'dm', id, content FROM direct_messages WHERE content IS NOT NULL AND content != '';
+      CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages
+      BEGIN
+        INSERT INTO messages_fts(source, message_id, content) VALUES ('channel', NEW.id, NEW.content);
+      END;
+      CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages
+      BEGIN
+        DELETE FROM messages_fts WHERE source='channel' AND message_id=OLD.id;
+        INSERT INTO messages_fts(source, message_id, content) VALUES ('channel', NEW.id, NEW.content);
+      END;
+      CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages
+      BEGIN
+        DELETE FROM messages_fts WHERE source='channel' AND message_id=OLD.id;
+      END;
+      CREATE TRIGGER IF NOT EXISTS dm_fts_insert AFTER INSERT ON direct_messages
+      BEGIN
+        INSERT INTO messages_fts(source, message_id, content) VALUES ('dm', NEW.id, NEW.content);
+      END;
+      CREATE TRIGGER IF NOT EXISTS dm_fts_update AFTER UPDATE ON direct_messages
+      BEGIN
+        DELETE FROM messages_fts WHERE source='dm' AND message_id=OLD.id;
+        INSERT INTO messages_fts(source, message_id, content) VALUES ('dm', NEW.id, NEW.content);
+      END;
+      CREATE TRIGGER IF NOT EXISTS dm_fts_delete AFTER DELETE ON direct_messages
+      BEGIN
+        DELETE FROM messages_fts WHERE source='dm' AND message_id=OLD.id;
+      END;
+    ` },
   ]
 
   const insertStmt = database.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)')

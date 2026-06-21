@@ -756,11 +756,16 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     } catch { /* ignore */ }
   })
 
-  socket.on('user:status', ({ status }: { status: UserStatus }) => {
+  socket.on('user:status', ({ status, status_text, status_emoji }: { status?: UserStatus; status_text?: string | null; status_emoji?: string | null }) => {
     if (!userId) return
-    if (!['online', 'idle', 'busy'].includes(status)) return
-    userStatuses.set(userId, status)
-    io.emit('user:status', { userId, status })
+    if (status && ['online', 'idle', 'busy'].includes(status)) {
+      userStatuses.set(userId, status)
+    }
+    const payload: any = { userId }
+    if (status) payload.status = status
+    if (status_text !== undefined) payload.status_text = status_text
+    if (status_emoji !== undefined) payload.status_emoji = status_emoji
+    io.emit('user:status', payload)
   })
 
   socket.on('disconnect', () => {
@@ -834,5 +839,56 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       reactionKey,
       userId,
     })
+  })
+
+  // ─── Pins ───────────────────────────────────────────
+
+  socket.on('message:pin', ({ channelId, messageId }: { channelId: string; messageId: string }) => {
+    if (!userId || !username) return
+    if (!checkSocketRateLimit(socket, 'pin', 10, 10_000)) return
+
+    const db = getDb()
+    const existing = db.prepare('SELECT id FROM pinned_messages WHERE channel_id = ? AND message_id = ?').get(channelId, messageId)
+    if (existing) return
+
+    const count = db.prepare('SELECT COUNT(*) as count FROM pinned_messages WHERE channel_id = ?').get(channelId) as any
+    if (count.count >= 50) return
+
+    const pinId = uuidv4()
+    db.prepare('INSERT INTO pinned_messages (id, channel_id, message_id, pinned_by) VALUES (?, ?, ?, ?)').run(pinId, channelId, messageId, userId)
+
+    const msg = db.prepare('SELECT content, author_id, author_username FROM messages WHERE id = ?').get(messageId) as any
+    const pin = {
+      id: pinId,
+      messageId,
+      channelId,
+      pinnedBy: userId,
+      pinnedByUsername: username,
+      pinnedAt: Date.now(),
+      content: msg?.content || '',
+      authorId: msg?.author_id || '',
+      authorUsername: msg?.author_username || '',
+    }
+
+    io.to(channelId).emit('message:pin', pin)
+  })
+
+  socket.on('message:unpin', ({ channelId, messageId }: { channelId: string; messageId: string }) => {
+    if (!userId) return
+
+    const db = getDb()
+    db.prepare('DELETE FROM pinned_messages WHERE channel_id = ? AND message_id = ?').run(channelId, messageId)
+
+    io.to(channelId).emit('message:unpin', { channelId, messageId })
+  })
+
+  // ─── Threads ────────────────────────────────────────
+
+  socket.on('thread:join', (threadId: string) => {
+    socket.join(threadId)
+  })
+
+  socket.on('thread:leave', (threadId: string) => {
+    socket.leave(threadId)
   })
 }

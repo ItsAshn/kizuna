@@ -89,10 +89,33 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.skip-link:focus {
+  left: 0;
+  top: 0;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  background: var(--brand);
+  color: var(--text-primary);
+  padding: var(--space-3) var(--space-5);
+  z-index: 10000;
+  border-radius: 0 0 var(--radius-sm) 0;
+  font-weight: 600;
 }
 
 * {
@@ -142,8 +165,8 @@ select:focus:not(:focus-visible) {
   background: var(--brand);
   color: var(--text-primary);
   font-weight: 500;
-  font-size: 14px;
-  padding: 8px 16px;
+  font-size: 0.875rem;
+  padding: var(--space-2) var(--space-4);
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -171,8 +194,8 @@ select:focus:not(:focus-visible) {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   font-weight: 500;
-  font-size: 14px;
-  padding: 8px 16px;
+  font-size: 0.875rem;
+  padding: var(--space-2) var(--space-4);
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -196,8 +219,8 @@ select:focus:not(:focus-visible) {
   background: var(--red);
   color: var(--text-primary);
   font-weight: 500;
-  font-size: 14px;
-  padding: 8px 16px;
+  font-size: 0.875rem;
+  padding: var(--space-2) var(--space-4);
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -218,9 +241,9 @@ select:focus:not(:focus-visible) {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 0.875rem;
   outline: none;
   transition: border-color 0.15s ease;
 }
@@ -247,13 +270,13 @@ select:focus:not(:focus-visible) {
 .avatar-sm {
   width: 32px;
   height: 32px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .avatar-xs {
   width: 24px;
   height: 24px;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 .icon-xs {
@@ -273,7 +296,7 @@ select:focus:not(:focus-visible) {
 
 @media (max-width: 767px) {
   body {
-    font-size: 15px;
+    font-size: 0.9375rem;
     line-height: 1.5;
   }
 
@@ -281,13 +304,13 @@ select:focus:not(:focus-visible) {
   .btn-secondary,
   .btn-danger {
     min-height: 44px;
-    padding: 10px 20px;
-    font-size: 16px;
+    padding: 10px var(--space-5);
+    font-size: 1rem;
   }
 
   .input-field {
     min-height: 44px;
-    font-size: 16px;
+    font-size: 1rem;
     padding: 10px 14px;
   }
 }

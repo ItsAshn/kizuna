@@ -8,6 +8,8 @@ export interface SavedServer {
   url: string;
   /** Optional icon URL. */
   icon?: string;
+  /** Folder name for grouping servers (e.g. "Gaming", "Work"). */
+  folder?: string | null;
   /** Timestamp when the server was added (epoch milliseconds). */
   addedAt: number;
 }
@@ -25,6 +27,8 @@ export interface BaseUser {
   role?: 'admin' | 'member';
   is_host?: boolean;
   status?: UserStatus;
+  status_text?: string | null;
+  status_emoji?: string | null;
 }
 
 /** Server-side or self-represented user with security fields. */
@@ -50,6 +54,7 @@ export interface Channel {
   locked: boolean;
   write_role_id?: string | null;
   write_role_name?: string | null;
+  category_id?: string | null;
   created_at: number;
 }
 
@@ -78,6 +83,7 @@ export interface Message {
   reply_to_message_id?: string | null;
   reply_to_username?: string | null;
   reply_to_content?: string | null;
+  thread_id?: string | null;
 }
 
 export type ReactionType = 'emoji' | 'sticker';
@@ -106,6 +112,30 @@ export interface MessageEdit {
   edited_at: number;
 }
 
+export interface PinnedMessage {
+  id: string;
+  messageId: string;
+  channelId: string;
+  pinnedBy: string;
+  pinnedByUsername?: string;
+  pinnedAt: number;
+  content: string;
+  authorId: string;
+  authorUsername: string;
+  authorDisplayName?: string;
+  authorAvatar?: string;
+}
+
+export interface Thread {
+  id: string;
+  channel_id: string;
+  name: string;
+  creator_id: string;
+  created_at: number;
+  message_count: number;
+  last_message_at: number;
+}
+
 /** Member of a server (as seen by other members). */
 export interface Member extends BaseUser {
   /** Custom roles assigned to this member. */
@@ -120,6 +150,12 @@ export interface Member extends BaseUser {
   hoist_role_color?: string | null;
   /** Timestamp when a password reset was requested. */
   reset_requested_at?: number | null;
+  /** Epoch seconds of last activity. */
+  last_seen_at?: number | null;
+  /** Timestamp when the user created their account (epoch milliseconds). */
+  created_at?: number | null;
+  /** Timestamp when the user joined this server (epoch milliseconds). */
+  joined_at?: number | null;
 }
 
 /** Admin user info for display purposes. */

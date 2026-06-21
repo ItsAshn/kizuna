@@ -59,13 +59,47 @@ export default function ScreenShareOverlay({ videoElRef, stopScreenshare }: Scre
       dragging = false
     }
 
+    const onTouchStart = (e: TouchEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.screenshare-overlay__header')) return
+      e.preventDefault()
+      dragging = true
+      startX = e.touches[0].clientX
+      startY = e.touches[0].clientY
+      const rect = container.getBoundingClientRect()
+      startLeft = rect.left
+      startTop = rect.top
+      container.style.right = 'auto'
+      container.style.bottom = 'auto'
+      container.style.left = `${startLeft}px`
+      container.style.top = `${startTop}px`
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!dragging) return
+      const dx = e.touches[0].clientX - startX
+      const dy = e.touches[0].clientY - startY
+      container.style.left = `${startLeft + dx}px`
+      container.style.top = `${startTop + dy}px`
+    }
+
+    const onTouchEnd = () => {
+      dragging = false
+    }
+
     container.addEventListener('mousedown', onMouseDown)
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
+    container.addEventListener('touchstart', onTouchStart, { passive: false })
+    window.addEventListener('touchmove', onTouchMove)
+    window.addEventListener('touchend', onTouchEnd)
     return () => {
       container.removeEventListener('mousedown', onMouseDown)
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
+      container.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onTouchEnd)
     }
   }, [isActive])
 

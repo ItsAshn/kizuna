@@ -281,6 +281,47 @@
   line-height: 1.5;
 }
 
+/* ── Syntax highlighting (highlight.js dark theme) ──────────── */
+
+.hljs { color: #e0e0e0 }
+.hljs-keyword { color: #c792ea }
+.hljs-type { color: #82aaff }
+.hljs-built_in { color: #ffcb6b }
+.hljs-literal { color: #f78c6c }
+.hljs-number { color: #f78c6c }
+.hljs-regexp { color: #89ddff }
+.hljs-string { color: #c3e88d }
+.hljs-subst { color: #e0e0e0 }
+.hljs-symbol { color: #82aaff }
+.hljs-title { color: #82aaff }
+.hljs-title.function_ { color: #82aaff }
+.hljs-title.class_ { color: #ffcb6b }
+.hljs-title.class_.inherited__ { color: #ffcb6b }
+.hljs-params { color: #e0e0e0 }
+.hljs-comment { color: #546e7a; font-style: italic }
+.hljs-doctag { color: #c792ea }
+.hljs-meta { color: #89ddff }
+.hljs-meta .hljs-keyword { color: #c792ea }
+.hljs-meta .hljs-string { color: #c3e88d }
+.hljs-section { color: #82aaff }
+.hljs-tag { color: #89ddff }
+.hljs-name { color: #89ddff }
+.hljs-attr { color: #c792ea }
+.hljs-attribute { color: #c3e88d }
+.hljs-selector-tag { color: #f07178 }
+.hljs-selector-id { color: #ffcb6b }
+.hljs-selector-class { color: #ffcb6b }
+.hljs-selector-attr { color: #c792ea }
+.hljs-selector-pseudo { color: #c792ea }
+.hljs-addition { color: #c3e88d }
+.hljs-deletion { color: #f07178 }
+.hljs-variable { color: #e0e0e0 }
+.hljs-operator { color: #89ddff }
+.hljs-punctuation { color: #89ddff }
+.hljs-property { color: #82aaff }
+.hljs-template-variable { color: #e0e0e0 }
+.hljs-template-tag { color: #89ddff }
+
 /* ── Markdown: blockquote ─────────────────────────────────── */
 
 .msg-bubble__text blockquote {
@@ -490,7 +531,7 @@
 }
 
 .msg-bubble__delete-confirm-btn--yes:hover {
-  background: rgba(255, 77, 77, 0.30);
+  background: var(--red-dim-border);
 }
 
 .msg-bubble__delete-confirm-btn--no {
@@ -593,7 +634,7 @@
 }
 
 .msg-bubble__edit-action-btn--save:hover {
-  background: rgba(76, 110, 245, 0.25);
+  background: var(--brand-dim-border);
 }
 
 .msg-bubble__edit-action-btn--cancel {
@@ -807,13 +848,13 @@
 
 .msg-bubble__bubble--media-only .msg-bubble__delete-btn:hover,
 .msg-bubble__bubble--media-only .msg-bubble__edit-btn:hover {
-  color: #fff;
+  color: var(--text-primary);
   background: rgba(255, 255, 255, 0.15);
 }
 
 .msg-bubble__bubble--media-only .msg-bubble__delete-confirm-btn--yes {
   background: rgba(255, 77, 77, 0.4);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .msg-bubble__bubble--media-only .msg-bubble__delete-confirm-btn--no {
@@ -1141,7 +1182,7 @@
 
 .reaction-picker__pack-btn--active {
   background: var(--brand);
-  color: #fff;
+  color: var(--text-primary);
   border-color: var(--brand);
 }
 

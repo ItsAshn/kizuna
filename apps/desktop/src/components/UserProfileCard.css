@@ -91,6 +91,21 @@
   margin-top: 2px;
 }
 
+.user-profile-card__status-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.user-profile-card__status-emoji {
+  font-size: 13px;
+  line-height: 1;
+}
+
 .user-profile-card__roles {
   display: flex;
   flex-wrap: wrap;

@@ -21,6 +21,8 @@ export default function Lightbox({ images, initialIndex, onClose }: LightboxProp
   const [isDragging, setIsDragging] = useState(false)
   const dragStart = useRef({ x: 0, y: 0 })
   const translateStart = useRef({ x: 0, y: 0 })
+  const pinchStartDist = useRef(0)
+  const pinchStartScale = useRef(1)
 
   const current = images[index]
   if (!current) return null
@@ -60,6 +62,44 @@ export default function Lightbox({ images, initialIndex, onClose }: LightboxProp
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false)
+  }, [])
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      pinchStartDist.current = Math.sqrt(dx * dx + dy * dy)
+      pinchStartScale.current = scale
+      setIsDragging(false)
+      return
+    }
+    if (e.touches.length === 1 && scale > 1) {
+      setIsDragging(true)
+      dragStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      translateStart.current = { ...translate }
+    }
+  }, [scale, translate])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (pinchStartDist.current > 0) {
+        const ratio = dist / pinchStartDist.current
+        setScale(Math.min(5, Math.max(0.5, pinchStartScale.current * ratio)))
+      }
+      return
+    }
+    if (!isDragging) return
+    const dx = e.touches[0].clientX - dragStart.current.x
+    const dy = e.touches[0].clientY - dragStart.current.y
+    setTranslate({ x: translateStart.current.x + dx, y: translateStart.current.y + dy })
+  }, [isDragging])
+
+  const handleTouchEnd = useCallback(() => {
+    setIsDragging(false)
+    pinchStartDist.current = 0
   }, [])
 
   const handleDownload = useCallback(() => {
@@ -111,6 +151,9 @@ export default function Lightbox({ images, initialIndex, onClose }: LightboxProp
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         onClick={(e) => e.stopPropagation()}
       >
         <img

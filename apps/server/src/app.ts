@@ -24,6 +24,7 @@ import banRoutes from './routes/bans';
 import auditRoutes from './routes/audit';
 import searchRoutes from './routes/search';
 import pinsRoutes from './routes/pins';
+import threadsRoutes from './routes/threads';
 import categoryRoutes from './routes/categories';
 import embedRoutes from './routes/embeds';
 import { authLimiter, messageLimiter, uploadLimiter, apiLimiter } from './middleware/rateLimiter';
@@ -118,6 +119,9 @@ export function createApp(httpPort: number) {
 
   app.use('/api/pins/*', apiLimiter);
   app.route('/api/pins', pinsRoutes);
+
+  app.use('/api/threads/*', apiLimiter);
+  app.route('/api/threads', threadsRoutes);
 
   app.use('/api/categories/*', apiLimiter);
   app.route('/api/categories', categoryRoutes);

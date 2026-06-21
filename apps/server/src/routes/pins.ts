@@ -5,6 +5,12 @@ import { v4 as uuidv4 } from 'uuid'
 
 function getAuth(c: any): { userId: string; username: string } { return c.get('auth' as never) }
 
+function broadcastPin(io: any, channelId: string, event: string, data: any) {
+  if (io) {
+    io.to(channelId).emit(event, data)
+  }
+}
+
 const pinsRoutes = new Hono()
 
 pinsRoutes.get('/:channelId', authMiddleware, (c) => {
@@ -50,6 +56,22 @@ pinsRoutes.post('/:channelId/:messageId', authMiddleware, (c) => {
   const id = uuidv4()
   db.prepare('INSERT INTO pinned_messages (id, channel_id, message_id, pinned_by) VALUES (?, ?, ?, ?)').run(id, channelId, messageId, user.userId)
 
+  const msg = db.prepare('SELECT content, author_id, author_username FROM messages WHERE id = ?').get(messageId) as any
+  const pin = {
+    id,
+    messageId,
+    channelId,
+    pinnedBy: user.userId,
+    pinnedByUsername: user.username,
+    pinnedAt: Date.now(),
+    content: msg?.content || '',
+    authorId: msg?.author_id || '',
+    authorUsername: msg?.author_username || '',
+  }
+
+  const io: any = c.get('io' as never)
+  broadcastPin(io, channelId!, 'message:pin', pin)
+
   return c.json({ success: true, id })
 })
 
@@ -59,6 +81,9 @@ pinsRoutes.delete('/:channelId/:messageId', authMiddleware, (c) => {
   const db = getDb()
 
   db.prepare('DELETE FROM pinned_messages WHERE channel_id = ? AND message_id = ?').run(channelId, messageId)
+
+  const io: any = c.get('io' as never)
+  broadcastPin(io, channelId!, 'message:unpin', { channelId, messageId })
 
   return c.json({ success: true })
 })

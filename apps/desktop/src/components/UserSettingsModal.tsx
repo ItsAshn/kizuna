@@ -4,6 +4,7 @@ import { useSettingsStore } from '../store/settingsStore'
 import { useUpdaterActions, isMobileTauri } from '../hooks/useUpdater'
 import { clearCryptoState } from '../store/keyStore'
 import Modal from './ui/Modal'
+import ToggleSwitch from './ui/ToggleSwitch'
 import './UserSettingsModal.css'
 
 interface AudioDataPayload {
@@ -416,16 +417,11 @@ export default function UserSettingsModal({ onClose }: Props) {
               <p className="settings-modal__subsection-title">noise gate</p>
               <div className="settings-modal__toggle-row">
                 <span className="settings-modal__toggle-label">enable noise gate</span>
-                <label className="settings-modal__toggle">
-                  <input
-                    type="checkbox"
-                    checked={noiseGateEnabled}
-                    onChange={(e) => setNoiseGateEnabled(e.target.checked)}
-                  />
-                  <span className="settings-modal__toggle-track">
-                    <span className="settings-modal__toggle-thumb" />
-                  </span>
-                </label>
+                <ToggleSwitch
+                  checked={noiseGateEnabled}
+                  onChange={setNoiseGateEnabled}
+                  ariaLabel="enable noise gate"
+                />
               </div>
               <div style={{ marginTop: '6px' }}>
                 <button
@@ -466,16 +462,11 @@ export default function UserSettingsModal({ onClose }: Props) {
               <p className="settings-modal__subsection-title" style={{ marginTop: '8px' }}>noise suppression</p>
               <div className="settings-modal__toggle-row">
                 <span className="settings-modal__toggle-label">enable suppression</span>
-                <label className="settings-modal__toggle">
-                  <input
-                    type="checkbox"
-                    checked={noiseSuppression}
-                    onChange={(e) => setNoiseSuppression(e.target.checked)}
-                  />
-                  <span className="settings-modal__toggle-track">
-                    <span className="settings-modal__toggle-thumb" />
-                  </span>
-                </label>
+                <ToggleSwitch
+                  checked={noiseSuppression}
+                  onChange={setNoiseSuppression}
+                  ariaLabel="enable noise suppression"
+                />
               </div>
               <div>
                 <p className="settings-modal__hint" style={{ marginBottom: '4px' }}>suppression strength</p>
@@ -500,16 +491,11 @@ export default function UserSettingsModal({ onClose }: Props) {
               <p className="settings-modal__subsection-title" style={{ marginTop: '8px' }}>auto gain control</p>
               <div className="settings-modal__toggle-row">
                 <span className="settings-modal__toggle-label">enable auto gain</span>
-                <label className="settings-modal__toggle">
-                  <input
-                    type="checkbox"
-                    checked={autoGainControl}
-                    onChange={(e) => setAutoGainControl(e.target.checked)}
-                  />
-                  <span className="settings-modal__toggle-track">
-                    <span className="settings-modal__toggle-thumb" />
-                  </span>
-                </label>
+                <ToggleSwitch
+                  checked={autoGainControl}
+                  onChange={setAutoGainControl}
+                  ariaLabel="enable auto gain control"
+                />
               </div>
               <p className="settings-modal__hint">
                 automatically normalizes your microphone volume to a consistent level
@@ -518,16 +504,11 @@ export default function UserSettingsModal({ onClose }: Props) {
               <p className="settings-modal__subsection-title" style={{ marginTop: '8px' }}>echo cancellation</p>
               <div className="settings-modal__toggle-row">
                 <span className="settings-modal__toggle-label">enable echo cancellation</span>
-                <label className="settings-modal__toggle">
-                  <input
-                    type="checkbox"
-                    checked={echoCancellation}
-                    onChange={(e) => setEchoCancellation(e.target.checked)}
-                  />
-                  <span className="settings-modal__toggle-track">
-                    <span className="settings-modal__toggle-thumb" />
-                  </span>
-                </label>
+                <ToggleSwitch
+                  checked={echoCancellation}
+                  onChange={setEchoCancellation}
+                  ariaLabel="enable echo cancellation"
+                />
               </div>
               <p className="settings-modal__hint">
                 removes echo when using speakers instead of headphones. leaving this off prevents other apps' audio from being paused when you join a voice channel

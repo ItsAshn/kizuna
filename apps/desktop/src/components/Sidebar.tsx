@@ -3,11 +3,12 @@ import { createPortal } from 'react-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
+import { useSettingsStore } from '../store/settingsStore'
 import { useMobile } from '../hooks/useMobile'
 import { useNavigate } from 'react-router-dom'
 import { createChannel, lockChannel, fetchRoles, setChannelMute, deleteChannelMute, deleteChannel, reorderChannels } from '@kizuna/shared'
 import type { CustomRole, Channel } from '@kizuna/shared'
-import { Lock, Unlock, BellOff, ChevronLeft } from 'lucide-react'
+import { Lock, Unlock, BellOff, ChevronLeft, Ellipsis, Bell } from 'lucide-react'
 import UserStatusPicker from './UserStatusPicker'
 import ContextMenu from './ContextMenu'
 import ChannelSettingsModal from './ChannelSettingsModal'
@@ -33,6 +34,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   const setActiveSession = useServerStore((s) => s.setActiveSession)
   const {
     channels,
+    categories,
     dmChannels, activeChannelId, activeDMChannelId,
     unreadCounts, mentionCounts,
     setActiveChannel, setActiveDMChannel, setChannels,
@@ -43,6 +45,8 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
     activeVoiceChannelId,
     voiceChannelUsers,
   } = useVoiceStore()
+  const channelNotifLevels = useSettingsStore((s) => s.channelNotificationLevels)
+  const setChannelNotifLevel = useSettingsStore((s) => s.setChannelNotificationLevel)
   const [newChannelName, setNewChannelName] = useState('')
   const [newChannelType, setNewChannelType] = useState<'text' | 'voice'>('text')
   const [creating, setCreating] = useState(false)
@@ -54,6 +58,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
   const lockMenuRef = useRef<HTMLDivElement | null>(null)
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false)
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
   const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null)
   const [drag, setDrag] = useState<{ channelId: string; type: 'text' | 'voice' } | null>(null)
   const [dragOver, setDragOver] = useState<{ channelId: string; position: 'above' | 'below' } | null>(null)
@@ -212,6 +217,17 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
         ],
       })
     }
+
+    const currentOverride = channelNotifLevels[channelId]
+    sections.push({
+      items: [
+        { label: `Notifications: ${currentOverride === 'all' ? '✓ ' : ''}All Messages`, onClick: () => setChannelNotifLevel(channelId, 'all') },
+        { label: `Notifications: ${currentOverride === 'mentions' ? '✓ ' : ''}Only @mentions`, onClick: () => setChannelNotifLevel(channelId, 'mentions') },
+        { label: `Notifications: ${currentOverride === 'none' ? '✓ ' : ''}Nothing`, onClick: () => setChannelNotifLevel(channelId, 'none') },
+        { label: `Notifications: ${!currentOverride ? '✓ ' : ''}Use server default`, onClick: () => setChannelNotifLevel(channelId, null) },
+      ],
+    })
+
     return sections
   }
 
@@ -227,6 +243,133 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
       }
     }
     setLockMenuChannelId(lockMenuChannelId === channelId ? null : channelId)
+  }
+
+  function renderChannel(ch: Channel) {
+    const isText = ch.type === 'text'
+    const voiceUsers = isText ? [] : (voiceChannelUsers[ch.id] || [])
+    const mentionBadge = mentionCounts[ch.id]
+    const unreadOnly = !mentionBadge && unreadCounts[ch.id]
+    const isDragging = drag?.channelId === ch.id
+    const isDropAbove = dragOver?.channelId === ch.id && dragOver.position === 'above'
+    const isDropBelow = dragOver?.channelId === ch.id && dragOver.position === 'below'
+    let wrapClass = 'sidebar__channel-wrap'
+    if (isDragging) wrapClass += ' sidebar__channel-wrap--dragging'
+    if (isDropAbove) wrapClass += ' sidebar__channel-wrap--drop-above'
+    if (isDropBelow) wrapClass += ' sidebar__channel-wrap--drop-below'
+    const channelActive = isText
+      ? activeChannelId === ch.id
+      : activeVoiceChannelId === ch.id
+
+    return (
+      <div
+        key={ch.id}
+        className={wrapClass}
+          onDragOver={(e) => { if (isAdmin && !isMobile) handleDragOver(e, ch) }}
+          onDragLeave={(e) => { if (isAdmin && !isMobile) handleDragLeave(e, ch) }}
+          onDrop={(e) => { if (isAdmin && !isMobile) handleDrop(e, ch) }}
+      >
+        <button
+          draggable={isAdmin && !isMobile}
+          onDragStart={(e) => { if (isAdmin && !isMobile) handleDragStart(e, ch) }}
+          onDragEnd={handleDragEnd}
+          onClick={() => {
+            if (isText) {
+              setActiveChannel(ch.id); setLockMenuChannelId(null); onOpenChat?.()
+            } else {
+              (async () => {
+                if (activeVoiceChannelId === ch.id) { await leaveVoice() }
+                else { if (activeVoiceChannelId) await leaveVoice(); joinVoice(ch.id) }
+              })()
+            }
+          }}
+          onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
+          className={`sidebar__channel ${channelActive ? (isText ? 'sidebar__channel--active' : 'sidebar__channel--voice-active') : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
+          aria-label={(isText ? 'Text' : 'Voice') + ' channel ' + ch.name + (mentionBadge ? ' — ' + mentionBadge + ' mentions' : '') + (unreadOnly ? ' — unread' : '')}
+          aria-current={channelActive ? 'page' : undefined}
+        >
+          <span className="sidebar__channel-icon">{isText ? '#' : '~'}</span>
+          <span className="sidebar__channel-name">{ch.name}</span>
+          {channelMutes[ch.id] !== undefined && <BellOff size={10} className="sidebar__mute-icon" />}
+          {isText && channelNotifLevels[ch.id] && (
+            <span className={`sidebar__notif-icon sidebar__notif-icon--${channelNotifLevels[ch.id]}`} title={`Notifications: ${channelNotifLevels[ch.id]}`}>
+              <Bell size={10} />
+            </span>
+          )}
+          {mentionBadge ? <span className="sidebar__unread-badge">{mentionBadge > 99 ? '99+' : mentionBadge}</span> : unreadOnly ? <span className="sidebar__unread-dot" /> : null}
+          {!isText && activeVoiceChannelId === ch.id && <span className="sidebar__voice-indicator" />}
+        </button>
+        {isAdmin && isText && (
+          <button
+            onClick={(e) => { e.stopPropagation(); openLockMenu(ch.id) }}
+            className={`sidebar__lock-btn ${ch.locked ? 'sidebar__lock-btn--active' : ''}`}
+            title={ch.locked ? 'Unlock channel' : 'Lock channel'}
+          >
+            {ch.locked ? <Lock size={12} /> : <Unlock size={12} />}
+          </button>
+        )}
+        {lockMenuChannelId === ch.id && (
+          <div className="sidebar__lock-menu" ref={lockMenuRef}>
+            {ch.locked ? (
+              <>
+                <span className="sidebar__lock-menu-label">Locked to: {ch.write_role_name || 'no role'}</span>
+                <button onClick={() => handleToggleLock(ch, false, null)} className="sidebar__lock-menu-btn">Unlock</button>
+                {roles.map(r => (
+                  <button
+                    key={r.id}
+                    onClick={() => handleToggleLock(ch, true, r.id)}
+                    className={`sidebar__lock-menu-btn ${ch.write_role_id === r.id ? 'sidebar__lock-menu-btn--active' : ''}`}
+                  >
+                    Change to {r.name}
+                  </button>
+                ))}
+              </>
+            ) : (
+              <>
+                <span className="sidebar__lock-menu-label">Lock to role:</span>
+                {roles.map(r => (
+                  <button key={r.id} onClick={() => handleToggleLock(ch, true, r.id)} className="sidebar__lock-menu-btn">
+                    {r.name}
+                  </button>
+                ))}
+                {roles.length === 0 && <span className="sidebar__lock-menu-label">No roles exist. Create one in server menu.</span>}
+              </>
+            )}
+          </div>
+        )}
+        {!isText && voiceUsers.length > 0 && (
+          <div className="sidebar__voice-users">
+            {voiceUsers.slice(0, 5).map((u) => {
+              const member = members.find((m) => m.id === u.userId)
+              return (
+                <div key={u.userId} className="sidebar__voice-user">
+                  <div className="sidebar__voice-user-avatar">
+                    {member?.avatar ? (
+                      <img
+                        src={member.avatar}
+                        alt=""
+                        className="sidebar__voice-user-avatar-img"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                      />
+                    ) : (
+                      (member?.display_name || u.username)[0]?.toUpperCase()
+                    )}
+                  </div>
+                  <span className="sidebar__voice-user-name">
+                    {member?.display_name || u.username}
+                  </span>
+                </div>
+              )
+            })}
+            {voiceUsers.length > 5 && (
+              <div className="sidebar__voice-user sidebar__voice-user--more">
+                +{voiceUsers.length - 5} more
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
   }
 
   const activeServer = servers.find(s => s.id === session?.serverId)
@@ -253,7 +396,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
             className="sidebar__mobile-menu-btn"
             aria-label="Server menu"
           >
-            ···
+            <Ellipsis className="icon-md" />
           </button>
         </div>
       )}
@@ -270,6 +413,12 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
             <div className="sidebar__user-info">
               <p className="sidebar__user-displayname">{session?.user.display_name || session?.user.username}</p>
               <p className="sidebar__user-subtitle">@{session?.user.username}{isAdmin ? ' · admin' : ''}</p>
+              {(session?.user.status_text || session?.user.status_emoji) && (
+                <p className="sidebar__user-status">
+                  {session?.user.status_emoji && <span className="sidebar__user-status-emoji">{session.user.status_emoji}</span>}
+                  {session?.user.status_text && <span className="sidebar__user-status-text">{session.user.status_text}</span>}
+                </p>
+              )}
             </div>
             <button
               onClick={onOpenMenu}
@@ -277,165 +426,61 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
               style={{ marginLeft: 'auto', fontSize: '14px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
               title="server menu"
             >
-              ···
+              <Ellipsis size={18} />
             </button>
           </div>
         </div>
       )}
 
       <div className="sidebar__content">
-        {textChannels.length > 0 && (
-          <div className="sidebar__section">
-            <h3 className="sidebar__section-title">Text Channels</h3>
-            {textChannels.map((ch) => {
-              const mentionBadge = mentionCounts[ch.id]
-              const unreadOnly = !mentionBadge && unreadCounts[ch.id]
-              const isDragging = drag?.channelId === ch.id
-              const isDropAbove = dragOver?.channelId === ch.id && dragOver.position === 'above'
-              const isDropBelow = dragOver?.channelId === ch.id && dragOver.position === 'below'
-              let wrapClass = 'sidebar__channel-wrap'
-              if (isDragging) wrapClass += ' sidebar__channel-wrap--dragging'
-              if (isDropAbove) wrapClass += ' sidebar__channel-wrap--drop-above'
-              if (isDropBelow) wrapClass += ' sidebar__channel-wrap--drop-below'
-              return (
-                <div
-                  key={ch.id}
-                  className={wrapClass}
-                    onDragOver={(e) => { if (isAdmin && !isMobile) handleDragOver(e, ch) }}
-                    onDragLeave={(e) => { if (isAdmin && !isMobile) handleDragLeave(e, ch) }}
-                    onDrop={(e) => { if (isAdmin && !isMobile) handleDrop(e, ch) }}
-                >
-                  <button
-                    draggable={isAdmin && !isMobile}
-                    onDragStart={(e) => { if (isAdmin && !isMobile) handleDragStart(e, ch) }}
-                    onDragEnd={handleDragEnd}
-                    onClick={() => { setActiveChannel(ch.id); setLockMenuChannelId(null); onOpenChat?.() }}
-                    onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
-                    className={`sidebar__channel ${activeChannelId === ch.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
-                    aria-label={(ch.type === 'voice' ? 'Voice' : 'Text') + ' channel ' + ch.name + (mentionBadge ? ' — ' + mentionBadge + ' mentions' : '') + (unreadOnly ? ' — unread' : '')}
-                    aria-current={activeChannelId === ch.id ? 'page' : undefined}
-                  >
-                    <span className="sidebar__channel-icon">#</span>
-                    <span className="sidebar__channel-name">{ch.name}</span>
-                    {channelMutes[ch.id] !== undefined && <BellOff size={10} className="sidebar__mute-icon" />}
-                    {mentionBadge ? <span className="sidebar__unread-badge">{mentionBadge > 99 ? '99+' : mentionBadge}</span> : unreadOnly ? <span className="sidebar__unread-dot" /> : null}
-                  </button>
-                  {isAdmin && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openLockMenu(ch.id) }}
-                      className={`sidebar__lock-btn ${ch.locked ? 'sidebar__lock-btn--active' : ''}`}
-                      title={ch.locked ? 'Unlock channel' : 'Lock channel'}
-                    >
-                      {ch.locked ? <Lock size={12} /> : <Unlock size={12} />}
-                    </button>
-                  )}
-                  {lockMenuChannelId === ch.id && (
-                    <div className="sidebar__lock-menu" ref={lockMenuRef}>
-                      {ch.locked ? (
-                        <>
-                          <span className="sidebar__lock-menu-label">Locked to: {ch.write_role_name || 'no role'}</span>
-                          <button onClick={() => handleToggleLock(ch, false, null)} className="sidebar__lock-menu-btn">Unlock</button>
-                          {roles.map(r => (
-                            <button
-                              key={r.id}
-                              onClick={() => handleToggleLock(ch, true, r.id)}
-                              className={`sidebar__lock-menu-btn ${ch.write_role_id === r.id ? 'sidebar__lock-menu-btn--active' : ''}`}
-                            >
-                              Change to {r.name}
-                            </button>
-                          ))}
-                        </>
-                      ) : (
-                        <>
-                          <span className="sidebar__lock-menu-label">Lock to role:</span>
-                          {roles.map(r => (
-                            <button key={r.id} onClick={() => handleToggleLock(ch, true, r.id)} className="sidebar__lock-menu-btn">
-                              {r.name}
-                            </button>
-                          ))}
-                          {roles.length === 0 && <span className="sidebar__lock-menu-label">No roles exist. Create one in server menu.</span>}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
+        {/* Render categories with their channels */}
+        {categories.sort((a, b) => a.position - b.position).map((cat) => {
+          const catChannels = channels.filter(c => c.category_id === cat.id)
+          if (catChannels.length === 0) return null
+          const isCollapsed = collapsedCategories.has(cat.id)
+          return (
+            <div key={cat.id} className="sidebar__section">
+              <button
+                className="sidebar__category-header"
+                onClick={() => setCollapsedCategories(prev => {
+                  const next = new Set(prev)
+                  if (next.has(cat.id)) next.delete(cat.id)
+                  else next.add(cat.id)
+                  return next
+                })}
+                title={isCollapsed ? 'Expand' : 'Collapse'}
+              >
+                <span className={`sidebar__category-arrow${isCollapsed ? ' sidebar__category-arrow--collapsed' : ''}`}>▾</span>
+                <span className="sidebar__section-title">{cat.name}</span>
+              </button>
+              {!isCollapsed && catChannels.map((ch) => renderChannel(ch))}
+            </div>
+          )
+        })}
 
-        {voiceChannels.length > 0 && (
-          <div className="sidebar__section">
-            <h3 className="sidebar__section-title">Voice Channels</h3>
-            {voiceChannels.map((ch) => {
-              const voiceUsers = voiceChannelUsers[ch.id] || []
-              const isDragging = drag?.channelId === ch.id
-              const isDropAbove = dragOver?.channelId === ch.id && dragOver.position === 'above'
-              const isDropBelow = dragOver?.channelId === ch.id && dragOver.position === 'below'
-              let wrapClass = 'sidebar__channel-wrap'
-              if (isDragging) wrapClass += ' sidebar__channel-wrap--dragging'
-              if (isDropAbove) wrapClass += ' sidebar__channel-wrap--drop-above'
-              if (isDropBelow) wrapClass += ' sidebar__channel-wrap--drop-below'
-              return (
-                <div
-                  key={ch.id}
-                  className={wrapClass}
-                    onDragOver={(e) => { if (isAdmin && !isMobile) handleDragOver(e, ch) }}
-                    onDragLeave={(e) => { if (isAdmin && !isMobile) handleDragLeave(e, ch) }}
-                    onDrop={(e) => { if (isAdmin && !isMobile) handleDrop(e, ch) }}
-                >
-                  <button
-                    draggable={isAdmin && !isMobile}
-                    onDragStart={(e) => { if (isAdmin && !isMobile) handleDragStart(e, ch) }}
-                    onDragEnd={handleDragEnd}
-                    onClick={async () => {
-                      if (activeVoiceChannelId === ch.id) { await leaveVoice() }
-                      else { if (activeVoiceChannelId) await leaveVoice(); joinVoice(ch.id) }
-                    }}
-                    onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
-                    className={`sidebar__channel ${activeVoiceChannelId === ch.id ? 'sidebar__channel--voice-active' : ''}`}
-                  >
-                    <span className="sidebar__channel-icon">~</span>
-                    <span className="sidebar__channel-name">{ch.name}</span>
-                    {channelMutes[ch.id] !== undefined && <BellOff size={10} className="sidebar__mute-icon" />}
-                    {activeVoiceChannelId === ch.id && <span className="sidebar__voice-indicator" />}
-                  </button>
-                  {voiceUsers.length > 0 && (
-                    <div className="sidebar__voice-users">
-                      {voiceUsers.slice(0, 5).map((u) => {
-                        const member = members.find((m) => m.id === u.userId)
-                        return (
-                          <div key={u.userId} className="sidebar__voice-user">
-                            <div className="sidebar__voice-user-avatar">
-                              {member?.avatar ? (
-                                <img
-                                  src={member.avatar}
-                                  alt=""
-                                  className="sidebar__voice-user-avatar-img"
-                                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-                                />
-                              ) : (
-                                (member?.display_name || u.username)[0]?.toUpperCase()
-                              )}
-                            </div>
-                            <span className="sidebar__voice-user-name">
-                              {member?.display_name || u.username}
-                            </span>
-                          </div>
-                        )
-                      })}
-                      {voiceUsers.length > 5 && (
-                        <div className="sidebar__voice-user sidebar__voice-user--more">
-                          +{voiceUsers.length - 5} more
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
+        {/* Uncategorized text channels */}
+        {(() => {
+          const uncatText = textChannels.filter(c => !c.category_id)
+          if (uncatText.length === 0) return null
+          return (
+            <div className="sidebar__section">
+              <h3 className="sidebar__section-title">Text Channels</h3>
+              {uncatText.map((ch) => renderChannel(ch))}
+            </div>
+          )
+        })()}
+
+        {/* Uncategorized voice channels */}
+        {(() => {
+          const uncatVoice = voiceChannels.filter(c => !c.category_id)
+          if (uncatVoice.length === 0) return null
+          return (
+            <div className="sidebar__section">
+              <h3 className="sidebar__section-title">Voice Channels</h3>
+              {uncatVoice.map((ch) => renderChannel(ch))}
+            </div>
+          )
+        })()}
 
         {dmChannels.length > 0 && (
           <div className="sidebar__section">

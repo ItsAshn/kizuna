@@ -8,16 +8,17 @@ import { useCallStore } from '../store/callStore'
 import { useMobile } from '../hooks/useMobile'
 import { useSwipeBack } from '../hooks/useSwipeBack'
 import { useKeyboard } from '../hooks/useKeyboard'
-import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles } from '@kizuna/shared'
+import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles, pinMessage, unpinMessage, fetchPinnedMessages, createThread } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import { Lock, Paperclip, Send, Sticker, Phone, ChevronLeft, Users } from 'lucide-react'
-import type { Message, Member, DMChannelData, CustomRole } from '@kizuna/shared'
+import { Lock, Paperclip, Send, Sticker, Phone, ChevronLeft, Users, Pin, Mic, Square, Trash2 } from 'lucide-react'
+import type { Message, Member, DMChannelData, CustomRole, PinnedMessage } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
 import Skeleton from './Skeleton'
 import Lightbox from './Lightbox'
 import SearchBar from './SearchBar'
+import PinnedMessagesModal from './PinnedMessagesModal'
 import './ChatArea.css'
 
 interface ChatAreaProps {
@@ -31,9 +32,37 @@ interface ChatAreaProps {
 
 function getAtQuery(text: string, cursor: number): string | null {
   const before = text.slice(0, cursor)
-  const match = /(?:^|[\s])@([\w.\-]*)$/.exec(before)
+  const match = /(?:^|[\s])@([\w.-]*)$/.exec(before)
   return match ? match[1] : null
 }
+
+function getEmojiQuery(text: string, cursor: number): string | null {
+  const before = text.slice(0, cursor)
+  const match = /(?:^|[\s]):([\w+-]*)$/.exec(before)
+  return match ? match[1] : null
+}
+
+const EMOJI_LIST: { shortcode: string; emoji: string }[] = [
+  { shortcode: 'smile', emoji: '😊' }, { shortcode: 'laugh', emoji: '😂' }, { shortcode: 'heart', emoji: '❤️' },
+  { shortcode: 'thumbsup', emoji: '👍' }, { shortcode: 'thumbsdown', emoji: '👎' }, { shortcode: 'clap', emoji: '👏' },
+  { shortcode: 'fire', emoji: '🔥' }, { shortcode: 'star', emoji: '⭐' }, { shortcode: 'check', emoji: '✅' },
+  { shortcode: 'x', emoji: '❌' }, { shortcode: 'warning', emoji: '⚠️' }, { shortcode: 'question', emoji: '❓' },
+  { shortcode: 'bulb', emoji: '💡' }, { shortcode: 'rocket', emoji: '🚀' }, { shortcode: 'party', emoji: '🎉' },
+  { shortcode: 'cry', emoji: '😢' }, { shortcode: 'angry', emoji: '😠' }, { shortcode: 'cool', emoji: '😎' },
+  { shortcode: 'wink', emoji: '😉' }, { shortcode: 'kiss', emoji: '😘' }, { shortcode: 'hug', emoji: '🤗' },
+  { shortcode: 'pray', emoji: '🙏' }, { shortcode: 'ok', emoji: '👌' }, { shortcode: 'wave', emoji: '👋' },
+  { shortcode: 'muscle', emoji: '💪' }, { shortcode: 'brain', emoji: '🧠' }, { shortcode: 'eyes', emoji: '👀' },
+  { shortcode: '100', emoji: '💯' }, { shortcode: 'tada', emoji: '🎊' }, { shortcode: 'sunglasses', emoji: '😎' },
+  { shortcode: 'sleep', emoji: '😴' }, { shortcode: 'cat', emoji: '🐱' }, { shortcode: 'dog', emoji: '🐶' },
+  { shortcode: 'alien', emoji: '👽' }, { shortcode: 'ghost', emoji: '👻' }, { shortcode: 'skull', emoji: '💀' },
+  { shortcode: 'pizza', emoji: '🍕' }, { shortcode: 'coffee', emoji: '☕' }, { shortcode: 'beer', emoji: '🍺' },
+  { shortcode: 'crown', emoji: '👑' }, { shortcode: 'gem', emoji: '💎' }, { shortcode: 'gift', emoji: '🎁' },
+  { shortcode: 'zap', emoji: '⚡' }, { shortcode: 'rainbow', emoji: '🌈' }, { shortcode: 'lock', emoji: '🔒' },
+  { shortcode: 'key', emoji: '🔑' }, { shortcode: 'hammer', emoji: '🔨' }, { shortcode: 'wrench', emoji: '🔧' },
+  { shortcode: 'link', emoji: '🔗' }, { shortcode: 'pin', emoji: '📌' }, { shortcode: 'book', emoji: '📖' },
+  { shortcode: 'pencil', emoji: '✏️' }, { shortcode: 'scissors', emoji: '✂️' }, { shortcode: 'phone', emoji: '📱' },
+  { shortcode: 'monitor', emoji: '🖥️' }, { shortcode: 'mute', emoji: '🔇' }, { shortcode: 'sound', emoji: '🔊' },
+]
 
 function hasDeletePermission(members: Member[], currentUserId: string, currentUserRole?: string): boolean {
   if (currentUserRole === 'admin') return true
@@ -77,6 +106,12 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const loadMoreErrors = useChatStore((s) => s.loadMoreErrors)
   const setLoadingMoreMessages = useChatStore((s) => s.setLoadingMoreMessages)
   const setLoadMoreError = useChatStore((s) => s.setLoadMoreError)
+  const pinnedMessages = useChatStore((s) => s.pinnedMessages)
+  const setPinned = useChatStore((s) => s.setPinnedMessages)
+  const addPinned = useChatStore((s) => s.addPinnedMessage)
+  const removePinned = useChatStore((s) => s.removePinnedMessage)
+  const setActiveChannel = useChatStore((s) => s.setActiveChannel)
+  const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
   const dmCallStatus = useCallStore((s) => s.dmCallStatus)
   const dmCallChannelId = useCallStore((s) => s.dmCallChannelId)
   const [input, setInput] = useState('')
@@ -88,10 +123,19 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null)
   const [pendingAttachmentId, setPendingAttachmentId] = useState<string | null>(null)
   const [atQuery, setAtQuery] = useState<string | null>(null)
+  const [emojiQuery, setEmojiQuery] = useState<string | null>(null)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [atIndex, setAtIndex] = useState(0)
+  const [emojiIndex, setEmojiIndex] = useState(0)
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [selectedEmojiIndex, setSelectedEmojiIndex] = useState(0)
   const [replyTo, setReplyTo] = useState<{ messageId: string; username: string; content: string } | null>(null)
+  const [pinsOpen, setPinsOpen] = useState(false)
+  const [recording, setRecording] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recordingChunksRef = useRef<Blob[]>([])
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [channelPerms, setChannelPerms] = useState<{ can_write: boolean; locked: boolean; write_role_name: string | null } | null>(null)
   const virtuosoRef = useRef<any>(null)
@@ -107,6 +151,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const [showSearch, setShowSearch] = useState(false)
   const [mentionableRoles, setMentionableRoles] = useState<CustomRole[]>([])
+  const newMessagesRef = useRef<string | null>(null)
   useSwipeBack(chatAreaRef, onBackToSidebar || (() => {}), !!isMobile && !!onBackToSidebar)
   useKeyboard()
   const tryDecryptDM = useCallback((msg: Message): Message => {
@@ -143,6 +188,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     : false
   const canCall = session?.user.permissions?.initiate_dm_calls === true || session?.user.role === 'admin'
 
+  const MENTION_LIMIT = 8
+
   const specialTargets = ['everyone', 'here']
   const allSuggestions = [
     ...specialTargets,
@@ -151,6 +198,9 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   ]
   const suggestions = atQuery !== null
     ? allSuggestions.filter(u => u.toLowerCase().startsWith(atQuery.toLowerCase()))
+    : []
+  const emojiSuggestions = emojiQuery !== null
+    ? EMOJI_LIST.filter(e => e.shortcode.toLowerCase().startsWith(emojiQuery.toLowerCase())).slice(0, 8)
     : []
 
   useEffect(() => {
@@ -162,6 +212,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   }, [session])
 
   useEffect(() => { setSelectedIndex(0) }, [suggestions.length, atQuery])
+  useEffect(() => { setSelectedEmojiIndex(0) }, [emojiSuggestions.length, emojiQuery])
   useEffect(() => {
     suggestionRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' })
   }, [selectedIndex])
@@ -176,6 +227,13 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           if (cancelled) return
           useChatStore.getState().setMessages(activeChannelId, msgs)
           useChatStore.getState().setHasMoreMessages(activeChannelId, hasMore)
+          const lastRead = useChatStore.getState().channelLastReadAt[activeChannelId]
+          if (lastRead && msgs.length > 0) {
+            const firstNew = msgs.find(m => m.created_at > lastRead)
+            newMessagesRef.current = firstNew ? firstNew.id : null
+          } else {
+            newMessagesRef.current = null
+          }
         })
         .finally(() => {
           if (!cancelled) setLoading(false)
@@ -194,6 +252,13 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
         unreadCounts: { ...state.unreadCounts, [activeChannelId]: 0 },
         mentionCounts: { ...state.mentionCounts, [activeChannelId]: 0 },
       }))
+
+      fetchPinnedMessages(session!.url, activeChannelId)
+        .then((pins: any) => {
+          if (cancelled) return
+          setPinned(activeChannelId, pins as PinnedMessage[])
+        })
+        .catch((err) => { console.error('Failed to load pins:', err) })
 
       socketRef.current?.emit('channel:join', activeChannelId)
       socketRef.current?.emit('mentions:read', { channelId: activeChannelId })
@@ -223,6 +288,13 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           const decrypted = msgs.map((m) => tryDecryptDM(m))
           useChatStore.getState().setMessages(activeDMChannelId, decrypted)
           useChatStore.getState().setHasMoreMessages(activeDMChannelId, hasMore)
+          const lastRead = useChatStore.getState().channelLastReadAt[activeDMChannelId]
+          if (lastRead && decrypted.length > 0) {
+            const firstNew = decrypted.find(m => m.created_at > lastRead)
+            newMessagesRef.current = firstNew ? firstNew.id : null
+          } else {
+            newMessagesRef.current = null
+          }
         })
         .finally(() => {
           if (!cancelled) setLoading(false)
@@ -283,9 +355,15 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
         const { messages: olderMsgs, hasMore } = activeDMChannelId
           ? await fetchDMMessages(session.url, channelId, 50, oldestId)
           : await fetchMessages(session.url, channelId, 50, oldestId)
+        if (olderMsgs.length === 0) {
+          store.setHasMoreMessages(channelId, false)
+          return
+        }
+        const beforeLen = (store.messages[channelId] || []).length
         const decrypted = activeDMChannelId ? olderMsgs.map(m => tryDecryptDM(m)) : olderMsgs
         store.prependMessages(channelId, decrypted)
-        store.setHasMoreMessages(channelId, hasMore)
+        const afterLen = (store.messages[channelId] || []).length
+        store.setHasMoreMessages(channelId, hasMore && afterLen > beforeLen)
       } catch (err) {
         console.error('Failed to load more messages:', err)
         store.setLoadMoreError(channelId, 'Failed to load older messages')
@@ -331,10 +409,16 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
 
     const cursor = e.target.selectionStart ?? val.length
     const query = getAtQuery(val, cursor)
+    const emQuery = getEmojiQuery(val, cursor)
     setAtQuery(query)
+    setEmojiQuery(emQuery)
     if (query !== null) {
       const before = val.slice(0, cursor)
       setAtIndex(before.lastIndexOf('@'))
+    }
+    if (emQuery !== null) {
+      const before = val.slice(0, cursor)
+      setEmojiIndex(before.lastIndexOf(':'))
     }
 
     const el = inputRef.current
@@ -372,10 +456,31 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     })
   }
 
+  const insertEmoji = (entry: typeof EMOJI_LIST[0]) => {
+    const before = input.slice(0, emojiIndex)
+    const after = input.slice(emojiIndex + 1 + (emojiQuery?.length ?? 0))
+    const newVal = `${before}${entry.emoji} ${after}`
+    setInput(newVal)
+    setEmojiQuery(null)
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        const pos = before.length + entry.emoji.length + 1
+        inputRef.current.setSelectionRange(pos, pos)
+        inputRef.current.focus()
+      }
+    })
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (emojiSuggestions.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedEmojiIndex((i) => (i + 1) % emojiSuggestions.length); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedEmojiIndex((i) => (i - 1 + emojiSuggestions.length) % emojiSuggestions.length); return }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); insertEmoji(emojiSuggestions[selectedEmojiIndex] ?? emojiSuggestions[0]); return }
+      if (e.key === 'Escape') { e.preventDefault(); setEmojiQuery(null); return }
+    }
     if (suggestions.length > 0) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIndex((i) => (i + 1) % suggestions.slice(0, 8).length); return }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIndex((i) => (i - 1 + suggestions.slice(0, 8).length) % suggestions.slice(0, 8).length); return }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIndex((i) => (i + 1) % suggestions.slice(0, MENTION_LIMIT).length); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIndex((i) => (i - 1 + suggestions.slice(0, MENTION_LIMIT).length) % suggestions.slice(0, MENTION_LIMIT).length); return }
       if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); insertMention(suggestions[selectedIndex] ?? suggestions[0]); return }
       if (e.key === 'Escape') { e.preventDefault(); setAtQuery(null); return }
     }
@@ -535,6 +640,97 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     } catch (err) { console.error('Failed to delete message:', err) }
   }, [session, activeChannelId, activeDMChannelId])
 
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm' })
+      mediaRecorderRef.current = mr
+      recordingChunksRef.current = []
+
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) recordingChunksRef.current.push(e.data)
+      }
+
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        const blob = new Blob(recordingChunksRef.current, { type: mr.mimeType })
+        const file = new File([blob], `voice-${Date.now()}.webm`, { type: mr.mimeType })
+        setPendingFile(file)
+        setPendingPreviewUrl(null)
+        setUploading(true)
+        setUploadProgress(0)
+
+        const targetChannelId = activeChannelId || activeDMChannelId
+        if (!targetChannelId) return
+
+        try {
+          const result = await uploadAttachment(session!.url, targetChannelId, file, (pct) => setUploadProgress(pct))
+          const msgText = input.trim()
+          const attachmentText = `${msgText ? msgText + '\n' : ''}🎤 [Voice Message](${result.url})`
+
+          const attIds = [result.id]
+          let message: Message
+          if (activeChannelId) {
+            message = await sendMessage(session!.url, activeChannelId, attachmentText, attIds)
+          } else if (activeDMChannelId) {
+            const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
+            const otherPubKey = await resolveRecipientPublicKey(activeDM)
+            const secKey = getSecretKey()
+            let content: string
+            let enc = false
+            if (otherPubKey && secKey) {
+              const encrypted = encryptDM(attachmentText, otherPubKey, secKey)
+              content = JSON.stringify(encrypted)
+              enc = true
+            } else {
+              content = attachmentText
+            }
+            message = await sendDMMessage(session!.url, activeDMChannelId!, content, enc, attIds)
+          }
+          addMessage(targetChannelId, message!)
+          setInput('')
+        } catch (err) { console.error('Failed to send voice message:', err) }
+        setUploading(false)
+        setPendingFile(null)
+      }
+
+      mr.start()
+      setRecording(true)
+      setRecordingTime(0)
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime((t) => t + 1)
+      }, 1000)
+    } catch (err) {
+      console.error('Failed to start recording:', err)
+    }
+  }, [session, activeChannelId, activeDMChannelId, input, dmChannels, resolveRecipientPublicKey, addMessage])
+
+  const stopRecording = useCallback((send: boolean) => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      if (send) {
+        mediaRecorderRef.current.stop()
+      } else {
+        mediaRecorderRef.current.ondataavailable = null
+        mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop())
+      }
+    }
+    setRecording(false)
+    setRecordingTime(0)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
+      if (mediaRecorderRef.current?.state !== 'inactive') {
+        mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop())
+      }
+    }
+  }, [])
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -586,6 +782,35 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     } catch (err) { console.error('Failed to edit message:', err) }
   }, [session, activeChannelId, activeDMChannelId, dmChannels, resolveRecipientPublicKey])
 
+  const handlePinMessage = useCallback(async (messageId: string) => {
+    if (!session || !activeChannelId) return
+    try {
+      await pinMessage(session.url, activeChannelId, messageId)
+    } catch (err) { console.error('Failed to pin message:', err) }
+  }, [session, activeChannelId])
+
+  const handleUnpinMessage = useCallback(async (messageId: string) => {
+    if (!session || !activeChannelId) return
+    try {
+      await unpinMessage(session.url, activeChannelId, messageId)
+    } catch (err) { console.error('Failed to unpin message:', err) }
+  }, [session, activeChannelId])
+
+  const handleCreateThread = useCallback(async (messageId: string, name: string) => {
+    if (!session || !activeChannelId) return
+    try {
+      await createThread(session.url, activeChannelId, name, messageId)
+    } catch (err) { console.error('Failed to create thread:', err) }
+  }, [session, activeChannelId])
+
+  const loadPinnedMessages = useCallback(async () => {
+    if (!session || !activeChannelId) return
+    try {
+      const pins = await fetchPinnedMessages(session.url, activeChannelId)
+      setPinned(activeChannelId, pins as unknown as PinnedMessage[])
+    } catch (err) { console.error('Failed to load pins:', err) }
+  }, [session, activeChannelId, setPinned])
+
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -594,6 +819,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
 
   const headerTitle = activeChannel?.name || activeDM?.other_display_name || 'Kizuna'
   const displayMessages = activeDMChannelId ? dmMessages : channelMessages
+
   useEffect(() => {
     if (atBottom) {
       lastCountAtBottom.current = displayMessages.length
@@ -612,7 +838,47 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       : ''
   const dmHasKey = activeDMChannelId ? !!(activeDM?.other_public_key && getSecretKey()) : false
   const inputMaxLen = activeDMChannelId ? 2700 : 4000
+  const inputRemaining = inputMaxLen - input.length
+  const showCharCounter = inputRemaining < 500
   const cantWrite = channelPerms?.locked && !channelPerms?.can_write
+
+  const handleJumpToMessage = useCallback((messageId: string, targetChannelId: string) => {
+    setShowSearch(false)
+
+    const currentChannelId = activeChannelId || activeDMChannelId
+
+    if (targetChannelId !== currentChannelId) {
+      const isDM = dmChannels.some((d) => d.id === targetChannelId)
+      if (isDM) {
+        setActiveDMChannel(targetChannelId)
+      } else {
+        setActiveChannel(targetChannelId)
+      }
+    }
+
+    const tryScroll = (attempts: number) => {
+      const idx = displayMessages.findIndex((m) => m.id === messageId)
+      if (idx >= 0) {
+        virtuosoRef.current?.scrollToIndex({ index: idx, align: 'center' })
+        const el = document.getElementById(`msg-${messageId}`)
+        if (el) {
+          el.style.transition = 'background-color 0.3s ease'
+          el.style.backgroundColor = 'var(--bg-highlight, rgba(108, 90, 245, 0.12))'
+          setTimeout(() => { el.style.backgroundColor = '' }, 2500)
+        }
+        return
+      }
+      if (attempts < 15) {
+        setTimeout(() => tryScroll(attempts + 1), 200)
+      }
+    }
+
+    if (targetChannelId !== currentChannelId) {
+      setTimeout(() => tryScroll(0), 600)
+    } else {
+      tryScroll(0)
+    }
+  }, [activeChannelId, activeDMChannelId, dmChannels, setActiveChannel, setActiveDMChannel, displayMessages])
 
   const renderMessageItem = useCallback((_index: number, msg: Message) => {
     const msgIdx = displayMessages.indexOf(msg)
@@ -622,12 +888,18 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     const isOwn = msg.user_id === session?.user.id
     const isGrouped = prevMsg?.user_id === msg.user_id && !isOwn
     const messageCanDelete = isOwn || canDeleteAny
+    const isFirstNew = newMessagesRef.current === msg.id
 
     return (
-      <>
+      <div id={`msg-${msg.id}`}>
         {msgDate !== prevDate && (
           <div className="msg-bubble__date-separator">
             <span className="msg-bubble__date-label">{formatDateSeparator(new Date(msg.created_at))}</span>
+          </div>
+        )}
+        {isFirstNew && (
+          <div className="chat-area__new-messages-separator">
+            <span className="chat-area__new-messages-label">New Messages</span>
           </div>
         )}
         <MessageBubble
@@ -645,6 +917,10 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             setReplyTo({ messageId: replyMsg.id, username: replyMsg.display_name || replyMsg.username || 'Unknown', content: replyMsg.content })
             inputRef.current?.focus()
           }}
+          onPin={activeChannelId ? handlePinMessage : undefined}
+          onUnpin={activeChannelId ? handleUnpinMessage : undefined}
+          isPinned={activeChannelId ? pinnedMessages[activeChannelId]?.some((p) => p.messageId === msg.id) ?? false : undefined}
+          onCreateThread={activeChannelId ? handleCreateThread : undefined}
           onUserClick={() => {}}
           onImageClick={(imageUrl, filename) => {
             const allImages: { url: string; filename: string }[] = []
@@ -674,12 +950,13 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             setLightboxIndex(currentIndex >= 0 ? currentIndex : 0)
           }}
         />
-      </>
+      </div>
     )
   }, [displayMessages, session, members, canDeleteAny, activeChannelId, activeDMChannelId, setReplyTo])
 
   return (
     <div
+      id="main-content"
       ref={chatAreaRef}
       className="chat-area"
       onDragOver={handleDragOver}
@@ -747,13 +1024,23 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             <span>{members.length}</span>
           </button>
         )}
+        {activeChannelId && (
+          <button
+            className={`chat-area__header-pins-btn${pinsOpen ? ' chat-area__header-pins-btn--active' : ''}`}
+            onClick={() => setPinsOpen(true)}
+            aria-label="Pinned messages"
+            title="Pinned Messages"
+          >
+            <Pin className="icon-sm" />
+          </button>
+        )}
       </div>
 
       {showSearch && activeChannelId && (
         <SearchBar
           channelId={activeChannelId}
           onClose={() => setShowSearch(false)}
-          onJumpToMessage={() => setShowSearch(false)}
+          onJumpToMessage={handleJumpToMessage}
         />
       )}
 
@@ -810,7 +1097,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
                   </div>
                 )
               },
-              Footer: () => typingText ? <div className="chat-area__typing">{typingText}</div> : null,
+              Footer: () => typingText ? <div className="chat-area__typing">{typingText}<span className="chat-area__typing-dots"><span className="chat-area__typing-dot" /><span className="chat-area__typing-dot" /><span className="chat-area__typing-dot" /></span></div> : null,
             }}
           />
         )}
@@ -820,7 +1107,14 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             onClick={() => { virtuosoRef.current?.scrollToIndex(displayMessages.length - 1); lastCountAtBottom.current = displayMessages.length }}
             title="Scroll to bottom"
           >
-            ↓ New messages
+            ↓ {(() => {
+              if (newMessagesRef.current) {
+                const newIdx = displayMessages.findIndex(m => m.id === newMessagesRef.current)
+                const count = newIdx >= 0 ? displayMessages.length - newIdx : (displayMessages.length - lastCountAtBottom.current)
+                if (count > 0) return `${count} new message${count > 1 ? 's' : ''}`
+              }
+              return 'New messages'
+            })()}
           </button>
         )}
       </div>
@@ -828,7 +1122,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       <div className="chat-area__input-bar">
         {suggestions.length > 0 && (
           <div className="chat-area__mention-suggestions">
-            {suggestions.slice(0, 8).map((u, i) => {
+            {suggestions.slice(0, MENTION_LIMIT).map((u, i) => {
               const mentionableRole = mentionableRoles.find(r => r.name === u)
               const isRole = !!mentionableRole
               return (
@@ -847,6 +1141,25 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
               </button>
               )
             })}
+            {suggestions.length > MENTION_LIMIT && (
+              <div className="chat-area__mention-capped">Found {suggestions.length} — keep typing to narrow</div>
+            )}
+          </div>
+        )}
+
+        {emojiSuggestions.length > 0 && (
+          <div className="chat-area__emoji-suggestions">
+            {emojiSuggestions.map((entry, i) => (
+              <button
+                key={entry.shortcode}
+                onMouseDown={(e) => { e.preventDefault(); insertEmoji(entry) }}
+                onMouseEnter={() => setSelectedEmojiIndex(i)}
+                className={`chat-area__emoji-suggestion ${i === selectedEmojiIndex ? 'chat-area__emoji-suggestion--selected' : ''}`}
+              >
+                <span className="chat-area__emoji-char">{entry.emoji}</span>
+                <span className="chat-area__emoji-code">:{entry.shortcode}:</span>
+              </button>
+            ))}
           </div>
         )}
 
@@ -900,6 +1213,33 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           <button className="chat-area__gif-btn" onClick={() => setGifPickerOpen(true)} title="GIFs & Stickers" aria-label="GIFs and stickers">
             <Sticker size={16} />
           </button>
+          {activeDMChannelId && (
+            <>
+              <button
+                className={`chat-area__mic-btn${recording ? ' chat-area__mic-btn--recording' : ''}`}
+                onClick={() => recording ? undefined : startRecording()}
+                title={recording ? 'Recording...' : 'Record voice message'}
+                aria-label="Record voice message"
+                disabled={cantWrite}
+              >
+                <Mic size={16} />
+              </button>
+              {recording && (
+                <div className="chat-area__recording-bar">
+                  <span className="chat-area__recording-dot" />
+                  <span className="chat-area__recording-time">
+                    {String(Math.floor(recordingTime / 60)).padStart(2, '0')}:{String(recordingTime % 60).padStart(2, '0')}
+                  </span>
+                  <button className="chat-area__recording-cancel" onClick={() => stopRecording(false)} title="Cancel recording" aria-label="Cancel recording">
+                    <Trash2 size={14} />
+                  </button>
+                  <button className="chat-area__recording-send" onClick={() => stopRecording(true)} title="Stop and send" aria-label="Stop and send">
+                    <Square size={14} />
+                  </button>
+                </div>
+              )}
+            </>
+          )}
           <textarea
             ref={inputRef}
             className={`chat-area__input ${cantWrite ? 'chat-area__input--locked' : ''}`}
@@ -917,6 +1257,11 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             <Send size={16} />
           </button>
         </div>
+        {showCharCounter && (
+          <div className={`chat-area__char-counter${inputRemaining < 50 ? ' chat-area__char-counter--near-limit' : ''}`}>
+            {inputRemaining} / {inputMaxLen}
+          </div>
+        )}
         {sendError ? (
           <p className="chat-area__input-hint chat-area__input-hint--error">{sendError}</p>
         ) : (
@@ -941,6 +1286,15 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           images={lightboxImages}
           initialIndex={lightboxIndex}
           onClose={() => setLightboxImages(null)}
+        />
+      )}
+
+      {activeChannelId && (
+        <PinnedMessagesModal
+          pins={pinnedMessages[activeChannelId] || []}
+          open={pinsOpen}
+          onClose={() => setPinsOpen(false)}
+          onJump={(messageId) => handleJumpToMessage(messageId, activeChannelId!)}
         />
       )}
     </div>

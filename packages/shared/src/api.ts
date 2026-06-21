@@ -16,6 +16,7 @@ import type {
   GifInfo,
   LinkEmbed,
   TaggerStatus,
+  Thread,
 } from './types'
 
 function normalizeUrl(url: string): string {
@@ -151,6 +152,14 @@ export async function logout(
 export async function getMe(serverUrl: string): Promise<User> {
   const res = await client(serverUrl).get('/api/auth/me')
   return res.data.user
+}
+
+export async function updateStatus(
+  serverUrl: string,
+  status_text?: string | null,
+  status_emoji?: string | null,
+): Promise<void> {
+  await client(serverUrl).patch('/api/auth/me/status', { status_text, status_emoji })
 }
 
 export async function uploadPublicKey(
@@ -383,6 +392,14 @@ export async function fetchMembers(
 ): Promise<Member[]> {
   const res = await client(serverUrl).get('/api/auth/users')
   return res.data.users ?? res.data
+}
+
+export async function getUserProfile(
+  serverUrl: string,
+  userId: string,
+): Promise<Member> {
+  const res = await client(serverUrl).get(`/api/auth/users/${userId}`)
+  return res.data
 }
 
 // ─── Profile ──────────────────────────────────────────────
@@ -997,4 +1014,45 @@ export async function unfurlUrls(
 ): Promise<Record<string, LinkEmbed>> {
   const res = await client(serverUrl).post('/api/embeds/unfurl', { urls })
   return res.data.embeds ?? {}
+}
+
+export async function fetchThreads(
+  serverUrl: string,
+  channelId: string,
+): Promise<Thread[]> {
+  const res = await client(serverUrl).get(`/api/threads/${channelId}`)
+  return res.data.threads ?? []
+}
+
+export async function createThread(
+  serverUrl: string,
+  channelId: string,
+  name?: string,
+  messageId?: string,
+): Promise<{ id: string }> {
+  const res = await client(serverUrl).post(`/api/threads/${channelId}`, { name, message_id: messageId })
+  return res.data
+}
+
+export async function fetchThreadMessages(
+  serverUrl: string,
+  channelId: string,
+  threadId: string,
+  limit = 50,
+  before?: string,
+): Promise<{ messages: Message[]; hasMore: boolean }> {
+  const params: Record<string, string | number> = { limit }
+  if (before) params.before = before
+  const res = await client(serverUrl).get(`/api/threads/${channelId}/${threadId}/messages`, { params })
+  return { messages: res.data.messages ?? [], hasMore: res.data.hasMore ?? false }
+}
+
+export async function sendThreadMessage(
+  serverUrl: string,
+  channelId: string,
+  threadId: string,
+  content: string,
+): Promise<Message> {
+  const res = await client(serverUrl).post(`/api/threads/${channelId}/${threadId}/messages`, { content })
+  return res.data.message ?? res.data
 }

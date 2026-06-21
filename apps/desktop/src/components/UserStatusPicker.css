@@ -105,6 +105,111 @@
   background: var(--gray);
 }
 
+.status-picker__divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
+}
+
+.status-picker__custom {
+  padding: 4px 0;
+}
+
+.status-picker__custom-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+}
+
+.status-picker__emoji-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.1s ease;
+}
+
+.status-picker__emoji-btn:hover {
+  background: var(--bg-hover);
+}
+
+.status-picker__text-input {
+  flex: 1;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.status-picker__text-input:focus {
+  border-color: var(--brand);
+}
+
+.status-picker__text-input::placeholder {
+  color: var(--text-muted);
+}
+
+.status-picker__emoji-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px;
+  margin-top: 4px;
+  max-width: 192px;
+}
+
+.status-picker__emoji-option {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  transition: background 0.1s ease;
+}
+
+.status-picker__emoji-option:hover,
+.status-picker__emoji-option--active {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+}
+
+.status-picker__save-btn {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--brand);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.status-picker__save-btn:hover {
+  background: var(--brand-dim);
+}
+
 @media (max-width: 767px) {
   .status-picker__dropdown {
     min-width: 200px;

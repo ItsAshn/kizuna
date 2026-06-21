@@ -27,6 +27,10 @@ interface CallState {
   screenShareVideoProducerId: string | null;
   availableMonitors: MonitorInfo[];
 
+  isCameraOn: boolean;
+  cameraPeerIds: string[];
+  localCameraVideoProducerId: string | null;
+
   setDMCallStatus: (status: DMCallStatus) => void;
   setDMCallChannelId: (channelId: string | null) => void;
   setDMCallOtherUser: (userId: string | null, username: string | null) => void;
@@ -39,6 +43,12 @@ interface CallState {
   setIsScreenSharing: (active: boolean) => void;
   setScreenShareVideoProducerId: (producerId: string | null) => void;
   setAvailableMonitors: (monitors: MonitorInfo[]) => void;
+
+  setIsCameraOn: (on: boolean) => void;
+  setCameraPeerIds: (ids: string[]) => void;
+  addCameraPeerId: (id: string) => void;
+  removeCameraPeerId: (id: string) => void;
+  setLocalCameraVideoProducerId: (producerId: string | null) => void;
 }
 
 export const useCallStore = create<CallState>()(
@@ -56,6 +66,10 @@ export const useCallStore = create<CallState>()(
       isScreenSharing: false,
       screenShareVideoProducerId: null,
       availableMonitors: [],
+
+      isCameraOn: false,
+      cameraPeerIds: [],
+      localCameraVideoProducerId: null,
 
       setDMCallStatus: (dmCallStatus) => set({ dmCallStatus }),
       setDMCallChannelId: (dmCallChannelId) => set({ dmCallChannelId }),
@@ -85,6 +99,20 @@ export const useCallStore = create<CallState>()(
       setScreenShareVideoProducerId: (screenShareVideoProducerId) =>
         set({ screenShareVideoProducerId }),
       setAvailableMonitors: (availableMonitors) => set({ availableMonitors }),
+
+      setIsCameraOn: (isCameraOn) => set({ isCameraOn }),
+      setCameraPeerIds: (cameraPeerIds) => set({ cameraPeerIds }),
+      addCameraPeerId: (peerId) =>
+        set((s) => ({
+          cameraPeerIds: s.cameraPeerIds.includes(peerId)
+            ? s.cameraPeerIds
+            : [...s.cameraPeerIds, peerId],
+        })),
+      removeCameraPeerId: (peerId) =>
+        set((s) => ({
+          cameraPeerIds: s.cameraPeerIds.filter((id) => id !== peerId),
+        })),
+      setLocalCameraVideoProducerId: (localCameraVideoProducerId) => set({ localCameraVideoProducerId }),
     }),
     {
       name: 'kizuna-call-v1',

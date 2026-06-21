@@ -17,6 +17,7 @@ function mapChannel(row: any) {
     locked: row.locked === 1,
     write_role_id: row.write_role_id ?? null,
     write_role_name: row.write_role_name ?? null,
+    category_id: row.category_id ?? null,
     created_at: row.created_at,
   }
 }
@@ -25,9 +26,10 @@ function mapChannel(row: any) {
 channelRoutes.get('/', authMiddleware, (c) => {
   const db = getDb()
   const channels = db.prepare(`
-    SELECT c.*, r.name as write_role_name
+    SELECT c.*, r.name as write_role_name, cc.name as category_name
     FROM channels c
     LEFT JOIN roles r ON c.write_role_id = r.id
+    LEFT JOIN channel_categories cc ON c.category_id = cc.id
     ORDER BY c.position ASC
   `).all() as any[]
   return c.json({ channels: channels.map(mapChannel) })

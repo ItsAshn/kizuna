@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { X, Megaphone, AtSign, MessageCircle, Phone } from 'lucide-react'
 import { useNotificationStore } from '../store/notificationStore'
 import { useChatStore } from '../store/chatStore'
@@ -33,14 +33,15 @@ export default function NotificationToast({ notification }: Props) {
     dismissNotification(notification.id)
   }, [notification.channelId, notification.id, notification.type, dismissNotification, setActiveChannel, setActiveDMChannel])
 
-  return (
-    <div
-      className={`notification-toast${notification.channelId ? ' notification-toast--clickable' : ''}`}
-      onClick={notification.channelId ? handleClick : undefined}
-      role={notification.channelId ? 'button' : undefined}
-      tabIndex={notification.channelId ? 0 : undefined}
-      onKeyDown={notification.channelId ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleClick() } : undefined}
-    >
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      dismissNotification(notification.id)
+    }, 6000)
+    return () => clearTimeout(timer)
+  }, [notification.id, dismissNotification])
+
+  const content = (
+    <>
       <div className="notification-toast__icon">
         <Icon size={16} />
       </div>
@@ -54,6 +55,24 @@ export default function NotificationToast({ notification }: Props) {
       >
         <X size={12} />
       </button>
+    </>
+  )
+
+  if (notification.channelId) {
+    return (
+      <button
+        className="notification-toast notification-toast--clickable"
+        onClick={handleClick}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClick() }}
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return (
+    <div className="notification-toast">
+      {content}
     </div>
   )
 }

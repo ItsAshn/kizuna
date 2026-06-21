@@ -10,7 +10,7 @@ import { useSettingsStore } from '../store/settingsStore'
 import type { DMIncomingCall } from '../store/callStore'
 import { decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import type { Message, Channel, DMChannelData, UserStatus, MessageReaction, Member } from '@kizuna/shared'
+import type { Message, Channel, DMChannelData, UserStatus, MessageReaction, Member, PinnedMessage, Thread } from '@kizuna/shared'
 import { refreshToken } from '@kizuna/shared'
 import { showNotification } from '../utils/showNotification'
 
@@ -118,7 +118,8 @@ export function useSocket(): MutableRefObject<Socket | null> {
             [message.channel_id]: [...existing, message],
           },
         }
-        if (message.channel_id !== state.activeChannelId && !skipUnread) {
+        const currentUserId = useServerStore.getState().activeSession?.user.id
+        if (message.channel_id !== state.activeChannelId && !skipUnread && message.user_id !== currentUserId) {
           newState.unreadCounts = {
             ...state.unreadCounts,
             [message.channel_id]: (state.unreadCounts[message.channel_id] || 0) + 1,
@@ -147,7 +148,8 @@ export function useSocket(): MutableRefObject<Socket | null> {
             [message.channel_id]: [...existing, decrypted],
           },
         }
-        if (message.channel_id !== state.activeDMChannelId) {
+        const currentUserId = useServerStore.getState().activeSession?.user.id
+        if (message.channel_id !== state.activeDMChannelId && message.user_id !== currentUserId) {
           newState.unreadCounts = {
             ...state.unreadCounts,
             [message.channel_id]: (state.unreadCounts[message.channel_id] || 0) + 1,
@@ -300,6 +302,32 @@ export function useSocket(): MutableRefObject<Socket | null> {
         })
         .filter(Boolean) as MessageReaction[]
       store.updateMessageReactions(channelId, messageId, currentReactions)
+    })
+
+    socket.on('message:pin', (pin: PinnedMessage) => {
+      useChatStore.getState().addPinnedMessage(pin.channelId, pin)
+    })
+
+    socket.on('message:unpin', ({ channelId, messageId }: { channelId: string; messageId: string }) => {
+      useChatStore.getState().removePinnedMessage(channelId, messageId)
+    })
+
+    socket.on('camera:peerStarted', ({ peerId }: { peerId: string }) => {
+      useCallStore.getState().addCameraPeerId(peerId)
+    })
+
+    socket.on('camera:peerStopped', ({ peerId }: { peerId: string }) => {
+      useCallStore.getState().removeCameraPeerId(peerId)
+    })
+
+    socket.on('thread:created', (thread: Thread) => {
+      useChatStore.getState().addThread(thread.channel_id, thread)
+    })
+
+    socket.on('thread:message:new', (message: Message) => {
+      if (message.thread_id) {
+        useChatStore.getState().addThreadMessage(message.thread_id, message)
+      }
     })
 
     socket.on('user:online', ({ userId, status }: { userId: string; status: UserStatus }) => {

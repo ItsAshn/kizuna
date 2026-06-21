@@ -7,9 +7,10 @@ import { useSettingsStore } from '../store/settingsStore'
 import { useSocket } from '../hooks/useSocket'
 import { useVoice } from '../hooks/useVoice'
 import { useScreenshare } from '../hooks/useScreenshare'
+import { useCamera } from '../hooks/useCamera'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useMobile, useTablet } from '../hooks/useMobile'
-import { fetchChannels, fetchMembers, fetchDMChannels, fetchServerInfo, fetchChannelMutes } from '@kizuna/shared'
+import { fetchChannels, fetchMembers, fetchDMChannels, fetchServerInfo, fetchChannelMutes, fetchCategories } from '@kizuna/shared'
 import { restoreFromSession } from '../store/keyStore'
 import { Loader2, Users } from 'lucide-react'
 import ServerPanel from '../components/ServerPanel'
@@ -28,6 +29,7 @@ import QuickSwitcher from '../components/QuickSwitcher'
 import IncomingCallModal from '../components/IncomingCallModal'
 import ExportModal from '../components/ExportModal'
 import ConnectDialog from '../components/ConnectDialog'
+import ThreadPanel from '../components/ThreadPanel'
 import { useNavigate } from 'react-router-dom'
 import './Chat.css'
 
@@ -41,7 +43,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const setActiveServer = useServerStore((s) => s.setActiveServer)
   const activeVoiceChannelId = useVoiceStore((s) => s.activeVoiceChannelId)
   const {
-    setChannels, setMembers, setDMChannels,
+    setChannels, setCategories, setMembers, setDMChannels,
     activeChannelId, activeDMChannelId,
     setActiveChannel, setActiveDMChannel,
     setChannelMutes,
@@ -65,6 +67,8 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     connectDMCall,
   } = useVoice(socketRef)
   const { startScreenshare, stopScreenshare } = useScreenshare(socketRef, sendTransportRef)
+  const { toggleCamera, getStream } = useCamera(socketRef, sendTransportRef)
+  const isCameraOn = useCallStore((s) => s.isCameraOn)
   const {
     dmCallStatus, dmCallChannelId, dmCallOtherUserId, dmCallOtherUsername,
     incomingCall, setIncomingCall, dmCallShouldCleanup, setDMCallShouldCleanup,
@@ -174,9 +178,10 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           fetchDMChannels(session!.url),
           fetchServerInfo(session!.url),
           fetchChannelMutes(session!.url),
+          fetchCategories(session!.url),
         ])
 
-        const [channelsResult, membersResult, dmsResult, infoResult, mutesResult] = results
+        const [channelsResult, membersResult, dmsResult, infoResult, mutesResult, categoriesResult] = results
 
         if (channelsResult.status === 'fulfilled') {
           setChannels(channelsResult.value)
@@ -215,10 +220,17 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           console.error('[Chat] Failed to fetch channel mutes:', mutesResult.reason)
         }
 
+        if (categoriesResult.status === 'fulfilled') {
+          setCategories(categoriesResult.value)
+        } else {
+          console.error('[Chat] Failed to fetch categories:', categoriesResult.reason)
+        }
+
         setInitialLoading(false)
       } catch (err) {
         console.error('[Chat] Failed to load server data:', err)
         setChannels([])
+        setCategories([])
         setMembers([])
         setDMChannels([])
         setInitialLoading(false)
@@ -321,6 +333,9 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           startScreenshare={startScreenshare}
           stopScreenshare={stopScreenshare}
           dmCallOtherUsername={dmCallOtherUsername}
+          toggleCamera={toggleCamera}
+          isCameraOn={isCameraOn}
+          localCameraStream={getStream()}
         />
       </div>
       <div className="chat-main">
@@ -374,6 +389,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
       </div>
       <MemberList visible={showMembers} onClose={() => setShowMembers(false)} />
       <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
+      <ThreadPanel channelId={activeChannelId!} />
       <NotificationContainer />
     </div>
     {showExport && <ExportModal onClose={() => setShowExport(false)} />}

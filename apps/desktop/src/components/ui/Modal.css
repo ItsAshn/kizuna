@@ -81,7 +81,7 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: inherit;
 }
 
 .modal__close-btn {

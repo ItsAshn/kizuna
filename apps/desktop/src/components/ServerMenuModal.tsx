@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { MoreHorizontal, Pencil, X } from 'lucide-react'
 import Modal from './ui/Modal'
 import Tabs from './ui/Tabs'
+import ToggleSwitch from './ui/ToggleSwitch'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
@@ -121,6 +122,8 @@ function NotificationSettings() {
   const session = useServerStore((s) => s.activeSession)
   const settings = useSettingsStore((s) => s.notificationSettings)
   const setNotificationSettings = useSettingsStore((s) => s.setNotificationSettings)
+  const notificationSoundEnabled = useSettingsStore((s) => s.notificationSoundEnabled)
+  const setNotificationSoundEnabled = useSettingsStore((s) => s.setNotificationSoundEnabled)
   const serverId = session?.serverId || ''
   const current = settings[serverId] || { level: 'all' as const, suppressEveryone: false }
 
@@ -140,16 +143,19 @@ function NotificationSettings() {
       </div>
       <div className="server-menu__toggle-row">
         <label className="server-menu__label" style={{ margin: 0 }}>suppress @everyone and @here</label>
-        <label className="server-menu__toggle-switch">
-          <input
-            type="checkbox"
-            checked={current.suppressEveryone}
-            onChange={(e) => setNotificationSettings(serverId, { ...current, suppressEveryone: e.target.checked })}
-          />
-          <span className="server-menu__toggle-track">
-            <span className="server-menu__toggle-thumb" />
-          </span>
-        </label>
+        <ToggleSwitch
+          checked={current.suppressEveryone}
+          onChange={(checked) => setNotificationSettings(serverId, { ...current, suppressEveryone: checked })}
+          ariaLabel="suppress @everyone and @here"
+        />
+      </div>
+      <div className="server-menu__toggle-row">
+        <label className="server-menu__label" style={{ margin: 0 }}>notification sounds</label>
+        <ToggleSwitch
+          checked={notificationSoundEnabled}
+          onChange={setNotificationSoundEnabled}
+          ariaLabel="notification sounds"
+        />
       </div>
     </div>
   )
@@ -1097,29 +1103,19 @@ export default function ServerMenuModal({ onClose }: Props) {
             </div>
             <div className="server-menu__toggle-row">
               <label className="server-menu__label" style={{ margin: 0 }}>show server background</label>
-              <label className="server-menu__toggle-switch">
-                <input
-                  type="checkbox"
-                  checked={useSettingsStore(s => s.serverBackgroundEnabled)}
-                  onChange={(e) => useSettingsStore.getState().setServerBackgroundEnabled(e.target.checked)}
-                />
-                <span className="server-menu__toggle-track">
-                  <span className="server-menu__toggle-thumb" />
-                </span>
-              </label>
+              <ToggleSwitch
+                checked={useSettingsStore(s => s.serverBackgroundEnabled)}
+                onChange={(checked) => useSettingsStore.getState().setServerBackgroundEnabled(checked)}
+                ariaLabel="show server background"
+              />
             </div>
             <div className="server-menu__toggle-row">
               <label className="server-menu__label" style={{ margin: 0 }}>enable custom css</label>
-              <label className="server-menu__toggle-switch">
-                <input
-                  type="checkbox"
-                  checked={useSettingsStore(s => s.customCssEnabled)}
-                  onChange={(e) => useSettingsStore.getState().setCustomCssEnabled(e.target.checked)}
-                />
-                <span className="server-menu__toggle-track">
-                  <span className="server-menu__toggle-thumb" />
-                </span>
-              </label>
+              <ToggleSwitch
+                checked={useSettingsStore(s => s.customCssEnabled)}
+                onChange={(checked) => useSettingsStore.getState().setCustomCssEnabled(checked)}
+                ariaLabel="enable custom css"
+              />
             </div>
             <div className="server-menu__save-row">
               <button onClick={handleSaveProfile} disabled={profileSaving} className="server-menu__save-btn">

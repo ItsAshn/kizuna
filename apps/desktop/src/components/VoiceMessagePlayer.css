@@ -1,0 +1,49 @@
+.voice-player {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  min-width: 200px;
+  max-width: 320px;
+  margin: var(--space-1) 0;
+}
+
+.voice-player__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--brand);
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.1s;
+}
+
+.voice-player__btn:hover {
+  transform: scale(1.08);
+}
+
+.voice-player__btn:active {
+  transform: scale(0.95);
+}
+
+.voice-player__waveform {
+  flex: 1;
+  height: 32px;
+  min-width: 0;
+}
+
+.voice-player__time {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  min-width: 28px;
+  text-align: right;
+}

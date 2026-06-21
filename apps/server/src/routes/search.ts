@@ -18,37 +18,58 @@ searchRoutes.get('/', authMiddleware, (c) => {
   const ftsQuery = query.replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean).map(w => `"${w}"`).join(' ')
 
   try {
-    let rows: any[]
+    let beforeRowId: number | null = null
     if (before) {
-      rows = db.prepare(`
-        SELECT m.*, u.display_name, u.avatar, c.name as channel_name
-        FROM messages_fts f
-        JOIN messages m ON f.rowid = m.rowid
-        LEFT JOIN users u ON m.author_id = u.id
-        LEFT JOIN channels c ON m.channel_id = c.id
-        WHERE messages_fts MATCH ?
-        AND m.rowid < (SELECT rowid FROM messages WHERE id = ?)
-        ${channelId ? 'AND m.channel_id = ?' : ''}
-        ORDER BY m.rowid DESC
-        LIMIT ?
-      `).all(ftsQuery, before, ...(channelId ? [channelId, limit] : [limit])) as any[]
-      rows = rows.reverse()
-    } else {
-      rows = db.prepare(`
-        SELECT m.*, u.display_name, u.avatar, c.name as channel_name
-        FROM messages_fts f
-        JOIN messages m ON f.rowid = m.rowid
-        LEFT JOIN users u ON m.author_id = u.id
-        LEFT JOIN channels c ON m.channel_id = c.id
-        WHERE messages_fts MATCH ?
-        ${channelId ? 'AND m.channel_id = ?' : ''}
-        ORDER BY m.rowid DESC
-        LIMIT ?
-      `).all(ftsQuery, ...(channelId ? [channelId, limit] : [limit])) as any[]
-      rows = rows.reverse()
+      const cursor = db.prepare('SELECT rowid FROM messages_fts WHERE message_id = ?').get(before) as { rowid: number } | undefined
+      if (cursor) beforeRowId = cursor.rowid
     }
 
-    const results = rows.map(r => ({
+    const params: (string | number)[] = [ftsQuery]
+
+    let channelFilter = ''
+    if (channelId) {
+      channelFilter = `AND ((f.source = 'channel' AND m.channel_id = ?) OR (f.source = 'dm' AND dm.channel_id = ?))`
+      params.push(channelId, channelId)
+    }
+
+    let beforeFilter = ''
+    if (beforeRowId !== null) {
+      beforeFilter = 'AND f.rowid < ?'
+      params.push(beforeRowId)
+    }
+
+    params.push(limit + 1)
+
+    const rows = db.prepare(`
+      SELECT
+        f.source,
+        f.message_id,
+        f.rowid as fts_rowid,
+        COALESCE(m.id, dm.id) as id,
+        COALESCE(m.channel_id, dm.channel_id) as channel_id,
+        COALESCE(m.author_id, dm.from_id) as author_id,
+        COALESCE(m.author_username, dm.from_username) as author_username,
+        COALESCE(m.content, dm.content) as content,
+        COALESCE(m.created_at, dm.created_at) as created_at,
+        u.display_name,
+        u.avatar,
+        c.name as channel_name
+      FROM messages_fts f
+      LEFT JOIN messages m ON f.message_id = m.id AND f.source = 'channel'
+      LEFT JOIN direct_messages dm ON f.message_id = dm.id AND f.source = 'dm'
+      LEFT JOIN users u ON (f.source = 'channel' AND m.author_id = u.id) OR (f.source = 'dm' AND dm.from_id = u.id)
+      LEFT JOIN channels c ON f.source = 'channel' AND m.channel_id = c.id
+      WHERE messages_fts MATCH ?
+      ${beforeFilter}
+      ${channelFilter}
+      ORDER BY f.rowid DESC
+      LIMIT ?
+    `).all(...params) as any[]
+
+    const hasMore = rows.length > limit
+    if (hasMore) rows.pop()
+
+    const results = rows.map((r: any) => ({
       message: {
         id: r.id,
         channel_id: r.channel_id,
@@ -59,10 +80,8 @@ searchRoutes.get('/', authMiddleware, (c) => {
         content: r.content,
         created_at: r.created_at * 1000,
       },
-      channelName: r.channel_name || 'Unknown',
+      channelName: r.channel_name || 'DM',
     }))
-
-    const hasMore = rows.length === limit
 
     return c.json({ results, hasMore })
   } catch {

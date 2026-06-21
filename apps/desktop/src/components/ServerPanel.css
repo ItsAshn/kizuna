@@ -9,9 +9,9 @@
   flex-shrink: 0;
   align-self: flex-start;
   max-height: 100%;
-  margin: 8px;
-  padding: 10px 0;
-  gap: 6px;
+  margin: var(--space-2);
+  padding: calc(var(--space-2) + var(--space-1) / 2) 0;
+  gap: var(--space-1);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.5),
     0 2px 8px rgba(0, 0, 0, 0.3);
@@ -21,7 +21,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
   overflow-y: auto;
   flex: 1 1 auto;
   min-height: 0;
@@ -64,6 +64,23 @@
   color: var(--text-primary);
 }
 
+.server-panel__icon--active::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 20px;
+  background: var(--text-primary);
+  border-radius: 0 4px 4px 0;
+  transition: height 0.15s ease;
+}
+
+.server-panel__icon--active:hover::before {
+  height: 36px;
+}
+
 .server-panel__icon--home {
   font-size: 18px;
 }
@@ -100,7 +117,7 @@
   height: 2px;
   background: var(--border-color);
   border-radius: 1px;
-  margin: 4px 0;
+  margin: var(--space-1) 0;
 }
 
 .server-panel__dot {
@@ -126,7 +143,7 @@
   color: var(--text-primary);
   font-size: 9px;
   font-weight: 700;
-  padding: 1px 4px;
+  padding: 1px var(--space-1);
   border-radius: var(--radius-sm);
   min-width: 16px;
   text-align: center;
@@ -153,6 +170,53 @@
   z-index: 1;
 }
 
+/* ── Server folders ──────────────────────────────────────────── */
+
+.server-panel__folder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.server-panel__folder-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.server-panel__folder-arrow {
+  font-size: 8px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+  margin: 2px 0;
+  line-height: 1;
+}
+
+.server-panel__folder-arrow--collapsed {
+  transform: rotate(-90deg);
+}
+
+.server-panel__folder-preview {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
 @media (max-width: 767px) {
   .server-panel {
     width: 100%;
@@ -162,8 +226,8 @@
     flex-shrink: 0;
     margin: 0;
     border-radius: var(--radius-md);
-    padding: 0 8px;
-    gap: 4px;
+    padding: 0 var(--space-2);
+    gap: var(--space-1);
     border: 1px solid var(--border-color);
     background: var(--modal-bg);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
@@ -174,7 +238,7 @@
 
   .server-panel__list {
     flex-direction: row;
-    gap: 4px;
+    gap: var(--space-1);
     overflow-x: auto;
     overflow-y: hidden;
     flex: 0 1 auto;

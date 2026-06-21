@@ -1,0 +1,207 @@
+.setup-wizard__modal {
+  max-width: 520px;
+  max-height: 80vh;
+  overflow: auto;
+}
+
+.setup-wizard__modal--loading {
+  max-width: 480px;
+  padding: 24px;
+}
+
+.setup-wizard__loading-text {
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.setup-wizard__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.setup-wizard__title {
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.setup-wizard__close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.setup-wizard__diagnostic-box {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 16px;
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.setup-wizard__status-icon {
+  display: inline;
+  font-weight: 700;
+}
+
+.setup-wizard__status-icon--ok {
+  color: var(--green);
+}
+
+.setup-wizard__status-icon--fail {
+  color: var(--red);
+}
+
+.setup-wizard__status-all-ok {
+  color: var(--green);
+  font-size: 12px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.setup-wizard__issues-section {
+  margin-bottom: 12px;
+}
+
+.setup-wizard__issues-header {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.setup-wizard__issues-header--error {
+  color: var(--red);
+}
+
+.setup-wizard__issues-header--warning {
+  color: var(--yellow);
+}
+
+.setup-wizard__footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.setup-wizard__dismiss-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 11px;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.setup-wizard__dismiss-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-secondary);
+}
+
+.setup-wizard__confirm-btn {
+  background: var(--accent-color);
+  border: none;
+  color: var(--text-primary);
+  padding: 6px 18px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: opacity 0.15s ease;
+}
+
+.setup-wizard__confirm-btn:hover {
+  opacity: 0.85;
+}
+
+/* ── Issue card ────────────────────────────────────────────── */
+
+.setup-wizard__issue {
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.setup-wizard__issue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.setup-wizard__issue-component {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.setup-wizard__issue-severity {
+  font-size: 9px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.setup-wizard__issue-severity--error {
+  color: var(--red);
+}
+
+.setup-wizard__issue-severity--warning {
+  color: var(--yellow);
+}
+
+.setup-wizard__issue-message {
+  color: var(--text-secondary);
+  margin: 0 0 6px 0;
+}
+
+.setup-wizard__issue-fix-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.setup-wizard__issue-fix-cmd {
+  display: block;
+  background: var(--bg-tertiary);
+  padding: 6px 8px;
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex: 1;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.setup-wizard__issue-copy-btn {
+  background: var(--border-color);
+  border: none;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  font-size: 10px;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.setup-wizard__issue-copy-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.setup-wizard__issue-copy-btn--copied {
+  background: var(--green);
+  color: var(--bg-primary);
+}

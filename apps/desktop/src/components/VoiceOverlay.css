@@ -67,7 +67,7 @@
 }
 
 .voice-error__btn--retry:hover {
-  background: rgba(255, 77, 77, 0.30);
+  background: var(--red-dim-border);
 }
 
 .voice-error__btn--leave {
@@ -206,6 +206,63 @@
   color: var(--red);
 }
 
+/* ── Camera preview ─────────────────────────────────────── */
+
+.voice-camera-preview {
+  position: relative;
+  width: 100%;
+  max-height: 120px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 4px;
+  background: #000;
+}
+
+.voice-camera-preview__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.voice-camera-preview__label {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Camera header button ────────────────────────────────── */
+
+.voice-header__btn--camera,
+.voice-header__btn--camera-active {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.voice-header__btn--camera:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.voice-header__btn--camera-active {
+  background: var(--brand-dim);
+  color: var(--brand);
+}
+
 /* ── Peer list ──────────────────────────────────────────── */
 
 .voice-body {
@@ -291,8 +348,8 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--color-accent, #7289da);
-  color: #fff;
+  background: var(--brand);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -330,15 +387,11 @@
 /* ── Per-peer volume ────────────────────────────────────── */
 
 .voice-peer__volume {
-  width: 0;
-  overflow: hidden;
+  width: 72px;
+  overflow: visible;
   transition: width 0.15s ease;
   display: flex;
   align-items: center;
-}
-
-.voice-peer:hover .voice-peer__volume {
-  width: 72px;
 }
 
 .voice-peer__volume input[type="range"] {

@@ -195,9 +195,9 @@ authRoutes.get('/me', authMiddleware, (c) => {
 
   const user = db
     .prepare(
-      'SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.key_salt, u.created_at, sm.is_host FROM users u LEFT JOIN server_members sm ON sm.user_id = u.id WHERE u.id = ?',
+      'SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.key_salt, u.status_text, u.status_emoji, u.created_at, sm.is_host FROM users u LEFT JOIN server_members sm ON sm.user_id = u.id WHERE u.id = ?',
     )
-    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; banner: string | null; public_key: string | null; key_salt: string | null; created_at: number; is_host: number | null } | undefined
+    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; banner: string | null; public_key: string | null; key_salt: string | null; status_text: string | null; status_emoji: string | null; created_at: number; is_host: number | null } | undefined
 
   if (!user) {
     return c.json({ error: 'User not found' }, 404)
@@ -207,6 +207,53 @@ authRoutes.get('/me', authMiddleware, (c) => {
   const perms = getUserPermissions(auth.userId)
   return c.json({
     user: { ...userFields, role: isUserAdmin(auth.userId) ? 'admin' : 'member', is_host: is_host === 1, permissions: perms?.permissions } })
+})
+
+authRoutes.patch('/me/status', authMiddleware, async (c) => {
+  const auth = getAuth(c)
+  const { status_text, status_emoji } = await c.req.json() as { status_text?: string | null; status_emoji?: string | null }
+
+  const db = getDb()
+  const updates: string[] = []
+  const values: any[] = []
+
+  if (status_text !== undefined) {
+    const trimmed = status_text !== null ? status_text.trim().slice(0, 128) : null
+    if (trimmed === '') {
+      updates.push('status_text = NULL')
+    } else {
+      updates.push('status_text = ?')
+      values.push(trimmed || null)
+    }
+  }
+  if (status_emoji !== undefined) {
+    if (status_emoji === null || status_emoji === '') {
+      updates.push('status_emoji = NULL')
+    } else {
+      updates.push('status_emoji = ?')
+      values.push(status_emoji.slice(0, 8))
+    }
+  }
+
+  if (updates.length === 0) {
+    return c.json({ error: 'Nothing to update' }, 400)
+  }
+
+  values.push(auth.userId)
+  db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values)
+
+  try {
+    const io: any = c.get('io' as never)
+    if (io) {
+      io.emit('user:status', {
+        userId: auth.userId,
+        status_text: status_text !== undefined ? (status_text?.trim().slice(0, 128) || null) : undefined,
+        status_emoji: status_emoji !== undefined ? (status_emoji?.slice(0, 8) || null) : undefined,
+      })
+    }
+  } catch { /* best-effort */ }
+
+  return c.json({ ok: true })
 })
 
 authRoutes.patch('/profile', authMiddleware, async (c) => {
@@ -259,7 +306,7 @@ authRoutes.get('/users', authMiddleware, (c) => {
 
   const users = db
     .prepare(
-       `SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.reset_requested_at, sm.is_host
+       `SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.status_text, u.status_emoji, u.reset_requested_at, sm.is_host
        FROM users u
        LEFT JOIN server_members sm ON sm.user_id = u.id
        ORDER BY u.username
@@ -340,6 +387,16 @@ authRoutes.get('/users', authMiddleware, (c) => {
   })
 
   return c.json({ users: formatted, total, offset, limit })
+})
+
+authRoutes.get('/users/:userId', authMiddleware, (c) => {
+  const userId = c.req.param('userId')
+  if (!userId) return c.json({ error: 'User ID is required' }, 400)
+
+  const member = getMemberById(userId)
+  if (!member) return c.json({ error: 'User not found' }, 404)
+
+  return c.json(member)
 })
 
 authRoutes.put('/public-key', authMiddleware, async (c) => {
