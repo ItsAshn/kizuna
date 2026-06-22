@@ -29,7 +29,9 @@ import IncomingCallModal from '../components/IncomingCallModal'
 import ExportModal from '../components/ExportModal'
 import ConnectDialog from '../components/ConnectDialog'
 import ThreadPanel from '../components/ThreadPanel'
+import BottomTabBar from '../components/BottomTabBar'
 import { useNavigate } from 'react-router-dom'
+import { Settings, Plus } from 'lucide-react'
 import './Chat.css'
 
 export default function Chat({ onOpenSettings }: { onOpenSettings: () => void }) {
@@ -39,6 +41,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const session = useServerStore((s) => s.activeSession)
   const refreshSessionUser = useServerStore((s) => s.refreshSessionUser)
   const servers = useServerStore((s) => s.servers)
+  const sessions = useServerStore((s) => s.sessions)
   const setActiveServer = useServerStore((s) => s.setActiveServer)
   const activeVoiceChannelId = useVoiceStore((s) => s.activeVoiceChannelId)
   const {
@@ -47,6 +50,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     setActiveChannel, setActiveDMChannel,
     setChannelMutes,
     members, channels, dmChannels,
+    unreadCounts, serverMentionCounts,
   } = useChatStore()
   const {
     serverBackgroundEnabled, customCssEnabled,
@@ -84,30 +88,84 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const [showConnect, setShowConnect] = useState(false)
   const [bgInfo, setBgInfo] = useState<{ hasBackground: boolean; backgroundBlur: number; customCss: string | null } | null>(null)
   const [initialLoading, setInitialLoading] = useState(true)
-  const [mobileView, setMobileView] = useState<'sidebar' | 'chat'>('sidebar')
+
+  type NavEntry =
+    | { type: 'server'; serverId: string }
+    | { type: 'channel'; channelId: string }
+    | { type: 'dm'; dmChannelId: string }
+
+  const [activeTab, setActiveTab] = useState(0)
+  const [navStack, setNavStack] = useState<NavEntry[]>([])
+  const [isPushAnim, setIsPushAnim] = useState(false)
+
+  function pushView(entry: NavEntry) {
+    setIsPushAnim(true)
+    if (entry.type === 'server') setActiveServer(entry.serverId)
+    else if (entry.type === 'channel') setActiveChannel(entry.channelId)
+    else if (entry.type === 'dm') setActiveDMChannel(entry.dmChannelId)
+    setNavStack(prev => [...prev, entry])
+    setTimeout(() => setIsPushAnim(false), 300)
+  }
+
+  function popView() {
+    if (navStack.length === 0) return
+    const newStack = navStack.slice(0, -1)
+    const newTop = newStack[newStack.length - 1]
+    if (!newTop || newTop.type === 'server') {
+      setActiveChannel(null)
+      setActiveDMChannel(null)
+    }
+    setNavStack(newStack)
+  }
+
+  function switchTab(tab: number) {
+    setActiveTab(tab)
+    setNavStack([])
+    setActiveChannel(null)
+    setActiveDMChannel(null)
+  }
+
+  const navStackRef = useRef(navStack)
+  navStackRef.current = navStack
+
+  useEffect(() => {
+    if (!isMobile) return
+
+    function handleBack(e: PopStateEvent) {
+      e.preventDefault()
+      if (navStackRef.current.length > 0) {
+        popView()
+        window.history.pushState(null, '', window.location.href)
+      }
+    }
+
+    window.history.pushState(null, '', window.location.href)
+    window.addEventListener('popstate', handleBack)
+    return () => window.removeEventListener('popstate', handleBack)
+  }, [isMobile])
+
+  const topEntry = navStack[navStack.length - 1]
+  const viewKey = topEntry
+    ? `${topEntry.type}-${'serverId' in topEntry ? topEntry.serverId : 'channelId' in topEntry ? topEntry.channelId : topEntry.dmChannelId}`
+    : `tab-${activeTab}`
+
+  const dmUnreadTotal = useMemo(() => {
+    let total = 0
+    for (const ch of dmChannels) {
+      total += unreadCounts[ch.id] ?? 0
+    }
+    return total
+  }, [dmChannels, unreadCounts])
+
+  const serverMentionTotal = useMemo(() => {
+    let total = 0
+    for (const serverId in serverMentionCounts) {
+      total += serverMentionCounts[serverId] ?? 0
+    }
+    return total
+  }, [serverMentionCounts])
 
   const chatOpen = !!(activeChannelId || activeDMChannelId)
-
-  const handleMobileBackToSidebar = useCallback(() => {
-    setMobileView('sidebar')
-  }, [])
-
-  const handleMobileBackToServers = useCallback(() => {
-    setActiveServer(null)
-    navigate('/')
-  }, [setActiveServer, navigate])
-
-  useEffect(() => {
-    if (isMobile && (activeChannelId || activeDMChannelId)) {
-      setMobileView('chat')
-    }
-  }, [isMobile, activeChannelId, activeDMChannelId])
-
-  useEffect(() => {
-    if (isMobile) {
-      setMobileView('sidebar')
-    }
-  }, [isMobile, session?.serverId])
 
   const channelNavList = useMemo(() => {
     const list: { id: string; type: 'channel' | 'dm' }[] = [
@@ -291,6 +349,289 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const showBg = bgInfo?.hasBackground && serverBackgroundEnabled
   const serverName = servers.find(s => s.id === session.serverId)?.name || 'Kizuna'
 
+  function renderServersTab() {
+    return (
+      <div className="mobile-tab">
+        <div className="mobile-tab__header">
+          <h1 className="mobile-tab__title">Servers</h1>
+          <button
+            className="mobile-tab__header-btn"
+            onClick={onOpenSettings}
+            aria-label="Settings"
+          >
+            <Settings size={20} />
+          </button>
+        </div>
+        <div className="mobile-tab__body">
+          {servers.length === 0 ? (
+            <div className="mobile-tab__empty">
+              <p className="mobile-tab__empty-text">No servers yet</p>
+              <p className="mobile-tab__empty-sub">Connect to a self-hosted server to get started</p>
+            </div>
+          ) : (
+            <div className="mobile-server-grid">
+              {servers.map((server) => {
+                const isConnected = !!sessions[server.id]
+                const mentions = serverMentionCounts[server.id] ?? 0
+                return (
+                  <button
+                    key={server.id}
+                    className="mobile-server-card"
+                    onClick={() => {
+                      if (isConnected) {
+                        pushView({ type: 'server', serverId: server.id })
+                      } else {
+                        setLoginForServerId(server.id)
+                      }
+                    }}
+                  >
+                    <div className="mobile-server-card__icon">
+                      {server.icon ? (
+                        <img
+                          src={server.icon}
+                          alt=""
+                          className="mobile-server-card__icon-img"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                        />
+                      ) : (
+                        server.name.slice(0, 2).toUpperCase()
+                      )}
+                      {isConnected && <span className="mobile-server-card__dot" />}
+                    </div>
+                    <div className="mobile-server-card__info">
+                      <p className="mobile-server-card__name">{server.name}</p>
+                      <p className="mobile-server-card__url">{server.url}</p>
+                    </div>
+                    {mentions > 0 && (
+                      <span className="mobile-server-card__badge">
+                        {mentions > 99 ? '99+' : mentions}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        <div className="mobile-tab__footer">
+          <button
+            className="mobile-tab__cta"
+            onClick={() => setShowConnect(true)}
+          >
+            <Plus size={18} />
+            Connect to Server
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  function renderDMsTab() {
+    return (
+      <div className="mobile-tab">
+        <div className="mobile-tab__header">
+          <h1 className="mobile-tab__title">Messages</h1>
+        </div>
+        <div className="mobile-tab__body">
+          {dmChannels.length === 0 ? (
+            <div className="mobile-tab__empty">
+              <p className="mobile-tab__empty-text">No messages yet</p>
+              <p className="mobile-tab__empty-sub">Join a server and start a conversation</p>
+            </div>
+          ) : (
+            dmChannels.map((dm) => {
+              const unread = unreadCounts[dm.id] ?? 0
+              return (
+                <button
+                  key={dm.id}
+                  className="mobile-dm-item"
+                  onClick={() => pushView({ type: 'dm', dmChannelId: dm.id })}
+                >
+                  <div className="mobile-dm-item__avatar">
+                    {dm.other_display_name?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div className="mobile-dm-item__info">
+                    <p className="mobile-dm-item__name">{dm.other_display_name || dm.other_username}</p>
+                    <p className="mobile-dm-item__username">@{dm.other_username}</p>
+                  </div>
+                  {unread > 0 && (
+                    <span className="mobile-dm-item__badge">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  )}
+                </button>
+              )
+            })
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  function renderYouTab() {
+    return (
+      <div className="mobile-tab">
+        <div className="mobile-tab__header">
+          <h1 className="mobile-tab__title">You</h1>
+        </div>
+        <div className="mobile-tab__body">
+          <div className="mobile-you-profile">
+            <div className="mobile-you-profile__avatar">
+              {session!.user.avatar ? (
+                <img src={session!.user.avatar} alt="" className="mobile-you-profile__avatar-img" />
+              ) : (
+                (session!.user.display_name || session!.user.username)?.[0]?.toUpperCase()
+              )}
+            </div>
+            <p className="mobile-you-profile__name">{session!.user.display_name || session!.user.username}</p>
+            <p className="mobile-you-profile__username">@{session!.user.username}</p>
+          </div>
+          <div className="mobile-you-menu">
+            <button className="mobile-you-menu__item" onClick={onOpenSettings}>
+              <Settings size={18} />
+              <span>Settings</span>
+            </button>
+            <button className="mobile-you-menu__item" onClick={() => setShowExport(true)}>
+              <span>Export / Import</span>
+            </button>
+            <button className="mobile-you-menu__item" onClick={() => setShowConnect(true)}>
+              <Plus size={18} />
+              <span>Connect to Server</span>
+            </button>
+          </div>
+          <div className="mobile-you-about">
+            <p className="mobile-you-about__name">Kizuna</p>
+            <p className="mobile-you-about__desc">Self-hosted voice & chat</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function renderCurrentView() {
+    if (!topEntry) {
+      switch (activeTab) {
+        case 0: return renderServersTab()
+        case 1: return renderDMsTab()
+        case 2: return renderYouTab()
+      }
+    }
+
+    if (topEntry.type === 'server') {
+      return (
+        <Sidebar
+          joinVoice={joinVoice}
+          leaveVoice={leaveVoice}
+          toggleMute={toggleMute}
+          socketRef={socketRef}
+          startScreenshare={startScreenshare}
+          stopScreenshare={stopScreenshare}
+          onOpenMenu={() => setShowMenu(true)}
+          onBackToServers={popView}
+          onOpenChat={() => {
+            const state = useChatStore.getState()
+            if (state.activeChannelId) {
+              pushView({ type: 'channel', channelId: state.activeChannelId })
+            } else if (state.activeDMChannelId) {
+              pushView({ type: 'dm', dmChannelId: state.activeDMChannelId })
+            }
+          }}
+        />
+      )
+    }
+
+    if (topEntry.type === 'channel' || topEntry.type === 'dm') {
+      return (
+        <ChatArea
+          socketRef={socketRef}
+          onStartDMCall={startDMCall}
+          onEndDMCall={endDMCall}
+          onBackToSidebar={popView}
+          onToggleMembers={() => setShowMembers((v) => !v)}
+          membersOpen={showMembers}
+          onOpenEnvWizard={() => setShowEnvWizard(true)}
+        />
+      )
+    }
+
+    return null
+  }
+
+  if (isMobile) {
+    const hasBg = showBg && navStack.length > 0
+
+    return (
+      <>
+        <div
+          className={`chat-layout chat-layout--mobile${hasBg ? ' chat-layout--mobile--has-bg' : ''}`}
+          style={hasBg && session ? {
+            '--bg-image': `url(${session.url}/api/server/background)`,
+            '--bg-blur': `${bgInfo?.backgroundBlur ?? 0}px`,
+          } as React.CSSProperties : undefined}
+          data-voice={activeVoiceChannelId ? 'true' : undefined}
+        >
+          {!socketConnected && (
+            <div className="connection-banner">
+              {socketReconnecting ? (
+                <>
+                  <Loader2 size={14} className="connection-banner__spinner" />
+                  Reconnecting{socketReconnectAttempts > 0 ? ` (attempt ${socketReconnectAttempts})` : ''}...
+                </>
+              ) : (
+                <>
+                  Disconnected from server
+                  <button className="connection-banner__reconnect" onClick={() => socketRef.current?.connect()}>
+                    Reconnect
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          <div className="mobile-content" key={viewKey}>
+            <div className={`mobile-content__view${isPushAnim ? ' mobile-content__view--push' : ''}`}>
+              {renderCurrentView()}
+            </div>
+          </div>
+          <VoiceOverlay
+            leaveVoice={leaveVoice}
+            toggleMute={toggleMute}
+            socketRef={socketRef}
+            startScreenshare={startScreenshare}
+            stopScreenshare={stopScreenshare}
+            dmCallOtherUsername={dmCallOtherUsername}
+            toggleCamera={toggleCamera}
+            isCameraOn={isCameraOn}
+            localCameraStream={getStream()}
+          />
+          <BottomTabBar
+            activeTab={activeTab}
+            onTabChange={switchTab}
+            serverMentionCount={serverMentionTotal}
+            dmUnreadCount={dmUnreadTotal}
+          />
+          <MemberList visible={showMembers} onClose={() => setShowMembers(false)} />
+          <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
+          <ThreadPanel channelId={activeChannelId!} />
+          <NotificationContainer />
+        </div>
+        <UpdateBanner />
+        {showExport && <ExportModal onClose={() => setShowExport(false)} />}
+        {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}
+        {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} onBackgroundChanged={handleBackgroundChanged} />}
+        {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
+        {loginForServerId && <LoginDialog serverId={loginForServerId} onClose={() => setLoginForServerId(null)} />}
+        {showQuickSwitcher && <QuickSwitcher onClose={() => setShowQuickSwitcher(false)} />}
+        {incomingCall && (
+          <IncomingCallModal
+            incomingCall={incomingCall}
+            onAccept={() => acceptDMCall(incomingCall.dmChannelId, incomingCall.callerUserId, incomingCall.callerUsername)}
+            onReject={() => rejectDMCall(incomingCall.dmChannelId)}
+          />
+        )}
+      </>
+    )
+  }
+
   return (
     <>
     <div
@@ -299,7 +640,6 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         '--bg-image': `url(${session.url}/api/server/background)`,
         '--bg-blur': `${bgInfo?.backgroundBlur ?? 0}px`,
       } as React.CSSProperties : undefined}
-      data-mobile-view={isMobile ? mobileView : undefined}
       data-voice={activeVoiceChannelId ? 'true' : undefined}
     >
       {!socketConnected && (
@@ -320,10 +660,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         </div>
       )}
       <div className="nav-panel">
-        {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={onOpenSettings} onOpenExport={() => setShowExport(true)} onAddServer={() => setShowConnect(true)} onBackToServers={isMobile ? handleMobileBackToServers : undefined} />}
-        {isMobile && mobileView === 'sidebar' && chatOpen && (
-          <div className="mobile-drawer-backdrop" onClick={() => setMobileView('chat')} aria-hidden="true" />
-        )}
+        {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={onOpenSettings} onOpenExport={() => setShowExport(true)} onAddServer={() => setShowConnect(true)} />}
         <div className="sidebar-shell">
           <Sidebar
             joinVoice={joinVoice}
@@ -333,8 +670,6 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
             startScreenshare={startScreenshare}
             stopScreenshare={stopScreenshare}
             onOpenMenu={() => setShowMenu(true)}
-            onBackToServers={isMobile ? handleMobileBackToServers : undefined}
-            onOpenChat={isMobile ? () => setMobileView('chat') : undefined}
           />
           <VoiceOverlay
             leaveVoice={leaveVoice}
@@ -357,7 +692,6 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
               socketRef={socketRef}
               onStartDMCall={startDMCall}
               onEndDMCall={endDMCall}
-              onBackToSidebar={isMobile ? handleMobileBackToSidebar : undefined}
               onToggleMembers={() => setShowMembers((v) => !v)}
               membersOpen={showMembers}
               onOpenEnvWizard={() => setShowEnvWizard(true)}

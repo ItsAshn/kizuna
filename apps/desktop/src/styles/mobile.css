@@ -11,14 +11,14 @@
 
   /* ── Prevent iOS zoom on text inputs ──────────────────────── */
 
-  input[type='text'],
-  input[type='search'],
-  input[type='email'],
-  input[type='password'],
-  input[type='url'],
-  textarea,
-  select {
-    font-size: 16px !important;
+  body input[type='text'],
+  body input[type='search'],
+  body input[type='email'],
+  body input[type='password'],
+  body input[type='url'],
+  body textarea,
+  body select {
+    font-size: 16px;
   }
 
   /* ── Minimum touch target size ───────────────────────────────
@@ -34,8 +34,9 @@
 
   /* ── Smooth momentum scrolling on iOS ──────────────────── */
 
-  .chat-layout,
-  .sidebar__content,
+  .chat-layout--mobile,
+  .mobile-tab__body,
+  .mobile-content .sidebar__content,
   .chat-area__messages,
   .member-list__body,
   .welcome,
@@ -45,7 +46,7 @@
 
   /* ── Prevent pull-to-refresh on chat ───────────────────── */
 
-  .chat-layout {
+  .chat-layout--mobile {
     overscroll-behavior: contain;
   }
 
@@ -60,5 +61,4 @@
     user-select: none;
     -webkit-user-select: none;
   }
-
 }

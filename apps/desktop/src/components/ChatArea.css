@@ -194,7 +194,9 @@
 }
 
 @keyframes chat-area-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .chat-area__load-more-retry {
@@ -205,7 +207,9 @@
   cursor: pointer;
   padding: 6px 12px;
   border-radius: var(--radius-sm, 4px);
-  transition: background 0.15s ease, opacity 0.15s ease;
+  transition:
+    background 0.15s ease,
+    opacity 0.15s ease;
   opacity: 0;
   pointer-events: none;
 }
@@ -234,6 +238,7 @@
 
 .chat-area__input {
   flex: 1;
+  min-width: 0;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -344,7 +349,9 @@
   background: none;
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .chat-area__mic-btn:hover {
@@ -358,8 +365,13 @@
 }
 
 @keyframes mic-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* ── Recording bar ───────────────────────────────────────── */
@@ -569,12 +581,24 @@
   animation: typingBounce 1.4s ease-in-out infinite;
 }
 
-.chat-area__typing-dot:nth-child(2) { animation-delay: 0.2s; }
-.chat-area__typing-dot:nth-child(3) { animation-delay: 0.4s; }
+.chat-area__typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.chat-area__typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
 
 @keyframes typingBounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30% { transform: translateY(-4px); opacity: 1; }
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
 }
 
 /* ── Reply bar ──────────────────────────────────────────────── */
@@ -916,7 +940,7 @@
 
   .chat-area__input-bar {
     padding: 0 8px 12px;
-    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px) + var(--keyboard-height, 0px));
+    padding-bottom: calc(12px + max(env(safe-area-inset-bottom, 0px), var(--keyboard-height, 0px)));
     box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.4);
     transition: padding-bottom 0.2s ease-out;
   }
@@ -936,9 +960,7 @@
   .chat-area__send-btn {
     min-width: 48px;
     min-height: 48px;
-    padding: 10px 18px;
-    font-size: 15px;
-    font-weight: 600;
+    padding: 10px;
   }
 
   .chat-area__attach-btn,
