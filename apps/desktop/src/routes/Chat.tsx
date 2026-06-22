@@ -276,6 +276,16 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     }
   }, [dmCallShouldCleanup, leaveVoice, setDMCallShouldCleanup, clearDMCall])
 
+  const handleBackgroundChanged = useCallback(async () => {
+    if (!session) return
+    try {
+      const info = await fetchServerInfo(session.url)
+      setBgInfo({ hasBackground: info.hasBackground, backgroundBlur: info.backgroundBlur, customCss: info.customCss })
+    } catch (err) {
+      console.error('[Chat] Failed to refresh server info:', err)
+    }
+  }, [session?.url])
+
   if (!session) return null
 
   const showBg = bgInfo?.hasBackground && serverBackgroundEnabled
@@ -309,33 +319,35 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           )}
         </div>
       )}
-      {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={onOpenSettings} onOpenExport={() => setShowExport(true)} onAddServer={() => setShowConnect(true)} onBackToServers={isMobile ? handleMobileBackToServers : undefined} />}
-      {isMobile && mobileView === 'sidebar' && chatOpen && (
-        <div className="mobile-drawer-backdrop" onClick={() => setMobileView('chat')} aria-hidden="true" />
-      )}
-      <div className="sidebar-shell">
-        <Sidebar
-          joinVoice={joinVoice}
-          leaveVoice={leaveVoice}
-          toggleMute={toggleMute}
-          socketRef={socketRef}
-          startScreenshare={startScreenshare}
-          stopScreenshare={stopScreenshare}
-          onOpenMenu={() => setShowMenu(true)}
-          onBackToServers={isMobile ? handleMobileBackToServers : undefined}
-          onOpenChat={isMobile ? () => setMobileView('chat') : undefined}
-        />
-        <VoiceOverlay
-          leaveVoice={leaveVoice}
-          toggleMute={toggleMute}
-          socketRef={socketRef}
-          startScreenshare={startScreenshare}
-          stopScreenshare={stopScreenshare}
-          dmCallOtherUsername={dmCallOtherUsername}
-          toggleCamera={toggleCamera}
-          isCameraOn={isCameraOn}
-          localCameraStream={getStream()}
-        />
+      <div className="nav-panel">
+        {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={onOpenSettings} onOpenExport={() => setShowExport(true)} onAddServer={() => setShowConnect(true)} onBackToServers={isMobile ? handleMobileBackToServers : undefined} />}
+        {isMobile && mobileView === 'sidebar' && chatOpen && (
+          <div className="mobile-drawer-backdrop" onClick={() => setMobileView('chat')} aria-hidden="true" />
+        )}
+        <div className="sidebar-shell">
+          <Sidebar
+            joinVoice={joinVoice}
+            leaveVoice={leaveVoice}
+            toggleMute={toggleMute}
+            socketRef={socketRef}
+            startScreenshare={startScreenshare}
+            stopScreenshare={stopScreenshare}
+            onOpenMenu={() => setShowMenu(true)}
+            onBackToServers={isMobile ? handleMobileBackToServers : undefined}
+            onOpenChat={isMobile ? () => setMobileView('chat') : undefined}
+          />
+          <VoiceOverlay
+            leaveVoice={leaveVoice}
+            toggleMute={toggleMute}
+            socketRef={socketRef}
+            startScreenshare={startScreenshare}
+            stopScreenshare={stopScreenshare}
+            dmCallOtherUsername={dmCallOtherUsername}
+            toggleCamera={toggleCamera}
+            isCameraOn={isCameraOn}
+            localCameraStream={getStream()}
+          />
+        </div>
       </div>
       <div className="chat-main">
         <UpdateBanner />
@@ -376,7 +388,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     </div>
     {showExport && <ExportModal onClose={() => setShowExport(false)} />}
     {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}
-    {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} />}
+    {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} onBackgroundChanged={handleBackgroundChanged} />}
     {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
     {loginForServerId && <LoginDialog serverId={loginForServerId} onClose={() => setLoginForServerId(null)} />}
     {showQuickSwitcher && <QuickSwitcher onClose={() => setShowQuickSwitcher(false)} />}

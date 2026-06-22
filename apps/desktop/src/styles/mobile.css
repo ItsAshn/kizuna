@@ -5,10 +5,7 @@
 @media (max-width: 767px) {
   .app-shell {
     position: fixed;
-    top: max(env(safe-area-inset-top, 0px), 1.5rem);
-    right: env(safe-area-inset-right, 0px);
-    bottom: max(env(safe-area-inset-bottom, 0px), 1.5rem);
-    left: env(safe-area-inset-left, 0px);
+    inset: 0;
     overflow: hidden;
   }
 
@@ -63,4 +60,5 @@
     user-select: none;
     -webkit-user-select: none;
   }
+
 }

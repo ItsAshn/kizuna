@@ -46,6 +46,7 @@ import './ServerMenuModal.css'
 
 interface Props {
   onClose: () => void
+  onBackgroundChanged?: () => void
 }
 
 function handleApiErr(err: unknown): string {
@@ -161,7 +162,7 @@ function NotificationSettings() {
   )
 }
 
-export default function ServerMenuModal({ onClose }: Props) {
+export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props) {
   const { activeSession: session, updateServerInfo, servers } = useServerStore()
   const { members, setMembers } = useChatStore()
   const { userStatuses } = useVoiceStore()
@@ -282,12 +283,15 @@ export default function ServerMenuModal({ onClose }: Props) {
 
   // auto-save background blur on change
   const blurInitRef = useRef(true)
+  const bgChangedRef = useRef(onBackgroundChanged)
+  bgChangedRef.current = onBackgroundChanged
   useEffect(() => {
     if (blurInitRef.current) { blurInitRef.current = false; return }
     if (!serverUrl) return
     const timer = setTimeout(async () => {
       try {
         await updateServerSettings(serverUrl, undefined, undefined, bgBlur)
+        bgChangedRef.current?.()
       } catch (err) {
         console.error('Failed to save background blur:', err)
         setServerMsg(handleApiErr(err))
@@ -568,6 +572,7 @@ export default function ServerMenuModal({ onClose }: Props) {
       if (cssValue) {
         setCustomCss(cssValue)
       }
+      onBackgroundChanged?.()
       setCustomCssMsg('saved')
       setTimeout(() => setCustomCssMsg(null), 3000)
     } catch (err) {
@@ -586,6 +591,7 @@ export default function ServerMenuModal({ onClose }: Props) {
       await uploadServerBackground(serverUrl, file)
       setBgHasImage(true)
       setBgPreviewTs(Date.now())
+      onBackgroundChanged?.()
       setServerMsg('background uploaded')
       setTimeout(() => setServerMsg(null), 3000)
     } catch (err) {
@@ -602,6 +608,7 @@ export default function ServerMenuModal({ onClose }: Props) {
       await deleteServerBackground(serverUrl)
       setBgHasImage(false)
       setBgPreviewTs(Date.now())
+      onBackgroundChanged?.()
       setServerMsg('background removed')
       setTimeout(() => setServerMsg(null), 3000)
     } catch (err) {

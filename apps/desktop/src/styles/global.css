@@ -313,6 +313,14 @@ select:focus:not(:focus-visible) {
     font-size: 1rem;
     padding: 10px 14px;
   }
+
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  a, button, [role='button'], [tabindex] {
+    touch-action: manipulation;
+  }
 }
 
 /* Small phones: scale the large radii down proportionally so big rounded

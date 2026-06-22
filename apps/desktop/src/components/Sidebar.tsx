@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useMobile } from '../hooks/useMobile'
+import { useHaptics } from '../hooks/useHaptics'
 import { useNavigate } from 'react-router-dom'
 import { createChannel, lockChannel, fetchRoles, setChannelMute, deleteChannelMute, deleteChannel, reorderChannels } from '@kizuna/shared'
 import type { CustomRole, Channel } from '@kizuna/shared'
@@ -29,6 +30,7 @@ interface SidebarProps {
 export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare, onOpenMenu, onBackToServers, onOpenChat }: SidebarProps) {
   const navigate = useNavigate()
   const isMobile = useMobile()
+  const haptics = useHaptics()
   const session = useServerStore((s) => s.activeSession)
   const servers = useServerStore((s) => s.servers)
   const setActiveSession = useServerStore((s) => s.setActiveSession)
@@ -274,12 +276,13 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
           onDragStart={(e) => { if (isAdmin && !isMobile) handleDragStart(e, ch) }}
           onDragEnd={handleDragEnd}
           onClick={() => {
+            haptics.tap()
             if (isText) {
               setActiveChannel(ch.id); setLockMenuChannelId(null); onOpenChat?.()
             } else {
               (async () => {
-                if (activeVoiceChannelId === ch.id) { await leaveVoice() }
-                else { if (activeVoiceChannelId) await leaveVoice(); joinVoice(ch.id) }
+                if (activeVoiceChannelId === ch.id) { await leaveVoice(); haptics.medium() }
+                else { if (activeVoiceChannelId) await leaveVoice(); joinVoice(ch.id); haptics.success() }
               })()
             }
           }}

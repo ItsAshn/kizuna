@@ -133,6 +133,15 @@
     padding-top: calc(14px + env(safe-area-inset-top, 0px));
   }
 
+  .modal__close-btn {
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+  }
+
   .modal__body {
     padding: 16px;
   }

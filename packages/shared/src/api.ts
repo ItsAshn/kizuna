@@ -237,6 +237,7 @@ export async function getAdminList(
 export async function fetchServerInfo(serverUrl: string): Promise<ServerInfo> {
   const res = await axios.get(`${normalizeUrl(serverUrl)}/api/server/info`, {
     timeout: 8000,
+    params: { _t: Date.now() },
   })
   return res.data as ServerInfo
 }

@@ -1272,17 +1272,17 @@
   .msg-bubble__delete-btn,
   .msg-bubble__edit-btn {
     opacity: 1;
-    padding: 6px;
+    padding: 8px;
   }
 
   .msg-bubble__delete-btn {
-    min-width: 40px;
-    min-height: 40px;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .msg-bubble__edit-btn {
-    min-width: 40px;
-    min-height: 40px;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .msg-bubble__time {
@@ -1290,12 +1290,12 @@
   }
 
   .msg-bubble__reaction {
-    padding: 6px 12px;
-    min-height: 36px;
+    padding: 8px 14px;
+    min-height: 44px;
   }
 
   .msg-bubble__reaction-emoji {
-    font-size: 18px;
+    font-size: 20px;
   }
 
   .msg-bubble__reaction-count {
@@ -1304,12 +1304,13 @@
 
   .msg-bubble__react-bar-inner {
     padding: 4px;
+    gap: 4px;
   }
 
   .msg-bubble__react-quick {
-    width: 40px;
-    height: 40px;
-    font-size: 20px;
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
   }
 
   .msg-bubble__attachment-image {
@@ -1370,9 +1371,10 @@
   }
 
   .reaction-picker__emoji-btn {
-    width: 40px;
-    height: 40px;
-    font-size: 22px;
+    width: 44px;
+    height: 44px;
+    font-size: 24px;
+    border-radius: 8px;
   }
 
   .reaction-picker__sticker-grid {

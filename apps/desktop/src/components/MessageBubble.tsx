@@ -21,6 +21,7 @@ import type { Message, Member } from '@kizuna/shared'
 import { reactToMessage, unreactToMessage } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
 import { useMobile } from '../hooks/useMobile'
+import { useHaptics } from '../hooks/useHaptics'
 import { useLongPress } from '../hooks/useLongPress'
 import ReactionPills from './ReactionPills'
 import ReactionBar from './ReactionBar'
@@ -249,20 +250,23 @@ function MessageBubble({
   const contentRef = useRef<HTMLDivElement>(null)
   const editInputRef = useRef<HTMLTextAreaElement>(null)
   const isMobile = useMobile()
+  const haptics = useHaptics()
   const [mobileActionsVisible, setMobileActionsVisible] = useState(false)
 
   const longPressHandlers = useLongPress({
     onLongPress: useCallback(() => {
       if (!isMobile) return
+      haptics.longPress()
       const rect = contentRef.current?.getBoundingClientRect()
       if (rect) {
         setContextMenuPos({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
       }
-    }, [isMobile]),
+    }, [isMobile, haptics]),
     onTap: useCallback(() => {
       if (!isMobile) return
+      haptics.tap()
       setMobileActionsVisible((v) => !v)
-    }, [isMobile]),
+    }, [isMobile, haptics]),
     enabled: isMobile,
   })
   const displayName = message.display_name || message.username || 'Unknown'
@@ -310,11 +314,11 @@ function MessageBubble({
 
   const handleToggleReaction = useCallback(async (reactionKey: string, reactionType: string) => {
     if (!session) return
+    const reactions = message.reactions || []
+    const existing = reactions.find(r => r.reaction_key === reactionKey && r.reaction_type === reactionType)
+    const hasReacted = existing?.users.some(u => u.user_id === session.user.id)
+    haptics.medium()
     try {
-      const reactions = message.reactions || []
-      const existing = reactions.find(r => r.reaction_key === reactionKey && r.reaction_type === reactionType)
-      const hasReacted = existing?.users.some(u => u.user_id === session.user.id)
-
       if (hasReacted) {
         await unreactToMessage(session.url, message.id, reactionKey)
       } else {
@@ -323,7 +327,7 @@ function MessageBubble({
     } catch (err) {
       console.error('Reaction toggle failed:', err)
     }
-  }, [session, message.id, message.reactions, message.channel_id])
+  }, [session, message.id, message.reactions, message.channel_id, haptics])
 
   const startEdit = () => {
     setEditing(true)

@@ -11,18 +11,13 @@
 
 .sidebar {
   width: clamp(200px, 22vw, 260px);
-  background: var(--modal-bg);
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
+  border-left: 1px solid var(--border-color);
   flex: 1;
   flex-shrink: 0;
   min-height: 0;
-  margin: 8px;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
-  animation: sidebarSlideInLeft 0.25s ease-out;
 }
 
 .sidebar__header {
@@ -566,7 +561,7 @@
     flex-shrink: 0;
     min-width: 32px;
     min-height: 32px;
-    opacity: 0.4;
+    opacity: 0;
   }
 
   .sidebar__channel-wrap:hover .sidebar__lock-btn {
@@ -580,7 +575,6 @@
 
 .sidebar__lock-btn--active {
   color: var(--yellow);
-  background: rgba(250, 176, 5, 0.15);
 }
 
 .sidebar__lock-menu {
@@ -763,8 +757,9 @@
   }
 
   .sidebar__channel {
-    padding: 12px 8px;
+    padding: 12px 10px;
     font-size: 15px;
+    min-height: 48px;
   }
 
   .sidebar__header-name {
@@ -776,18 +771,66 @@
   }
 
   .sidebar__logout {
-    padding: 12px 8px;
+    padding: 14px 10px;
     font-size: 15px;
   }
 
   .sidebar__disconnect-btn {
-    padding: 8px 12px;
+    padding: 10px 16px;
     font-size: 14px;
+    min-height: 44px;
   }
 
   .sidebar__section-title {
     font-size: 11px;
-    padding: 8px 8px 4px;
+    padding: 8px 10px 4px;
+  }
+
+  .sidebar__category-header {
+    padding: 14px 10px 6px;
+  }
+
+  .sidebar__lock-btn {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  .sidebar__lock-menu-btn {
+    min-height: 44px;
+    font-size: 15px;
+    padding: 10px 14px;
+  }
+
+  .sidebar__voice-user {
+    padding: 6px 0;
+  }
+
+  .sidebar__create-toggle {
+    padding: 12px 10px;
+    font-size: 15px;
+  }
+
+  .sidebar__create-input {
+    font-size: 16px;
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  .sidebar__create-type-btn {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .sidebar__create-submit {
+    min-height: 44px;
+    font-size: 14px;
+    padding: 10px 20px;
+  }
+
+  .sidebar__dm-avatar {
+    width: 32px;
+    height: 32px;
   }
 }
 

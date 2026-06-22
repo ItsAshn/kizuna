@@ -1064,63 +1064,65 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
         />
       )}
 
-      <div className="chat-area__messages" role="log" aria-label="Messages" aria-live="polite">
-        {loading && (
-          <>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="skeleton--message">
-                <Skeleton variant="circle" width={40} height={40} />
-                <div className="skeleton--message-body">
-                  <Skeleton variant="text" width={120} />
-                  <Skeleton variant="text" width={200 + (i % 3) * 80} />
-                  {i % 2 === 0 && <Skeleton variant="text" width={140} />}
-                </div>
-              </div>
-            ))}
-          </>
-        )}
-        {!loading && displayMessages.length === 0 && (
-          <p className="chat-area__loading">No messages yet. Be the first to send one!</p>
-        )}
-        {!loading && displayMessages.length > 0 && (
-          <Virtuoso
-            key={activeChannelId || activeDMChannelId}
-            ref={virtuosoRef}
-            data={displayMessages}
-            itemContent={renderMessageItem}
-            followOutput={(isAtBottom) => isAtBottom ? "smooth" : false}
-            atBottomStateChange={(isAtBottom) => setAtBottom(isAtBottom)}
-            startReached={loadMoreMessages}
-            increaseViewportBy={{ top: 400, bottom: 200 }}
-            initialTopMostItemIndex={displayMessages.length > 0 ? displayMessages.length - 1 : 0}
-            style={{ flex: 1 }}
-            components={{
-              Header: () => {
-                const chId = activeChannelId || activeDMChannelId || ''
-                const loadingMore = loadingMoreMessages[chId]
-                const loadError = loadMoreErrors[chId]
-                const hasMore = hasMoreMessages[chId]
-                if (!hasMore && !loadingMore && !loadError) return null
-                return (
-                  <div className="chat-area__load-more">
-                    <div className={`chat-area__load-more-spinner${loadingMore ? ' chat-area__load-more-spinner--active' : ''}`}>
-                      <span className="chat-area__load-more-spinner-icon" />
-                      <span>Loading older messages...</span>
-                    </div>
-                    <button
-                      className={`chat-area__load-more-retry${loadError ? ' chat-area__load-more-retry--visible' : ''}`}
-                      onClick={retryLoadMoreMessages}
-                      tabIndex={loadError ? 0 : -1}
-                    >
-                      {loadError || ' '}
-                    </button>
+      <div className="chat-area__messages-wrap">
+        <div className="chat-area__messages" role="log" aria-label="Messages" aria-live="polite">
+          {loading && (
+            <>
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="skeleton--message">
+                  <Skeleton variant="circle" width={40} height={40} />
+                  <div className="skeleton--message-body">
+                    <Skeleton variant="text" width={120} />
+                    <Skeleton variant="text" width={200 + (i % 3) * 80} />
+                    {i % 2 === 0 && <Skeleton variant="text" width={140} />}
                   </div>
-                )
-              },
-              Footer: () => typingText ? <div className="chat-area__typing">{typingText}<span className="chat-area__typing-dots"><span className="chat-area__typing-dot" /><span className="chat-area__typing-dot" /><span className="chat-area__typing-dot" /></span></div> : null,
-            }}
-          />
-        )}
+                </div>
+              ))}
+            </>
+          )}
+          {!loading && displayMessages.length === 0 && (
+            <p className="chat-area__loading">No messages yet. Be the first to send one!</p>
+          )}
+          {!loading && displayMessages.length > 0 && (
+            <Virtuoso
+              key={activeChannelId || activeDMChannelId}
+              ref={virtuosoRef}
+              data={displayMessages}
+              itemContent={renderMessageItem}
+              followOutput={(isAtBottom) => isAtBottom ? "smooth" : false}
+              atBottomStateChange={(isAtBottom) => setAtBottom(isAtBottom)}
+              startReached={loadMoreMessages}
+              increaseViewportBy={{ top: 400, bottom: 200 }}
+              initialTopMostItemIndex={displayMessages.length > 0 ? displayMessages.length - 1 : 0}
+              style={{ flex: 1 }}
+              components={{
+                Header: () => {
+                  const chId = activeChannelId || activeDMChannelId || ''
+                  const loadingMore = loadingMoreMessages[chId]
+                  const loadError = loadMoreErrors[chId]
+                  const hasMore = hasMoreMessages[chId]
+                  if (!hasMore && !loadingMore && !loadError) return null
+                  return (
+                    <div className="chat-area__load-more">
+                      <div className={`chat-area__load-more-spinner${loadingMore ? ' chat-area__load-more-spinner--active' : ''}`}>
+                        <span className="chat-area__load-more-spinner-icon" />
+                        <span>Loading older messages...</span>
+                      </div>
+                      <button
+                        className={`chat-area__load-more-retry${loadError ? ' chat-area__load-more-retry--visible' : ''}`}
+                        onClick={retryLoadMoreMessages}
+                        tabIndex={loadError ? 0 : -1}
+                      >
+                        {loadError || ' '}
+                      </button>
+                    </div>
+                  )
+                },
+                Footer: () => typingText ? <div className="chat-area__typing">{typingText}<span className="chat-area__typing-dots"><span className="chat-area__typing-dot" /><span className="chat-area__typing-dot" /><span className="chat-area__typing-dot" /></span></div> : null,
+              }}
+            />
+          )}
+        </div>
         {!atBottom && displayMessages.length > lastCountAtBottom.current && (
           <button
             className="chat-area__scroll-bottom"

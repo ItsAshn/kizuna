@@ -335,3 +335,96 @@
   opacity: 0.4;
   cursor: default;
 }
+
+/* ── Mobile ────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .thread-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    margin: 0;
+    width: 100%;
+    border-radius: 0;
+  }
+
+  .thread-panel__header {
+    padding: 12px 14px;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  }
+
+  .thread-panel__header-title {
+    font-size: 15px;
+  }
+
+  .thread-panel__back {
+    width: 44px;
+    height: 44px;
+  }
+
+  .thread-panel__close {
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .thread-panel__meta {
+    padding: 10px 14px;
+  }
+
+  .thread-panel__meta-delete {
+    min-height: 44px;
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .thread-panel__delete-confirm {
+    padding: 12px 14px;
+  }
+
+  .thread-panel__delete-confirm-btn {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+
+  .thread-panel__thread-item {
+    padding: 12px 14px;
+    min-height: 48px;
+  }
+
+  .thread-panel__messages {
+    padding: 8px;
+  }
+
+  .thread-panel__composer {
+    padding: 10px 12px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    gap: 8px;
+  }
+
+  .thread-panel__input {
+    font-size: 16px;
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  .thread-panel__send {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+  }
+
+  .thread-panel__empty-title {
+    font-size: 16px;
+  }
+
+  .thread-panel__empty-subtitle {
+    font-size: 14px;
+    max-width: 280px;
+  }
+}
