@@ -33,7 +33,9 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
   const [serverDMs, setServerDMs] = useState<ServerDMs[]>([])
   const [dmsLoading, setDmsLoading] = useState(false)
 
-  const [showLanding, setShowLanding] = useState(isLanding)
+  const [showLanding, setShowLanding] = useState(() => {
+    return isLanding && localStorage.getItem('kizuna-landing-dismissed') !== 'true'
+  })
   const [showConnect, setShowConnect] = useState(false)
   const [serverUrl, setServerUrl] = useState('')
   const [serverInfo, setServerInfo] = useState<any>(null)
@@ -194,7 +196,7 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
   }
 
   if (showLanding) {
-    return <Landing onConnect={handleConnect} onEnterApp={() => setShowLanding(false)} />
+    return <Landing onConnect={handleConnect} onEnterApp={() => { setShowLanding(false); localStorage.setItem('kizuna-landing-dismissed', 'true') }} />
   }
 
   return (
