@@ -26,6 +26,7 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
   const members = useChatStore((s) => s.members)
   const session = useServerStore((s) => s.activeSession)
   const userStatuses = useVoiceStore((s) => s.userStatuses)
+  const userActivities = useVoiceStore((s) => s.userActivities)
   const setDMChannels = useChatStore((s) => s.setDMChannels)
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
@@ -99,6 +100,7 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
   const lastSeenAt = formatDate(fullProfile?.last_seen_at ?? member.last_seen_at)
   const statusText = profile.status_text || null
   const statusEmoji = profile.status_emoji || null
+  const activity = userActivities[userId]
 
   return createPortal(
     <div ref={ref} className="user-profile-card" style={{ position: 'fixed', top: pos?.top ?? 0, left: pos?.left ?? 0, visibility: pos ? 'visible' : 'hidden' }}>
@@ -119,6 +121,15 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
           <p className="user-profile-card__status-text">
             {statusEmoji && <span className="user-profile-card__status-emoji">{statusEmoji}</span>}
             {statusText}
+          </p>
+        )}
+        {activity && (
+          <p className="user-profile-card__activity">
+            <span className="user-profile-card__activity-label">
+              {activity.type === 'music' ? 'Listening to' : activity.type === 'game' ? 'Playing' : activity.type === 'video' ? 'Watching' : ''}
+            </span>
+            <span className="user-profile-card__activity-name">{activity.name}</span>
+            {activity.details && <span className="user-profile-card__activity-details">{activity.details}</span>}
           </p>
         )}
       </div>

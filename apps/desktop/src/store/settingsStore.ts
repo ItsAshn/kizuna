@@ -20,6 +20,8 @@ interface SettingsState {
   recentChannels: RecentChannel[];
   channelNotificationLevels: Record<string, NotificationLevel>;
   notificationSoundEnabled: boolean;
+  shareActivity: boolean;
+  shareMediaActivity: boolean;
   updateState: 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
   updateProgress: number;
   updateVersion: string | null;
@@ -34,6 +36,8 @@ interface SettingsState {
   pushRecentChannel: (channel: RecentChannel) => void;
   setChannelNotificationLevel: (channelId: string, level: NotificationLevel | null) => void;
   setNotificationSoundEnabled: (enabled: boolean) => void;
+  setShareActivity: (enabled: boolean) => void;
+  setShareMediaActivity: (enabled: boolean) => void;
   setUpdateState: (state: 'idle' | 'checking' | 'downloading' | 'ready' | 'error') => void;
   setUpdateProgress: (progress: number) => void;
   setUpdateVersion: (version: string | null) => void;
@@ -52,6 +56,8 @@ export const useSettingsStore = create<SettingsState>()(
       recentChannels: [] as RecentChannel[],
       channelNotificationLevels: {},
       notificationSoundEnabled: true,
+      shareActivity: false,
+      shareMediaActivity: false,
       updateState: 'idle',
       updateProgress: 0,
       updateVersion: null,
@@ -81,6 +87,8 @@ export const useSettingsStore = create<SettingsState>()(
           return { channelNotificationLevels: { ...s.channelNotificationLevels, [channelId]: level } }
         }),
       setNotificationSoundEnabled: (notificationSoundEnabled) => set({ notificationSoundEnabled }),
+      setShareActivity: (shareActivity) => set({ shareActivity }),
+      setShareMediaActivity: (shareMediaActivity) => set({ shareMediaActivity }),
       setUpdateState: (updateState) => set({ updateState }),
       setUpdateProgress: (updateProgress) => set({ updateProgress }),
       setUpdateVersion: (updateVersion) => set({ updateVersion }),
@@ -100,6 +108,8 @@ export const useSettingsStore = create<SettingsState>()(
         recentChannels: state.recentChannels,
         channelNotificationLevels: state.channelNotificationLevels,
         notificationSoundEnabled: state.notificationSoundEnabled,
+        shareActivity: state.shareActivity,
+        shareMediaActivity: state.shareMediaActivity,
       }),
     },
   ),

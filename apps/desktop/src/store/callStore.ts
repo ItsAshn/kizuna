@@ -13,6 +13,12 @@ export interface DMIncomingCall {
   calleeUsername: string;
 }
 
+export interface GroupDMIncomingCall {
+  channelId: string;
+  callerUserId: string;
+  callerUsername: string;
+}
+
 interface CallState {
   dmCallStatus: DMCallStatus;
   dmCallChannelId: string | null;
@@ -20,6 +26,11 @@ interface CallState {
   dmCallOtherUsername: string | null;
   incomingCall: DMIncomingCall | null;
   dmCallShouldCleanup: boolean;
+
+  groupDMCallStatus: DMCallStatus;
+  groupDMCallChannelId: string | null;
+  groupDMIncomingCall: GroupDMIncomingCall | null;
+  groupDMCallShouldCleanup: boolean;
 
   screenSharePeerId: string | null;
   screenShareUsername: string | null;
@@ -37,6 +48,12 @@ interface CallState {
   setIncomingCall: (call: DMIncomingCall | null) => void;
   setDMCallShouldCleanup: (should: boolean) => void;
   clearDMCall: () => void;
+
+  setGroupDMCallStatus: (status: DMCallStatus) => void;
+  setGroupDMCallChannelId: (channelId: string | null) => void;
+  setGroupDMIncomingCall: (call: GroupDMIncomingCall | null) => void;
+  setGroupDMCallShouldCleanup: (should: boolean) => void;
+  clearGroupDMCall: () => void;
 
   setScreenSharePeer: (peerId: string | null, username: string | null) => void;
   clearScreenSharePeer: () => void;
@@ -60,6 +77,11 @@ export const useCallStore = create<CallState>()(
       dmCallOtherUsername: null,
       incomingCall: null,
       dmCallShouldCleanup: false,
+
+      groupDMCallStatus: 'idle',
+      groupDMCallChannelId: null,
+      groupDMIncomingCall: null,
+      groupDMCallShouldCleanup: false,
 
       screenSharePeerId: null,
       screenShareUsername: null,
@@ -89,6 +111,22 @@ export const useCallStore = create<CallState>()(
           dmCallOtherUsername: null,
           incomingCall: null,
           dmCallShouldCleanup: false,
+        }),
+
+      setGroupDMCallStatus: (groupDMCallStatus) => set({ groupDMCallStatus }),
+      setGroupDMCallChannelId: (groupDMCallChannelId) => set({ groupDMCallChannelId }),
+      setGroupDMIncomingCall: (groupDMIncomingCall) =>
+        set({
+          groupDMIncomingCall,
+          groupDMCallStatus: groupDMIncomingCall ? 'ringing-incoming' : 'idle',
+        }),
+      setGroupDMCallShouldCleanup: (groupDMCallShouldCleanup) => set({ groupDMCallShouldCleanup }),
+      clearGroupDMCall: () =>
+        set({
+          groupDMCallStatus: 'idle',
+          groupDMCallChannelId: null,
+          groupDMIncomingCall: null,
+          groupDMCallShouldCleanup: false,
         }),
 
       setScreenSharePeer: (screenSharePeerId, screenShareUsername) =>

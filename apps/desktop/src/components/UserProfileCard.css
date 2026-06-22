@@ -106,6 +106,38 @@
   line-height: 1;
 }
 
+.user-profile-card__activity {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-profile-card__activity-label {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.user-profile-card__activity-name {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.user-profile-card__activity-details {
+  opacity: 0.6;
+}
+
+.user-profile-card__activity-details::before {
+  content: '\2014';
+  margin-right: 4px;
+}
+
 .user-profile-card__roles {
   display: flex;
   flex-wrap: wrap;

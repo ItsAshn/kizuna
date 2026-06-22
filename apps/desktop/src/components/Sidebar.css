@@ -349,6 +349,15 @@
   text-overflow: ellipsis;
 }
 
+.sidebar__user-activity {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
 /* ── Create channel form ───────────────────────────────────── */
 
 .sidebar__create-toggle {
@@ -832,6 +841,30 @@
     width: 32px;
     height: 32px;
   }
+}
+
+.sidebar__create-menu {
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar__create-groupdm-btn {
+  width: 100%;
+  padding: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+
+.sidebar__create-groupdm-btn:hover {
+  background: var(--accent-color-muted);
 }
 
 

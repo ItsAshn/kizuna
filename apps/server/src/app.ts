@@ -16,6 +16,7 @@ import messageRoutes from './routes/messages';
 import serverInfoRoutes from './routes/serverInfo';
 import roleRoutes from './routes/roles';
 import dmRoutes from './routes/dms';
+import { groupDmRoutes, adminGroupDmRoutes } from './routes/groupDms';
 import attachmentRoutes from './routes/attachments';
 import mutesRoutes from './routes/mutes';
 import gifRoutes from './routes/gifs';
@@ -95,6 +96,12 @@ export function createApp(httpPort: number) {
 
   app.use('/api/dms/*', messageLimiter);
   app.route('/api/dms', dmRoutes);
+
+  app.use('/api/group-dms/*', messageLimiter);
+  app.route('/api/group-dms', groupDmRoutes);
+
+  app.use('/api/admin/group-dms/*', apiLimiter);
+  app.route('/api/admin/group-dms', adminGroupDmRoutes);
 
   app.use('/api/attachments/*', uploadLimiter);
   app.route('/api/attachments', attachmentRoutes);

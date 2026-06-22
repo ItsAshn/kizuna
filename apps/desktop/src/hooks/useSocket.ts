@@ -8,9 +8,9 @@ import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
 import { useSettingsStore } from '../store/settingsStore'
 import type { DMIncomingCall } from '../store/callStore'
-import { decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
+import { decryptDM, isEncryptedContent, decryptGroupDM, isGroupEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import type { Message, Channel, DMChannelData, UserStatus, MessageReaction, Member, PinnedMessage, Thread } from '@kizuna/shared'
+import type { Message, Channel, DMChannelData, GroupDMChannelData, UserStatus, UserActivity, MessageReaction, Member, PinnedMessage, Thread } from '@kizuna/shared'
 import { refreshToken } from '@kizuna/shared'
 import { showNotification } from '../utils/showNotification'
 
@@ -25,6 +25,27 @@ function tryDecryptSocketDM(message: Message): Message {
   if (!otherPubKey) return { ...message, content: '[Encrypted - missing sender key]' }
   try {
     const decrypted = decryptDM(parsed, otherPubKey, secKey)
+    return { ...message, content: decrypted }
+  } catch {
+    return { ...message, content: '[Encrypted - unable to decrypt]' }
+  }
+}
+
+function tryDecryptGroupDM(message: Message): Message {
+  if (!message.encrypted) return message
+  const parsed = isGroupEncryptedContent(message.content)
+  if (!parsed) return message
+  const secKey = getSecretKey()
+  if (!secKey) return { ...message, content: '[Encrypted - no key available]' }
+  const currentUserId = useServerStore.getState().activeSession?.user.id
+  if (!currentUserId) return { ...message, content: '[Encrypted - not authenticated]' }
+  const channel = useChatStore.getState().groupDMChannels.find((d) => d.id === message.channel_id)
+  const senderMember = channel?.members.find((m) => m.user_id === message.user_id)
+  const senderPubKey = senderMember?.public_key || (message as any).sender_public_key
+  if (!senderPubKey) return { ...message, content: '[Encrypted - missing sender key]' }
+  try {
+    const decrypted = decryptGroupDM(parsed, senderPubKey, currentUserId, secKey)
+    if (decrypted === null) return { ...message, content: '[Encrypted - not a recipient]' }
     return { ...message, content: decrypted }
   } catch {
     return { ...message, content: '[Encrypted - unable to decrypt]' }
@@ -166,6 +187,94 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     socket.on('dm:delete', ({ id, channel_id }: { id: string; channel_id: string }) => {
       useChatStore.getState().removeMessage(channel_id, id)
+    })
+
+    socket.on('group-dm:received', (message: Message) => {
+      const decrypted = tryDecryptGroupDM(message)
+      useChatStore.setState((state) => {
+        const existing = state.messages[message.channel_id] || []
+        if (existing.some((m) => m.id === message.id)) return {}
+        const newState: any = {
+          messages: {
+            ...state.messages,
+            [message.channel_id]: [...existing, decrypted],
+          },
+        }
+        const currentUserId = useServerStore.getState().activeSession?.user.id
+        if (message.channel_id !== state.activeGroupDMChannelId && message.user_id !== currentUserId) {
+          newState.unreadCounts = {
+            ...state.unreadCounts,
+            [message.channel_id]: (state.unreadCounts[message.channel_id] || 0) + 1,
+          }
+        }
+        return newState
+      })
+
+      const serverId = useServerStore.getState().activeSession?.serverId
+      if (serverId) {
+        const notif = useSettingsStore.getState().notificationSettings[serverId]
+        if (message.channel_id !== useChatStore.getState().activeGroupDMChannelId) {
+          showNotification({
+            type: 'message',
+            title: decrypted.username || 'Group DM',
+            body: decrypted.content?.length > 100 ? decrypted.content.slice(0, 100) + '...' : decrypted.content || '',
+            channelId: message.channel_id,
+          })
+        }
+      }
+    })
+
+    socket.on('group-dm:edit', (message: Message) => {
+      const decrypted = tryDecryptGroupDM(message)
+      useChatStore.getState().updateMessage(decrypted.channel_id, decrypted.id, decrypted)
+    })
+
+    socket.on('group-dm:delete', ({ id, channel_id }: { id: string; channel_id: string }) => {
+      useChatStore.getState().removeMessage(channel_id, id)
+    })
+
+    socket.on('group-dm:channel-created', (channel: GroupDMChannelData) => {
+      const store = useChatStore.getState()
+      store.setGroupDMChannels([...store.groupDMChannels, channel])
+    })
+
+    socket.on('group-dm:channel-updated', (channel: GroupDMChannelData) => {
+      const store = useChatStore.getState()
+      store.setGroupDMChannels(store.groupDMChannels.map((c) => (c.id === channel.id ? channel : c)))
+    })
+
+    socket.on('group-dm:channel-deleted', ({ channel_id }: { channel_id: string }) => {
+      const store = useChatStore.getState()
+      store.setGroupDMChannels(store.groupDMChannels.filter((c) => c.id !== channel_id))
+      const msgs = { ...store.messages }
+      delete msgs[channel_id]
+      useChatStore.setState({ messages: msgs })
+      if (store.activeGroupDMChannelId === channel_id) {
+        store.setActiveGroupDMChannel(null)
+      }
+    })
+
+    socket.on('group-dm:member-left', ({ channel_id, user_id }: { channel_id: string; user_id: string }) => {
+      const store = useChatStore.getState()
+      const channel = store.groupDMChannels.find((c) => c.id === channel_id)
+      if (channel) {
+        store.setGroupDMChannels(store.groupDMChannels.map((c) =>
+          c.id === channel_id
+            ? { ...c, members: c.members.filter((m) => m.user_id !== user_id) }
+            : c
+        ))
+      }
+    })
+
+    socket.on('group-dm:member-removed', ({ channel_id }: { channel_id: string }) => {
+      const store = useChatStore.getState()
+      store.setGroupDMChannels(store.groupDMChannels.filter((c) => c.id !== channel_id))
+      const msgs = { ...store.messages }
+      delete msgs[channel_id]
+      useChatStore.setState({ messages: msgs })
+      if (store.activeGroupDMChannelId === channel_id) {
+        store.setActiveGroupDMChannel(null)
+      }
     })
 
     socket.on('message:mention', (mention: any) => {
@@ -343,17 +452,47 @@ export function useSocket(): MutableRefObject<Socket | null> {
       useVoiceStore.getState().setUserStatus(userId, 'offline')
     })
 
-    socket.on('users:online', (onlineList: Record<string, { username: string; status: UserStatus }>) => {
+    socket.on('users:online', (onlineList: Record<string, { username: string; status: UserStatus; activity?: UserActivity | null }>) => {
       const store = useVoiceStore.getState()
       const statuses: Record<string, UserStatus> = {}
+      const activities: Record<string, UserActivity> = {}
       for (const [uid, info] of Object.entries(onlineList)) {
         statuses[uid] = info.status
+        if (info.activity) {
+          activities[uid] = info.activity
+        }
       }
       store.setUserStatuses(statuses)
+      store.setUserActivities(activities)
     })
 
-    socket.on('user:status', ({ userId, status }: { userId: string; status: UserStatus }) => {
-      useVoiceStore.getState().setUserStatus(userId, status)
+    socket.on('user:status', ({ userId, status, status_text, status_emoji, activity }: { userId: string; status?: UserStatus; status_text?: string | null; status_emoji?: string | null; activity?: any }) => {
+      if (status !== undefined) {
+        useVoiceStore.getState().setUserStatus(userId, status)
+      }
+      if (activity !== undefined) {
+        useVoiceStore.getState().setUserActivity(userId, activity)
+      }
+      const serverStore = useServerStore.getState()
+      if (serverStore.activeSession && userId === serverStore.activeSession.user.id) {
+        const sessionUser = { ...serverStore.activeSession.user }
+        let changed = false
+        if (status_text !== undefined) {
+          sessionUser.status_text = status_text
+          changed = true
+        }
+        if (status_emoji !== undefined) {
+          sessionUser.status_emoji = status_emoji
+          changed = true
+        }
+        if (changed) {
+          serverStore.setActiveSession({ ...serverStore.activeSession, user: sessionUser })
+        }
+      }
+    })
+
+    socket.on('user:activity', ({ userId, activity }: { userId: string; activity: UserActivity | null }) => {
+      useVoiceStore.getState().setUserActivity(userId, activity)
     })
 
     socket.on('member:added', (member: Member) => {
@@ -417,6 +556,39 @@ export function useSocket(): MutableRefObject<Socket | null> {
         store.setDMCallShouldCleanup(true)
       } else {
         store.clearDMCall()
+      }
+    })
+
+    socket.on('group-dm:call:incoming', ({ channelId, callerUserId, callerUsername }: {
+      channelId: string
+      callerUserId: string
+      callerUsername: string
+    }) => {
+      useCallStore.getState().setGroupDMIncomingCall({ channelId, callerUserId, callerUsername })
+      showNotification({
+        type: 'dmcall',
+        title: `${callerUsername} started a group call`,
+        body: 'Click to join',
+      })
+    })
+
+    socket.on('group-dm:call:accepted', ({ channelId }: { channelId: string }) => {
+      const store = useCallStore.getState()
+      if (store.groupDMCallStatus === 'ringing-outgoing' && store.groupDMCallChannelId === channelId) {
+        store.setGroupDMCallStatus('active')
+      }
+    })
+
+    socket.on('group-dm:call:rejected', () => {
+      useCallStore.getState().clearGroupDMCall()
+    })
+
+    socket.on('group-dm:call:ended', () => {
+      const store = useCallStore.getState()
+      if (store.groupDMCallStatus === 'active' || store.groupDMCallStatus === 'ringing-outgoing' || store.groupDMCallStatus === 'ringing-incoming') {
+        store.setGroupDMCallShouldCleanup(true)
+      } else {
+        store.clearGroupDMCall()
       }
     })
 

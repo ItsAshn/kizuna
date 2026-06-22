@@ -38,6 +38,17 @@ const dmCalls = new Map<
   }
 >()
 
+const groupDMCalls = new Map<
+  string,
+  {
+    channelId: string
+    callerId: string
+    callerUsername: string
+    status: 'ringing' | 'active'
+    startedAt: number
+  }
+>()
+
 interface MentionResult {
   type: 'everyone' | 'here' | 'user' | 'role';
   target: string | null;
@@ -45,8 +56,17 @@ interface MentionResult {
 
 type UserStatus = 'online' | 'idle' | 'busy' | 'offline'
 
+interface UserActivity {
+  type: 'game' | 'music' | 'video' | 'other'
+  name: string
+  details?: string
+  state?: string
+  timestamps?: { start?: number }
+}
+
 const userConnections = new Map<string, Set<string>>()
 const userStatuses = new Map<string, UserStatus>()
+const userActivities = new Map<string, UserActivity>()
 
 export function parseMentions(content: string): MentionResult[] {
   const results: MentionResult[] = []
@@ -161,7 +181,7 @@ function getSocketUsername(socket: Socket): string {
 export function getMessageInfo(
   db: ReturnType<typeof getDb>,
   messageId: string,
-): { channel_id: string; isDM: boolean; participants?: { user1_id: string; user2_id: string } } | null {
+): { channel_id: string; isDM: boolean; isGroupDM?: boolean; participants?: { user1_id: string; user2_id: string }; groupMembers?: string[] } | null {
   const msg = db.prepare('SELECT channel_id FROM messages WHERE id = ?').get(messageId) as any;
   if (msg) return { channel_id: msg.channel_id, isDM: false };
 
@@ -180,18 +200,41 @@ export function getMessageInfo(
       participants: { user1_id: dm.user1_id, user2_id: dm.user2_id },
     };
 
+  const gdm = db
+    .prepare(
+      `SELECT gdm.channel_id
+       FROM group_dm_messages gdm
+       WHERE gdm.id = ?`,
+    )
+    .get(messageId) as any;
+  if (gdm) {
+    const gm = db.prepare(
+      'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
+    ).all(gdm.channel_id) as { user_id: string }[];
+    return {
+      channel_id: gdm.channel_id,
+      isDM: false,
+      isGroupDM: true,
+      groupMembers: gm.map(r => r.user_id),
+    };
+  }
+
   return null;
 }
 
 export function broadcastReaction(
   io: Server,
-  msgInfo: { channel_id: string; isDM: boolean; participants?: { user1_id: string; user2_id: string } },
+  msgInfo: { channel_id: string; isDM: boolean; isGroupDM?: boolean; participants?: { user1_id: string; user2_id: string }; groupMembers?: string[] },
   event: string,
   payload: unknown,
 ) {
   if (msgInfo.isDM && msgInfo.participants) {
     io.to(`dm:${msgInfo.participants.user1_id}`).emit(event, payload);
     io.to(`dm:${msgInfo.participants.user2_id}`).emit(event, payload);
+  } else if (msgInfo.isGroupDM && msgInfo.groupMembers) {
+    for (const userId of msgInfo.groupMembers) {
+      io.to(`group-dm:${userId}`).emit(event, payload);
+    }
   } else {
     io.to(msgInfo.channel_id).emit(event, payload);
   }
@@ -230,6 +273,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     if (userId) {
       socket.join(`user:${userId}`)
       socket.join(`dm:${userId}`)
+      socket.join(`group-dm:${userId}`)
       ;(socket as any).userId = userId
     }
   })
@@ -237,6 +281,12 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
   socket.on('dm:subscribe', () => {
     if (userId) {
       socket.join(`dm:${userId}`)
+    }
+  })
+
+  socket.on('group-dm:subscribe', () => {
+    if (userId) {
+      socket.join(`group-dm:${userId}`)
     }
   })
 
@@ -425,6 +475,142 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       const otherUserId = channel.user1_id === userId ? channel.user2_id : channel.user1_id
       socket.to(`user:${otherUserId}`).emit('dm:read', { channelId, readBy: userId, readAt: now * 1000 })
     }
+
+    if (typeof callback === 'function') {
+      callback({ success: true, last_read_at: now * 1000 })
+    }
+  })
+
+  // ─── Group DM Messages ────────────────────────────
+
+  socket.on('group-dm:send', ({ channelId, content, encrypted }: {
+    channelId: string
+    content: string
+    encrypted?: boolean
+  }) => {
+    if (!checkSocketRateLimit(socket, 'dm:send', 30, 10_000)) return
+    if (!channelId || !content?.trim() || !userId) return
+
+    const userInfo = getUserPermissions(userId)
+    if (!userInfo || !hasPermission(userInfo, 'send_dm_messages')) {
+      socket.emit('error', { code: 'FORBIDDEN', message: 'You do not have permission to send direct messages' })
+      return
+    }
+
+    const db = getDb()
+    const isMember = db.prepare(
+      'SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?'
+    ).get(channelId, userId)
+    if (!isMember) {
+      socket.emit('error', { code: 'FORBIDDEN', message: 'Not a member of this group' })
+      return
+    }
+
+    const id = uuidv4()
+    const now = Math.floor(Date.now() / 1000)
+    db.prepare(
+      'INSERT INTO group_dm_messages (id, channel_id, from_id, from_username, content, encrypted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, channelId, userId, username, content.trim(), encrypted ? 1 : 0, now)
+
+    db.prepare('UPDATE group_dm_channels SET last_message_at = ? WHERE id = ?').run(now, channelId)
+
+    const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as any
+    const message = {
+      id,
+      channel_id: channelId,
+      user_id: userId,
+      username,
+      display_name: userRow?.display_name || username,
+      avatar: userRow?.avatar || undefined,
+      content: content.trim(),
+      encrypted: encrypted ? 1 : 0,
+      created_at: now * 1000,
+    }
+
+    const members = db.prepare(
+      'SELECT user_id FROM group_dm_members WHERE channel_id = ? AND user_id != ?'
+    ).all(channelId, userId) as { user_id: string }[]
+
+    for (const m of members) {
+      io.to(`group-dm:${m.user_id}`).emit('group-dm:received', message)
+    }
+    socket.emit('group-dm:sent', message)
+  })
+
+  socket.on('group-dm:edit', ({ messageId, content }: {
+    messageId: string
+    content: string
+  }) => {
+    if (!checkSocketRateLimit(socket, 'dm:edit', 20, 10_000)) return
+    if (!messageId || !content?.trim() || !userId) return
+    if (content.length > 2700) return
+
+    const db = getDb()
+    const gdm = db.prepare(`
+      SELECT gdm.* FROM group_dm_messages gdm
+      WHERE gdm.id = ? AND gdm.from_id = ?
+    `).get(messageId, userId) as any
+    if (!gdm) {
+      socket.emit('error', { code: 'FORBIDDEN', message: 'Cannot edit this message' })
+      return
+    }
+
+    const now = Math.floor(Date.now() / 1000)
+    db.prepare('UPDATE group_dm_messages SET content = ?, edited_at = ? WHERE id = ?').run(content.trim(), now, messageId)
+
+    const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as any
+    const edited = {
+      id: gdm.id,
+      channel_id: gdm.channel_id,
+      user_id: gdm.from_id,
+      username: gdm.from_username,
+      display_name: userRow?.display_name || gdm.from_username,
+      avatar: userRow?.avatar || undefined,
+      content: content.trim(),
+      encrypted: gdm.encrypted,
+      edited_at: now * 1000,
+      created_at: gdm.created_at * 1000,
+    }
+
+    const members = db.prepare(
+      'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
+    ).all(gdm.channel_id) as { user_id: string }[]
+
+    for (const m of members) {
+      io.to(`group-dm:${m.user_id}`).emit('group-dm:edit', edited)
+    }
+  })
+
+  socket.on('group-dm:delete', ({ messageId }: { messageId: string }) => {
+    if (!userId) return
+    const db = getDb()
+    const gdm = db.prepare(`
+      SELECT gdm.* FROM group_dm_messages gdm
+      WHERE gdm.id = ? AND gdm.from_id = ?
+    `).get(messageId, userId) as any
+    if (!gdm) return
+
+    db.prepare('DELETE FROM message_reactions WHERE message_id = ?').run(messageId)
+    db.prepare('DELETE FROM group_dm_messages WHERE id = ?').run(messageId)
+
+    const members = db.prepare(
+      'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
+    ).all(gdm.channel_id) as { user_id: string }[]
+
+    for (const m of members) {
+      io.to(`group-dm:${m.user_id}`).emit('group-dm:delete', { id: messageId, channel_id: gdm.channel_id })
+    }
+  })
+
+  socket.on('group-dm:read', ({ channelId }: { channelId: string }, callback?: Function) => {
+    if (!userId || !channelId) return
+    const db = getDb()
+    const now = Math.floor(Date.now() / 1000)
+    db.prepare(
+      `INSERT INTO group_dm_reads (user_id, channel_id, last_read_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(user_id, channel_id) DO UPDATE SET last_read_at = excluded.last_read_at`
+    ).run(userId, channelId, now)
 
     if (typeof callback === 'function') {
       callback({ success: true, last_read_at: now * 1000 })
@@ -716,6 +902,152 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     if (typeof callback === 'function') callback({ ok: true })
   })
 
+  // ─── Group DM Voice Calls ──────────────────────────
+
+  socket.on('group-dm:call:start', ({ channelId }: { channelId: string }, callback?: Function) => {
+    if (!userId || !username) {
+      if (typeof callback === 'function') callback({ error: 'Not authenticated' })
+      return
+    }
+    const userInfo = getUserPermissions(userId)
+    if (!userInfo || !hasPermission(userInfo, 'initiate_dm_calls')) {
+      if (typeof callback === 'function') callback({ error: 'You do not have permission to start calls' })
+      return
+    }
+    const db = getDb()
+    const isMember = db.prepare(
+      'SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?'
+    ).get(channelId, userId)
+    if (!isMember) {
+      if (typeof callback === 'function') callback({ error: 'Not a member of this group' })
+      return
+    }
+    const existing = groupDMCalls.get(channelId)
+    if (existing && existing.status === 'ringing') {
+      if (typeof callback === 'function') callback({ error: 'A call is already ringing' })
+      return
+    }
+
+    const otherMembers = db.prepare(
+      'SELECT user_id FROM group_dm_members WHERE channel_id = ? AND user_id != ?'
+    ).all(channelId, userId) as { user_id: string }[]
+
+    const anyOnline = otherMembers.some(m => {
+      const room = io.sockets.adapter.rooms.get(`user:${m.user_id}`)
+      return room && room.size > 0
+    })
+    if (!anyOnline) {
+      if (typeof callback === 'function') callback({ error: 'No other members are online' })
+      return
+    }
+
+    groupDMCalls.set(channelId, {
+      channelId,
+      callerId: userId,
+      callerUsername: username,
+      status: 'ringing',
+      startedAt: Date.now(),
+    })
+
+    for (const m of otherMembers) {
+      io.to(`user:${m.user_id}`).emit('group-dm:call:incoming', {
+        channelId,
+        callerUserId: userId,
+        callerUsername: username,
+      })
+    }
+
+    if (typeof callback === 'function') callback({ ok: true })
+  })
+
+  socket.on('group-dm:call:accept', ({ channelId }: { channelId: string }, callback?: Function) => {
+    if (!userId) {
+      if (typeof callback === 'function') callback({ error: 'Not authenticated' })
+      return
+    }
+    const userInfo = getUserPermissions(userId)
+    if (!userInfo || !hasPermission(userInfo, 'initiate_dm_calls')) {
+      if (typeof callback === 'function') callback({ error: 'You do not have permission to accept calls' })
+      return
+    }
+    const call = groupDMCalls.get(channelId)
+    if (!call) {
+      if (typeof callback === 'function') callback({ error: 'No pending call' })
+      return
+    }
+
+    const db = getDb()
+    const isMember = db.prepare(
+      'SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?'
+    ).get(channelId, userId)
+    if (!isMember) {
+      if (typeof callback === 'function') callback({ error: 'Not a member of this group' })
+      return
+    }
+
+    const members = db.prepare(
+      'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
+    ).all(channelId) as { user_id: string }[]
+
+    for (const m of members) {
+      io.to(`user:${m.user_id}`).emit('group-dm:call:accepted', {
+        channelId,
+        acceptedByUserId: userId,
+        acceptedByUsername: username,
+      })
+    }
+
+    if (typeof callback === 'function') callback({ ok: true })
+  })
+
+  socket.on('group-dm:call:reject', ({ channelId }: { channelId: string }, callback?: Function) => {
+    if (!userId) {
+      if (typeof callback === 'function') callback({ error: 'Not authenticated' })
+      return
+    }
+    const call = groupDMCalls.get(channelId)
+    if (!call) {
+      if (typeof callback === 'function') callback({ ok: true })
+      return
+    }
+    groupDMCalls.delete(channelId)
+
+    const db = getDb()
+    const members = db.prepare(
+      'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
+    ).all(channelId) as { user_id: string }[]
+
+    for (const m of members) {
+      io.to(`user:${m.user_id}`).emit('group-dm:call:rejected', { channelId })
+    }
+
+    if (typeof callback === 'function') callback({ ok: true })
+  })
+
+  socket.on('group-dm:call:end', ({ channelId }: { channelId: string }, callback?: Function) => {
+    if (!userId) {
+      if (typeof callback === 'function') callback({ error: 'Not authenticated' })
+      return
+    }
+    const call = groupDMCalls.get(channelId)
+    if (!call) {
+      if (typeof callback === 'function') callback({ ok: true })
+      return
+    }
+    groupDMCalls.delete(channelId)
+
+    const db = getDb()
+    const members = db.prepare(
+      'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
+    ).all(channelId) as { user_id: string }[]
+
+    for (const m of members) {
+      io.to(`user:${m.user_id}`).emit('group-dm:call:ended', { channelId })
+    }
+
+    if (typeof callback === 'function') callback({ ok: true })
+  })
+
   socket.on('user:joined', () => {
     if (!userId) return
     ;(socket as any).userId = userId
@@ -733,15 +1065,19 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     userConnections.get(userId)!.add(socket.id)
 
     if (userConnections.get(userId)!.size === 1) {
-      userStatuses.set(userId, 'online')
-      io.emit('user:online', { userId, username, status: 'online' })
+      const db = getDb()
+      const row = db.prepare('SELECT status FROM users WHERE id = ?').get(userId) as { status?: string | null } | undefined
+      const savedStatus = (row?.status && ['online', 'idle', 'busy'].includes(row.status)) ? (row.status as UserStatus) : 'online'
+      userStatuses.set(userId, savedStatus)
+      io.emit('user:online', { userId, username, status: savedStatus })
     }
 
-    const onlineList: Record<string, { username: string; status: UserStatus }> = {}
+    const onlineList: Record<string, { username: string; status: UserStatus; activity?: UserActivity | null }> = {}
     for (const [uid, status] of userStatuses) {
       onlineList[uid] = {
         username: getSocketUsernameById(uid, db),
         status,
+        activity: userActivities.get(uid) || null,
       }
     }
     socket.emit('users:online', onlineList)
@@ -758,14 +1094,29 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
   socket.on('user:status', ({ status, status_text, status_emoji }: { status?: UserStatus; status_text?: string | null; status_emoji?: string | null }) => {
     if (!userId) return
+    const db = getDb()
     if (status && ['online', 'idle', 'busy'].includes(status)) {
       userStatuses.set(userId, status)
+      try {
+        db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, userId)
+      } catch { /* ignore */ }
     }
     const payload: any = { userId }
     if (status) payload.status = status
     if (status_text !== undefined) payload.status_text = status_text
     if (status_emoji !== undefined) payload.status_emoji = status_emoji
     io.emit('user:status', payload)
+  })
+
+  socket.on('user:activity', ({ activity }: { activity: UserActivity | null }) => {
+    if (!userId) return
+    if (activity) {
+      userActivities.set(userId, activity)
+      io.emit('user:activity', { userId, activity })
+    } else {
+      userActivities.delete(userId)
+      io.emit('user:activity', { userId, activity: null })
+    }
   })
 
   socket.on('disconnect', () => {
@@ -779,12 +1130,29 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       }
     }
 
+    for (const [channelId, call] of groupDMCalls) {
+      const db = getDb()
+      const isMember = db.prepare(
+        'SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?'
+      ).get(channelId, userId)
+      if (isMember || call.callerId === userId) {
+        const members = db.prepare(
+          'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
+        ).all(channelId) as { user_id: string }[]
+        for (const m of members) {
+          io.to(`user:${m.user_id}`).emit('group-dm:call:ended', { channelId })
+        }
+        groupDMCalls.delete(channelId)
+      }
+    }
+
     const socks = userConnections.get(userId)
     if (socks) {
       socks.delete(socket.id)
       if (socks.size === 0) {
         userConnections.delete(userId)
         userStatuses.delete(userId)
+        userActivities.delete(userId)
         io.emit('user:offline', { userId })
       }
     }

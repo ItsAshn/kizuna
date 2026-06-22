@@ -6,11 +6,12 @@ import { useVoiceStore } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useSocket } from '../hooks/useSocket'
 import { useVoice } from '../hooks/useVoice'
+import { useActivityDetector } from '../hooks/useActivityDetector'
 import { useScreenshare } from '../hooks/useScreenshare'
 import { useCamera } from '../hooks/useCamera'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useMobile, useTablet } from '../hooks/useMobile'
-import { fetchChannels, fetchMembers, fetchDMChannels, fetchServerInfo, fetchChannelMutes, fetchCategories } from '@kizuna/shared'
+import { fetchChannels, fetchMembers, fetchDMChannels, fetchGroupDMChannels, fetchServerInfo, fetchChannelMutes, fetchCategories } from '@kizuna/shared'
 import { restoreFromSession } from '../store/keyStore'
 import { Loader2 } from 'lucide-react'
 import ServerPanel from '../components/ServerPanel'
@@ -45,11 +46,11 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const setActiveServer = useServerStore((s) => s.setActiveServer)
   const activeVoiceChannelId = useVoiceStore((s) => s.activeVoiceChannelId)
   const {
-    setChannels, setCategories, setMembers, setDMChannels,
+    setChannels, setCategories, setMembers, setDMChannels, setGroupDMChannels,
     activeChannelId, activeDMChannelId,
     setActiveChannel, setActiveDMChannel,
     setChannelMutes,
-    members, channels, dmChannels,
+    members, channels, dmChannels, groupDMChannels,
     unreadCounts, serverMentionCounts,
   } = useChatStore()
   const {
@@ -69,6 +70,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     endDMCall,
     connectDMCall,
   } = useVoice(socketRef)
+  useActivityDetector(socketRef)
   const { startScreenshare, stopScreenshare } = useScreenshare(socketRef, sendTransportRef)
   const { toggleCamera, getStream } = useCamera(socketRef, sendTransportRef)
   const isCameraOn = useCallStore((s) => s.isCameraOn)
@@ -236,9 +238,10 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           fetchServerInfo(session!.url),
           fetchChannelMutes(session!.url),
           fetchCategories(session!.url),
+          fetchGroupDMChannels(session!.url),
         ])
 
-        const [channelsResult, membersResult, dmsResult, infoResult, mutesResult, categoriesResult] = results
+        const [channelsResult, membersResult, dmsResult, infoResult, mutesResult, categoriesResult, groupDMsResult] = results
 
         if (channelsResult.status === 'fulfilled') {
           setChannels(channelsResult.value)
@@ -259,6 +262,13 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         } else {
           console.error('[Chat] Failed to fetch DMs:', dmsResult.reason)
           setDMChannels([])
+        }
+
+        if (groupDMsResult.status === 'fulfilled') {
+          setGroupDMChannels(groupDMsResult.value)
+        } else {
+          console.error('[Chat] Failed to fetch group DMs:', groupDMsResult.reason)
+          setGroupDMChannels([])
         }
 
         if (infoResult.status === 'fulfilled') {

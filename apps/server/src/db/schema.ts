@@ -38,6 +38,66 @@ export const SCHEMA_SQL = `
     FOREIGN KEY (role_id) REFERENCES roles(id)
   );
 
+  CREATE TABLE IF NOT EXISTS group_dm_channels (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    avatar TEXT DEFAULT NULL,
+    last_message_at INTEGER DEFAULT NULL,
+    created_at INTEGER DEFAULT (unixepoch()),
+    FOREIGN KEY (owner_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS group_dm_members (
+    channel_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    joined_at INTEGER DEFAULT (unixepoch()),
+    PRIMARY KEY (channel_id, user_id),
+    FOREIGN KEY (channel_id) REFERENCES group_dm_channels(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_group_dm_members_user ON group_dm_members(user_id);
+
+  CREATE TABLE IF NOT EXISTS group_dm_messages (
+    id TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL,
+    from_id TEXT NOT NULL,
+    from_username TEXT NOT NULL,
+    content TEXT NOT NULL,
+    encrypted INTEGER NOT NULL DEFAULT 0,
+    edited_at INTEGER DEFAULT NULL,
+    created_at INTEGER DEFAULT (unixepoch()),
+    reply_to_message_id TEXT DEFAULT NULL,
+    reply_to_username TEXT DEFAULT NULL,
+    reply_to_content TEXT DEFAULT NULL,
+    FOREIGN KEY (channel_id) REFERENCES group_dm_channels(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_group_dm_messages_channel ON group_dm_messages(channel_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS group_dm_reads (
+    user_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    last_read_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, channel_id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (channel_id) REFERENCES group_dm_channels(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS group_dm_voice_participants (
+    id TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    joined_at INTEGER NOT NULL,
+    left_at INTEGER DEFAULT NULL,
+    FOREIGN KEY (channel_id) REFERENCES group_dm_channels(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_group_dm_vp_channel ON group_dm_voice_participants(channel_id);
+  CREATE INDEX IF NOT EXISTS idx_group_dm_vp_user ON group_dm_voice_participants(user_id);
+
   CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     channel_id TEXT NOT NULL,

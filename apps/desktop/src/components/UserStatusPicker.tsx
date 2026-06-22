@@ -21,6 +21,7 @@ const STATUS_EMOJI: string[] = ['💬', '🎮', '🎵', '🍿', '💼', '✈️'
 
 export default function UserStatusPicker({ socketRef, children }: Props) {
   const session = useServerStore((s) => s.activeSession)
+  const refreshSessionUser = useServerStore((s) => s.refreshSessionUser)
   const userStatuses = useVoiceStore((s) => s.userStatuses)
   const [open, setOpen] = useState(false)
   const [coords, setCoords] = useState({ top: 0, left: 0 })
@@ -81,6 +82,7 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
     if (!session) return
     try {
       await updateStatus(session.url, text || null, statusEmoji || null)
+      await refreshSessionUser()
     } catch (err) {
       console.error('Failed to update status:', err)
     }
@@ -93,6 +95,7 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
     if (!session) return
     try {
       await updateStatus(session.url, statusText || null, newEmoji || null)
+      await refreshSessionUser()
     } catch (err) {
       console.error('Failed to update status:', err)
     }

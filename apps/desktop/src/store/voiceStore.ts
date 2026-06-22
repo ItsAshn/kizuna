@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { VoicePeer, ConnectionQuality, UserStatus } from '@kizuna/shared';
+import type { VoicePeer, ConnectionQuality, UserStatus, UserActivity } from '@kizuna/shared';
 
 export type VoiceInputMode = 'voice-activity' | 'push-to-talk';
 
@@ -15,6 +15,7 @@ interface VoiceState {
   audioOutputDeviceId: string | null;
   voiceError: string | null;
   userStatuses: Record<string, UserStatus>;
+  userActivities: Record<string, UserActivity>;
   voiceInputMode: VoiceInputMode;
   pushToTalkKey: string;
   noiseSuppression: boolean;
@@ -43,6 +44,8 @@ interface VoiceState {
   setVoiceError: (error: string | null) => void;
   setUserStatus: (userId: string, status: UserStatus) => void;
   setUserStatuses: (statuses: Record<string, UserStatus>) => void;
+  setUserActivity: (userId: string, activity: UserActivity | null) => void;
+  setUserActivities: (activities: Record<string, UserActivity>) => void;
   setVoiceChannelUsers: (users: Record<string, { userId: string; username: string }[]>) => void;
   addVoiceChannelUser: (channelId: string, user: { userId: string; username: string }) => void;
   removeVoiceChannelUser: (channelId: string, userId: string) => void;
@@ -73,6 +76,7 @@ export const useVoiceStore = create<VoiceState>()(
       audioOutputDeviceId: null,
       voiceError: null,
       userStatuses: {},
+      userActivities: {},
       voiceInputMode: 'voice-activity',
       pushToTalkKey: 'AltLeft',
       noiseSuppression: true,
@@ -108,6 +112,17 @@ export const useVoiceStore = create<VoiceState>()(
         set((s) => ({ userStatuses: { ...s.userStatuses, [userId]: status } })),
       setUserStatuses: (statuses) =>
         set((s) => ({ userStatuses: { ...s.userStatuses, ...statuses } })),
+      setUserActivity: (userId, activity) =>
+        set((s) => {
+          if (activity === null) {
+            const next = { ...s.userActivities }
+            delete next[userId]
+            return { userActivities: next }
+          }
+          return { userActivities: { ...s.userActivities, [userId]: activity } }
+        }),
+      setUserActivities: (activities) =>
+        set((s) => ({ userActivities: { ...s.userActivities, ...activities } })),
       setVoiceChannelUsers: (voiceChannelUsers) => set({ voiceChannelUsers }),
       addVoiceChannelUser: (channelId, user) =>
         set((s) => {

@@ -70,6 +70,11 @@ const EXPECTED_SCHEMA: Record<string, string[]> = {
   threads: ['id', 'channel_id', 'name', 'creator_id', 'created_at', 'message_count', 'last_message_at'],
   link_embeds: ['url', 'title', 'description', 'image', 'site_name', 'favicon', 'fetched_at'],
   channel_role_overrides: ['channel_id', 'role_id', 'allow_permissions', 'deny_permissions'],
+  group_dm_channels: ['id', 'name', 'owner_id', 'avatar', 'last_message_at', 'created_at'],
+  group_dm_members: ['channel_id', 'user_id', 'joined_at'],
+  group_dm_messages: ['id', 'channel_id', 'from_id', 'from_username', 'content', 'encrypted', 'edited_at', 'created_at', 'reply_to_message_id', 'reply_to_username', 'reply_to_content'],
+  group_dm_reads: ['user_id', 'channel_id', 'last_read_at'],
+  group_dm_voice_participants: ['id', 'channel_id', 'user_id', 'joined_at', 'left_at'],
   _migrations: ['name', 'applied_at'],
 }
 
@@ -207,6 +212,23 @@ function seedPreExistingMigrations(database: Database.Database): void {
     ['set_admin_role_position', columnExists(database, 'roles', 'position')],
     ['channel_role_overrides_table', tableExists(database, 'channel_role_overrides')],
     ['users_add_banner', columnExists(database, 'users', 'banner')],
+    ['gifs_add_suggested_tags', columnExists(database, 'gifs', 'suggested_tags')],
+    ['users_add_status_text', columnExists(database, 'users', 'status_text')],
+    ['users_add_status_emoji', columnExists(database, 'users', 'status_emoji')],
+    ['threads_table', tableExists(database, 'threads')],
+    ['messages_add_thread_id', columnExists(database, 'messages', 'thread_id')],
+    ['idx_threads_channel', indexExists(database, 'idx_threads_channel')],
+    ['idx_messages_thread', indexExists(database, 'idx_messages_thread')],
+    ['messages_fts_rebuild', tableExists(database, 'messages_fts')],
+    ['group_dm_channels_table', tableExists(database, 'group_dm_channels')],
+    ['group_dm_members_table', tableExists(database, 'group_dm_members')],
+    ['idx_group_dm_members_user', indexExists(database, 'idx_group_dm_members_user')],
+    ['group_dm_messages_table', tableExists(database, 'group_dm_messages')],
+    ['idx_group_dm_messages_channel', indexExists(database, 'idx_group_dm_messages_channel')],
+    ['group_dm_reads_table', tableExists(database, 'group_dm_reads')],
+    ['group_dm_voice_participants_table', tableExists(database, 'group_dm_voice_participants')],
+    ['idx_group_dm_vp_channel', indexExists(database, 'idx_group_dm_vp_channel')],
+    ['idx_group_dm_vp_user', indexExists(database, 'idx_group_dm_vp_user')],
   ]
 
   for (const [name, isApplied] of checks) {
@@ -306,7 +328,7 @@ function runMigrations(database: Database.Database): void {
     { name: 'roles_add_is_admin', sql: `ALTER TABLE roles ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0` },
     { name: 'seed_admin_role', sql: `INSERT OR IGNORE INTO roles (id, name, color, permissions, is_admin) VALUES
      ('admin-role', 'Admin', '#f59e0b',
-      '{"send_messages":true,"send_dm_messages":true,"add_reactions":true,"upload_attachments":true,"delete_messages":true,"manage_channels":true,"manage_roles":true,"kick_members":true,"manage_invites":true,"use_voice":true,"initiate_dm_calls":true}',
+      '{"send_messages":true,"send_dm_messages":true,"create_group_dms":true,"add_reactions":true,"upload_attachments":true,"delete_messages":true,"manage_channels":true,"manage_roles":true,"kick_members":true,"manage_invites":true,"use_voice":true,"initiate_dm_calls":true}',
       1)` },
     { name: 'assign_admin_role', sql: `INSERT OR IGNORE INTO member_roles (user_id, role_id)
      SELECT user_id, 'admin-role' FROM server_members WHERE role = 'admin'
@@ -472,6 +494,7 @@ function runMigrations(database: Database.Database): void {
     { name: 'gifs_add_suggested_tags', sql: `ALTER TABLE gifs ADD COLUMN suggested_tags TEXT DEFAULT ''` },
     { name: 'users_add_status_text', sql: `ALTER TABLE users ADD COLUMN status_text TEXT DEFAULT NULL` },
     { name: 'users_add_status_emoji', sql: `ALTER TABLE users ADD COLUMN status_emoji TEXT DEFAULT NULL` },
+    { name: 'users_add_status', sql: `ALTER TABLE users ADD COLUMN status TEXT DEFAULT NULL` },
     { name: 'threads_table', sql: `CREATE TABLE IF NOT EXISTS threads (
        id TEXT PRIMARY KEY,
        channel_id TEXT NOT NULL,
@@ -518,6 +541,75 @@ function runMigrations(database: Database.Database): void {
       CREATE TRIGGER IF NOT EXISTS dm_fts_delete AFTER DELETE ON direct_messages
       BEGIN
         DELETE FROM messages_fts WHERE source='dm' AND message_id=OLD.id;
+      END;
+    ` },
+    { name: 'group_dm_channels_table', sql: `CREATE TABLE IF NOT EXISTS group_dm_channels (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      avatar TEXT DEFAULT NULL,
+      last_message_at INTEGER DEFAULT NULL,
+      created_at INTEGER DEFAULT (unixepoch()),
+      FOREIGN KEY (owner_id) REFERENCES users(id)
+    )` },
+    { name: 'group_dm_members_table', sql: `CREATE TABLE IF NOT EXISTS group_dm_members (
+      channel_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      joined_at INTEGER DEFAULT (unixepoch()),
+      PRIMARY KEY (channel_id, user_id),
+      FOREIGN KEY (channel_id) REFERENCES group_dm_channels(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )` },
+    { name: 'idx_group_dm_members_user', sql: `CREATE INDEX IF NOT EXISTS idx_group_dm_members_user ON group_dm_members(user_id)` },
+    { name: 'group_dm_messages_table', sql: `CREATE TABLE IF NOT EXISTS group_dm_messages (
+      id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL,
+      from_id TEXT NOT NULL,
+      from_username TEXT NOT NULL,
+      content TEXT NOT NULL,
+      encrypted INTEGER NOT NULL DEFAULT 0,
+      edited_at INTEGER DEFAULT NULL,
+      created_at INTEGER DEFAULT (unixepoch()),
+      reply_to_message_id TEXT DEFAULT NULL,
+      reply_to_username TEXT DEFAULT NULL,
+      reply_to_content TEXT DEFAULT NULL,
+      FOREIGN KEY (channel_id) REFERENCES group_dm_channels(id)
+    )` },
+    { name: 'idx_group_dm_messages_channel', sql: `CREATE INDEX IF NOT EXISTS idx_group_dm_messages_channel ON group_dm_messages(channel_id, created_at)` },
+    { name: 'group_dm_reads_table', sql: `CREATE TABLE IF NOT EXISTS group_dm_reads (
+      user_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      last_read_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, channel_id),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (channel_id) REFERENCES group_dm_channels(id)
+    )` },
+    { name: 'group_dm_voice_participants_table', sql: `CREATE TABLE IF NOT EXISTS group_dm_voice_participants (
+      id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      joined_at INTEGER NOT NULL,
+      left_at INTEGER DEFAULT NULL,
+      FOREIGN KEY (channel_id) REFERENCES group_dm_channels(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )` },
+    { name: 'idx_group_dm_vp_channel', sql: `CREATE INDEX IF NOT EXISTS idx_group_dm_vp_channel ON group_dm_voice_participants(channel_id)` },
+    { name: 'idx_group_dm_vp_user', sql: `CREATE INDEX IF NOT EXISTS idx_group_dm_vp_user ON group_dm_voice_participants(user_id)` },
+    { name: 'group_dm_fts', sql: `
+      INSERT INTO messages_fts(source, message_id, content)
+        SELECT 'group_dm', id, content FROM group_dm_messages WHERE content IS NOT NULL AND content != '';
+      CREATE TRIGGER IF NOT EXISTS group_dm_fts_insert AFTER INSERT ON group_dm_messages
+      BEGIN
+        INSERT INTO messages_fts(source, message_id, content) VALUES ('group_dm', NEW.id, NEW.content);
+      END;
+      CREATE TRIGGER IF NOT EXISTS group_dm_fts_update AFTER UPDATE ON group_dm_messages
+      BEGIN
+        DELETE FROM messages_fts WHERE source='group_dm' AND message_id=OLD.id;
+        INSERT INTO messages_fts(source, message_id, content) VALUES ('group_dm', NEW.id, NEW.content);
+      END;
+      CREATE TRIGGER IF NOT EXISTS group_dm_fts_delete AFTER DELETE ON group_dm_messages
+      BEGIN
+        DELETE FROM messages_fts WHERE source='group_dm' AND message_id=OLD.id;
       END;
     ` },
   ]

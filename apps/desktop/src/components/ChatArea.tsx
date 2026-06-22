@@ -8,11 +8,11 @@ import { useCallStore } from '../store/callStore'
 import { useMobile } from '../hooks/useMobile'
 import { useSwipeBack } from '../hooks/useSwipeBack'
 import { useKeyboard } from '../hooks/useKeyboard'
-import { fetchMessages, fetchDMMessages, sendMessage, sendDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles, pinMessage, unpinMessage, fetchPinnedMessages, createThread } from '@kizuna/shared'
-import { encryptDM, decryptDM, isEncryptedContent } from '@kizuna/shared/crypto'
+import { fetchMessages, fetchDMMessages, fetchGroupDMMessages, sendMessage, sendDMMessage, sendGroupDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, deleteGroupDMMessage, editGroupDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles, pinMessage, unpinMessage, fetchPinnedMessages, createThread } from '@kizuna/shared'
+import { encryptDM, decryptDM, isEncryptedContent, encryptGroupDM, decryptGroupDM, isGroupEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
 import { Lock, Paperclip, Send, Sticker, Phone, ChevronLeft, Users, Pin, MessageSquare, Mic, Square, Trash2 } from 'lucide-react'
-import type { Message, Member, DMChannelData, CustomRole, PinnedMessage } from '@kizuna/shared'
+import type { Message, Member, DMChannelData, GroupDMChannelData, CustomRole, PinnedMessage } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
 import Skeleton from './Skeleton'
@@ -96,11 +96,14 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const isMobile = useMobile()
   const channels = useChatStore((s) => s.channels)
   const dmChannels = useChatStore((s) => s.dmChannels)
+  const groupDMChannels = useChatStore((s) => s.groupDMChannels)
   const members = useChatStore((s) => s.members)
   const activeChannelId = useChatStore((s) => s.activeChannelId)
   const activeDMChannelId = useChatStore((s) => s.activeDMChannelId)
+  const activeGroupDMChannelId = useChatStore((s) => s.activeGroupDMChannelId)
   const channelMessages = useChatStore((s) => (activeChannelId ? s.messages[activeChannelId] : undefined) ?? [])
   const dmMessages = useChatStore((s) => (activeDMChannelId ? s.messages[activeDMChannelId] : undefined) ?? [])
+  const groupDMMessages = useChatStore((s) => (activeGroupDMChannelId ? s.messages[activeGroupDMChannelId] : undefined) ?? [])
   const addMessage = useChatStore((s) => s.addMessage)
   const typingUsers = useChatStore((s) => s.typingUsers)
   const hasMoreMessages = useChatStore((s) => s.hasMoreMessages)
@@ -114,6 +117,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const removePinned = useChatStore((s) => s.removePinnedMessage)
   const setActiveChannel = useChatStore((s) => s.setActiveChannel)
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
+  const setActiveGroupDMChannel = useChatStore((s) => s.setActiveGroupDMChannel)
   const threadPanelVisible = useChatStore((s) => s.threadPanelVisible)
   const setThreadPanelVisible = useChatStore((s) => s.setThreadPanelVisible)
   const dmCallStatus = useCallStore((s) => s.dmCallStatus)
@@ -174,6 +178,27 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       return { ...msg, content: '[Encrypted - unable to decrypt]' }
     }
   }, [dmChannels])
+
+  const tryDecryptGroupDM = useCallback((msg: Message): Message => {
+    if (!msg.encrypted) return msg
+    const parsed = isGroupEncryptedContent(msg.content)
+    if (!parsed) return msg
+    const secKey = getSecretKey()
+    if (!secKey) return { ...msg, content: '[Encrypted - no key available]' }
+    const currentUserId = session?.user.id
+    if (!currentUserId) return { ...msg, content: '[Encrypted - not authenticated]' }
+    const channel = groupDMChannels.find((d) => d.id === msg.channel_id)
+    const senderMember = channel?.members.find((m) => m.user_id === msg.user_id)
+    const senderPubKey = senderMember?.public_key || (msg as any).sender_public_key
+    if (!senderPubKey) return { ...msg, content: '[Encrypted - missing sender key]' }
+    try {
+      const decrypted = decryptGroupDM(parsed, senderPubKey, currentUserId, secKey)
+      if (decrypted === null) return { ...msg, content: '[Encrypted - not a recipient]' }
+      return { ...msg, content: decrypted }
+    } catch {
+      return { ...msg, content: '[Encrypted - unable to decrypt]' }
+    }
+  }, [groupDMChannels, session])
 
   const resolveRecipientPublicKey = useCallback(async (dm: DMChannelData | undefined): Promise<string | null> => {
     if (!dm || !session) return null
@@ -338,13 +363,69 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   }, [dmChannels, tryDecryptDM, activeDMChannelId])
 
   useEffect(() => {
+    if (activeGroupDMChannelId) {
+      let cancelled = false
+      setLoading(true)
+      setChannelPerms(null)
+      fetchGroupDMMessages(session!.url, activeGroupDMChannelId)
+        .then(({ messages: msgs, hasMore }) => {
+          if (cancelled) return
+          const decrypted = msgs.map((m) => tryDecryptGroupDM(m))
+          useChatStore.getState().setMessages(activeGroupDMChannelId, decrypted)
+          useChatStore.getState().setHasMoreMessages(activeGroupDMChannelId, hasMore)
+          const lastRead = useChatStore.getState().channelLastReadAt[activeGroupDMChannelId]
+          if (lastRead && decrypted.length > 0) {
+            const firstNew = decrypted.find(m => m.created_at > lastRead)
+            newMessagesRef.current = firstNew ? firstNew.id : null
+          } else {
+            newMessagesRef.current = null
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
+
+      useChatStore.setState((state) => ({
+        unreadCounts: { ...state.unreadCounts, [activeGroupDMChannelId]: 0 },
+        mentionCounts: { ...state.mentionCounts, [activeGroupDMChannelId]: 0 },
+      }))
+
+      socketRef.current?.emit('channel:join', activeGroupDMChannelId)
+      socketRef.current?.emit('group-dm:read', { channelId: activeGroupDMChannelId }, (res: { last_read_at?: number }) => {
+        if (cancelled) return
+        if (res?.last_read_at) {
+          useChatStore.getState().setChannelLastReadAt(activeGroupDMChannelId, res.last_read_at)
+        }
+      })
+
+      return () => {
+        cancelled = true
+        socketRef.current?.emit('channel:leave', activeGroupDMChannelId)
+        socketRef.current?.emit('typing:stop', { channelId: activeGroupDMChannelId })
+      }
+    }
+  }, [activeGroupDMChannelId, tryDecryptGroupDM])
+
+  useEffect(() => {
+    if (!activeGroupDMChannelId) return
+    const store = useChatStore.getState()
+    const msgs = store.messages[activeGroupDMChannelId]
+    if (!msgs || msgs.length === 0) return
+    const decrypted = msgs.map((m) => tryDecryptGroupDM(m))
+    const needsUpdate = decrypted.some((d, i) => d.content !== msgs[i].content)
+    if (needsUpdate) {
+      store.setMessages(activeGroupDMChannelId, decrypted)
+    }
+  }, [groupDMChannels, tryDecryptGroupDM, activeGroupDMChannelId])
+
+  useEffect(() => {
     return () => {
       if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
     }
   }, [pendingPreviewUrl])
 
   const loadMoreMessages = useCallback(() => {
-    const channelId = activeChannelId || activeDMChannelId
+    const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
     if (!channelId || !session) return
     const store = useChatStore.getState()
     const channelMessages = store.messages[channelId] || []
@@ -358,13 +439,15 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       try {
         const { messages: olderMsgs, hasMore } = activeDMChannelId
           ? await fetchDMMessages(session.url, channelId, 50, oldestId)
-          : await fetchMessages(session.url, channelId, 50, oldestId)
+          : activeGroupDMChannelId
+            ? await fetchGroupDMMessages(session.url, channelId, 50, oldestId)
+            : await fetchMessages(session.url, channelId, 50, oldestId)
         if (olderMsgs.length === 0) {
           store.setHasMoreMessages(channelId, false)
           return
         }
         const beforeLen = (store.messages[channelId] || []).length
-        const decrypted = activeDMChannelId ? olderMsgs.map(m => tryDecryptDM(m)) : olderMsgs
+        const decrypted = activeDMChannelId ? olderMsgs.map(m => tryDecryptDM(m)) : activeGroupDMChannelId ? olderMsgs.map(m => tryDecryptGroupDM(m)) : olderMsgs
         store.prependMessages(channelId, decrypted)
         const afterLen = (store.messages[channelId] || []).length
         store.setHasMoreMessages(channelId, hasMore && afterLen > beforeLen)
@@ -376,16 +459,16 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
         store.setLoadingMoreMessages(channelId, false)
       }
     })()
-  }, [activeChannelId, activeDMChannelId, session, tryDecryptDM])
+  }, [activeChannelId, activeDMChannelId, activeGroupDMChannelId, session, tryDecryptDM, tryDecryptGroupDM])
 
   const retryLoadMoreMessages = useCallback(() => {
-    const channelId = activeChannelId || activeDMChannelId
+    const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
     if (!channelId) return
     const store = useChatStore.getState()
     store.setHasMoreMessages(channelId, true)
     store.setLoadMoreError(channelId, null)
     loadMoreMessages()
-  }, [activeChannelId, activeDMChannelId, loadMoreMessages])
+  }, [activeChannelId, activeDMChannelId, activeGroupDMChannelId, loadMoreMessages])
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -431,7 +514,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       el.style.height = `${Math.min(el.scrollHeight, 160)}px`
     }
 
-    const channelId = activeChannelId || activeDMChannelId
+    const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
     if (channelId && session) {
       if (typingTimeout.current) {
         clearTimeout(typingTimeout.current)
@@ -496,7 +579,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
 
     if (pendingFile) { await handleUpload(); return }
 
-    const channelId = activeChannelId || activeDMChannelId
+    const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
     if (!channelId) return
 
     socketRef.current?.emit('typing:stop', { channelId })
@@ -524,6 +607,30 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
         if (encrypted) {
           message = { ...message, content: input.trim() }
         }
+      } else if (activeGroupDMChannelId) {
+        const secKey = getSecretKey()
+        let content: string
+        let encrypted = false
+        if (secKey) {
+          const channel = groupDMChannels.find((c) => c.id === activeGroupDMChannelId)
+          const memberKeys = new Map<string, string>()
+          for (const member of channel?.members || []) {
+            if (member.public_key) memberKeys.set(member.user_id, member.public_key)
+          }
+          if (memberKeys.size > 0) {
+            const enc = encryptGroupDM(input.trim(), memberKeys, secKey)
+            content = JSON.stringify(enc)
+            encrypted = true
+          } else {
+            content = input.trim()
+          }
+        } else {
+          content = input.trim()
+        }
+        message = await sendGroupDMMessage(session.url, activeGroupDMChannelId, content, encrypted)
+        if (encrypted) {
+          message = { ...message, content: input.trim() }
+        }
       } else {
         return
       }
@@ -534,9 +641,9 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       if ('vibrate' in navigator) navigator.vibrate(10)
       if (inputRef.current) { inputRef.current.style.height = 'auto'; inputRef.current.focus() }
       requestAnimationFrame(() => {
-        const channelId = activeChannelId || activeDMChannelId
-        if (channelId) {
-          const msgs = useChatStore.getState().messages[channelId] || []
+        const chId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
+        if (chId) {
+          const msgs = useChatStore.getState().messages[chId] || []
           if (msgs.length > 0) {
             virtuosoRef.current?.scrollToIndex(msgs.length - 1)
           }
@@ -822,8 +929,9 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  const headerTitle = activeChannel?.name || activeDM?.other_display_name || 'Kizuna'
-  const displayMessages = activeDMChannelId ? dmMessages : channelMessages
+  const activeGroupDM = groupDMChannels.find(g => g.id === activeGroupDMChannelId)
+  const headerTitle = activeChannel?.name || activeDM?.other_display_name || activeGroupDM?.name || 'Kizuna'
+  const displayMessages = activeDMChannelId ? dmMessages : activeGroupDMChannelId ? groupDMMessages : channelMessages
 
   useEffect(() => {
     if (atBottom) {
@@ -833,8 +941,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
 
   useEffect(() => {
     lastCountAtBottom.current = displayMessages.length
-  }, [activeChannelId, activeDMChannelId])
-  const channelId = activeChannelId || activeDMChannelId || ''
+  }, [activeChannelId, activeDMChannelId, activeGroupDMChannelId])
+  const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId || ''
   const typingList = typingUsers[channelId]?.filter(u => u !== session?.user.username) || []
   const typingText = typingList.length === 1
     ? `${typingList[0]} is typing...`
@@ -842,6 +950,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       ? `${typingList.length} people are typing...`
       : ''
   const dmHasKey = activeDMChannelId ? !!(activeDM?.other_public_key && getSecretKey()) : false
+  const groupDMHasKey = activeGroupDMChannelId ? !!(groupDMChannels.find(c => c.id === activeGroupDMChannelId)?.members.some(m => m.public_key) && getSecretKey()) : false
   const inputMaxLen = activeDMChannelId ? 2700 : 4000
   const inputRemaining = inputMaxLen - input.length
   const showCharCounter = inputRemaining < 500

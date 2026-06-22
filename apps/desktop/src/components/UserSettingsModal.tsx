@@ -82,6 +82,8 @@ export default function UserSettingsModal({ onClose }: Props) {
   } = useVoiceStore()
   const {
     updateState, updateProgress, updateVersion, updateError,
+    shareActivity, setShareActivity,
+    shareMediaActivity, setShareMediaActivity,
   } = useSettingsStore()
   const { checkForUpdates, installUpdate, getVersion } = useUpdaterActions()
 
@@ -553,6 +555,28 @@ export default function UserSettingsModal({ onClose }: Props) {
                   />
                   <span className="settings-modal__slider-value">{outputVolume}%</span>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          <hr className="settings-modal__section-divider" />
+
+          <section>
+            <p className="settings-modal__section-title">privacy</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>share activity</span>
+                  <p className="settings-modal__hint">show what you're listening to or watching to other members</p>
+                </div>
+                <ToggleSwitch checked={shareActivity} onChange={setShareActivity} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>share media activity</span>
+                  <p className="settings-modal__hint">detect music and video from your browser's media session</p>
+                </div>
+                <ToggleSwitch checked={shareMediaActivity} onChange={setShareMediaActivity} />
               </div>
             </div>
           </section>

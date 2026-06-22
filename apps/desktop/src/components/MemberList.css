@@ -178,6 +178,15 @@
   color: var(--text-secondary);
 }
 
+.member-list__member-activity {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
 .member-list__member-role {
   font-size: 9px;
   color: var(--text-muted);

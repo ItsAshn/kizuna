@@ -1,4 +1,5 @@
 import type { Server, Socket } from 'socket.io'
+import { v4 as uuidv4 } from 'uuid'
 import { ensureRouter, createTransport, connectTransport, produceOnTransport, closeRouter } from '../media/router'
 import type { types as mediasoupTypes } from 'mediasoup'
 import { getDb } from '../db'
@@ -109,6 +110,16 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
           if (typeof callback === 'function') callback({ error: 'Not a participant in this DM' })
           return
         }
+      } else if (channelId.startsWith('group-dm:')) {
+        const groupChannelId = channelId.slice(9)
+        const member = db.prepare(
+          'SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?'
+        ).get(groupChannelId, userId)
+        if (!member) {
+          vlog('join', `rejected: not a group dm member | userId=${userId} | groupChannelId=${groupChannelId}`)
+          if (typeof callback === 'function') callback({ error: 'Not a member of this group DM' })
+          return
+        }
       } else {
         const member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
         if (!member) {
@@ -141,6 +152,14 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         announced: false,
       }
       peers.set(socket.id, peer)
+
+      if (channelId.startsWith('group-dm:')) {
+        const groupChannelId = channelId.slice(9)
+        const vpId = uuidv4()
+        db.prepare(
+          'INSERT INTO group_dm_voice_participants (id, channel_id, user_id, joined_at) VALUES (?, ?, ?, ?)'
+        ).run(vpId, groupChannelId, userId, Math.floor(Date.now() / 1000))
+      }
 
       const channelPeers: { id: string; userId: string; username: string; speaking: boolean; muted: boolean }[] = []
       for (const p of getPeersInChannel(channelId)) {
@@ -607,6 +626,19 @@ function cleanupPeer(socketId: string, channelId: string, io: Server): void {
   io.emit('voice:userLeftChannel', { channelId, userId: peer.userId })
   if (wasSharing) {
     io.to(channelId).emit('screen:peerStopped', { peerId: socketId })
+  }
+
+  if (channelId.startsWith('group-dm:')) {
+    const groupChannelId = channelId.slice(9)
+    try {
+      const db = getDb()
+      const now = Math.floor(Date.now() / 1000)
+      db.prepare(
+        `UPDATE group_dm_voice_participants SET left_at = ?
+         WHERE channel_id = ? AND user_id = ? AND left_at IS NULL
+         ORDER BY joined_at DESC LIMIT 1`
+      ).run(now, groupChannelId, peer.userId)
+    } catch { /* ignore */ }
   }
 
   const remainingInChannel = [...peers.values()].filter(p => p.channelId === channelId).length

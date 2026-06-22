@@ -17,6 +17,16 @@ export interface SavedServer {
 /** User presence status. */
 export type UserStatus = 'online' | 'idle' | 'busy' | 'offline';
 
+export type UserActivityType = 'game' | 'music' | 'video' | 'other';
+
+export interface UserActivity {
+  type: UserActivityType;
+  name: string;
+  details?: string;
+  state?: string;
+  timestamps?: { start?: number };
+}
+
 /** Shared fields between User and Member. */
 export interface BaseUser {
   id: string;
@@ -29,6 +39,7 @@ export interface BaseUser {
   status?: UserStatus;
   status_text?: string | null;
   status_emoji?: string | null;
+  activity?: UserActivity | null;
 }
 
 /** Server-side or self-represented user with security fields. */
@@ -165,6 +176,7 @@ export type AdminInfo = Pick<User, 'username' | 'display_name'>;
 export type Permission =
   | 'send_messages'
   | 'send_dm_messages'
+  | 'create_group_dms'
   | 'add_reactions'
   | 'upload_attachments'
   | 'delete_messages'
@@ -288,6 +300,27 @@ export interface DMChannelData {
   last_message_at: number | null;
 }
 
+/** A member of a group DM channel. */
+export interface GroupDMMember {
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar: string | null;
+  public_key: string | null;
+  joined_at: number;
+}
+
+/** Group DM channel metadata. */
+export interface GroupDMChannelData {
+  id: string;
+  name: string;
+  owner_id: string;
+  avatar: string | null;
+  members: GroupDMMember[];
+  created_at: number;
+  last_message_at: number | null;
+}
+
 /** File attachment metadata. */
 export interface FileAttachment {
   id: string;
@@ -390,6 +423,17 @@ export interface LinkEmbed {
   image?: string;
   site_name?: string;
   favicon?: string;
+}
+
+/** Admin analytics for group DM voice usage. */
+export interface GroupDMVoiceStats {
+  total_channels: number;
+  total_members: number;
+  active_voice_sessions: number;
+  voice_minutes_24h: number;
+  voice_minutes_7d: number;
+  voice_minutes_30d: number;
+  top_users_by_voice: { user_id: string; username: string; display_name: string; minutes: number }[];
 }
 
 export interface TaggerStatus {

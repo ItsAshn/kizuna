@@ -13,6 +13,7 @@ import { Lock, Unlock, BellOff, ChevronLeft, Ellipsis, Bell } from 'lucide-react
 import UserStatusPicker from './UserStatusPicker'
 import ContextMenu from './ContextMenu'
 import ChannelSettingsModal from './ChannelSettingsModal'
+import CreateGroupDMModal from './CreateGroupDMModal'
 import './Sidebar.css'
 
 interface SidebarProps {
@@ -37,22 +38,25 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   const {
     channels,
     categories,
-    dmChannels, activeChannelId, activeDMChannelId,
+    dmChannels, groupDMChannels, activeChannelId, activeDMChannelId, activeGroupDMChannelId,
     unreadCounts, mentionCounts,
-    setActiveChannel, setActiveDMChannel, setChannels,
+    setActiveChannel, setActiveDMChannel, setActiveGroupDMChannel, setChannels,
     channelMutes,
     members,
   } = useChatStore()
   const {
     activeVoiceChannelId,
     voiceChannelUsers,
+    userActivities,
   } = useVoiceStore()
+  const shareActivity = useSettingsStore((s) => s.shareActivity)
   const channelNotifLevels = useSettingsStore((s) => s.channelNotificationLevels)
   const setChannelNotifLevel = useSettingsStore((s) => s.setChannelNotificationLevel)
   const [newChannelName, setNewChannelName] = useState('')
   const [newChannelType, setNewChannelType] = useState<'text' | 'voice'>('text')
   const [creating, setCreating] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showCreateGroupDM, setShowCreateGroupDM] = useState(false)
   const [lockMenuChannelId, setLockMenuChannelId] = useState<string | null>(null)
   const [roles, setRoles] = useState<CustomRole[]>([])
   const [rolesLoaded, setRolesLoaded] = useState(false)
@@ -144,7 +148,7 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
   }, [lockMenuChannelId])
 
   function handleLogout() {
-    const channelId = activeChannelId || activeDMChannelId
+    const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
     if (channelId) {
       socketRef.current?.emit('typing:stop', { channelId })
     }
@@ -422,6 +426,11 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
                   {session?.user.status_text && <span className="sidebar__user-status-text">{session.user.status_text}</span>}
                 </p>
               )}
+              {shareActivity && session?.user.id && userActivities[session.user.id] && (
+                <p className="sidebar__user-activity">
+                  {userActivities[session.user.id].type === 'music' ? '\u266B' : '\u25B6'} {userActivities[session.user.id].name}
+                </p>
+              )}
             </div>
             <button
               onClick={onOpenMenu}
@@ -510,15 +519,41 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
           </div>
         )}
 
-        {session && isAdmin && (
-          <>
-            <button
-              onClick={() => setShowCreateForm((v) => !v)}
-              className="sidebar__create-toggle"
-            >
-              {showCreateForm ? '—' : '+ New Channel'}
-            </button>
-            {showCreateForm && (
+        {groupDMChannels.length > 0 && (
+          <div className="sidebar__section">
+            <h3 className="sidebar__section-title">Group DMs</h3>
+            {groupDMChannels.map((gdm) => {
+              const mentionBadge = mentionCounts[gdm.id]
+              const unreadOnly = !mentionBadge && unreadCounts[gdm.id]
+              const nameInitials = gdm.name.slice(0, 2).toUpperCase()
+              return (
+              <button
+                key={gdm.id}
+                onClick={() => { setActiveGroupDMChannel(gdm.id); onOpenChat?.() }}
+                className={`sidebar__channel ${activeGroupDMChannelId === gdm.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
+              >
+                <div className="sidebar__dm-avatar">{
+                  gdm.avatar ? (
+                    <img src={gdm.avatar} alt="" className="sidebar__dm-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                  ) : nameInitials
+                }</div>
+                <span className="sidebar__channel-name">{gdm.name}</span>
+                {mentionBadge ? <span className="sidebar__unread-badge">{mentionBadge > 99 ? '99+' : mentionBadge}</span> : unreadOnly ? <span className="sidebar__unread-dot" /> : null}
+              </button>
+              )
+            })}
+          </div>
+        )}
+
+        <button
+          onClick={() => setShowCreateForm((v) => !v)}
+          className="sidebar__create-toggle"
+        >
+          {showCreateForm ? '—' : '+'}
+        </button>
+        {showCreateForm && (
+          <div className="sidebar__create-menu">
+            {session && isAdmin && (
               <form onSubmit={handleCreateChannel} className="sidebar__create-form">
                 <input
                   className="sidebar__create-input"
@@ -550,7 +585,13 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
                 </div>
               </form>
             )}
-          </>
+            <button
+              onClick={() => { setShowCreateGroupDM(true); setShowCreateForm(false) }}
+              className="sidebar__create-groupdm-btn"
+            >
+              Group DM
+            </button>
+          </div>
         )}
       </div>
 
@@ -582,6 +623,11 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
           channel={settingsChannel}
           onClose={() => setSettingsChannel(null)}
         />,
+        document.body,
+      )}
+
+      {showCreateGroupDM && createPortal(
+        <CreateGroupDMModal onClose={() => setShowCreateGroupDM(false)} />,
         document.body,
       )}
     </div>

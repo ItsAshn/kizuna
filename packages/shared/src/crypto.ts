@@ -98,6 +98,51 @@ export function isEncryptedContent(content: string): EncryptedMessage | null {
   return null
 }
 
+export interface GroupEncryptedMessage {
+  v: number
+  recipients: Record<string, EncryptedMessage>
+}
+
+export function encryptGroupDM(
+  plaintext: string,
+  memberKeys: Map<string, string>,
+  mySecretKey: Uint8Array,
+): GroupEncryptedMessage {
+  ensurePRNG()
+  const recipients: Record<string, EncryptedMessage> = {}
+  for (const [userId, publicKeyB64] of memberKeys) {
+    recipients[userId] = encryptDM(plaintext, publicKeyB64, mySecretKey)
+  }
+  return { v: KEY_VERSION, recipients }
+}
+
+export function decryptGroupDM(
+  encrypted: GroupEncryptedMessage,
+  senderPublicKeyB64: string,
+  myUserId: string,
+  mySecretKey: Uint8Array,
+): string | null {
+  const myEntry = encrypted.recipients[myUserId]
+  if (!myEntry) return null
+  try {
+    return decryptDM(myEntry, senderPublicKeyB64, mySecretKey)
+  } catch {
+    return null
+  }
+}
+
+export function isGroupEncryptedContent(content: string): GroupEncryptedMessage | null {
+  try {
+    const parsed = JSON.parse(content)
+    if (parsed && typeof parsed.v === 'number' && parsed.recipients && typeof parsed.recipients === 'object') {
+      return parsed as GroupEncryptedMessage
+    }
+  } catch {
+    // not JSON, not encrypted
+  }
+  return null
+}
+
 export function encryptPrivateKey(secretKey: Uint8Array, passwordKey: Uint8Array): string {
   ensurePRNG()
   const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)

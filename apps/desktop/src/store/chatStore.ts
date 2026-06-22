@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Channel, Message, Member, DMChannelData, MessageReaction, PinnedMessage, Thread } from '@kizuna/shared';
+import type { Channel, Message, Member, DMChannelData, GroupDMChannelData, MessageReaction, PinnedMessage, Thread } from '@kizuna/shared';
 
 interface ChatState {
   channels: Channel[];
   dmChannels: DMChannelData[];
+  groupDMChannels: GroupDMChannelData[];
   categories: { id: string; name: string; position: number }[];
   messages: Record<string, Message[]>;
   pinnedMessages: Record<string, PinnedMessage[]>;
@@ -15,6 +16,7 @@ interface ChatState {
   members: Member[];
   activeChannelId: string | null;
   activeDMChannelId: string | null;
+  activeGroupDMChannelId: string | null;
   unreadCounts: Record<string, number>;
   mentionCounts: Record<string, number>;
   serverMentionCounts: Record<string, number>;
@@ -28,6 +30,7 @@ interface ChatState {
   setChannels: (channels: Channel[]) => void;
   setCategories: (categories: { id: string; name: string; position: number }[]) => void;
   setDMChannels: (channels: DMChannelData[]) => void;
+  setGroupDMChannels: (channels: GroupDMChannelData[]) => void;
   setMessages: (channelId: string, messages: Message[]) => void;
   addMessage: (channelId: string, message: Message) => void;
   updateMessage: (channelId: string, messageId: string, message: Message) => void;
@@ -44,6 +47,7 @@ interface ChatState {
   setMembers: (members: Member[]) => void;
   setActiveChannel: (channelId: string | null) => void;
   setActiveDMChannel: (channelId: string | null) => void;
+  setActiveGroupDMChannel: (channelId: string | null) => void;
   setUnreadCounts: (counts: Record<string, number>) => void;
   setMentionCounts: (counts: Record<string, number>) => void;
   incrementServerMentionCount: (serverId: string) => void;
@@ -67,6 +71,7 @@ export const useChatStore = create<ChatState>()(
       channels: [],
       categories: [],
       dmChannels: [],
+      groupDMChannels: [],
       messages: {},
       pinnedMessages: {},
       threads: {},
@@ -76,6 +81,7 @@ export const useChatStore = create<ChatState>()(
       members: [],
       activeChannelId: null,
       activeDMChannelId: null,
+      activeGroupDMChannelId: null,
       unreadCounts: {},
       mentionCounts: {},
       serverMentionCounts: {},
@@ -89,6 +95,7 @@ export const useChatStore = create<ChatState>()(
       setChannels: (channels) => set({ channels }),
       setCategories: (categories) => set({ categories }),
       setDMChannels: (dmChannels) => set({ dmChannels }),
+      setGroupDMChannels: (groupDMChannels) => set({ groupDMChannels }),
       setMessages: (channelId, messages) =>
         set((state) => ({ messages: { ...state.messages, [channelId]: messages } })),
       addMessage: (channelId, message) =>
@@ -190,8 +197,9 @@ export const useChatStore = create<ChatState>()(
       setActiveThreadId: (activeThreadId) => set({ activeThreadId, threadPanelVisible: activeThreadId !== null ? true : undefined }),
       setThreadPanelVisible: (threadPanelVisible) => set({ threadPanelVisible }),
       setMembers: (members) => set({ members }),
-      setActiveChannel: (activeChannelId) => set({ activeChannelId, activeDMChannelId: null }),
-      setActiveDMChannel: (activeDMChannelId) => set({ activeDMChannelId, activeChannelId: null }),
+      setActiveChannel: (activeChannelId) => set({ activeChannelId, activeDMChannelId: null, activeGroupDMChannelId: null }),
+      setActiveDMChannel: (activeDMChannelId) => set({ activeDMChannelId, activeChannelId: null, activeGroupDMChannelId: null }),
+      setActiveGroupDMChannel: (activeGroupDMChannelId) => set({ activeGroupDMChannelId, activeChannelId: null, activeDMChannelId: null }),
       setUnreadCounts: (unreadCounts) => set({ unreadCounts }),
       setMentionCounts: (mentionCounts) => set({ mentionCounts }),
       incrementServerMentionCount: (serverId) =>
