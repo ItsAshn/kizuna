@@ -11,7 +11,7 @@ import { useKeyboard } from '../hooks/useKeyboard'
 import { fetchMessages, fetchDMMessages, fetchGroupDMMessages, sendMessage, sendDMMessage, sendGroupDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, deleteGroupDMMessage, editGroupDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles, pinMessage, unpinMessage, fetchPinnedMessages, createThread } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent, encryptGroupDM, decryptGroupDM, isGroupEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import { Lock, Paperclip, Send, Sticker, Phone, ChevronLeft, Users, Pin, MessageSquare, Mic, Square, Trash2 } from 'lucide-react'
+import { Lock, Paperclip, Send, Sticker, Phone, ChevronLeft, Users, Pin, MessageSquare, Mic, Square, Trash2, Search } from 'lucide-react'
 import type { Message, Member, DMChannelData, GroupDMChannelData, CustomRole, PinnedMessage } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
@@ -998,12 +998,15 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const handleJumpToMessage = useCallback((messageId: string, targetChannelId: string) => {
     setShowSearch(false)
 
-    const currentChannelId = activeChannelId || activeDMChannelId
+    const currentChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
 
     if (targetChannelId !== currentChannelId) {
       const isDM = dmChannels.some((d) => d.id === targetChannelId)
+      const isGroupDM = groupDMChannels.some((g) => g.id === targetChannelId)
       if (isDM) {
         setActiveDMChannel(targetChannelId)
+      } else if (isGroupDM) {
+        setActiveGroupDMChannel(targetChannelId)
       } else {
         setActiveChannel(targetChannelId)
       }
@@ -1031,7 +1034,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     } else {
       tryScroll(0)
     }
-  }, [activeChannelId, activeDMChannelId, dmChannels, setActiveChannel, setActiveDMChannel, displayMessages])
+  }, [activeChannelId, activeDMChannelId, activeGroupDMChannelId, dmChannels, groupDMChannels, setActiveChannel, setActiveDMChannel, setActiveGroupDMChannel, displayMessages])
 
   const renderMessageItem = useCallback((_index: number, msg: Message) => {
     const msgIdx = _index
@@ -1158,6 +1161,16 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             <span>{members.length}</span>
           </button>
         )}
+        {(activeChannelId || activeDMChannelId || activeGroupDMChannelId) && (
+          <button
+            className={`chat-area__header-search-btn${showSearch ? ' chat-area__header-search-btn--active' : ''}`}
+            onClick={() => setShowSearch(v => !v)}
+            aria-label="Search messages"
+            title="Search messages"
+          >
+            <Search className="icon-sm" />
+          </button>
+        )}
         {activeChannelId && (
           <button
             className={`chat-area__header-pins-btn${pinsOpen ? ' chat-area__header-pins-btn--active' : ''}`}
@@ -1180,9 +1193,9 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
         )}
       </div>
 
-      {showSearch && activeChannelId && (
+      {showSearch && (activeChannelId || activeDMChannelId || activeGroupDMChannelId) && (
         <SearchBar
-          channelId={activeChannelId}
+          channelId={activeChannelId || activeDMChannelId || activeGroupDMChannelId || undefined}
           onClose={() => setShowSearch(false)}
           onJumpToMessage={handleJumpToMessage}
         />

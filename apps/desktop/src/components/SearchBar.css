@@ -59,6 +59,26 @@
   color: var(--text-primary);
 }
 
+.search-bar__scope-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  transition: color 0.12s ease;
+}
+
+.search-bar__scope-btn:hover {
+  color: var(--text-secondary);
+}
+
+.search-bar__scope-btn--active {
+  color: var(--brand);
+}
+
 .search-bar__results {
   max-height: 200px;
   overflow-y: auto;

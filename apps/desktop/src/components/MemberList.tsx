@@ -123,13 +123,27 @@ export default function MemberList({ visible, onClose }: Props) {
 
   const isSearching = search.trim().length > 0
 
+  function isOnline(m: Member): boolean {
+    return userStatuses[m.id] != null && userStatuses[m.id] !== 'offline'
+  }
+
   function onlineCount(mems: Member[]): number {
-    return mems.filter(m => userStatuses[m.id] && userStatuses[m.id] !== 'offline').length
+    return mems.filter(m => isOnline(m)).length
+  }
+
+  function splitOnlineOffline(mems: Member[]): { online: Member[]; offline: Member[] } {
+    const online: Member[] = []
+    const offline: Member[] = []
+    for (const m of mems) {
+      (isOnline(m) ? online : offline).push(m)
+    }
+    return { online, offline }
   }
 
   function renderMember(member: Member) {
     const status = userStatuses[member.id] || 'offline'
     const activity = userActivities[member.id]
+    const offline = !isOnline(member)
     return (
       <button
         key={member.id}
@@ -137,18 +151,18 @@ export default function MemberList({ visible, onClose }: Props) {
           profileAnchorRef.current = e.currentTarget as HTMLElement
           setProfileUserId(member.id)
         }}
-        className="member-list__member"
+        className={`member-list__member${offline ? ' member-list__member--offline' : ''}`}
       >
         <div className="member-list__member-avatar-wrap">
           <div
-            className="member-list__member-avatar"
+            className={`member-list__member-avatar${!offline ? ' member-list__member-avatar--online' : ''}`}
             style={{ backgroundColor: member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)') }}
           >
             {member.avatar ? (
               <img src={member.avatar} alt="" className="member-list__member-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
             ) : (member.display_name || member.username)[0]?.toUpperCase()}
           </div>
-          {status !== 'offline' && <span className={`member-list__online-dot member-list__online-dot--${status}`} />}
+          {!offline && <span className={`member-list__online-dot member-list__online-dot--${status}`} />}
         </div>
         <div className="member-list__member-info">
           <div className="member-list__member-name">{member.display_name || member.username}</div>
@@ -169,11 +183,23 @@ export default function MemberList({ visible, onClose }: Props) {
     )
   }
 
+  function renderMemberGroup(mems: Member[]) {
+    const { online, offline } = splitOnlineOffline(mems)
+    const showOfflineDivider = offline.length > 0 && online.length > 0
+    return (
+      <>
+        {online.map(renderMember)}
+        {showOfflineDivider && <div className="member-list__offline-divider"><span>offline — {offline.length}</span></div>}
+        {offline.map(renderMember)}
+      </>
+    )
+  }
+
   return (
     <div className={`member-list${closing ? ' member-list--closing' : ''}`} role="complementary" aria-label="Members">
       {isOverlay && <div className="member-list__drag-handle" />}
       <div className="member-list__header">
-        <h3 className="member-list__title">Members — {members.length}</h3>
+        <h3 className="member-list__title">Members — {onlineCount(members)}/{members.length}</h3>
         {isOverlay && onClose && (
           <button
             className="member-list__close-btn"
@@ -212,12 +238,9 @@ export default function MemberList({ visible, onClose }: Props) {
                 <div className="member-list__group-header">
                   <span className="member-list__group-dot" style={{ backgroundColor: group.role.color }} />
                   <span className="member-list__group-name" style={{ color: group.role.color }}>{group.role.name}</span>
-                  <span className="member-list__group-count">{group.members.length}</span>
-                  {onlineCount(group.members) > 0 && (
-                    <span className="member-list__group-online">{onlineCount(group.members)} online</span>
-                  )}
+                  <span className="member-list__group-count">{onlineCount(group.members)}/{group.members.length}</span>
                 </div>
-                {group.members.map(renderMember)}
+                {renderMemberGroup(group.members)}
               </div>
             ))}
             {ungroupedMembers.length > 0 && (
@@ -225,13 +248,10 @@ export default function MemberList({ visible, onClose }: Props) {
                 {hoistGroups.length > 0 && (
                   <div className="member-list__group-header">
                     <span className="member-list__group-name" style={{ color: 'var(--text-muted)' }}>members</span>
-                    <span className="member-list__group-count">{ungroupedMembers.length}</span>
-                    {onlineCount(ungroupedMembers) > 0 && (
-                      <span className="member-list__group-online">{onlineCount(ungroupedMembers)} online</span>
-                    )}
+                    <span className="member-list__group-count">{onlineCount(ungroupedMembers)}/{ungroupedMembers.length}</span>
                   </div>
                 )}
-                {ungroupedMembers.map(renderMember)}
+                {renderMemberGroup(ungroupedMembers)}
               </div>
             )}
           </>

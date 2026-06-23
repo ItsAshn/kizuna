@@ -2,7 +2,10 @@ import { useState, memo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import { Settings, ChevronLeft, LayoutDashboard, Ellipsis } from 'lucide-react'
+import { Settings, LayoutDashboard, Ellipsis, Plus, ChevronDown } from 'lucide-react'
+import { useMobile } from '../hooks/useMobile'
+import ContextMenu from './ContextMenu'
+import type { ContextMenuSection } from './ContextMenu'
 import './ServerPanel.css'
 
 interface ServerPanelProps {
@@ -18,9 +21,11 @@ interface ServerIconProps {
   isActive: boolean
   isConnected: boolean
   mentions: number
-  showRemove: boolean
+  onContextMenu: (e: React.MouseEvent) => void
   onClick: (serverId: string) => void
-  onContextMenu: (e: React.MouseEvent, serverId: string) => void
+  draggable: boolean
+  onDragStart: (e: React.DragEvent) => void
+  onDragEnd: () => void
 }
 
 const ServerIcon = memo(function ServerIcon({
@@ -28,18 +33,23 @@ const ServerIcon = memo(function ServerIcon({
   isActive,
   isConnected,
   mentions,
-  showRemove,
-  onClick,
   onContextMenu,
+  onClick,
+  draggable,
+  onDragStart,
+  onDragEnd,
 }: ServerIconProps) {
   return (
     <button
-      className={`server-panel__icon ${isActive ? 'server-panel__icon--active' : ''}`}
+      className={`server-panel__icon${isActive ? ' server-panel__icon--active' : ''}`}
       onClick={() => onClick(server.id)}
       aria-label={`${server.name}${isConnected ? ' — connected' : ' — not connected'}${mentions > 0 ? ` — ${mentions} mentions` : ''}`}
       aria-current={isActive ? 'page' : undefined}
-      onContextMenu={(e) => onContextMenu(e, server.id)}
+      onContextMenu={onContextMenu}
       title={server.name}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
     >
       {server.icon ? (
         <img
@@ -53,18 +63,10 @@ const ServerIcon = memo(function ServerIcon({
       ) : (
         server.name.slice(0, 2).toUpperCase()
       )}
-      <span className={`server-panel__dot ${isConnected ? 'server-panel__dot--online' : ''}`} />
+      <span className={`server-panel__dot${isConnected ? ' server-panel__dot--online' : ''}`} />
       {mentions > 0 && (
         <span className="server-panel__badge">
           {mentions > 99 ? '99+' : mentions}
-        </span>
-      )}
-      {showRemove && (
-        <span
-          className="server-panel__remove-badge"
-          onClick={(e) => onContextMenu(e, server.id)}
-        >
-          x
         </span>
       )}
     </button>
@@ -73,16 +75,20 @@ const ServerIcon = memo(function ServerIcon({
 
 export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExport, onAddServer, onBackToServers }: ServerPanelProps) {
   const navigate = useNavigate()
+  const isMobile = useMobile()
   const {
     servers,
     sessions,
     activeServerId,
     setActiveServer,
     removeServer,
+    reorderServers,
   } = useServerStore()
   const serverMentionCounts = useChatStore((s) => s.serverMentionCounts)
-  const [showRemove, setShowRemove] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ serverId: string; x: number; y: number } | null>(null)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
+  const [drag, setDrag] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState<{ serverId: string; position: 'above' | 'below' } | null>(null)
 
   function handleHome() {
     setActiveServer(null)
@@ -100,15 +106,93 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
     }
   }, [sessions, setActiveServer, navigate, onLoginRequired])
 
-  const handleRemove = useCallback((e: React.MouseEvent, serverId: string) => {
-    e.stopPropagation()
-    if (showRemove === serverId) {
-      removeServer(serverId)
-      setShowRemove(null)
-    } else {
-      setShowRemove(serverId)
+  const handleContextMenu = useCallback((e: React.MouseEvent, serverId: string) => {
+    e.preventDefault()
+    setContextMenu({ serverId, x: e.clientX, y: e.clientY })
+  }, [])
+
+  const contextMenuSections: ContextMenuSection[] = contextMenu
+    ? [{
+        items: [
+          {
+            label: 'Remove Server',
+            onClick: () => {
+              removeServer(contextMenu.serverId)
+              setContextMenu(null)
+            },
+            danger: true,
+          },
+        ],
+      }]
+    : []
+
+  function handleDragStart(e: React.DragEvent, serverId: string) {
+    if (isMobile) return
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', serverId)
+    setDrag(serverId)
+  }
+
+  function handleDragEnd() {
+    setDrag(null)
+    setDragOver(null)
+  }
+
+  function handleDragOver(e: React.DragEvent, serverId: string) {
+    if (!drag || drag === serverId) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    setDragOver({ serverId, position: e.clientY < rect.top + rect.height / 2 ? 'above' : 'below' })
+  }
+
+  function handleDragLeave(e: React.DragEvent, serverId: string) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+      setDragOver((prev) => (prev?.serverId === serverId ? null : prev))
     }
-  }, [showRemove, removeServer])
+  }
+
+  function handleDrop(e: React.DragEvent, targetId: string) {
+    e.preventDefault()
+    if (!drag || !dragOver || drag === targetId) return
+    reorderServers(drag, targetId, dragOver.position)
+    setDrag(null)
+    setDragOver(null)
+  }
+
+  function renderServerIcon(server: typeof servers[number]) {
+    const serverId = server.id
+    const isDragging = drag === serverId
+    const isDropAbove = dragOver?.serverId === serverId && dragOver.position === 'above'
+    const isDropBelow = dragOver?.serverId === serverId && dragOver.position === 'below'
+    let wrapClass = 'server-panel__icon-wrap'
+    if (isDragging) wrapClass += ' server-panel__icon-wrap--dragging'
+    if (isDropAbove) wrapClass += ' server-panel__icon-wrap--drop-above'
+    if (isDropBelow) wrapClass += ' server-panel__icon-wrap--drop-below'
+
+    return (
+      <div
+        key={serverId}
+        className={wrapClass}
+        onDragOver={(e) => handleDragOver(e, serverId)}
+        onDragLeave={(e) => handleDragLeave(e, serverId)}
+        onDrop={(e) => handleDrop(e, serverId)}
+      >
+        <ServerIcon
+          server={server}
+          isActive={activeServerId === serverId}
+          isConnected={!!sessions[serverId]}
+          mentions={serverMentionCounts[serverId] ?? 0}
+          onContextMenu={(e) => handleContextMenu(e, serverId)}
+          onClick={handleServerClick}
+          draggable={!isMobile}
+          onDragStart={(e) => handleDragStart(e, serverId)}
+          onDragEnd={handleDragEnd}
+        />
+      </div>
+    )
+  }
 
   const uncategorizedServers = servers.filter((s) => !s.folder)
   const folderNames = [...new Set(servers.filter((s) => s.folder).map((s) => s.folder!))].sort()
@@ -116,7 +200,7 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
   return (
     <div className="server-panel">
       <button
-        className={`server-panel__icon server-panel__icon--home ${!activeServerId ? 'server-panel__icon--active' : ''}`}
+        className={`server-panel__icon server-panel__icon--home${!activeServerId ? ' server-panel__icon--active' : ''}`}
         onClick={handleHome}
         title="Home"
         aria-label="Home"
@@ -127,21 +211,8 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
       <div className="server-panel__divider" />
 
       <div className="server-panel__list">
-        {/* Uncategorized servers */}
-        {uncategorizedServers.map((server) => (
-          <ServerIcon
-            key={server.id}
-            server={server}
-            isActive={activeServerId === server.id}
-            isConnected={!!sessions[server.id]}
-            mentions={serverMentionCounts[server.id] ?? 0}
-            showRemove={showRemove === server.id}
-            onClick={handleServerClick}
-            onContextMenu={handleRemove}
-          />
-        ))}
+        {uncategorizedServers.map((server) => renderServerIcon(server))}
 
-        {/* Folder groups */}
         {folderNames.map((folder) => {
           const folderServers = servers.filter((s) => s.folder === folder)
           const isCollapsed = collapsedFolders.has(folder)
@@ -158,25 +229,19 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
                 title={isCollapsed ? `Expand ${folder}` : `Collapse ${folder}`}
                 aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${folder}`}
               >
-                <span className={`server-panel__folder-arrow${isCollapsed ? ' server-panel__folder-arrow--collapsed' : ''}`}>▾</span>
+                <ChevronDown
+                  size={12}
+                  className={`server-panel__folder-arrow${isCollapsed ? ' server-panel__folder-arrow--collapsed' : ''}`}
+                />
                 {isCollapsed && folderServers.length > 0 && (
-                  <span className="server-panel__folder-preview">
+                  <div className="server-panel__folder-preview">
                     {folderServers[0].name.slice(0, 2).toUpperCase()}
-                  </span>
+                  </div>
                 )}
-                {!isCollapsed && folderServers.map((server) => (
-                  <ServerIcon
-                    key={server.id}
-                    server={server}
-                    isActive={activeServerId === server.id}
-                    isConnected={!!sessions[server.id]}
-                    mentions={serverMentionCounts[server.id] ?? 0}
-                    showRemove={showRemove === server.id}
-                    onClick={handleServerClick}
-                    onContextMenu={handleRemove}
-                  />
-                ))}
               </button>
+              <div className={`server-panel__folder-content${isCollapsed ? ' server-panel__folder-content--collapsed' : ''}`}>
+                {folderServers.map((server) => renderServerIcon(server))}
+              </div>
             </div>
           )
         })}
@@ -190,7 +255,7 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
         title="Add Server"
         aria-label="Add server"
       >
-        +
+        <Plus size={18} />
       </button>
 
       <button
@@ -211,6 +276,15 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
         <Settings size={18} />
       </button>
 
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          sections={contextMenuSections}
+          onClose={() => setContextMenu(null)}
+          title={servers.find((s) => s.id === contextMenu.serverId)?.name}
+        />
+      )}
     </div>
   )
 }

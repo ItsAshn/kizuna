@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { searchMessages } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
-import { X, Search, Loader2, ChevronDown } from 'lucide-react'
+import { X, Search, Loader2, ChevronDown, Globe } from 'lucide-react'
 import type { Message } from '@kizuna/shared'
 import './SearchBar.css'
 
 interface SearchBarProps {
-  channelId: string
+  channelId?: string
   onClose: () => void
   onJumpToMessage: (messageId: string, channelId: string) => void
 }
@@ -18,12 +18,15 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
+  const [serverwide, setServerwide] = useState(!channelId)
   const inputRef = useRef<HTMLInputElement>(null)
   const lastQueryRef = useRef('')
 
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  const effectiveChannelId = serverwide ? undefined : channelId
 
   const doSearch = useCallback(async (q: string, before?: string) => {
     if (!session) return
@@ -36,7 +39,7 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
     }
     lastQueryRef.current = q
     try {
-      const { results: r, hasMore: hm } = await searchMessages(session.url, q, channelId, 20, before)
+      const { results: r, hasMore: hm } = await searchMessages(session.url, q, effectiveChannelId, 20, before)
       if (lastQueryRef.current !== q) return
       if (isNewSearch) {
         setResults(r)
@@ -47,7 +50,7 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
     } catch {}
     setLoading(false)
     setLoadingMore(false)
-  }, [session, channelId])
+  }, [session, effectiveChannelId])
 
   useEffect(() => {
     if (!query.trim() || query.length < 2) {
@@ -62,6 +65,14 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
 
     return () => clearTimeout(timer)
   }, [query, doSearch])
+
+  useEffect(() => {
+    if (query.trim().length >= 2) {
+      setResults([])
+      setHasMore(false)
+      doSearch(query)
+    }
+  }, [serverwide])
 
   function handleLoadMore() {
     if (!hasMore || loadingMore || results.length === 0) return
@@ -84,13 +95,23 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
           ref={inputRef}
           type="text"
           className="search-bar__input"
-          placeholder="Search messages..."
+          placeholder={serverwide ? 'Search all messages...' : 'Search this channel...'}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           aria-label="Search messages"
         />
         {loading && <Loader2 size={14} className="search-bar__spinner" />}
+        {channelId && (
+          <button
+            className={`search-bar__scope-btn${serverwide ? ' search-bar__scope-btn--active' : ''}`}
+            onClick={() => setServerwide(v => !v)}
+            title={serverwide ? 'Searching all channels' : 'Search this channel only'}
+            aria-label="Toggle serverwide search"
+          >
+            <Globe size={14} />
+          </button>
+        )}
         <button className="search-bar__close" onClick={onClose} aria-label="Close search">
           <X size={14} />
         </button>

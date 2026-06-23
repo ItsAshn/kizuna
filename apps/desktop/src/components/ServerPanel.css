@@ -8,6 +8,8 @@
   gap: var(--space-1);
 }
 
+/* ── Scrollable server list ─────────────────────────────────── */
+
 .server-panel__list {
   display: flex;
   flex-direction: column;
@@ -17,7 +19,45 @@
   flex: 1 1 auto;
   min-height: 0;
   padding: 0 2px;
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+  scroll-snap-type: y proximity;
+  overscroll-behavior: contain;
 }
+
+/* ── Server icon wrap (DnD drop target) ─────────────────────── */
+
+.server-panel__icon-wrap {
+  position: relative;
+  scroll-snap-align: center;
+}
+
+.server-panel__icon-wrap--dragging {
+  opacity: 0.35;
+}
+
+.server-panel__icon-wrap--drop-above::before,
+.server-panel__icon-wrap--drop-below::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  background: var(--accent-color);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.server-panel__icon-wrap--drop-above::before {
+  top: -3px;
+}
+
+.server-panel__icon-wrap--drop-below::before {
+  bottom: -3px;
+}
+
+/* ── Server icon button ─────────────────────────────────────── */
 
 .server-panel__icon {
   width: 48px;
@@ -34,10 +74,12 @@
   color: var(--text-secondary);
   position: relative;
   transition:
-    border-radius 0.15s,
-    background 0.15s,
-    color 0.15s,
-    border-color 0.15s;
+    border-radius 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   flex-shrink: 0;
 }
 
@@ -46,7 +88,20 @@
   color: var(--text-primary);
   background: var(--bg-hover);
   border-color: var(--accent-color);
+  transform: scale(1.06);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.15);
 }
+
+.server-panel__icon:active {
+  transform: scale(0.94);
+}
+
+.server-panel__icon:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ── Active server indicator ────────────────────────────────── */
 
 .server-panel__icon--active {
   border-radius: var(--radius-sm);
@@ -65,34 +120,60 @@
   height: 20px;
   background: var(--text-primary);
   border-radius: 0 4px 4px 0;
-  transition: height 0.15s ease;
+  transition: height 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .server-panel__icon--active:hover::before {
   height: 36px;
 }
 
+.server-panel__icon--active:hover {
+  transform: scale(1.06);
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.3);
+}
+
+.server-panel__icon--active:active {
+  transform: scale(0.94);
+}
+
+/* ── Home icon ──────────────────────────────────────────────── */
+
 .server-panel__icon--home {
   font-size: 18px;
 }
 
+/* ── Action buttons (+ / import / settings) ─────────────────── */
+
 .server-panel__icon--action {
-  border-style: dashed;
-  font-size: 20px;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
   color: var(--text-muted);
+  font-size: 18px;
 }
 
 .server-panel__icon--action:hover {
   color: var(--green);
   border-color: var(--green);
+  background: var(--bg-hover);
+  transform: scale(1.06);
+  box-shadow: 0 0 10px rgba(64, 192, 87, 0.15);
 }
+
+.server-panel__icon--action:active {
+  transform: scale(0.94);
+}
+
+/* ── Icon image ─────────────────────────────────────────────── */
 
 .server-panel__icon-img {
   width: 100%;
   height: 100%;
   border-radius: calc(var(--radius-md) - 1px);
   object-fit: cover;
-  transition: border-radius 0.15s ease;
+  transition: border-radius 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .server-panel__icon:hover .server-panel__icon-img {
@@ -103,6 +184,8 @@
   border-radius: calc(var(--radius-sm) - 1px);
 }
 
+/* ── Divider ────────────────────────────────────────────────── */
+
 .server-panel__divider {
   width: 32px;
   height: 2px;
@@ -111,20 +194,25 @@
   margin: var(--space-1) 0;
 }
 
+/* ── Connection dot ─────────────────────────────────────────── */
+
 .server-panel__dot {
   position: absolute;
-  top: 3px;
+  bottom: 3px;
   right: 3px;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   border: 2px solid var(--bg-secondary);
   background: var(--text-muted);
+  transition: background 0.2s ease;
 }
 
 .server-panel__dot--online {
   background: var(--green);
 }
+
+/* ── Mention badge ──────────────────────────────────────────── */
 
 .server-panel__badge {
   position: absolute;
@@ -140,28 +228,10 @@
   text-align: center;
   line-height: 1.2;
   border: 2px solid var(--bg-secondary);
+  pointer-events: none;
 }
 
-.server-panel__remove-badge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--red);
-  color: var(--text-primary);
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  border: 2px solid var(--bg-secondary);
-  transform: translate(5px, -5px);
-  z-index: 1;
-}
-
-/* ── Server folders ──────────────────────────────────────────── */
+/* ── Server folders ─────────────────────────────────────────── */
 
 .server-panel__folder {
   display: flex;
@@ -174,19 +244,17 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-1);
+  gap: 2px;
   border: none;
   background: none;
   padding: 0;
   cursor: pointer;
+  color: var(--text-muted);
 }
 
 .server-panel__folder-arrow {
-  font-size: 8px;
-  color: var(--text-muted);
-  transition: transform 0.15s ease;
-  margin: 2px 0;
-  line-height: 1;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
 }
 
 .server-panel__folder-arrow--collapsed {
@@ -206,7 +274,39 @@
   font-weight: 700;
   color: var(--text-secondary);
   flex-shrink: 0;
+  transition: border-radius 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+.server-panel__folder-toggle:hover .server-panel__folder-preview {
+  border-radius: var(--radius-sm);
+  border-color: var(--accent-color);
+}
+
+/* ── Folder content animation ───────────────────────────────── */
+
+.server-panel__folder-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  overflow: hidden;
+  max-height: 600px;
+  opacity: 1;
+  transition:
+    max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.25s ease-out,
+    margin-top 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  margin-top: 0;
+}
+
+.server-panel__folder-content--collapsed {
+  max-height: 0;
+  opacity: 0;
+  margin-top: -4px;
+  pointer-events: none;
+}
+
+/* ── Mobile: horizontal server strip ────────────────────────── */
 
 @media (max-width: 767px) {
   .server-panel {
@@ -235,16 +335,56 @@
     flex: 0 1 auto;
     padding: 0;
     -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    scrollbar-gutter: auto;
   }
 
   .server-panel__list::-webkit-scrollbar {
     height: 0;
   }
 
+  .server-panel__icon-wrap {
+    scroll-snap-align: center;
+  }
+
+  .server-panel__icon-wrap--drop-above::before {
+    top: 4px;
+    bottom: 4px;
+    left: -3px;
+    right: auto;
+    width: 2px;
+    height: auto;
+  }
+
+  .server-panel__icon-wrap--drop-below::before {
+    top: 4px;
+    bottom: 4px;
+    right: -3px;
+    left: auto;
+    width: 2px;
+    height: auto;
+  }
+
   .server-panel__icon {
     width: 44px;
     height: 44px;
     font-size: 14px;
+  }
+
+  .server-panel__icon:hover {
+    transform: none;
+  }
+
+  .server-panel__icon:active {
+    transform: scale(0.92);
+  }
+
+  .server-panel__icon--active:hover {
+    transform: none;
+  }
+
+  .server-panel__icon--active:active {
+    transform: scale(0.92);
   }
 
   .server-panel__divider {
@@ -254,24 +394,64 @@
     flex-shrink: 0;
   }
 
-  .server-panel__settings-btn {
-    width: 44px;
-    height: 44px;
+  .server-panel__icon--action {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
   }
 
-  .server-panel__icon--action {
-    font-size: 18px;
+  .server-panel__icon--action:hover {
+    transform: none;
+  }
+
+  .server-panel__icon--action:active {
+    transform: scale(0.92);
+  }
+
+  .server-panel__folder-content--collapsed {
+    margin-top: 0;
+  }
+
+  .server-panel__folder {
+    flex-direction: row;
+    gap: var(--space-1);
+  }
+
+  .server-panel__folder-content {
+    flex-direction: row;
+    max-height: none;
+    max-width: 600px;
+    transition:
+      max-width 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 0.25s ease-out;
+  }
+
+  .server-panel__folder-content--collapsed {
+    max-width: 0;
+    margin-top: 0;
+    opacity: 0;
   }
 }
-/* Landscape phones: shrink the top server bar to reclaim vertical space. */
+
+/* ── Landscape phones: shrink top bar ───────────────────────── */
+
 @media (max-width: 1023px) and (max-height: 480px) and (orientation: landscape) {
   .server-panel {
     height: 44px;
   }
 
-  .server-panel__icon,
-  .server-panel__settings-btn {
+  .server-panel__icon {
     width: 36px;
     height: 36px;
+    font-size: 12px;
+  }
+
+  .server-panel__icon--action {
+    width: 32px;
+    height: 32px;
+  }
+
+  .server-panel__icon--home {
+    font-size: 14px;
   }
 }

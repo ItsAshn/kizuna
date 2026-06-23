@@ -20,6 +20,7 @@ interface ServerState {
   setActiveSession: (session: ServerSession | null) => void
   setActiveServer: (serverId: string | null) => void
   updateServerInfo: (id: string, updates: Partial<SavedServer>) => void
+  reorderServers: (fromId: string, toId: string, position: 'above' | 'below') => void
   refreshSessionUser: () => Promise<void>
 }
 
@@ -80,6 +81,23 @@ export const useServerStore = create<ServerState>()(
         set((state) => ({
           servers: state.servers.map((s) => (s.id === id ? { ...s, ...updates } : s)),
         })),
+
+      reorderServers: (fromId, toId, position) =>
+        set((state) => {
+          const fromIdx = state.servers.findIndex((s) => s.id === fromId)
+          const toIdx = state.servers.findIndex((s) => s.id === toId)
+          if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return state
+          const fromServer = state.servers[fromIdx]
+          const toServer = state.servers[toIdx]
+          if (fromServer.folder !== toServer.folder) return state
+          const reordered = [...state.servers]
+          reordered.splice(fromIdx, 1)
+          let insertAt = reordered.findIndex((s) => s.id === toId)
+          if (position === 'below') insertAt++
+          if (insertAt < 0) insertAt = reordered.length
+          reordered.splice(insertAt, 0, fromServer)
+          return { servers: reordered }
+        }),
 
       refreshSessionUser: async () => {
         const { activeSession } = get()
