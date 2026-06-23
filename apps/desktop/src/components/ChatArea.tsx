@@ -584,6 +584,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
 
     socketRef.current?.emit('typing:stop', { channelId })
 
+    const wasAtBottom = atBottom
+
     try {
       let message: Message
       if (activeChannelId) {
@@ -640,16 +642,18 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       setSendError(null)
       if ('vibrate' in navigator) navigator.vibrate(10)
       if (inputRef.current) { inputRef.current.style.height = 'auto'; inputRef.current.focus() }
-      requestAnimationFrame(() => {
-        const chId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
-        if (chId) {
-          const msgs = useChatStore.getState().messages[chId] || []
-          if (msgs.length > 0) {
-            virtuosoRef.current?.scrollToIndex(msgs.length - 1)
+      if (!wasAtBottom) {
+        requestAnimationFrame(() => {
+          const chId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
+          if (chId) {
+            const msgs = useChatStore.getState().messages[chId] || []
+            if (msgs.length > 0) {
+              virtuosoRef.current?.scrollToIndex(msgs.length - 1)
+            }
+            lastCountAtBottom.current = msgs.length
           }
-          lastCountAtBottom.current = msgs.length
-        }
-      })
+        })
+      }
     } catch (err: any) {
       const status = err?.response?.status
       const serverMsg = err?.response?.data?.error
@@ -676,6 +680,9 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
 
     setUploading(true)
     setUploadProgress(0)
+
+    const wasAtBottom = atBottom
+
     try {
       const result = await uploadAttachment(session.url, targetChannelId, pendingFile, (pct) => setUploadProgress(pct))
       setPendingAttachmentId(result.id)
@@ -719,16 +726,18 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       setPendingAttachmentId(null)
       setSendError(null)
       if (inputRef.current) { inputRef.current.style.height = 'auto'; inputRef.current.focus() }
-      requestAnimationFrame(() => {
-        const channelId = activeChannelId || activeDMChannelId
-        if (channelId) {
-          const msgs = useChatStore.getState().messages[channelId] || []
-          if (msgs.length > 0) {
-            virtuosoRef.current?.scrollToIndex(msgs.length - 1)
+      if (!wasAtBottom) {
+        requestAnimationFrame(() => {
+          const channelId = activeChannelId || activeDMChannelId
+          if (channelId) {
+            const msgs = useChatStore.getState().messages[channelId] || []
+            if (msgs.length > 0) {
+              virtuosoRef.current?.scrollToIndex(msgs.length - 1)
+            }
+            lastCountAtBottom.current = msgs.length
           }
-          lastCountAtBottom.current = msgs.length
-        }
-      })
+        })
+      }
     } catch (err: any) {
       setSendError(err?.response?.data?.error || err?.message || 'Failed to upload file')
       if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
