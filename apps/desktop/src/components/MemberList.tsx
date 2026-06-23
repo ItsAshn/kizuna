@@ -152,16 +152,15 @@ export default function MemberList({ visible, onClose }: Props) {
         </div>
         <div className="member-list__member-info">
           <div className="member-list__member-name">{member.display_name || member.username}</div>
-          {activity && (
+          {activity ? (
             <div className="member-list__member-activity" title={`${activity.type === 'music' ? 'Listening to' : activity.type === 'game' ? 'Playing' : activity.type === 'video' ? 'Watching' : ''} ${activity.name}${activity.details ? ` - ${activity.details}` : ''}`}>
               {activity.type === 'music' ? '\u266B' : '\u25B6'} {activity.name}
             </div>
-          )}
-          {member.custom_role_name && (
+          ) : member.custom_role_name ? (
             <div className="member-list__member-role" style={{ color: member.custom_role_color || undefined }}>
               {member.custom_role_name}
             </div>
-          )}
+          ) : null}
         </div>
         {member.role === 'admin' && !member.custom_role_name && <span className="member-list__admin-badge">admin</span>}
         {member.is_host && <span className="member-list__host-badge">host</span>}

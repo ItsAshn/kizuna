@@ -31,7 +31,7 @@ export function useActivityDetector(socketRef: React.MutableRefObject<any>) {
   const lastActivityRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!shareActivity || !shareMediaActivity) return
+    if (!shareActivity) return
 
     const socket = socketRef.current
     if (!socket) return
@@ -44,6 +44,7 @@ export function useActivityDetector(socketRef: React.MutableRefObject<any>) {
     }
 
     function checkMedia() {
+      if (!shareMediaActivity) return
       if ('mediaSession' in navigator) {
         const metadata = navigator.mediaSession.metadata
         const activity = detectActivity(metadata)

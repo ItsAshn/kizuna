@@ -6,6 +6,7 @@ import { isTauri, isMobileTauri } from '../utils/platform'
 import { clearCryptoState } from '../store/keyStore'
 import Modal from './ui/Modal'
 import ToggleSwitch from './ui/ToggleSwitch'
+import Tabs from './ui/Tabs'
 import './UserSettingsModal.css'
 
 interface AudioDataPayload {
@@ -29,6 +30,13 @@ interface AudioDevice {
 const INPUT_MODES: { value: VoiceInputMode; label: string; desc: string }[] = [
   { value: 'voice-activity', label: 'voice activity', desc: 'automatically transmit when you speak' },
   { value: 'push-to-talk', label: 'push to talk', desc: 'hold a key to transmit' },
+]
+
+const TABS = [
+  { key: 'voice', label: 'voice' },
+  { key: 'privacy', label: 'privacy' },
+  { key: 'data', label: 'data' },
+  ...(isTauri() ? [{ key: 'updates', label: 'updates' }] : []),
 ]
 
 function keyCodeToLabel(code: string): string {
@@ -61,6 +69,120 @@ function keyCodeToLabel(code: string): string {
   return code
 }
 
+// ── Local sub-components ──────────────────────────────────────
+
+function SettingsToggleRow({
+  label,
+  hint,
+  checked,
+  onChange,
+  ariaLabel,
+}: {
+  label: string
+  hint?: string
+  checked: boolean
+  onChange: (v: boolean) => void
+  ariaLabel?: string
+}) {
+  return (
+    <div className="settings-toggle-row">
+      <div>
+        <div className="settings-toggle-label">{label}</div>
+        {hint && <div className="settings-hint">{hint}</div>}
+      </div>
+      <ToggleSwitch checked={checked} onChange={onChange} ariaLabel={ariaLabel} />
+    </div>
+  )
+}
+
+function SettingsSlider({
+  label,
+  min,
+  max,
+  value,
+  onChange,
+  disabled,
+  hint,
+}: {
+  label: string
+  min: number
+  max: number
+  value: number
+  onChange: (v: number) => void
+  disabled?: boolean
+  hint?: string
+}) {
+  const pct = ((value - min) / (max - min)) * 100
+  return (
+    <div className="settings-slider-control">
+      <div className="settings-slider-row">
+        <span className="settings-slider-label">{label}</span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="settings-slider"
+          style={{ '--slider-pct': `${pct}%` } as React.CSSProperties}
+          disabled={disabled}
+        />
+        <span className="settings-slider-value">{value}%</span>
+      </div>
+      {hint && <div className="settings-hint">{hint}</div>}
+    </div>
+  )
+}
+
+function SettingsActionRow({
+  label,
+  hint,
+  buttonLabel,
+  onClick,
+  danger,
+  dangerConfirm,
+  onCancel,
+}: {
+  label: string
+  hint?: string
+  buttonLabel: string
+  onClick: () => void
+  danger?: boolean
+  dangerConfirm?: boolean
+  onCancel?: () => void
+}) {
+  let btnClass = 'settings-btn'
+  if (dangerConfirm) btnClass += ' settings-btn--danger-confirm'
+  else if (danger) btnClass += ' settings-btn--danger'
+
+  return (
+    <div className="settings-action-row">
+      <div>
+        <div className="settings-toggle-label">{label}</div>
+        {hint && <div className="settings-hint">{hint}</div>}
+      </div>
+      <div className="settings-action-buttons">
+        {dangerConfirm ? (
+          <>
+            <button onClick={onClick} className={btnClass}>
+              confirm
+            </button>
+            <button onClick={onCancel} className="settings-btn">
+              cancel
+            </button>
+          </>
+        ) : (
+          <button onClick={onClick} className={btnClass}>
+            {buttonLabel}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────
+
 export default function UserSettingsModal({ onClose }: Props) {
   const {
     audioInputDeviceId, setAudioInputDeviceId,
@@ -84,6 +206,7 @@ export default function UserSettingsModal({ onClose }: Props) {
   } = useSettingsStore()
   const { checkForUpdates, installUpdate, getVersion } = useUpdaterActions()
 
+  const [activeTab, setActiveTab] = useState('voice')
   const [inputDevices, setInputDevices] = useState<AudioDevice[] | null>(null)
   const [outputDevices, setOutputDevices] = useState<AudioDevice[] | null>(null)
   const [permissionDenied, setPermissionDenied] = useState(false)
@@ -241,8 +364,6 @@ export default function UserSettingsModal({ onClose }: Props) {
     return () => { unmountedRef.current = true }
   }, [loadDevices])
 
-  // Start/stop audio monitoring for the level meter in settings.
-  // This uses start_audio_capture to get raw PCM and compute RMS.
   const startAudioMonitoring = useCallback(async () => {
     audioLevelCleanupRef.current?.()
 
@@ -251,10 +372,8 @@ export default function UserSettingsModal({ onClose }: Props) {
     const { invoke } = await import('@tauri-apps/api/core')
     const { listen } = await import('@tauri-apps/api/event')
 
-    // Stop any existing capture first
     try { await invoke('stop_audio_capture') } catch (err) { console.error('Failed to stop prior audio capture:', err) }
 
-    // Start capture with the currently selected device
     try {
       await invoke('start_audio_capture', {
         deviceName: audioInputDeviceId ?? null,
@@ -280,10 +399,6 @@ export default function UserSettingsModal({ onClose }: Props) {
     }
   }, [audioInputDeviceId, setLiveAudioLevel])
 
-  // Only capture the mic while the user explicitly enables the level meter.
-  // Opening the mic forces Bluetooth headsets out of A2DP into the headset
-  // profile, which pauses other audio — so we never grab it automatically.
-  // Restart when the selected input device changes while monitoring is on.
   useEffect(() => {
     if (!monitoring) return
     startAudioMonitoring()
@@ -306,6 +421,8 @@ export default function UserSettingsModal({ onClose }: Props) {
     window.location.reload()
   }, [])
 
+  // ── Render ──────────────────────────────────────────────────
+
   return (
     <Modal
       open
@@ -317,28 +434,36 @@ export default function UserSettingsModal({ onClose }: Props) {
       )}
     >
       {permissionDenied && (
-        <p className="settings-modal__permission-warning">
+        <p className="settings-permission-warning">
           microphone permission denied — device labels unavailable
         </p>
       )}
 
-          <section>
-            <p className="settings-modal__section-title">audio devices</p>
+      <Tabs tabs={TABS} activeKey={activeTab} onChange={setActiveTab} variant="underline" />
+
+      {/* ── Voice ─────────────────────────────────────────── */}
+
+      {activeTab === 'voice' && (
+        <div className="settings-tab-content">
+
+          {/* Audio devices */}
+          <div className="settings-card">
+            <p className="settings-card-title">audio devices</p>
             {inputDevices === null ? (
               <button
                 onClick={loadDevices}
                 disabled={devicesLoading}
-                className="settings-modal__check-btn"
+                className="settings-btn settings-btn--block"
               >
                 {devicesLoading ? 'detecting...' : 'detect audio devices'}
               </button>
             ) : (
               <>
-                <p className="settings-modal__hint" style={{ marginBottom: '6px' }}>input (microphone)</p>
+                <p className="settings-select-label">input (microphone)</p>
                 <select
                   value={audioInputDeviceId ?? ''}
                   onChange={(e) => setAudioInputDeviceId(e.target.value || null)}
-                  className="settings-modal__select"
+                  className="settings-select"
                 >
                   <option value="">system default</option>
                   {inputDevices.map(d => (
@@ -347,12 +472,12 @@ export default function UserSettingsModal({ onClose }: Props) {
                     </option>
                   ))}
                 </select>
-                <p className="settings-modal__hint" style={{ marginTop: '10px', marginBottom: '6px' }}>output (speakers / headphones)</p>
+                <p className="settings-select-label">output (speakers / headphones)</p>
                 {outputDevices && outputDevices.length > 0 ? (
                   <select
                     value={audioOutputDeviceId ?? ''}
                     onChange={(e) => setAudioOutputDeviceId(e.target.value || null)}
-                    className="settings-modal__select"
+                    className="settings-select"
                   >
                     <option value="">system default</option>
                     {outputDevices.map(d => (
@@ -362,304 +487,248 @@ export default function UserSettingsModal({ onClose }: Props) {
                     ))}
                   </select>
                 ) : (
-                  <p className="settings-modal__alert">
+                  <p className="settings-alert settings-alert--info">
                     output device selection not supported in this environment
                   </p>
                 )}
               </>
             )}
-          </section>
+          </div>
 
-          <hr className="settings-modal__section-divider" />
-
-          <section>
-            <p className="settings-modal__section-title">input mode</p>
-            <div className="settings-modal__radio-group">
+          {/* Input mode */}
+          <div className="settings-card">
+            <p className="settings-card-title">input mode</p>
+            <div className="settings-radio-group">
               {INPUT_MODES.map(mode => (
                 <button
                   key={mode.value}
-                  className={`settings-modal__radio-option${voiceInputMode === mode.value ? ' settings-modal__radio-option--active' : ''}`}
+                  className={`settings-radio-option${voiceInputMode === mode.value ? ' settings-radio-option--active' : ''}`}
                   onClick={() => setVoiceInputMode(mode.value)}
                   type="button"
                 >
-                  <span className="settings-modal__radio-dot" />
-                  <div style={{ textAlign: 'left' }}>
-                    <div style={{ fontWeight: 500 }}>{mode.label}</div>
-                    <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>{mode.desc}</div>
+                  <span className="settings-radio-dot" />
+                  <div>
+                    <div className="settings-radio-label">{mode.label}</div>
+                    <div className="settings-radio-desc">{mode.desc}</div>
                   </div>
                 </button>
               ))}
             </div>
-          </section>
-
-          {voiceInputMode === 'push-to-talk' && (
-            <section>
-              <p className="settings-modal__section-title">push to talk keybind</p>
-              <div className="settings-modal__keybind-row">
-                <span className="settings-modal__keybind-label">shortcut</span>
+            {voiceInputMode === 'push-to-talk' && (
+              <div className="settings-keybind-row">
+                <span className="settings-keybind-label">shortcut</span>
                 <button
-                  className={`settings-modal__keybind-btn${listeningForKey ? ' settings-modal__keybind-btn--listening' : ''}`}
+                  className={`settings-keybind-btn${listeningForKey ? ' settings-keybind-btn--listening' : ''}`}
                   onClick={() => setListeningForKey(true)}
                   onBlur={() => setListeningForKey(false)}
                 >
                   {listeningForKey ? 'press a key...' : keyCodeToLabel(pushToTalkKey)}
                 </button>
               </div>
-            </section>
-          )}
+            )}
+          </div>
 
-          <hr className="settings-modal__section-divider" />
+          {/* Audio processing */}
+          <div className="settings-card">
+            <p className="settings-card-title">audio processing</p>
 
-          <section>
-            <p className="settings-modal__section-title">audio processing</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <p className="settings-modal__subsection-title">noise gate</p>
-              <div className="settings-modal__toggle-row">
-                <span className="settings-modal__toggle-label">enable noise gate</span>
-                <ToggleSwitch
-                  checked={noiseGateEnabled}
-                  onChange={setNoiseGateEnabled}
-                  ariaLabel="enable noise gate"
-                />
-              </div>
-              <div style={{ marginTop: '6px' }}>
+            <div className="settings-processing-item">
+              <p className="settings-processing-item-title">noise gate</p>
+              <SettingsToggleRow
+                label="enable noise gate"
+                checked={noiseGateEnabled}
+                onChange={setNoiseGateEnabled}
+                ariaLabel="enable noise gate"
+              />
+              <div className="settings-mic-test">
                 <button
                   onClick={() => setMonitoring((m) => !m)}
-                  className="settings-modal__check-btn"
-                  style={{ marginBottom: '6px' }}
+                  className="settings-btn"
                 >
                   {monitoring ? 'stop mic test' : 'test microphone'}
                 </button>
-                <div className="settings-modal__meter-bar">
-                  <div
-                    className={`settings-modal__meter-fill${meterLevel < noiseGateThreshold ? ' settings-modal__meter-fill--low' : meterLevel < noiseGateThreshold * 1.5 ? ' settings-modal__meter-fill--mid' : ' settings-modal__meter-fill--high'}`}
-                    style={{ width: `${meterLevel}%` }}
-                  />
-                  <div
-                    className="settings-modal__meter-threshold"
-                    style={{ left: `${noiseGateThreshold}%` }}
-                  />
-                </div>
-                <div className="settings-modal__slider-row">
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={noiseGateThreshold}
-                    onChange={(e) => setNoiseGateThreshold(Number(e.target.value))}
-                    className="settings-modal__slider"
-                    style={{ '--slider-pct': `${noiseGateThreshold}%` } as React.CSSProperties}
-                    disabled={!noiseGateEnabled}
-                  />
-                  <span className="settings-modal__slider-value">{noiseGateThreshold}%</span>
+                <div className="settings-meter-row">
+                  <div className="settings-meter-bar">
+                    <div
+                      className={`settings-meter-fill${meterLevel < noiseGateThreshold ? ' settings-meter-fill--low' : meterLevel < noiseGateThreshold * 1.5 ? ' settings-meter-fill--mid' : ' settings-meter-fill--high'}`}
+                      style={{ width: `${meterLevel}%` }}
+                    />
+                    <div
+                      className="settings-meter-threshold"
+                      style={{ left: `${noiseGateThreshold}%` }}
+                    />
+                  </div>
+                  <div className="settings-meter-hint">
+                    green bar = your current audio level — set the threshold above your background noise
+                  </div>
                 </div>
               </div>
-              <p className="settings-modal__hint">
-                green bar = your current audio level. set the threshold above your background noise
-              </p>
-
-              <p className="settings-modal__subsection-title" style={{ marginTop: '8px' }}>noise suppression</p>
-              <div className="settings-modal__toggle-row">
-                <span className="settings-modal__toggle-label">enable suppression</span>
-                <ToggleSwitch
-                  checked={noiseSuppression}
-                  onChange={setNoiseSuppression}
-                  ariaLabel="enable noise suppression"
-                />
-              </div>
-              <div>
-                <p className="settings-modal__hint" style={{ marginBottom: '4px' }}>suppression strength</p>
-                <div className="settings-modal__slider-row">
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={noiseSuppressionStrength}
-                    onChange={(e) => setNoiseSuppressionStrength(Number(e.target.value))}
-                    className="settings-modal__slider"
-                    style={{ '--slider-pct': `${noiseSuppressionStrength}%` } as React.CSSProperties}
-                    disabled={!noiseSuppression}
-                  />
-                  <span className="settings-modal__slider-value">{noiseSuppressionStrength}%</span>
-                </div>
-                <p className="settings-modal__hint">
-                  higher = more aggressive noise reduction. reduces steady background noise like fans, hum
-                </p>
-              </div>
-
-              <p className="settings-modal__subsection-title" style={{ marginTop: '8px' }}>auto gain control</p>
-              <div className="settings-modal__toggle-row">
-                <span className="settings-modal__toggle-label">enable auto gain</span>
-                <ToggleSwitch
-                  checked={autoGainControl}
-                  onChange={setAutoGainControl}
-                  ariaLabel="enable auto gain control"
-                />
-              </div>
-              <p className="settings-modal__hint">
-                automatically normalizes your microphone volume to a consistent level
-              </p>
-
-              <p className="settings-modal__subsection-title" style={{ marginTop: '8px' }}>echo cancellation</p>
-              <div className="settings-modal__toggle-row">
-                <span className="settings-modal__toggle-label">enable echo cancellation</span>
-                <ToggleSwitch
-                  checked={echoCancellation}
-                  onChange={setEchoCancellation}
-                  ariaLabel="enable echo cancellation"
-                />
-              </div>
-              <p className="settings-modal__hint">
-                removes echo when using speakers instead of headphones. leaving this off prevents other apps' audio from being paused when you join a voice channel
-              </p>
+              <SettingsSlider
+                label="threshold"
+                min={0}
+                max={100}
+                value={noiseGateThreshold}
+                onChange={setNoiseGateThreshold}
+                disabled={!noiseGateEnabled}
+              />
             </div>
-            <p className="settings-modal__hint" style={{ marginTop: '8px' }}>
+
+            <div className="settings-processing-item">
+              <p className="settings-processing-item-title">noise suppression</p>
+              <SettingsToggleRow
+                label="enable suppression"
+                checked={noiseSuppression}
+                onChange={setNoiseSuppression}
+                ariaLabel="enable noise suppression"
+              />
+              <SettingsSlider
+                label="strength"
+                min={0}
+                max={100}
+                value={noiseSuppressionStrength}
+                onChange={setNoiseSuppressionStrength}
+                disabled={!noiseSuppression}
+                hint="higher = more aggressive noise reduction. reduces steady background noise like fans, hum"
+              />
+            </div>
+
+            <div className="settings-processing-item">
+              <p className="settings-processing-item-title">auto gain control</p>
+              <SettingsToggleRow
+                label="enable auto gain"
+                checked={autoGainControl}
+                onChange={setAutoGainControl}
+                ariaLabel="enable auto gain control"
+                hint="automatically normalizes your microphone volume to a consistent level"
+              />
+            </div>
+
+            <div className="settings-processing-item">
+              <p className="settings-processing-item-title">echo cancellation</p>
+              <SettingsToggleRow
+                label="enable echo cancellation"
+                checked={echoCancellation}
+                onChange={setEchoCancellation}
+                ariaLabel="enable echo cancellation"
+                hint="removes echo when using speakers instead of headphones. leaving this off prevents other apps' audio from being paused when you join a voice channel"
+              />
+            </div>
+
+            <p className="settings-hint settings-processing-note">
               applied on next voice channel join
             </p>
-          </section>
+          </div>
 
-          <hr className="settings-modal__section-divider" />
+          {/* Volume */}
+          <div className="settings-card">
+            <p className="settings-card-title">volume</p>
+            <SettingsSlider
+              label="input"
+              min={0}
+              max={200}
+              value={inputVolume}
+              onChange={setInputVolume}
+            />
+            <SettingsSlider
+              label="output"
+              min={0}
+              max={200}
+              value={outputVolume}
+              onChange={setOutputVolume}
+            />
+          </div>
+        </div>
+      )}
 
-          <section>
-            <p className="settings-modal__section-title">volume</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <p className="settings-modal__hint" style={{ marginBottom: '4px' }}>input volume</p>
-                <div className="settings-modal__slider-row">
-                  <input
-                    type="range"
-                    min={0}
-                    max={200}
-                    value={inputVolume}
-                    onChange={(e) => setInputVolume(Number(e.target.value))}
-                    className="settings-modal__slider"
-                    style={{ '--slider-pct': `${inputVolume / 2}%` } as React.CSSProperties}
-                  />
-                  <span className="settings-modal__slider-value">{inputVolume}%</span>
-                </div>
-              </div>
-              <div>
-                <p className="settings-modal__hint" style={{ marginBottom: '4px' }}>output volume</p>
-                <div className="settings-modal__slider-row">
-                  <input
-                    type="range"
-                    min={0}
-                    max={200}
-                    value={outputVolume}
-                    onChange={(e) => setOutputVolume(Number(e.target.value))}
-                    className="settings-modal__slider"
-                    style={{ '--slider-pct': `${outputVolume / 2}%` } as React.CSSProperties}
-                  />
-                  <span className="settings-modal__slider-value">{outputVolume}%</span>
-                </div>
-              </div>
+      {/* ── Privacy ───────────────────────────────────────── */}
+
+      {activeTab === 'privacy' && (
+        <div className="settings-tab-content">
+          <div className="settings-card">
+            <p className="settings-card-title">activity sharing</p>
+            <SettingsToggleRow
+              label="share activity"
+              hint="show what you're listening to or watching to other members"
+              checked={shareActivity}
+              onChange={setShareActivity}
+            />
+            <SettingsToggleRow
+              label="share media activity"
+              hint="detect music and video from your browser's media session"
+              checked={shareMediaActivity}
+              onChange={setShareMediaActivity}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Data ──────────────────────────────────────────── */}
+
+      {activeTab === 'data' && (
+        <div className="settings-tab-content">
+          <div className="settings-card">
+            <p className="settings-card-title">local data</p>
+            <SettingsActionRow
+              label="reset audio devices"
+              hint="clear saved microphone and speaker selection"
+              buttonLabel="reset"
+              onClick={handleResetAudio}
+            />
+            <SettingsActionRow
+              label="reset database"
+              hint="clear all local data including sessions and settings"
+              buttonLabel="reset"
+              onClick={resetConfirm ? handleResetDatabase : () => setResetConfirm(true)}
+              danger
+              dangerConfirm={resetConfirm}
+              onCancel={() => setResetConfirm(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Updates ───────────────────────────────────────── */}
+
+      {activeTab === 'updates' && isTauri() && (
+        <div className="settings-tab-content">
+          <div className="settings-card">
+            <p className="settings-card-title">version</p>
+            <div className="settings-version-row">
+              <span className="settings-version-text">
+                Kizuna v{appVersion}{isDev && <span className="settings-version-dev"> (dev)</span>}
+              </span>
+              <button
+                onClick={() => checkForUpdates()}
+                disabled={updateState === 'checking' || updateState === 'downloading'}
+                className="settings-btn"
+              >
+                {updateState === 'checking'
+                  ? 'checking...'
+                  : updateState === 'downloading'
+                    ? `${updateProgress}%`
+                    : 'check for updates'}
+              </button>
             </div>
-          </section>
-
-          <hr className="settings-modal__section-divider" />
-
-          <section>
-            <p className="settings-modal__section-title">privacy</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>share activity</span>
-                  <p className="settings-modal__hint">show what you're listening to or watching to other members</p>
-                </div>
-                <ToggleSwitch checked={shareActivity} onChange={setShareActivity} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>share media activity</span>
-                  <p className="settings-modal__hint">detect music and video from your browser's media session</p>
-                </div>
-                <ToggleSwitch checked={shareMediaActivity} onChange={setShareMediaActivity} />
-              </div>
-            </div>
-          </section>
-
-          <hr className="settings-modal__section-divider" />
-
-          <section>
-            <p className="settings-modal__section-title">data management</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>reset audio devices</span>
-                  <p className="settings-modal__hint">clear saved microphone and speaker selection</p>
-                </div>
-                <button
-                  onClick={handleResetAudio}
-                  className="settings-modal__check-btn"
-                  style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }}
-                >
-                  reset
+            {updateState === 'ready' && (
+              <div className="settings-version-row">
+                <span className="settings-alert settings-alert--success">
+                  {isMobileTauri()
+                    ? `update ${updateVersion} available`
+                    : `update ${updateVersion} ready — restart to apply`}
+                </span>
+                <button onClick={installUpdate} className="settings-btn">
+                  {isMobileTauri() ? 'download' : 'restart now'}
                 </button>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>reset database</span>
-                  <p className="settings-modal__hint">clear all local data including sessions and settings</p>
-                </div>
-                {resetConfirm ? (
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button
-                      onClick={handleResetDatabase}
-                      className="settings-modal__check-btn"
-                      style={{ color: 'var(--red)', borderColor: 'var(--red-dim-border)', background: 'var(--red-dim)' }}
-                    >
-                      confirm
-                    </button>
-                    <button
-                      onClick={() => setResetConfirm(false)}
-                      className="settings-modal__check-btn"
-                    >
-                      cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setResetConfirm(true)}
-                    className="settings-modal__check-btn"
-                    style={{ color: 'var(--red)', borderColor: 'var(--red-dim-border)' }}
-                  >
-                    reset
-                  </button>
-                )}
-              </div>
-            </div>
-          </section>
-
-          {isTauri() && (
-            <section style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-              <p className="settings-modal__section-title">updates</p>
-              <div className="settings-modal__version-row">
-                <span className="settings-modal__version-text">Kizuna v{appVersion}{isDev ? ' (dev)' : ''}</span>
-                <button
-                  onClick={() => checkForUpdates()}
-                  disabled={updateState === 'checking' || updateState === 'downloading'}
-                  className="settings-modal__check-btn"
-                >
-                  {updateState === 'checking' ? 'checking...' : updateState === 'downloading' ? `${updateProgress}%` : 'check for updates'}
-                </button>
-              </div>
-              {updateState === 'ready' && (
-                <div className="settings-modal__version-row">
-                  <span className="settings-modal__alert settings-modal__alert--success">
-                    {isMobileTauri() ? `update ${updateVersion} available` : `update ${updateVersion} ready — restart to apply`}
-                  </span>
-                  <button onClick={installUpdate} className="settings-modal__check-btn">
-                    {isMobileTauri() ? 'download' : 'restart now'}
-                  </button>
-                </div>
-              )}
-              {updateState === 'error' && (
-                <p className="settings-modal__alert settings-modal__alert--error">
-                  {updateError || 'update check failed'}
-                </p>
-              )}
-            </section>
-          )}
+            )}
+            {updateState === 'error' && (
+              <p className="settings-alert settings-alert--error">
+                {updateError || 'update check failed'}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </Modal>
   )
 }
