@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useVoiceStore, type VoiceInputMode } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
-import { useUpdaterActions, isMobileTauri } from '../hooks/useUpdater'
+import { useUpdaterActions } from '../hooks/useUpdater'
+import { isTauri, isMobileTauri } from '../utils/platform'
 import { clearCryptoState } from '../store/keyStore'
 import Modal from './ui/Modal'
 import ToggleSwitch from './ui/ToggleSwitch'
@@ -23,10 +24,6 @@ interface AudioDevice {
   is_default: boolean
   max_channels: number
   default_sample_rate: number
-}
-
-function isTauri(): boolean {
-  return !!(window as any).__TAURI_INTERNALS__
 }
 
 const INPUT_MODES: { value: VoiceInputMode; label: string; desc: string }[] = [

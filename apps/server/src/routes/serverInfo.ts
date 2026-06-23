@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin, isUserHost, assignDefaultRoles } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin, isUserHost, assignDefaultRoles, clearPermissionCache } from '../middleware/auth'
 import { getAllPeers } from '../socket/voiceHandler'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
@@ -13,7 +13,7 @@ function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 export function getMemberById(userId: string) {
   const db = getDb()
   const user = db.prepare(`
-    SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.reset_requested_at, u.status_text, u.status_emoji, u.created_at, sm.is_host, sm.joined_at
+    SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.reset_requested_at, u.status_text, u.status_emoji, u.created_at, sm.is_host, sm.joined_at, sm.custom_role_id
     FROM users u
     LEFT JOIN server_members sm ON sm.user_id = u.id
     WHERE u.id = ?
@@ -41,26 +41,28 @@ export function getMemberById(userId: string) {
     })
   }
 
-  const legacyRoles = db.prepare(`
-    SELECT r.id, r.name, r.color, r.permissions, r.is_admin, r.position, r.hoist
-    FROM server_members sm
-    JOIN roles r ON sm.custom_role_id = r.id
-    WHERE sm.user_id = ?
-      AND sm.custom_role_id IS NOT NULL
-      AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = sm.user_id AND mr.role_id = sm.custom_role_id)
-  `).all(userId) as { id: string; name: string; color: string; permissions: string; is_admin: number; position: number; hoist: number }[]
+  if (user.custom_role_id) {
+    const legacyRoles = db.prepare(`
+      SELECT r.id, r.name, r.color, r.permissions, r.is_admin, r.position, r.hoist
+      FROM server_members sm
+      JOIN roles r ON sm.custom_role_id = r.id
+      WHERE sm.user_id = ?
+        AND sm.custom_role_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = sm.user_id AND mr.role_id = sm.custom_role_id)
+    `).all(userId) as { id: string; name: string; color: string; permissions: string; is_admin: number; position: number; hoist: number }[]
 
-  for (const row of legacyRoles) {
-    if (!rolesByUser.some(r => r.id === row.id)) {
-      rolesByUser.push({
-        id: row.id,
-        name: row.name,
-        color: row.color,
-        permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
-        is_admin: row.is_admin === 1,
-        position: row.position ?? 0,
-        hoist: row.hoist === 1,
-      })
+    for (const row of legacyRoles) {
+      if (!rolesByUser.some(r => r.id === row.id)) {
+        rolesByUser.push({
+          id: row.id,
+          name: row.name,
+          color: row.color,
+          permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
+          is_admin: row.is_admin === 1,
+          position: row.position ?? 0,
+          hoist: row.hoist === 1,
+        })
+      }
     }
   }
 
@@ -100,7 +102,24 @@ if (!fs.existsSync(BACKGROUNDS_DIR)) {
   fs.mkdirSync(BACKGROUNDS_DIR, { recursive: true })
 }
 
+let cachedServerInfo: { data: ReturnType<typeof buildServerInfo>; at: number } | null = null
+const SERVER_INFO_CACHE_TTL = 5000
+
 function getServerInfo() {
+  const now = Date.now()
+  if (cachedServerInfo && now - cachedServerInfo.at < SERVER_INFO_CACHE_TTL) {
+    return cachedServerInfo.data
+  }
+  const data = buildServerInfo()
+  cachedServerInfo = { data, at: now }
+  return data
+}
+
+function invalidateServerInfoCache(): void {
+  cachedServerInfo = null
+}
+
+function buildServerInfo() {
   const db = getDb()
   const name = db.prepare("SELECT value FROM server_settings WHERE key = 'server_name'").get() as { value: string } | undefined
   const description = db.prepare("SELECT value FROM server_settings WHERE key = 'server_description'").get() as { value: string } | undefined
@@ -231,6 +250,7 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
     }
   }
 
+  invalidateServerInfoCache()
   return c.json(getServerInfo())
 })
 
@@ -427,6 +447,7 @@ serverInfoRoutes.patch('/members/:userId/role', authMiddleware, async (c) => {
     try { const io: any = c.get('io' as never); if (io) io.emit('member:updated', updatedMember) } catch {}
   }
 
+  clearPermissionCache(targetUserId)
   return c.json({ ok: true })
 })
 
@@ -454,6 +475,7 @@ serverInfoRoutes.delete('/members/:userId', authMiddleware, (c) => {
   }
 
   db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
+  clearPermissionCache(targetUserId)
   try { const io: any = c.get('io' as never); if (io) io.emit('member:removed', { userId: targetUserId }) } catch {}
   return c.json({ ok: true })
 })
@@ -477,6 +499,7 @@ serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, async (c)
   }
 
   db.prepare('UPDATE server_members SET custom_role_id = ? WHERE user_id = ?').run(roleId, targetUserId)
+  clearPermissionCache(targetUserId)
   const updatedMember = getMemberById(targetUserId)
   if (updatedMember) {
     try { const io: any = c.get('io' as never); if (io) io.emit('member:updated', updatedMember) } catch {}
@@ -502,6 +525,7 @@ serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
   if (!role) return c.json({ error: 'Role not found' }, 404)
 
   db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(targetUserId, roleId)
+  clearPermissionCache(targetUserId)
   const updatedMember = getMemberById(targetUserId)
   if (updatedMember) {
     try { const io: any = c.get('io' as never); if (io) io.emit('member:updated', updatedMember) } catch {}
@@ -522,6 +546,7 @@ serverInfoRoutes.delete('/members/:userId/roles/:roleId', authMiddleware, (c) =>
     return c.json({ error: 'Cannot remove admin role from the server host' }, 403)
   }
   db.prepare('DELETE FROM member_roles WHERE user_id = ? AND role_id = ?').run(targetUserId, roleId)
+  clearPermissionCache(targetUserId)
   const updatedMember = getMemberById(targetUserId)
   if (updatedMember) {
     try { const io: any = c.get('io' as never); if (io) io.emit('member:updated', updatedMember) } catch {}
@@ -598,6 +623,7 @@ serverInfoRoutes.post('/background', authMiddleware, async (c) => {
   const storedFilename = `background${ext}`
   fs.writeFileSync(path.join(BACKGROUNDS_DIR, storedFilename), buffer)
 
+  invalidateServerInfoCache()
   return c.json({ ok: true })
 })
 
@@ -640,6 +666,7 @@ serverInfoRoutes.delete('/background', authMiddleware, (c) => {
     for (const f of files) fs.unlinkSync(path.join(BACKGROUNDS_DIR, f))
   } catch {}
 
+  invalidateServerInfoCache()
   return c.json({ ok: true })
 })
 

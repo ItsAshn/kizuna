@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { isTauri } from '../utils/platform'
 
 interface EnvDiagnostic {
   session_type: string
@@ -8,10 +9,6 @@ interface EnvDiagnostic {
   portal_ok: boolean
   portal_backend: string
   issues: Array<{ severity: string; component: string; message: string }>
-}
-
-function isTauri(): boolean {
-  return !!(window as any).__TAURI_INTERNALS__
 }
 
 export default function EnvStatus({ onOpenWizard }: { onOpenWizard: () => void }) {

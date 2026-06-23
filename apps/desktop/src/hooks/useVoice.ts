@@ -6,6 +6,7 @@ import { useServerStore } from '../store/serverStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
 import type { ConnectionQuality } from '@kizuna/shared'
+import { isTauri, isMobileTauri } from '../utils/platform'
 
 const SPEAKING_RMS_THRESHOLD = 8
 const SPEAKING_POLL_MS = 80
@@ -38,15 +39,7 @@ function verr(tag: string, msg: string, err?: unknown) {
   voiceLog('err', tag, msg, ` | ${detail}`)
 }
 
-function isTauri(): boolean {
-  return !!(window as any).__TAURI_INTERNALS__
-}
-
-function isMobileTauri(): boolean {
-  if (!isTauri()) return false
-  const ua = navigator.userAgent || ''
-  return /android/i.test(ua) || /iphone|ipad|ipod/i.test(ua)
-}
+const setLiveAudioLevel = (level: number) => useVoiceStore.getState().setLiveAudioLevel(level)
 
 function computeQualityFromStats(report: RTCStatsReport): ConnectionQuality {
   let rttMs = 0
@@ -292,28 +285,39 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const serverBitrateRef = useRef<number>(64)
   const iceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const {
-    setActiveVoiceChannel,
-    setVoicePeers, addVoicePeer, removeVoicePeer, updateVoicePeer,
-    isMuted, setIsMuted, setIsSpeaking,
-    setLocalConnectionQuality,
-    serverVoiceBitrateKbps, setServerVoiceBitrateKbps,
-    audioInputDeviceId, audioOutputDeviceId,
-    setAudioInputDeviceId,
-    setVoiceError,
-    voiceInputMode,
-    pushToTalkKey,
-    noiseSuppression, autoGainControl, echoCancellation,
-    noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
-    inputVolume, outputVolume,
-    setLiveAudioLevel,
-  } = useVoiceStore()
-  const {
-    setScreenSharePeer, clearScreenSharePeer,
-    setDMCallStatus, setDMCallChannelId, setDMCallOtherUser,
-    setIncomingCall, clearDMCall,
-    dmCallChannelId,
-  } = useCallStore()
+  const setActiveVoiceChannel = useVoiceStore((s) => s.setActiveVoiceChannel)
+  const setVoicePeers = useVoiceStore((s) => s.setVoicePeers)
+  const addVoicePeer = useVoiceStore((s) => s.addVoicePeer)
+  const removeVoicePeer = useVoiceStore((s) => s.removeVoicePeer)
+  const updateVoicePeer = useVoiceStore((s) => s.updateVoicePeer)
+  const isMuted = useVoiceStore((s) => s.isMuted)
+  const setIsMuted = useVoiceStore((s) => s.setIsMuted)
+  const setIsSpeaking = useVoiceStore((s) => s.setIsSpeaking)
+  const setLocalConnectionQuality = useVoiceStore((s) => s.setLocalConnectionQuality)
+  const serverVoiceBitrateKbps = useVoiceStore((s) => s.serverVoiceBitrateKbps)
+  const setServerVoiceBitrateKbps = useVoiceStore((s) => s.setServerVoiceBitrateKbps)
+  const audioInputDeviceId = useVoiceStore((s) => s.audioInputDeviceId)
+  const audioOutputDeviceId = useVoiceStore((s) => s.audioOutputDeviceId)
+  const setAudioInputDeviceId = useVoiceStore((s) => s.setAudioInputDeviceId)
+  const setVoiceError = useVoiceStore((s) => s.setVoiceError)
+  const voiceInputMode = useVoiceStore((s) => s.voiceInputMode)
+  const pushToTalkKey = useVoiceStore((s) => s.pushToTalkKey)
+  const noiseSuppression = useVoiceStore((s) => s.noiseSuppression)
+  const autoGainControl = useVoiceStore((s) => s.autoGainControl)
+  const echoCancellation = useVoiceStore((s) => s.echoCancellation)
+  const noiseGateEnabled = useVoiceStore((s) => s.noiseGateEnabled)
+  const noiseGateThreshold = useVoiceStore((s) => s.noiseGateThreshold)
+  const noiseSuppressionStrength = useVoiceStore((s) => s.noiseSuppressionStrength)
+  const inputVolume = useVoiceStore((s) => s.inputVolume)
+  const outputVolume = useVoiceStore((s) => s.outputVolume)
+  const setScreenSharePeer = useCallStore((s) => s.setScreenSharePeer)
+  const clearScreenSharePeer = useCallStore((s) => s.clearScreenSharePeer)
+  const setDMCallStatus = useCallStore((s) => s.setDMCallStatus)
+  const setDMCallChannelId = useCallStore((s) => s.setDMCallChannelId)
+  const setDMCallOtherUser = useCallStore((s) => s.setDMCallOtherUser)
+  const setIncomingCall = useCallStore((s) => s.setIncomingCall)
+  const clearDMCall = useCallStore((s) => s.clearDMCall)
+  const dmCallChannelId = useCallStore((s) => s.dmCallChannelId)
 
   const cleanupVoice = useCallback(() => {
     vlog('cleanup', 'starting')
@@ -373,7 +377,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setLocalConnectionQuality(null)
     setLiveAudioLevel(0)
     clearScreenSharePeer()
-  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, setLiveAudioLevel, clearScreenSharePeer])
+  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, clearScreenSharePeer])
 
   const consumePeer = useCallback(async (
     socket: Socket,
@@ -596,7 +600,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       verr('setupNativeVoice', 'Failed to setup voice listeners', e)
     })
   }, [addVoicePeer, removeVoicePeer, updateVoicePeer, setActiveVoiceChannel, setVoiceError,
-      setScreenSharePeer, clearScreenSharePeer, setIsSpeaking, setLiveAudioLevel, socketRef])
+      setScreenSharePeer, clearScreenSharePeer, setIsSpeaking, socketRef])
 
   const joinVoiceNative = useCallback(async (channelId: string): Promise<string | null> => {
     const socket = socketRef.current
@@ -827,7 +831,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setLocalConnectionQuality(null)
     setLiveAudioLevel(0)
     clearScreenSharePeer()
-  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, setLiveAudioLevel, clearScreenSharePeer, socketRef])
+  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, clearScreenSharePeer, socketRef])
 
   const toggleMuteNative = useCallback(async () => {
     try {
@@ -1134,7 +1138,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     setLocalConnectionQuality, serverVoiceBitrateKbps, setServerVoiceBitrateKbps,
     audioInputDeviceId, audioOutputDeviceId, setVoiceError, consumePeer,
     consumeScreenShare, stopScreenConsume, setScreenSharePeer,
-    setLiveAudioLevel, voiceInputMode,
+    voiceInputMode,
     pushToTalkKey, noiseSuppression, autoGainControl, echoCancellation,
     noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
     inputVolume,
@@ -1262,7 +1266,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
   }, [audioInputDeviceId, noiseSuppression, autoGainControl, echoCancellation,
       noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
       inputVolume, voiceInputMode,
-      setLiveAudioLevel, setIsSpeaking, pushToTalkKey, setAudioInputDeviceId])
+      setIsSpeaking, pushToTalkKey, setAudioInputDeviceId])
 
 
   const setupPushToTalk = useCallback((

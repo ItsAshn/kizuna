@@ -251,7 +251,6 @@ function ThreadDetailView({ channelId }: { channelId: string }) {
             message={msg}
             isOwn={msg.user_id === session?.user.id}
             isGrouped={false}
-            members={members}
             currentUsername={session?.user.username}
             canDelete={msg.user_id === session?.user.id}
             onDelete={() => {}}

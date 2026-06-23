@@ -12,6 +12,59 @@ export interface JwtPayload {
   iat?: number
 }
 
+const PERM_CACHE_TTL = 10_000
+
+interface CacheEntry<T> {
+  value: T
+  at: number
+}
+
+const adminCache = new Map<string, CacheEntry<boolean>>()
+const hostCache = new Map<string, CacheEntry<boolean>>()
+const permsCache = new Map<string, CacheEntry<{ role: string; permissions: Record<string, boolean> }>>()
+
+const PERM_CACHE_MAX = 10_000
+
+function cacheGet<T>(map: Map<string, CacheEntry<T>>, key: string): T | null {
+  const entry = map.get(key)
+  if (!entry) return null
+  if (Date.now() - entry.at > PERM_CACHE_TTL) {
+    map.delete(key)
+    return null
+  }
+  return entry.value
+}
+
+function cacheSet<T>(map: Map<string, CacheEntry<T>>, key: string, value: T): void {
+  if (map.size >= PERM_CACHE_MAX) map.clear()
+  map.set(key, { value, at: Date.now() })
+}
+
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, entry] of adminCache) {
+    if (now - entry.at > PERM_CACHE_TTL) adminCache.delete(key)
+  }
+  for (const [key, entry] of hostCache) {
+    if (now - entry.at > PERM_CACHE_TTL) hostCache.delete(key)
+  }
+  for (const [key, entry] of permsCache) {
+    if (now - entry.at > PERM_CACHE_TTL) permsCache.delete(key)
+  }
+}, 60_000).unref()
+
+export function clearPermissionCache(userId?: string): void {
+  if (userId) {
+    adminCache.delete(userId)
+    hostCache.delete(userId)
+    permsCache.delete(userId)
+  } else {
+    adminCache.clear()
+    hostCache.clear()
+    permsCache.clear()
+  }
+}
+
 export function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET
   if (!secret) {
@@ -33,6 +86,8 @@ export function verifyToken(token: string): JwtPayload {
 }
 
 export function isUserAdmin(userId: string): boolean {
+  const cached = cacheGet(adminCache, userId)
+  if (cached !== null) return cached
   const db = getDb()
   const row = db.prepare(`
     SELECT 1 FROM member_roles mr
@@ -44,13 +99,19 @@ export function isUserAdmin(userId: string): boolean {
     WHERE sm.user_id = ? AND sm.custom_role_id IS NOT NULL AND r.is_admin = 1
       AND NOT EXISTS (SELECT 1 FROM member_roles mr2 WHERE mr2.user_id = sm.user_id AND mr2.role_id = sm.custom_role_id)
   `).get(userId, userId)
-  return !!row
+  const result = !!row
+  cacheSet(adminCache, userId, result)
+  return result
 }
 
 export function isUserHost(userId: string): boolean {
+  const cached = cacheGet(hostCache, userId)
+  if (cached !== null) return cached
   const db = getDb()
   const row = db.prepare('SELECT 1 FROM server_members WHERE user_id = ? AND is_host = 1').get(userId)
-  return !!row
+  const result = !!row
+  cacheSet(hostCache, userId, result)
+  return result
 }
 
 export function assignDefaultRoles(userId: string): void {
@@ -78,6 +139,9 @@ export function getUserInfo(userId: string): AuthUser | null {
 }
 
 export function getUserPermissions(userId: string): { role: string; permissions: Record<string, boolean> } | null {
+  const cached = cacheGet(permsCache, userId)
+  if (cached) return cached
+
   const db = getDb()
   let member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
 
@@ -98,8 +162,8 @@ export function getUserPermissions(userId: string): { role: string; permissions:
   const userIsAdmin = isUserAdmin(userId)
 
   if (userIsAdmin) {
-    return {
-      role: 'admin',
+    const result = {
+      role: 'admin' as const,
       permissions: {
         send_messages: true,
         send_dm_messages: true,
@@ -114,6 +178,8 @@ export function getUserPermissions(userId: string): { role: string; permissions:
         initiate_dm_calls: true,
       },
     }
+    cacheSet(permsCache, userId, result)
+    return result
   }
 
   const permissions: Record<string, boolean> = {
@@ -152,7 +218,9 @@ export function getUserPermissions(userId: string): { role: string; permissions:
     console.error(`[auth] Failed to query role permissions for user ${userId}:`, err.message)
   }
 
-  return { role: 'member', permissions }
+  const result = { role: 'member' as const, permissions }
+  cacheSet(permsCache, userId, result)
+  return result
 }
 
 export function hasPermission(
@@ -274,14 +342,17 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
 
   try {
     const payload = verifyToken(token)
-    const userInfo = getUserInfo(payload.userId)
-    if (!userInfo) {
+    const db = getDb()
+
+    const userRow = db.prepare(
+      'SELECT id, username, display_name, token_invalidated_at FROM users WHERE id = ?'
+    ).get(payload.userId) as { id: string; username: string; display_name: string; token_invalidated_at: number | null } | undefined
+
+    if (!userRow) {
       return c.json({ error: 'User not found' }, 401)
     }
 
-    const db = getDb()
-    const row = db.prepare('SELECT token_invalidated_at FROM users WHERE id = ?').get(payload.userId) as { token_invalidated_at: number | null } | undefined
-    if (row?.token_invalidated_at && payload.iat && row.token_invalidated_at > payload.iat) {
+    if (userRow.token_invalidated_at && payload.iat && userRow.token_invalidated_at > payload.iat) {
       return c.json({ error: 'Token has been revoked' }, 401)
     }
 
@@ -290,6 +361,14 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
       if (session?.revoked_at) {
         return c.json({ error: 'Token has been revoked' }, 401)
       }
+    }
+
+    const userInfo: AuthUser = {
+      userId: userRow.id,
+      username: userRow.username,
+      displayName: userRow.display_name,
+      role: isUserAdmin(payload.userId) ? 'admin' : 'member',
+      isHost: isUserHost(payload.userId),
     }
 
     c.set('auth' as never, userInfo as never)

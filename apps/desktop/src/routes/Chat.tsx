@@ -45,18 +45,26 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const sessions = useServerStore((s) => s.sessions)
   const setActiveServer = useServerStore((s) => s.setActiveServer)
   const activeVoiceChannelId = useVoiceStore((s) => s.activeVoiceChannelId)
-  const {
-    setChannels, setCategories, setMembers, setDMChannels, setGroupDMChannels,
-    activeChannelId, activeDMChannelId,
-    setActiveChannel, setActiveDMChannel,
-    setChannelMutes,
-    members, channels, dmChannels, groupDMChannels,
-    unreadCounts, serverMentionCounts,
-  } = useChatStore()
-  const {
-    serverBackgroundEnabled, customCssEnabled,
-    socketConnected, socketReconnecting, socketReconnectAttempts,
-  } = useSettingsStore()
+  const setChannels = useChatStore((s) => s.setChannels)
+  const setCategories = useChatStore((s) => s.setCategories)
+  const setMembers = useChatStore((s) => s.setMembers)
+  const setDMChannels = useChatStore((s) => s.setDMChannels)
+  const setGroupDMChannels = useChatStore((s) => s.setGroupDMChannels)
+  const setChannelMutes = useChatStore((s) => s.setChannelMutes)
+  const activeChannelId = useChatStore((s) => s.activeChannelId)
+  const activeDMChannelId = useChatStore((s) => s.activeDMChannelId)
+  const setActiveChannel = useChatStore((s) => s.setActiveChannel)
+  const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
+  const members = useChatStore((s) => s.members)
+  const channels = useChatStore((s) => s.channels)
+  const dmChannels = useChatStore((s) => s.dmChannels)
+  const unreadCounts = useChatStore((s) => s.unreadCounts)
+  const serverMentionCounts = useChatStore((s) => s.serverMentionCounts)
+  const serverBackgroundEnabled = useSettingsStore((s) => s.serverBackgroundEnabled)
+  const customCssEnabled = useSettingsStore((s) => s.customCssEnabled)
+  const socketConnected = useSettingsStore((s) => s.socketConnected)
+  const socketReconnecting = useSettingsStore((s) => s.socketReconnecting)
+  const socketReconnectAttempts = useSettingsStore((s) => s.socketReconnectAttempts)
   const socketRef = useSocket()
   const {
     joinVoice,
@@ -74,11 +82,13 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const { startScreenshare, stopScreenshare } = useScreenshare(socketRef, sendTransportRef)
   const { toggleCamera, getStream } = useCamera(socketRef, sendTransportRef)
   const isCameraOn = useCallStore((s) => s.isCameraOn)
-  const {
-    dmCallStatus, dmCallChannelId, dmCallOtherUserId, dmCallOtherUsername,
-    incomingCall, setIncomingCall, dmCallShouldCleanup, setDMCallShouldCleanup,
-    clearDMCall,
-  } = useCallStore()
+  const dmCallStatus = useCallStore((s) => s.dmCallStatus)
+  const dmCallChannelId = useCallStore((s) => s.dmCallChannelId)
+  const dmCallOtherUsername = useCallStore((s) => s.dmCallOtherUsername)
+  const incomingCall = useCallStore((s) => s.incomingCall)
+  const dmCallShouldCleanup = useCallStore((s) => s.dmCallShouldCleanup)
+  const setDMCallShouldCleanup = useCallStore((s) => s.setDMCallShouldCleanup)
+  const clearDMCall = useCallStore((s) => s.clearDMCall)
   const dmCallConnectedRef = useRef(false)
   // Member list is inline only on full desktop; on tablet/phone it opens as an overlay drawer.
   const [showMembers, setShowMembers] = useState(!isMobile && !isTablet)
@@ -226,6 +236,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     }
 
     restoreFromSession(session.url)
+    useChatStore.getState().clearServerData()
 
     async function load() {
       try {

@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
 import type { MonitorInfo } from '@kizuna/shared';
 
@@ -68,93 +67,85 @@ interface CallState {
   setLocalCameraVideoProducerId: (producerId: string | null) => void;
 }
 
-export const useCallStore = create<CallState>()(
-  persist(
-    (set) => ({
+export const useCallStore = create<CallState>()((set) => ({
+  dmCallStatus: 'idle',
+  dmCallChannelId: null,
+  dmCallOtherUserId: null,
+  dmCallOtherUsername: null,
+  incomingCall: null,
+  dmCallShouldCleanup: false,
+
+  groupDMCallStatus: 'idle',
+  groupDMCallChannelId: null,
+  groupDMIncomingCall: null,
+  groupDMCallShouldCleanup: false,
+
+  screenSharePeerId: null,
+  screenShareUsername: null,
+  isScreenSharing: false,
+  screenShareVideoProducerId: null,
+  availableMonitors: [],
+
+  isCameraOn: false,
+  cameraPeerIds: [],
+  localCameraVideoProducerId: null,
+
+  setDMCallStatus: (dmCallStatus) => set({ dmCallStatus }),
+  setDMCallChannelId: (dmCallChannelId) => set({ dmCallChannelId }),
+  setDMCallOtherUser: (userId, username) =>
+    set({ dmCallOtherUserId: userId, dmCallOtherUsername: username }),
+  setIncomingCall: (incomingCall) =>
+    set({
+      incomingCall,
+      dmCallStatus: incomingCall ? 'ringing-incoming' : 'idle',
+    }),
+  setDMCallShouldCleanup: (dmCallShouldCleanup) => set({ dmCallShouldCleanup }),
+  clearDMCall: () =>
+    set({
       dmCallStatus: 'idle',
       dmCallChannelId: null,
       dmCallOtherUserId: null,
       dmCallOtherUsername: null,
       incomingCall: null,
       dmCallShouldCleanup: false,
+    }),
 
+  setGroupDMCallStatus: (groupDMCallStatus) => set({ groupDMCallStatus }),
+  setGroupDMCallChannelId: (groupDMCallChannelId) => set({ groupDMCallChannelId }),
+  setGroupDMIncomingCall: (groupDMIncomingCall) =>
+    set({
+      groupDMIncomingCall,
+      groupDMCallStatus: groupDMIncomingCall ? 'ringing-incoming' : 'idle',
+    }),
+  setGroupDMCallShouldCleanup: (groupDMCallShouldCleanup) => set({ groupDMCallShouldCleanup }),
+  clearGroupDMCall: () =>
+    set({
       groupDMCallStatus: 'idle',
       groupDMCallChannelId: null,
       groupDMIncomingCall: null,
       groupDMCallShouldCleanup: false,
-
-      screenSharePeerId: null,
-      screenShareUsername: null,
-      isScreenSharing: false,
-      screenShareVideoProducerId: null,
-      availableMonitors: [],
-
-      isCameraOn: false,
-      cameraPeerIds: [],
-      localCameraVideoProducerId: null,
-
-      setDMCallStatus: (dmCallStatus) => set({ dmCallStatus }),
-      setDMCallChannelId: (dmCallChannelId) => set({ dmCallChannelId }),
-      setDMCallOtherUser: (userId, username) =>
-        set({ dmCallOtherUserId: userId, dmCallOtherUsername: username }),
-      setIncomingCall: (incomingCall) =>
-        set({
-          incomingCall,
-          dmCallStatus: incomingCall ? 'ringing-incoming' : 'idle',
-        }),
-      setDMCallShouldCleanup: (dmCallShouldCleanup) => set({ dmCallShouldCleanup }),
-      clearDMCall: () =>
-        set({
-          dmCallStatus: 'idle',
-          dmCallChannelId: null,
-          dmCallOtherUserId: null,
-          dmCallOtherUsername: null,
-          incomingCall: null,
-          dmCallShouldCleanup: false,
-        }),
-
-      setGroupDMCallStatus: (groupDMCallStatus) => set({ groupDMCallStatus }),
-      setGroupDMCallChannelId: (groupDMCallChannelId) => set({ groupDMCallChannelId }),
-      setGroupDMIncomingCall: (groupDMIncomingCall) =>
-        set({
-          groupDMIncomingCall,
-          groupDMCallStatus: groupDMIncomingCall ? 'ringing-incoming' : 'idle',
-        }),
-      setGroupDMCallShouldCleanup: (groupDMCallShouldCleanup) => set({ groupDMCallShouldCleanup }),
-      clearGroupDMCall: () =>
-        set({
-          groupDMCallStatus: 'idle',
-          groupDMCallChannelId: null,
-          groupDMIncomingCall: null,
-          groupDMCallShouldCleanup: false,
-        }),
-
-      setScreenSharePeer: (screenSharePeerId, screenShareUsername) =>
-        set({ screenSharePeerId, screenShareUsername }),
-      clearScreenSharePeer: () =>
-        set({ screenSharePeerId: null, screenShareUsername: null }),
-      setIsScreenSharing: (isScreenSharing) => set({ isScreenSharing }),
-      setScreenShareVideoProducerId: (screenShareVideoProducerId) =>
-        set({ screenShareVideoProducerId }),
-      setAvailableMonitors: (availableMonitors) => set({ availableMonitors }),
-
-      setIsCameraOn: (isCameraOn) => set({ isCameraOn }),
-      setCameraPeerIds: (cameraPeerIds) => set({ cameraPeerIds }),
-      addCameraPeerId: (peerId) =>
-        set((s) => ({
-          cameraPeerIds: s.cameraPeerIds.includes(peerId)
-            ? s.cameraPeerIds
-            : [...s.cameraPeerIds, peerId],
-        })),
-      removeCameraPeerId: (peerId) =>
-        set((s) => ({
-          cameraPeerIds: s.cameraPeerIds.filter((id) => id !== peerId),
-        })),
-      setLocalCameraVideoProducerId: (localCameraVideoProducerId) => set({ localCameraVideoProducerId }),
     }),
-    {
-      name: 'kizuna-call-v1',
-      partialize: () => ({}),
-    },
-  ),
-);
+
+  setScreenSharePeer: (screenSharePeerId, screenShareUsername) =>
+    set({ screenSharePeerId, screenShareUsername }),
+  clearScreenSharePeer: () =>
+    set({ screenSharePeerId: null, screenShareUsername: null }),
+  setIsScreenSharing: (isScreenSharing) => set({ isScreenSharing }),
+  setScreenShareVideoProducerId: (screenShareVideoProducerId) =>
+    set({ screenShareVideoProducerId }),
+  setAvailableMonitors: (availableMonitors) => set({ availableMonitors }),
+
+  setIsCameraOn: (isCameraOn) => set({ isCameraOn }),
+  setCameraPeerIds: (cameraPeerIds) => set({ cameraPeerIds }),
+  addCameraPeerId: (peerId) =>
+    set((s) => ({
+      cameraPeerIds: s.cameraPeerIds.includes(peerId)
+        ? s.cameraPeerIds
+        : [...s.cameraPeerIds, peerId],
+    })),
+  removeCameraPeerId: (peerId) =>
+    set((s) => ({
+      cameraPeerIds: s.cameraPeerIds.filter((id) => id !== peerId),
+    })),
+  setLocalCameraVideoProducerId: (localCameraVideoProducerId) => set({ localCameraVideoProducerId }),
+}))

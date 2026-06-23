@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { compress } from 'hono/compress';
 import { serve } from '@hono/node-server';
 import { Server as IoServer } from 'socket.io';
 import jwt from 'jsonwebtoken';
@@ -37,6 +38,8 @@ export function createApp(httpPort: number) {
 
   const corsOrigin = process.env.CORS_ORIGIN || '*';
   app.use('*', cors({ origin: corsOrigin, credentials: true }));
+
+  app.use('*', compress());
 
   app.use('*', async (c, next) => {
     await next();

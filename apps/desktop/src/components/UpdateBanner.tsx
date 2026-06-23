@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSettingsStore } from '../store/settingsStore'
-import { useUpdaterActions, isMobileTauri } from '../hooks/useUpdater'
+import { useUpdaterActions } from '../hooks/useUpdater'
+import { isMobileTauri } from '../utils/platform'
 import './UpdateBanner.css'
 
 export default function UpdateBanner() {

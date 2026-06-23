@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isTauri } from '../utils/platform'
 import './SetupWizard.css'
 
 interface EnvIssue {
@@ -19,10 +20,6 @@ interface EnvDiagnostic {
 }
 
 const STORAGE_KEY = 'kizuna-setup-wizard-dismissed'
-
-function isTauri(): boolean {
-  return !!(window as any).__TAURI_INTERNALS__
-}
 
 function StatusIcon({ ok }: { ok: boolean }) {
   return <span className={`setup-wizard__status-icon ${ok ? 'setup-wizard__status-icon--ok' : 'setup-wizard__status-icon--fail'}`}>{ok ? 'OK' : '!'}</span>

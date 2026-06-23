@@ -63,6 +63,7 @@ interface ChatState {
   setLoadMoreError: (channelId: string, error: string | null) => void;
   prependMessages: (channelId: string, messages: Message[]) => void;
   updateMessageReactions: (channelId: string, messageId: string, reactions: MessageReaction[]) => void;
+  clearServerData: () => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -274,6 +275,28 @@ export const useChatStore = create<ChatState>()(
             ),
           },
         })),
+      clearServerData: () =>
+        set({
+          channels: [],
+          categories: [],
+          dmChannels: [],
+          groupDMChannels: [],
+          messages: {},
+          pinnedMessages: {},
+          threads: {},
+          threadMessages: {},
+          members: [],
+          activeChannelId: null,
+          activeDMChannelId: null,
+          activeGroupDMChannelId: null,
+          typingUsers: {},
+          channelMutes: {},
+          hasMoreMessages: {},
+          loadingMoreMessages: {},
+          loadMoreErrors: {},
+          activeThreadId: null,
+          threadPanelVisible: false,
+        }),
     }),
     {
       name: 'kizuna-chat-v1',

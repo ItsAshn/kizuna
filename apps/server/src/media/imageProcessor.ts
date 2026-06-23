@@ -26,27 +26,38 @@ export async function processImage(buffer: Buffer, originalFilename: string): Pr
       .webp({ quality: WEBP_QUALITY })
       .toBuffer())
 
-    const info = await sharp(output).metadata()
     const baseName = path.basename(originalFilename, ext)
+    let width = 0
+    let height = 0
+    try {
+      const meta = await sharp(buffer).metadata()
+      width = meta.width || 0
+      height = meta.height || 0
+    } catch {}
     return {
       buffer: output,
       filename: `${baseName}.webp`,
-      width: info.width || 0,
-      height: info.height || 0,
+      width,
+      height,
     }
   }
 
   if (ext === GIF_EXT) {
-    const output = Buffer.from(await sharp(buffer, { animated: true })
-      .gif({ colours: 256 })
-      .toBuffer())
+    const pipeline = sharp(buffer, { animated: true }).gif({ colours: 256 })
+    const output = Buffer.from(await pipeline.toBuffer())
 
-    const info = await sharp(output, { animated: true }).metadata()
+    let width = 0
+    let height = 0
+    try {
+      const meta = await sharp(buffer, { animated: true }).metadata()
+      width = meta.width || 0
+      height = meta.height || 0
+    } catch {}
     return {
       buffer: output,
       filename: originalFilename,
-      width: info.width || 0,
-      height: info.height || 0,
+      width,
+      height,
     }
   }
 

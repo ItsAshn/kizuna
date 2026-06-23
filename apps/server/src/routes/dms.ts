@@ -20,10 +20,16 @@ function getOrCreateDMChannel(db: any, userId: string, otherUserId: string) {
   return channel
 }
 
-function formatDMChannel(channel: any, currentUserId: string) {
-  const db = getDb()
+function formatDMChannel(channel: any, currentUserId: string, userCache?: Map<string, any>) {
   const otherUserId = channel.user1_id === currentUserId ? channel.user2_id : channel.user1_id
-  const otherUser = db.prepare('SELECT id, username, display_name, avatar, public_key FROM users WHERE id = ?').get(otherUserId) as any
+
+  let otherUser: any
+  if (userCache) {
+    otherUser = userCache.get(otherUserId)
+  } else {
+    const db = getDb()
+    otherUser = db.prepare('SELECT id, username, display_name, avatar, public_key FROM users WHERE id = ?').get(otherUserId) as any
+  }
 
   return {
     id: channel.id,
@@ -37,6 +43,17 @@ function formatDMChannel(channel: any, currentUserId: string) {
   }
 }
 
+function batchFetchUsers(db: any, userIds: string[]): Map<string, any> {
+  const cache = new Map<string, any>()
+  if (userIds.length === 0) return cache
+  const placeholders = userIds.map(() => '?').join(',')
+  const rows = db.prepare(
+    `SELECT id, username, display_name, avatar, public_key FROM users WHERE id IN (${placeholders})`
+  ).all(...userIds) as any[]
+  for (const r of rows) cache.set(r.id, r)
+  return cache
+}
+
 const dmRoutes = new Hono()
 
 // GET /dms — list DM channels for the authenticated user
@@ -47,7 +64,12 @@ dmRoutes.get('/', authMiddleware, (c) => {
     'SELECT * FROM dm_channels WHERE user1_id = ? OR user2_id = ? ORDER BY last_message_at DESC'
   ).all(user.userId, user.userId) as any[]
 
-  const result = channels.map((ch) => formatDMChannel(ch, user.userId))
+  const otherUserIds = channels.map((ch: any) =>
+    ch.user1_id === user.userId ? ch.user2_id : ch.user1_id
+  )
+  const userCache = batchFetchUsers(db, otherUserIds)
+
+  const result = channels.map((ch: any) => formatDMChannel(ch, user.userId, userCache))
   return c.json({ channels: result })
 })
 

@@ -8,7 +8,11 @@ import { getUserPermissions, hasPermission } from '../middleware/auth'
 function vts(): string {
   return new Date().toISOString().split('T')[1]?.slice(0, 12) ?? ''
 }
+
+const VERBOSE_VOICE_LOG = process.env.MEDIASOUP_LOG_LEVEL === 'debug'
+
 function vlog(tag: string, msg: string, extras?: Record<string, unknown>) {
+  if (!VERBOSE_VOICE_LOG) return
   const extra = extras ? ' ' + JSON.stringify(extras) : ''
   console.log(`[${vts()}] [Voice] ${tag}: ${msg}${extra}`)
 }

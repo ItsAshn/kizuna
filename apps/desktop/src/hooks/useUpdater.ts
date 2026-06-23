@@ -1,17 +1,10 @@
 import { useEffect, useCallback } from 'react'
 import { useSettingsStore } from '../store/settingsStore'
+import { isTauri, isMobileTauri } from '../utils/platform'
 
 const GITHUB_REPO = 'ItsAshn/kizuna'
 
-function isTauri(): boolean {
-  return !!(window as any).__TAURI_INTERNALS__
-}
-
-export function isMobileTauri(): boolean {
-  if (!isTauri()) return false
-  const ua = navigator.userAgent || ''
-  return /android/i.test(ua) || /iphone|ipad|ipod/i.test(ua)
-}
+export { isMobileTauri }
 
 export function useUpdater(): void {
   // Tauri updater events are handled via check() / downloadAndInstall()

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
 import { Virtuoso } from 'react-virtuoso'
@@ -933,6 +933,36 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const headerTitle = activeChannel?.name || activeDM?.other_display_name || activeGroupDM?.name || 'Kizuna'
   const displayMessages = activeDMChannelId ? dmMessages : activeGroupDMChannelId ? groupDMMessages : channelMessages
 
+  const lightboxImageMap = useMemo(() => {
+    const images: { url: string; filename: string }[] = []
+    const urlToIndex = new Map<string, number>()
+    const imgRe = /!\[([^\]]*)\]\(([^)]+)\)/g
+    const urlRe = /(https?:\/\/[^\s]+)/g
+    for (const m of displayMessages) {
+      let match
+      while ((match = imgRe.exec(m.content)) !== null) {
+        const u = match[2]
+        if (u.startsWith('/uploads/') || u.startsWith('/api/attachments/') || u.startsWith('/api/gifs/') || u.startsWith('http')) {
+          const resolved = session?.url && u.startsWith('/') ? `${session.url}${u}` : u
+          if (!urlToIndex.has(resolved)) {
+            urlToIndex.set(resolved, images.length)
+            images.push({ url: resolved, filename: match[1] || 'image' })
+          }
+        }
+      }
+      while ((match = urlRe.exec(m.content)) !== null) {
+        const u = match[1]
+        if (/\.(jpg|jpeg|png|gif|webp)$/i.test(u)) {
+          if (!urlToIndex.has(u)) {
+            urlToIndex.set(u, images.length)
+            images.push({ url: u, filename: u.split('/').pop() || 'image' })
+          }
+        }
+      }
+    }
+    return { images, urlToIndex }
+  }, [displayMessages, session?.url])
+
   useEffect(() => {
     if (atBottom) {
       lastCountAtBottom.current = displayMessages.length
@@ -995,7 +1025,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   }, [activeChannelId, activeDMChannelId, dmChannels, setActiveChannel, setActiveDMChannel, displayMessages])
 
   const renderMessageItem = useCallback((_index: number, msg: Message) => {
-    const msgIdx = displayMessages.indexOf(msg)
+    const msgIdx = _index
     const prevMsg = msgIdx > 0 ? displayMessages[msgIdx - 1] : null
     const msgDate = new Date(msg.created_at).toDateString()
     const prevDate = prevMsg ? new Date(prevMsg.created_at).toDateString() : ''
@@ -1020,7 +1050,6 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           message={msg}
           isOwn={isOwn}
           isGrouped={isGrouped}
-          members={members}
           currentUsername={session?.user.username}
           canDelete={messageCanDelete}
           onDelete={handleDeleteMessage}
@@ -1036,37 +1065,14 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           isPinned={activeChannelId ? pinnedMessages[activeChannelId]?.some((p) => p.messageId === msg.id) ?? false : undefined}
           onCreateThread={activeChannelId ? handleCreateThread : undefined}
           onUserClick={() => {}}
-          onImageClick={(imageUrl, filename) => {
-            const allImages: { url: string; filename: string }[] = []
-            const channelMsgs = displayMessages
-            const imgRe = /!\[([^\]]*)\]\(([^)]+)\)/g
-            const urlRe = /(https?:\/\/[^\s]+)/g
-            for (const m of channelMsgs) {
-              let match
-              while ((match = imgRe.exec(m.content)) !== null) {
-                const u = match[2]
-                if (u.startsWith('/uploads/') || u.startsWith('/api/attachments/') || u.startsWith('/api/gifs/') || u.startsWith('http')) {
-                  const resolved = session?.url && u.startsWith('/') ? `${session.url}${u}` : u
-                  allImages.push({ url: resolved, filename: match[1] || 'image' })
-                }
-              }
-              while ((match = urlRe.exec(m.content)) !== null) {
-                const u = match[1]
-                if (/\.(jpg|jpeg|png|gif|webp)$/i.test(u)) {
-                  if (!allImages.some(a => a.url === u)) {
-                    allImages.push({ url: u, filename: u.split('/').pop() || 'image' })
-                  }
-                }
-              }
-            }
-            const currentIndex = allImages.findIndex(img => img.url === imageUrl)
-            setLightboxImages(allImages)
-            setLightboxIndex(currentIndex >= 0 ? currentIndex : 0)
+          onImageClick={(imageUrl) => {
+            setLightboxImages(lightboxImageMap.images)
+            setLightboxIndex(lightboxImageMap.urlToIndex.get(imageUrl) ?? 0)
           }}
         />
       </div>
     )
-  }, [displayMessages, session, members, canDeleteAny, activeChannelId, activeDMChannelId, setReplyTo])
+  }, [displayMessages, session, canDeleteAny, activeChannelId, activeDMChannelId, setReplyTo, handleDeleteMessage, handleEditMessage, handlePinMessage, handleUnpinMessage, handleCreateThread, pinnedMessages, lightboxImageMap])
 
   return (
     <div

@@ -17,7 +17,7 @@ import c from 'highlight.js/lib/languages/c'
 import go from 'highlight.js/lib/languages/go'
 import yaml from 'highlight.js/lib/languages/yaml'
 import markdown from 'highlight.js/lib/languages/markdown'
-import type { Message, Member } from '@kizuna/shared'
+import type { Message } from '@kizuna/shared'
 import { reactToMessage, unreactToMessage } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
 import { useMobile } from '../hooks/useMobile'
@@ -60,7 +60,6 @@ interface MessageBubbleProps {
   message: Message
   isOwn: boolean
   isGrouped: boolean
-  members: Member[]
   currentUsername?: string
   canDelete: boolean
   onDelete: (messageId: string) => void
@@ -220,7 +219,6 @@ function MessageBubble({
   message,
   isOwn,
   isGrouped,
-  members,
   currentUsername,
   canDelete,
   onDelete,

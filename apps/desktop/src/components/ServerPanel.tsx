@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, memo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
@@ -12,6 +12,64 @@ interface ServerPanelProps {
   onAddServer?: () => void
   onBackToServers?: () => void
 }
+
+interface ServerIconProps {
+  server: { id: string; name: string; icon?: string | null; folder?: string | null }
+  isActive: boolean
+  isConnected: boolean
+  mentions: number
+  showRemove: boolean
+  onClick: (serverId: string) => void
+  onContextMenu: (e: React.MouseEvent, serverId: string) => void
+}
+
+const ServerIcon = memo(function ServerIcon({
+  server,
+  isActive,
+  isConnected,
+  mentions,
+  showRemove,
+  onClick,
+  onContextMenu,
+}: ServerIconProps) {
+  return (
+    <button
+      className={`server-panel__icon ${isActive ? 'server-panel__icon--active' : ''}`}
+      onClick={() => onClick(server.id)}
+      aria-label={`${server.name}${isConnected ? ' — connected' : ' — not connected'}${mentions > 0 ? ` — ${mentions} mentions` : ''}`}
+      aria-current={isActive ? 'page' : undefined}
+      onContextMenu={(e) => onContextMenu(e, server.id)}
+      title={server.name}
+    >
+      {server.icon ? (
+        <img
+          src={server.icon}
+          alt=""
+          className="server-panel__icon-img"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none'
+          }}
+        />
+      ) : (
+        server.name.slice(0, 2).toUpperCase()
+      )}
+      <span className={`server-panel__dot ${isConnected ? 'server-panel__dot--online' : ''}`} />
+      {mentions > 0 && (
+        <span className="server-panel__badge">
+          {mentions > 99 ? '99+' : mentions}
+        </span>
+      )}
+      {showRemove && (
+        <span
+          className="server-panel__remove-badge"
+          onClick={(e) => onContextMenu(e, server.id)}
+        >
+          x
+        </span>
+      )}
+    </button>
+  )
+})
 
 export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExport, onAddServer, onBackToServers }: ServerPanelProps) {
   const navigate = useNavigate()
@@ -31,7 +89,7 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
     navigate('/')
   }
 
-  function handleServerClick(serverId: string) {
+  const handleServerClick = useCallback((serverId: string) => {
     if (sessions[serverId]) {
       setActiveServer(serverId)
       navigate('/chat')
@@ -40,9 +98,9 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
     } else {
       navigate('/login/' + encodeURIComponent(serverId))
     }
-  }
+  }, [sessions, setActiveServer, navigate, onLoginRequired])
 
-  function handleRemove(e: React.MouseEvent, serverId: string) {
+  const handleRemove = useCallback((e: React.MouseEvent, serverId: string) => {
     e.stopPropagation()
     if (showRemove === serverId) {
       removeServer(serverId)
@@ -50,55 +108,7 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
     } else {
       setShowRemove(serverId)
     }
-  }
-
-  function renderServerIcon(server: typeof servers[0]) {
-    const isActive = activeServerId === server.id
-    const isConnected = !!sessions[server.id]
-    const mentions = serverMentionCounts[server.id] ?? 0
-
-    return (
-      <button
-        key={server.id}
-        className={`server-panel__icon ${isActive ? 'server-panel__icon--active' : ''}`}
-        onClick={() => handleServerClick(server.id)}
-        aria-label={`${server.name}${isConnected ? ' — connected' : ' — not connected'}${mentions > 0 ? ` — ${mentions} mentions` : ''}`}
-        aria-current={isActive ? 'page' : undefined}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          handleRemove(e, server.id)
-        }}
-        title={server.name}
-      >
-        {server.icon ? (
-          <img
-            src={server.icon}
-            alt=""
-            className="server-panel__icon-img"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = 'none'
-            }}
-          />
-        ) : (
-          server.name.slice(0, 2).toUpperCase()
-        )}
-        <span className={`server-panel__dot ${isConnected ? 'server-panel__dot--online' : ''}`} />
-        {mentions > 0 && (
-          <span className="server-panel__badge">
-            {mentions > 99 ? '99+' : mentions}
-          </span>
-        )}
-        {showRemove === server.id && (
-          <span
-            className="server-panel__remove-badge"
-            onClick={(e) => handleRemove(e, server.id)}
-          >
-            x
-          </span>
-        )}
-      </button>
-    )
-  }
+  }, [showRemove, removeServer])
 
   const uncategorizedServers = servers.filter((s) => !s.folder)
   const folderNames = [...new Set(servers.filter((s) => s.folder).map((s) => s.folder!))].sort()
@@ -118,7 +128,18 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
 
       <div className="server-panel__list">
         {/* Uncategorized servers */}
-        {uncategorizedServers.map((server) => renderServerIcon(server))}
+        {uncategorizedServers.map((server) => (
+          <ServerIcon
+            key={server.id}
+            server={server}
+            isActive={activeServerId === server.id}
+            isConnected={!!sessions[server.id]}
+            mentions={serverMentionCounts[server.id] ?? 0}
+            showRemove={showRemove === server.id}
+            onClick={handleServerClick}
+            onContextMenu={handleRemove}
+          />
+        ))}
 
         {/* Folder groups */}
         {folderNames.map((folder) => {
@@ -143,52 +164,18 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
                     {folderServers[0].name.slice(0, 2).toUpperCase()}
                   </span>
                 )}
-                {!isCollapsed && folderServers.map((server) => {
-                  const isActive = activeServerId === server.id
-                  const isConnected = !!sessions[server.id]
-                  const mentions = serverMentionCounts[server.id] ?? 0
-                  return (
-                    <button
-                      key={server.id}
-                      className={`server-panel__icon ${isActive ? 'server-panel__icon--active' : ''}`}
-                      onClick={() => handleServerClick(server.id)}
-                      aria-label={`${server.name}${isConnected ? ' — connected' : ' — not connected'}${mentions > 0 ? ` — ${mentions} mentions` : ''}`}
-                      aria-current={isActive ? 'page' : undefined}
-                      onContextMenu={(e) => {
-                        e.preventDefault()
-                        handleRemove(e, server.id)
-                      }}
-                      title={server.name}
-                    >
-                      {server.icon ? (
-                        <img
-                          src={server.icon}
-                          alt=""
-                          className="server-panel__icon-img"
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).style.display = 'none'
-                          }}
-                        />
-                      ) : (
-                        server.name.slice(0, 2).toUpperCase()
-                      )}
-                      <span className={`server-panel__dot ${isConnected ? 'server-panel__dot--online' : ''}`} />
-                      {mentions > 0 && (
-                        <span className="server-panel__badge">
-                          {mentions > 99 ? '99+' : mentions}
-                        </span>
-                      )}
-                      {showRemove === server.id && (
-                        <span
-                          className="server-panel__remove-badge"
-                          onClick={(e) => handleRemove(e, server.id)}
-                        >
-                          x
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
+                {!isCollapsed && folderServers.map((server) => (
+                  <ServerIcon
+                    key={server.id}
+                    server={server}
+                    isActive={activeServerId === server.id}
+                    isConnected={!!sessions[server.id]}
+                    mentions={serverMentionCounts[server.id] ?? 0}
+                    showRemove={showRemove === server.id}
+                    onClick={handleServerClick}
+                    onContextMenu={handleRemove}
+                  />
+                ))}
               </button>
             </div>
           )

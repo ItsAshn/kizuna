@@ -3,15 +3,12 @@ import type { Socket } from 'socket.io-client'
 import type { Transport, Producer } from 'mediasoup-client/types'
 import { useCallStore } from '../store/callStore'
 import { useVoiceStore } from '../store/voiceStore'
+import { isTauri } from '../utils/platform'
 
 interface ScreenFramePayload {
   jpeg_base64: string
   width: number
   height: number
-}
-
-function isTauri(): boolean {
-  return !!(window as any).__TAURI_INTERNALS__
 }
 
 export function useScreenshare(

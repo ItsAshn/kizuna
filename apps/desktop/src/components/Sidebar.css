@@ -438,7 +438,7 @@
     background: none;
     cursor: pointer;
     color: var(--text-secondary);
-    transition: all 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease;
     min-height: 32px;
   }
 
@@ -566,7 +566,7 @@
     padding: 4px 8px;
     border-radius: var(--radius-sm);
     margin-left: 4px;
-    transition: all 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
     flex-shrink: 0;
     min-width: 32px;
     min-height: 32px;

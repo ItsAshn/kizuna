@@ -42,18 +42,31 @@ function fetchReactionsForMessages(db: any, messageIds: string[]): Record<string
   const map: Record<string, any[]> = {}
   for (const r of rows) {
     if (!map[r.message_id]) map[r.message_id] = []
-    const existing = map[r.message_id]!.find((e: any) => e.reaction_key === r.reaction_key && e.reaction_type === r.reaction_type)
-    if (existing) {
-      existing.count++
-      existing.users.push({ user_id: r.user_id, username: r.username })
-    } else {
-      map[r.message_id]!.push({
+    const msgReactions = map[r.message_id]!
+    const key = `${r.reaction_key}:${r.reaction_type}`
+    let found = false
+    for (let i = 0; i < msgReactions.length; i++) {
+      const e = msgReactions[i]!
+      if (e._key === key) {
+        e.count++
+        e.users.push({ user_id: r.user_id, username: r.username })
+        found = true
+        break
+      }
+    }
+    if (!found) {
+      const reaction = {
+        _key: key,
         reaction_key: r.reaction_key,
         reaction_type: r.reaction_type,
         count: 1,
         users: [{ user_id: r.user_id, username: r.username }],
-      })
+      }
+      msgReactions.push(reaction)
     }
+  }
+  for (const arr of Object.values(map)) {
+    for (const r of arr) delete r._key
   }
   return map
 }
@@ -148,8 +161,7 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   try {
     const io: any = c.get('io' as never)
     if (io) {
-      io.to(channelId).emit('message:new', message)
-      io.to('__notifications__').emit('message:new', message)
+      io.to(channelId).to('__notifications__').emit('message:new', message)
     }
   } catch { /* best-effort */ }
 
@@ -193,8 +205,7 @@ messageRoutes.delete('/:messageId', authMiddleware, (c) => {
   try {
     const io: any = c.get('io' as never)
     if (io) {
-      io.to(message.channel_id).emit('message:delete', { id: messageId, channel_id: message.channel_id })
-      io.to('__notifications__').emit('message:delete', { id: messageId, channel_id: message.channel_id })
+      io.to(message.channel_id).to('__notifications__').emit('message:delete', { id: messageId, channel_id: message.channel_id })
     }
   } catch { /* best-effort */ }
 
@@ -235,8 +246,7 @@ messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
   try {
     const io: any = c.get('io' as never)
     if (io) {
-      io.to(message.channel_id).emit('message:edit', result)
-      io.to('__notifications__').emit('message:edit', result)
+      io.to(message.channel_id).to('__notifications__').emit('message:edit', result)
     }
   } catch { /* best-effort */ }
 

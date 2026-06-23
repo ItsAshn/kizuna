@@ -1,8 +1,20 @@
 import type { Server, Socket } from 'socket.io'
 import { v4 as uuidv4 } from 'uuid'
+import Database from 'better-sqlite3'
 import { getDb } from '../db'
 import { getUserPermissions, hasPermission, canWriteToChannel } from '../middleware/auth'
 
+const stmtCache = new Map<string, Database.Statement>()
+function prep(sql: string): Database.Statement {
+  let stmt = stmtCache.get(sql)
+  if (!stmt) {
+    stmt = getDb().prepare(sql)
+    stmtCache.set(sql, stmt)
+  }
+  return stmt
+}
+
+const MAX_SOCKET_RATE_STORE = 50_000
 const socketRateLimits = new Map<string, { count: number; resetAt: number }>()
 
 function checkSocketRateLimit(socket: Socket, event: string, max: number, windowMs: number): boolean {
@@ -10,12 +22,21 @@ function checkSocketRateLimit(socket: Socket, event: string, max: number, window
   const now = Date.now()
   const entry = socketRateLimits.get(key)
   if (!entry || entry.resetAt <= now) {
+    if (socketRateLimits.size >= MAX_SOCKET_RATE_STORE) {
+      socketRateLimits.clear()
+    }
     socketRateLimits.set(key, { count: 1, resetAt: now + windowMs })
     return true
   }
   if (entry.count >= max) return false
   entry.count++
   return true
+}
+
+function clearSocketRateLimits(socketId: string): void {
+  for (const key of socketRateLimits.keys()) {
+    if (key.startsWith(`${socketId}:`)) socketRateLimits.delete(key)
+  }
 }
 
 setInterval(() => {
@@ -48,6 +69,17 @@ const groupDMCalls = new Map<
     startedAt: number
   }
 >()
+
+setInterval(() => {
+  const now = Date.now()
+  const staleTimeout = 300_000
+  for (const [key, call] of dmCalls) {
+    if (call.status === 'ringing' && now - call.startedAt > staleTimeout) dmCalls.delete(key)
+  }
+  for (const [key, call] of groupDMCalls) {
+    if (call.status === 'ringing' && now - call.startedAt > staleTimeout) groupDMCalls.delete(key)
+  }
+}, 60_000).unref()
 
 interface MentionResult {
   type: 'everyone' | 'here' | 'user' | 'role';
@@ -356,8 +388,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       reply_to_content: row.reply_to_content || null,
     }
 
-    io.to(channelId).emit('message:new', message)
-    io.to(NOTIFICATION_ROOM).emit('message:new', message)
+    io.to(channelId).to(NOTIFICATION_ROOM).emit('message:new', message)
 
     const mentions = parseMentions(content.trim())
     processMentions(io, { ...message, author_id: row.author_id, author_username: row.author_username }, mentions)
@@ -405,8 +436,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       created_at: row.created_at * 1000,
     }
 
-    io.to(existing.channel_id).emit('message:edit', updated)
-    io.to(NOTIFICATION_ROOM).emit('message:edit', updated)
+    io.to(existing.channel_id).to(NOTIFICATION_ROOM).emit('message:edit', updated)
   })
 
   socket.on('message:delete', ({ messageId }: { messageId: string }) => {
@@ -424,21 +454,19 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     db.prepare('DELETE FROM mentions WHERE message_id = ?').run(messageId)
     db.prepare('DELETE FROM attachments WHERE message_id = ?').run(messageId)
     db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
-    io.to(message.channel_id).emit('message:delete', { id: messageId, channel_id: message.channel_id })
-    io.to(NOTIFICATION_ROOM).emit('message:delete', { id: messageId, channel_id: message.channel_id })
+    io.to(message.channel_id).to(NOTIFICATION_ROOM).emit('message:delete', { id: messageId, channel_id: message.channel_id })
   })
 
   socket.on('mentions:read', ({ channelId }: { channelId?: string }) => {
     if (!userId) return
-    const db = getDb()
     if (channelId) {
-      db.prepare(
+      prep(
         `UPDATE mentions SET read = 1
          WHERE (mentioned_user_id = ? OR mention_type IN ('everyone', 'here'))
            AND channel_id = ? AND read = 0`
       ).run(userId, channelId)
     } else {
-      db.prepare(
+      prep(
         `UPDATE mentions SET read = 1
          WHERE (mentioned_user_id = ? OR mention_type IN ('everyone', 'here')) AND read = 0`
       ).run(userId)
@@ -447,9 +475,8 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
   socket.on('channel:read', ({ channelId }: { channelId: string }, callback?: Function) => {
     if (!userId || !channelId) return
-    const db = getDb()
     const now = Math.floor(Date.now() / 1000)
-    db.prepare(
+    prep(
       `INSERT INTO channel_reads (user_id, channel_id, last_read_at)
        VALUES (?, ?, ?)
        ON CONFLICT(user_id, channel_id) DO UPDATE SET last_read_at = excluded.last_read_at`
@@ -462,15 +489,14 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
   socket.on('dm:read', ({ channelId }: { channelId: string }, callback?: Function) => {
     if (!userId || !channelId) return
-    const db = getDb()
     const now = Math.floor(Date.now() / 1000)
-    db.prepare(
+    prep(
       `INSERT INTO dm_reads (user_id, channel_id, last_read_at)
        VALUES (?, ?, ?)
        ON CONFLICT(user_id, channel_id) DO UPDATE SET last_read_at = excluded.last_read_at`
     ).run(userId, channelId, now)
 
-    const channel = db.prepare('SELECT user1_id, user2_id FROM dm_channels WHERE id = ?').get(channelId) as any
+    const channel = prep('SELECT user1_id, user2_id FROM dm_channels WHERE id = ?').get(channelId) as any
     if (channel) {
       const otherUserId = channel.user1_id === userId ? channel.user2_id : channel.user1_id
       socket.to(`user:${otherUserId}`).emit('dm:read', { channelId, readBy: userId, readAt: now * 1000 })
@@ -604,9 +630,8 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
   socket.on('group-dm:read', ({ channelId }: { channelId: string }, callback?: Function) => {
     if (!userId || !channelId) return
-    const db = getDb()
     const now = Math.floor(Date.now() / 1000)
-    db.prepare(
+    prep(
       `INSERT INTO group_dm_reads (user_id, channel_id, last_read_at)
        VALUES (?, ?, ?)
        ON CONFLICT(user_id, channel_id) DO UPDATE SET last_read_at = excluded.last_read_at`
@@ -1053,10 +1078,9 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     ;(socket as any).userId = userId
     ;(socket as any).username = username
 
-    const db = getDb()
     const now = Math.floor(Date.now() / 1000)
     try {
-      db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?').run(now, userId)
+      prep('UPDATE users SET last_seen_at = ? WHERE id = ?').run(now, userId)
     } catch { /* ignore */ }
 
     if (!userConnections.has(userId)) {
@@ -1072,10 +1096,11 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       io.emit('user:online', { userId, username, status: savedStatus })
     }
 
+    const db2 = getDb()
     const onlineList: Record<string, { username: string; status: UserStatus; activity?: UserActivity | null }> = {}
     for (const [uid, status] of userStatuses) {
       onlineList[uid] = {
-        username: getSocketUsernameById(uid, db),
+        username: getSocketUsernameById(uid, db2),
         status,
         activity: userActivities.get(uid) || null,
       }
@@ -1085,10 +1110,9 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
   socket.on('presence:heartbeat', () => {
     if (!userId) return
-    const db = getDb()
     const now = Math.floor(Date.now() / 1000)
     try {
-      db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?').run(now, userId)
+      prep('UPDATE users SET last_seen_at = ? WHERE id = ?').run(now, userId)
     } catch { /* ignore */ }
   })
 
@@ -1121,6 +1145,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
   socket.on('disconnect', () => {
     if (!userId) return
+    clearSocketRateLimits(socket.id)
 
     for (const [dmChannelId, call] of dmCalls) {
       if (call.callerId === userId || call.calleeId === userId) {

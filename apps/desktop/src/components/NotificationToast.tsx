@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback } from 'react'
 import { X, Megaphone, AtSign, MessageCircle, Phone } from 'lucide-react'
 import { useNotificationStore } from '../store/notificationStore'
 import { useChatStore } from '../store/chatStore'
@@ -32,13 +32,6 @@ export default function NotificationToast({ notification }: Props) {
     }
     dismissNotification(notification.id)
   }, [notification.channelId, notification.id, notification.type, dismissNotification, setActiveChannel, setActiveDMChannel])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      dismissNotification(notification.id)
-    }, 6000)
-    return () => clearTimeout(timer)
-  }, [notification.id, dismissNotification])
 
   const content = (
     <>
