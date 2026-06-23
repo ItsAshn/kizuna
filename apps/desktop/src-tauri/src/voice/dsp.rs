@@ -620,10 +620,16 @@ impl AudioProcessor {
         }
 
         if self.dc_removal_enabled {
-            let alpha = (-2.0 * PI * 25.0 / self.sample_rate as f32).exp();
+            // Leaky-integrator DC/rumble blocker: dc_state slowly tracks the DC
+            // offset, and we subtract it. The integrator must update *slowly*, so
+            // the smoothing coefficient is `1 - pole` (≈0.005), not `pole` (≈0.99).
+            // Using `pole` directly collapsed the output to a near-silent
+            // differentiator that gutted the voice band. Cutoff at 80 Hz (voice
+            // fundamental floor) to reject handling noise/rumble without thinning.
+            let pole = (-2.0 * PI * 80.0 / self.sample_rate as f32).exp();
             for sample in frame.iter_mut() {
                 let out = *sample - self.dc_state;
-                self.dc_state = self.dc_state + alpha * out;
+                self.dc_state = self.dc_state + (1.0 - pole) * out;
                 *sample = out;
             }
         }

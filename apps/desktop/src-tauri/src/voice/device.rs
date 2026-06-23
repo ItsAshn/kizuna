@@ -20,13 +20,6 @@ pub struct AudioDeviceInfo {
     pub default_sample_rate: u32,
 }
 
-#[derive(Clone, Serialize)]
-pub struct AudioDataPayload {
-    pub samples_f32: Vec<f32>,
-    pub sample_rate: u32,
-    pub channels: u16,
-}
-
 pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
     let host = cpal::default_host();
     let host_id = host.id();

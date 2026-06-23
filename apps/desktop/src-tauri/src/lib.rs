@@ -288,11 +288,22 @@ fn voice_inject_opus(_app: tauri::AppHandle, peer_id: String, opus_data: Vec<u8>
     }
     let decoder = decoders.get_mut(&peer_id).expect("decoder just inserted");
 
+    // 60ms is Opus's maximum frame size; keep the buffer this large so any frame
+    // duration decodes safely. Actual length is taken from the decoded count below.
     let frame_size = 48000 * 60 / 1000;
     let mut pcm = vec![0.0f32; frame_size];
-    let samples = decoder
-        .decode_float(&opus_data, &mut pcm, false)
-        .map_err(|e| format!("Opus decode: {e}"))?;
+    let samples = match decoder.decode_float(&opus_data, &mut pcm, false) {
+        Ok(n) => n,
+        Err(e) => {
+            // Packet-loss concealment: synthesize one 20ms frame from decoder
+            // state rather than dropping audio (a hard gap/click). Gap-driven FEC
+            // recovery needs RTP sequence numbers — handled by the Phase 3 jitter
+            // buffer; here we conceal isolated decode failures.
+            eprintln!("[voice_inject_opus] decode failed ({e}); concealing one frame");
+            let conceal = 960.min(pcm.len());
+            decoder.decode_float(&[], &mut pcm[..conceal], false).unwrap_or(0)
+        }
+    };
     pcm.truncate(samples);
 
     for s in &mut pcm {

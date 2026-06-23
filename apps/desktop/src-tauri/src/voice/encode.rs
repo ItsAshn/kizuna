@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use opus2::{Channels, Decoder as OpusDecoder, Encoder as OpusEncoder};
+use opus2::{Channels, Encoder as OpusEncoder};
 use webrtc::media::Sample;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
@@ -437,7 +437,12 @@ fn open_device(
                 let pcm_tx = pcm_tx.clone();
                 move |data: &[u16], _info| {
                     if cancel.load(Ordering::Relaxed) { return; }
-                    let f32_samples: Vec<f32> = data.iter().map(|&s| (s as f32 - 32768.0) / 32768.0).collect();
+                    // Center u16 [0, 65535] to [-1, 1]. Max value maps to 1.00006,
+                    // so clamp to avoid feeding >1.0 into the limiter (overdrive/clip).
+                    let f32_samples: Vec<f32> = data
+                        .iter()
+                        .map(|&s| ((s as f32 - 32768.0) / 32768.0).clamp(-1.0, 1.0))
+                        .collect();
                     let _ = pcm_tx.send(f32_samples);
                 }
             },
@@ -690,128 +695,6 @@ async fn run_audio_send(
 }
 
 impl Drop for AudioSendSession {
-    fn drop(&mut self) {
-        self.stop();
-    }
-}
-
-pub struct AudioDecoder {
-    decoder: OpusDecoder,
-    sample_rate: u32,
-}
-
-impl AudioDecoder {
-    pub fn new(sample_rate: u32, channels: u16) -> Result<Self, String> {
-        let ch = if channels == 1 {
-            Channels::Mono
-        } else {
-            Channels::Stereo
-        };
-        let decoder = OpusDecoder::new(sample_rate, ch)
-            .map_err(|e| format!("Failed to create Opus decoder: {e}"))?;
-        Ok(Self {
-            decoder,
-            sample_rate,
-        })
-    }
-
-    pub fn decode(&mut self, opus_data: &[u8]) -> Result<Vec<f32>, String> {
-        let frame_size = (self.sample_rate as usize * 60) / 1000;
-        let mut pcm = vec![0.0f32; frame_size];
-        let samples = self
-            .decoder
-            .decode_float(opus_data, &mut pcm, false)
-            .map_err(|e| format!("Opus decode failed: {e}"))?;
-        pcm.truncate(samples);
-        Ok(pcm)
-    }
-}
-
-pub struct AudioRecvSession {
-    cancel: Arc<AtomicBool>,
-    handle: Option<tokio::task::JoinHandle<()>>,
-}
-
-impl AudioRecvSession {
-    pub fn spawn(
-        app: tauri::AppHandle,
-        peer_id: String,
-        track: Arc<webrtc::track::track_remote::TrackRemote>,
-    ) -> Self {
-        let cancel = Arc::new(AtomicBool::new(false));
-        let cancel_clone = cancel.clone();
-
-        let handle = tokio::spawn(async move {
-            let _ = run_audio_recv(app, peer_id, track, cancel_clone).await;
-        });
-
-        Self {
-            cancel,
-            handle: Some(handle),
-        }
-    }
-
-    pub fn stop(&mut self) {
-        self.cancel.store(true, Ordering::SeqCst);
-        self.handle = None;
-    }
-}
-
-async fn run_audio_recv(
-    app: tauri::AppHandle,
-    peer_id: String,
-    track: Arc<webrtc::track::track_remote::TrackRemote>,
-    cancel: Arc<AtomicBool>,
-) {
-    use tauri::Emitter;
-
-    let mut decoder = match AudioDecoder::new(48000, 1) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("[AudioRecv] Failed to create decoder: {e}");
-            return;
-        }
-    };
-
-    let mut buf = vec![0u8; 4096];
-
-    loop {
-        if cancel.load(Ordering::SeqCst) {
-            break;
-        }
-
-        match track.read(&mut buf).await {
-            Ok((packet, _attrs)) => {
-                let opus_data = &packet.payload;
-                if opus_data.is_empty() {
-                    continue;
-                }
-
-                match decoder.decode(opus_data) {
-                    Ok(pcm) => {
-                        let _ = app.emit(
-                            "voice:remote_audio",
-                            serde_json::json!({
-                                "peerId": peer_id,
-                                "samples": pcm,
-                                "sampleRate": 48000,
-                            }),
-                        );
-                    }
-                    Err(e) => {
-                        eprintln!("[AudioRecv] Decode error: {e}");
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("[AudioRecv] read error: {e}");
-                break;
-            }
-        }
-    }
-}
-
-impl Drop for AudioRecvSession {
     fn drop(&mut self) {
         self.stop();
     }

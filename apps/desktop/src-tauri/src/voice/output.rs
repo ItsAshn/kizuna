@@ -166,9 +166,19 @@ fn mix_next_frame(inner: &mut OutputInner, out: &mut [f32]) -> MixResult {
         return MixResult::Silence;
     }
 
+    // Apply volume, then soft-clip. Below a 0.95 knee the signal is untouched;
+    // above it we saturate smoothly into [-1, 1] (tanh knee) instead of hard
+    // clipping, so volume boosts and summed peaks don't produce harsh distortion.
     let volume = inner.volume;
+    const KNEE: f32 = 0.95;
     for s in out.iter_mut() {
-        *s = (*s * volume).clamp(-1.0, 1.0);
+        let x = *s * volume;
+        *s = if x.abs() <= KNEE {
+            x
+        } else {
+            let over = (x.abs() - KNEE) / (1.0 - KNEE);
+            x.signum() * (KNEE + (1.0 - KNEE) * over.tanh())
+        };
     }
 
     MixResult::Data

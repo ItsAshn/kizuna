@@ -1054,9 +1054,12 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       }
     })
 
-    const remoteCtx = new AudioContext()
+    // Pin to 48kHz to match the Opus/RTP pipeline. Without this the context
+    // falls back to the system default (often 44.1kHz), forcing the browser to
+    // resample remote voice and introducing artifacts.
+    const remoteCtx = new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE })
     remoteAudioCtxRef.current = remoteCtx
-    vlog('joinVoice', `remote AudioContext created | state=${remoteCtx.state}`)
+    vlog('joinVoice', `remote AudioContext created | state=${remoteCtx.state} | sampleRate=${remoteCtx.sampleRate}`)
 
     for (const peer of joinResult.peers || []) {
       const socketId = peer.id
