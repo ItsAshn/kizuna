@@ -1922,10 +1922,9 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
                                 {taggerStatus.loaded && (
                                 <button
                                   onClick={() => handleGenerateTags(gif.id)}
-                                  className="server-menu__gif-edit"
+                                  className="server-menu__gif-ai"
                                   title="Generate tags with AI"
                                   disabled={generatingTags.has(gif.id)}
-                                  style={{ marginRight: '4px' }}
                                 >
                                   {generatingTags.has(gif.id) ? '...' : <span style={{ fontSize: '10px' }}>AI</span>}
                                 </button>

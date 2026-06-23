@@ -124,20 +124,11 @@ export default function MemberList({ visible, onClose }: Props) {
   const isSearching = search.trim().length > 0
 
   function isOnline(m: Member): boolean {
-    return userStatuses[m.id] != null && userStatuses[m.id] !== 'offline'
+    return userStatuses[m.id] != null && userStatuses[m.id] !== 'offline' && userStatuses[m.id] !== 'invisible'
   }
 
   function onlineCount(mems: Member[]): number {
     return mems.filter(m => isOnline(m)).length
-  }
-
-  function splitOnlineOffline(mems: Member[]): { online: Member[]; offline: Member[] } {
-    const online: Member[] = []
-    const offline: Member[] = []
-    for (const m of mems) {
-      (isOnline(m) ? online : offline).push(m)
-    }
-    return { online, offline }
   }
 
   function renderMember(member: Member) {
@@ -183,14 +174,38 @@ export default function MemberList({ visible, onClose }: Props) {
     )
   }
 
-  function renderMemberGroup(mems: Member[]) {
-    const { online, offline } = splitOnlineOffline(mems)
-    const showOfflineDivider = offline.length > 0 && online.length > 0
+  function renderSection(predicate: (m: Member) => boolean) {
     return (
       <>
-        {online.map(renderMember)}
-        {showOfflineDivider && <div className="member-list__offline-divider"><span>offline — {offline.length}</span></div>}
-        {offline.map(renderMember)}
+        {hoistGroups.map(group => {
+          const filtered = group.members.filter(predicate)
+          if (filtered.length === 0) return null
+          return (
+            <div key={group.role.id} className="member-list__group">
+              <div className="member-list__group-header">
+                <span className="member-list__group-dot" style={{ backgroundColor: group.role.color }} />
+                <span className="member-list__group-name" style={{ color: group.role.color }}>{group.role.name}</span>
+                <span className="member-list__group-count">{onlineCount(group.members)}/{group.members.length}</span>
+              </div>
+              {filtered.map(renderMember)}
+            </div>
+          )
+        })}
+        {(() => {
+          const filtered = ungroupedMembers.filter(predicate)
+          if (filtered.length === 0) return null
+          return (
+            <div className="member-list__group">
+              {hoistGroups.length > 0 && (
+                <div className="member-list__group-header">
+                  <span className="member-list__group-name" style={{ color: 'var(--text-muted)' }}>members</span>
+                  <span className="member-list__group-count">{onlineCount(ungroupedMembers)}/{ungroupedMembers.length}</span>
+                </div>
+              )}
+              {filtered.map(renderMember)}
+            </div>
+          )
+        })()}
       </>
     )
   }
@@ -233,27 +248,16 @@ export default function MemberList({ visible, onClose }: Props) {
           )
         ) : (
           <>
-            {hoistGroups.map(group => (
-              <div key={group.role.id} className="member-list__group">
-                <div className="member-list__group-header">
-                  <span className="member-list__group-dot" style={{ backgroundColor: group.role.color }} />
-                  <span className="member-list__group-name" style={{ color: group.role.color }}>{group.role.name}</span>
-                  <span className="member-list__group-count">{onlineCount(group.members)}/{group.members.length}</span>
-                </div>
-                {renderMemberGroup(group.members)}
-              </div>
-            ))}
-            {ungroupedMembers.length > 0 && (
-              <div className="member-list__group">
-                {hoistGroups.length > 0 && (
-                  <div className="member-list__group-header">
-                    <span className="member-list__group-name" style={{ color: 'var(--text-muted)' }}>members</span>
-                    <span className="member-list__group-count">{onlineCount(ungroupedMembers)}/{ungroupedMembers.length}</span>
-                  </div>
-                )}
-                {renderMemberGroup(ungroupedMembers)}
-              </div>
-            )}
+            {renderSection(m => isOnline(m))}
+            {(() => {
+              const offlineTotal = members.filter(m => !isOnline(m)).length
+              const onlineTotal = members.filter(m => isOnline(m)).length
+              if (offlineTotal > 0 && onlineTotal > 0) {
+                return <div className="member-list__offline-divider"><span>offline — {offlineTotal}</span></div>
+              }
+              return null
+            })()}
+            {renderSection(m => !isOnline(m))}
           </>
         )}
       </div>

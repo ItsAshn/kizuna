@@ -45,6 +45,9 @@ async function start(): Promise<void> {
   const config = loadConfig()
   validateJwtSecret(config)
   setTaggingEnabled(config.AUTO_TAGGING_ENABLED)
+  if (config.AUTO_TAGGING_ENABLED) {
+    console.log('[i] Auto-tagging is enabled. Call POST /api/gifs/load-tagger or use the Server Settings UI to load the CLIP model when ready.')
+  }
 
   console.log('[✓] Configuration validated')
 

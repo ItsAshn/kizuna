@@ -15,6 +15,7 @@ const STATUS_OPTIONS: { value: UserStatus; label: string }[] = [
   { value: 'online', label: 'Online' },
   { value: 'idle', label: 'Idle' },
   { value: 'busy', label: 'Busy' },
+  { value: 'invisible', label: 'Invisible' },
 ]
 
 const STATUS_EMOJI: string[] = ['💬', '🎮', '🎵', '🍿', '💼', '✈️', '🛌', '🏃', '📚', '🛒', '🍔', '💻']
@@ -57,10 +58,10 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') { setOpen(false); setShowEmojiPicker(false) }
     }
-    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('click', handleClick)
     window.addEventListener('keydown', handleKey)
     return () => {
-      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('click', handleClick)
       window.removeEventListener('keydown', handleKey)
     }
   }, [])

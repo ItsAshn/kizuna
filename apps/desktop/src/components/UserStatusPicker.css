@@ -32,6 +32,11 @@
   border-color: var(--gray);
 }
 
+.status-picker--invisible {
+  border-color: var(--text-muted);
+  opacity: 0.6;
+}
+
 .status-picker__dropdown {
   position: fixed;
   background: var(--bg-secondary);
@@ -103,6 +108,10 @@
 
 .status-picker__dot--offline {
   background: var(--gray);
+}
+
+.status-picker__dot--invisible {
+  background: var(--text-muted);
 }
 
 .status-picker__divider {

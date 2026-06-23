@@ -1155,6 +1155,7 @@
 .server-menu__status-dot--online  { background: var(--green); }
 .server-menu__status-dot--idle    { background: var(--yellow); }
 .server-menu__status-dot--busy    { background: var(--red); }
+.server-menu__status-dot--invisible { background: var(--text-muted); }
 
 /* ─── Checkbox for bulk select ────────────────────────── */
 
@@ -1544,7 +1545,6 @@
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  overflow: hidden;
 }
 
 .server-menu__gif-thumb {
@@ -1552,6 +1552,8 @@
   aspect-ratio: 1;
   object-fit: cover;
   display: block;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  overflow: hidden;
 }
 
 .server-menu__gif-item-info {
@@ -1620,6 +1622,33 @@
 }
 
 .server-menu__gif-edit:hover {
+  background: var(--accent, #5b7cfa);
+}
+
+.server-menu__gif-ai {
+  position: absolute;
+  top: 4px;
+  right: 48px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 4px;
+  cursor: pointer;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  transition: opacity 0.15s;
+  font-size: 10px;
+  min-width: 20px;
+  justify-content: center;
+}
+
+.server-menu__gif-item:hover .server-menu__gif-ai {
+  opacity: 1;
+}
+
+.server-menu__gif-ai:hover {
   background: var(--accent, #5b7cfa);
 }
 

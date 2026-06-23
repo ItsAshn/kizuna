@@ -86,7 +86,7 @@ interface MentionResult {
   target: string | null;
 }
 
-type UserStatus = 'online' | 'idle' | 'busy' | 'offline'
+  type UserStatus = 'online' | 'idle' | 'busy' | 'offline' | 'invisible'
 
 interface UserActivity {
   type: 'game' | 'music' | 'video' | 'other'
@@ -1091,14 +1091,19 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     if (userConnections.get(userId)!.size === 1) {
       const db = getDb()
       const row = db.prepare('SELECT status FROM users WHERE id = ?').get(userId) as { status?: string | null } | undefined
-      const savedStatus = (row?.status && ['online', 'idle', 'busy'].includes(row.status)) ? (row.status as UserStatus) : 'online'
+      const savedStatus = (row?.status && ['online', 'idle', 'busy', 'invisible'].includes(row.status)) ? (row.status as UserStatus) : 'online'
       userStatuses.set(userId, savedStatus)
-      io.emit('user:online', { userId, username, status: savedStatus })
+      if (savedStatus === 'invisible') {
+        socket.emit('user:online', { userId, username, status: savedStatus })
+      } else {
+        io.emit('user:online', { userId, username, status: savedStatus })
+      }
     }
 
     const db2 = getDb()
     const onlineList: Record<string, { username: string; status: UserStatus; activity?: UserActivity | null }> = {}
     for (const [uid, status] of userStatuses) {
+      if (status === 'invisible') continue
       onlineList[uid] = {
         username: getSocketUsernameById(uid, db2),
         status,
@@ -1119,17 +1124,31 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
   socket.on('user:status', ({ status, status_text, status_emoji }: { status?: UserStatus; status_text?: string | null; status_emoji?: string | null }) => {
     if (!userId) return
     const db = getDb()
-    if (status && ['online', 'idle', 'busy'].includes(status)) {
+    const prevStatus = userStatuses.get(userId)
+    if (status && ['online', 'idle', 'busy', 'invisible'].includes(status)) {
       userStatuses.set(userId, status)
       try {
         db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, userId)
       } catch { /* ignore */ }
     }
-    const payload: any = { userId }
-    if (status) payload.status = status
-    if (status_text !== undefined) payload.status_text = status_text
-    if (status_emoji !== undefined) payload.status_emoji = status_emoji
-    io.emit('user:status', payload)
+    const textPayload: any = { userId }
+    if (status !== undefined) textPayload.status = status
+    if (status_text !== undefined) textPayload.status_text = status_text
+    if (status_emoji !== undefined) textPayload.status_emoji = status_emoji
+    if (status === 'invisible' && prevStatus !== 'invisible') {
+      socket.emit('user:status', textPayload)
+      socket.broadcast.emit('user:offline', { userId })
+    } else if (prevStatus === 'invisible' && status && status !== 'invisible') {
+      io.emit('user:online', { userId, username, status })
+      if (status_text !== undefined || status_emoji !== undefined) {
+        const extra: any = { userId }
+        if (status_text !== undefined) extra.status_text = status_text
+        if (status_emoji !== undefined) extra.status_emoji = status_emoji
+        io.emit('user:status', extra)
+      }
+    } else {
+      io.emit('user:status', textPayload)
+    }
   })
 
   socket.on('user:activity', ({ activity }: { activity: UserActivity | null }) => {
@@ -1175,10 +1194,13 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     if (socks) {
       socks.delete(socket.id)
       if (socks.size === 0) {
+        const wasInvisible = userStatuses.get(userId) === 'invisible'
         userConnections.delete(userId)
         userStatuses.delete(userId)
         userActivities.delete(userId)
-        io.emit('user:offline', { userId })
+        if (!wasInvisible) {
+          io.emit('user:offline', { userId })
+        }
       }
     }
   })

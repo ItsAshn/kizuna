@@ -74,6 +74,10 @@
   background: var(--gray);
 }
 
+.user-profile-card__status--invisible {
+  background: var(--text-muted);
+}
+
 .user-profile-card__info {
   text-align: center;
   padding: 8px 16px 4px;
@@ -186,6 +190,8 @@
 .user-profile-card__status-dot--idle { background: var(--yellow); }
 .user-profile-card__status-dot--busy { background: var(--red); }
 .user-profile-card__status-dot--offline { background: var(--gray); }
+
+.user-profile-card__status-dot--invisible { background: var(--text-muted); }
 
 .user-profile-card__actions {
   display: flex;

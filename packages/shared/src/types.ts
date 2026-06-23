@@ -15,7 +15,7 @@ export interface SavedServer {
 }
 
 /** User presence status. */
-export type UserStatus = 'online' | 'idle' | 'busy' | 'offline';
+export type UserStatus = 'online' | 'idle' | 'busy' | 'offline' | 'invisible';
 
 export type UserActivityType = 'game' | 'music' | 'video' | 'other';
 

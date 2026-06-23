@@ -182,6 +182,10 @@
   background: var(--gray);
 }
 
+.member-list__online-dot--invisible {
+  background: var(--text-muted);
+}
+
 .member-list__member-info {
   flex: 1;
   min-width: 0;

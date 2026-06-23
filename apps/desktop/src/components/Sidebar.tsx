@@ -519,38 +519,50 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
           </div>
         )}
 
-        {groupDMChannels.length > 0 && (
-          <div className="sidebar__section">
+        <div className="sidebar__section">
+          <div className="sidebar__section-header">
             <h3 className="sidebar__section-title">Group DMs</h3>
-            {groupDMChannels.map((gdm) => {
-              const mentionBadge = mentionCounts[gdm.id]
-              const unreadOnly = !mentionBadge && unreadCounts[gdm.id]
-              const nameInitials = gdm.name.slice(0, 2).toUpperCase()
-              return (
-              <button
-                key={gdm.id}
-                onClick={() => { setActiveGroupDMChannel(gdm.id); onOpenChat?.() }}
-                className={`sidebar__channel ${activeGroupDMChannelId === gdm.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
-              >
-                <div className="sidebar__dm-avatar">{
-                  gdm.avatar ? (
-                    <img src={gdm.avatar} alt="" className="sidebar__dm-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                  ) : nameInitials
-                }</div>
-                <span className="sidebar__channel-name">{gdm.name}</span>
-                {mentionBadge ? <span className="sidebar__unread-badge">{mentionBadge > 99 ? '99+' : mentionBadge}</span> : unreadOnly ? <span className="sidebar__unread-dot" /> : null}
-              </button>
-              )
-            })}
+            <button
+              onClick={() => setShowCreateGroupDM(true)}
+              className="sidebar__section-add-btn"
+              title="New Group DM"
+            >
+              +
+            </button>
           </div>
-        )}
+          {groupDMChannels.length === 0 && (
+            <p className="sidebar__section-empty">No group chats yet</p>
+          )}
+          {groupDMChannels.map((gdm) => {
+            const mentionBadge = mentionCounts[gdm.id]
+            const unreadOnly = !mentionBadge && unreadCounts[gdm.id]
+            const nameInitials = gdm.name.slice(0, 2).toUpperCase()
+            return (
+            <button
+              key={gdm.id}
+              onClick={() => { setActiveGroupDMChannel(gdm.id); onOpenChat?.() }}
+              className={`sidebar__channel ${activeGroupDMChannelId === gdm.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
+            >
+              <div className="sidebar__dm-avatar">{
+                gdm.avatar ? (
+                  <img src={gdm.avatar} alt="" className="sidebar__dm-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                ) : nameInitials
+              }</div>
+              <span className="sidebar__channel-name">{gdm.name}</span>
+              {mentionBadge ? <span className="sidebar__unread-badge">{mentionBadge > 99 ? '99+' : mentionBadge}</span> : unreadOnly ? <span className="sidebar__unread-dot" /> : null}
+            </button>
+            )
+          })}
+        </div>
 
-        <button
-          onClick={() => setShowCreateForm((v) => !v)}
-          className="sidebar__create-toggle"
-        >
-          {showCreateForm ? '—' : '+'}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setShowCreateForm((v) => !v)}
+            className="sidebar__create-toggle"
+          >
+            {showCreateForm ? '—' : '+'}
+          </button>
+        )}
         {showCreateForm && (
           <div className="sidebar__create-menu">
             {session && isAdmin && (
@@ -585,12 +597,6 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
                 </div>
               </form>
             )}
-            <button
-              onClick={() => { setShowCreateGroupDM(true); setShowCreateForm(false) }}
-              className="sidebar__create-groupdm-btn"
-            >
-              Group DM
-            </button>
           </div>
         )}
       </div>
