@@ -1533,11 +1533,8 @@
 }
 
 .server-menu__gif-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  max-height: 300px;
-  overflow-y: auto;
+  column-count: 3;
+  column-gap: 6px;
 }
 
 .server-menu__gif-item {
@@ -1545,15 +1542,15 @@
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
+  break-inside: avoid;
+  margin-bottom: 6px;
 }
 
 .server-menu__gif-thumb {
   width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
+  height: auto;
   display: block;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  overflow: hidden;
 }
 
 .server-menu__gif-item-info {
