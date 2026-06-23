@@ -70,22 +70,22 @@ export default function ServerBrowser({ onConnect, registryUrl = DEFAULT_REGISTR
           />
         </div>
         <button
-          className={`server-browser__sort ${sortBy !== 'name' ? 'server-browser__sort--active' : ''}`}
+          className="server-browser__sort"
           onClick={() => setSortBy((s) => (s === 'name' ? 'players' : 'name'))}
-          title={`Sort by ${sortBy === 'name' ? 'player count' : 'name'}`}
+          title={`Sort by ${sortBy === 'name' ? 'active users' : 'name'}`}
         >
           <ArrowUpDown size={14} />
-          {sortBy === 'name' ? 'Name' : 'Players'}
+          {sortBy === 'name' ? 'Name' : 'Active'}
         </button>
-        <label className="server-browser__filter">
-          <input
-            type="checkbox"
-            checked={showPasswordProtected}
-            onChange={(e) => setShowPasswordProtected(e.target.checked)}
-          />
+        <button
+          className={`server-browser__filter ${!showPasswordProtected ? 'server-browser__filter--off' : ''}`}
+          onClick={() => setShowPasswordProtected((v) => !v)}
+          title={showPasswordProtected ? 'Showing all servers' : 'Hiding password-protected servers'}
+        >
           <Lock size={12} />
-          Password
-        </label>
+          <span className="server-browser__filter-label">Password</span>
+          <span className="server-browser__filter-dot" />
+        </button>
       </div>
 
       {loading && servers.length === 0 && (
@@ -119,7 +119,7 @@ export default function ServerBrowser({ onConnect, registryUrl = DEFAULT_REGISTR
                     <Lock size={10} />
                   </span>
                 )}
-                <span className="server-browser__badge server-browser__badge--players" title={`${server.playerCount} online`}>
+                <span className="server-browser__badge server-browser__badge--players" title={`${server.playerCount} active user${server.playerCount !== 1 ? 's' : ''}`}>
                   <Users size={10} />
                   {server.playerCount}
                 </span>

@@ -37,6 +37,8 @@ services:
       RTC_MAX_PORT: ${RTC_MAX_PORT:-40099}
       MEDIASOUP_LOG_LEVEL: ${MEDIASOUP_LOG_LEVEL:-warn}
       IS_PUBLIC: ${IS_PUBLIC:-false}
+      ANNOUNCE_URL: ${ANNOUNCE_URL:-}
+      IS_REGISTRY: ${IS_REGISTRY:-false}
       SERVER_URL: ${SERVER_URL:-}
       UPNP_ENABLED: ${UPNP_ENABLED:-false}
     volumes:
