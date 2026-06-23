@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { FaWindows, FaLinux, FaApple, FaGithub, FaDocker } from 'react-icons/fa'
 import { MessageCircle, Mic, Monitor, Lock, Code, Download, ExternalLink, ArrowRight, Server } from 'lucide-react'
+import ServerBrowser from '../components/ServerBrowser'
 import './Landing.css'
 
 interface LandingProps {
@@ -124,6 +125,14 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
               <p className="landing-feature-card__desc">{f.desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="landing-servers" id="explore">
+        <h2 className="landing-section__title">Explore Public Servers</h2>
+        <p className="landing-section__subtitle">Join community-run Kizuna servers. Set <code>IS_PUBLIC=true</code> to list your own.</p>
+        <div className="landing-servers__inner">
+          <ServerBrowser onConnect={onConnect} />
         </div>
       </section>
 

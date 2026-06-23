@@ -22,6 +22,8 @@ const envSchema = z.object({
   UPNP_ENABLED: z.coerce.boolean().default(true),
   IP_CHECK_INTERVAL: z.coerce.number().int().positive().default(300),
   IS_PUBLIC: z.coerce.boolean().default(false),
+  ANNOUNCE_URL: z.string().optional().default(''),
+  IS_REGISTRY: z.coerce.boolean().default(false),
   UPLOADS_DIR: z.string().optional().default(''),
   GIFS_DIR: z.string().optional().default(''),
   MAX_FILE_SIZE: z.coerce.number().int().positive().default(10485760),

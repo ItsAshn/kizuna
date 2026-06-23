@@ -1,0 +1,227 @@
+.server-browser {
+  width: 100%;
+}
+
+.server-browser__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.server-browser__search {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+}
+
+.server-browser__search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.server-browser__search-input {
+  width: 100%;
+  padding: 7px 10px 7px 32px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.server-browser__search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.server-browser__search-input:focus {
+  border-color: var(--brand);
+  box-shadow: var(--focus-ring);
+}
+
+.server-browser__sort {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.server-browser__sort:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.server-browser__sort--active {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.server-browser__filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.server-browser__filter input {
+  cursor: pointer;
+  accent-color: var(--brand);
+}
+
+.server-browser__status {
+  text-align: center;
+  padding: var(--space-6) 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.server-browser__status--error {
+  color: var(--red);
+}
+
+.server-browser__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-3);
+}
+
+.server-browser__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  color: var(--text-primary);
+}
+
+.server-browser__card:hover {
+  border-color: var(--brand-dim-border);
+  background: var(--bg-tertiary);
+  transform: translateY(-1px);
+}
+
+.server-browser__card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.server-browser__card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.server-browser__card-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.server-browser__card-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.server-browser__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.server-browser__badge--players {
+  background: var(--brand-dim);
+  color: var(--brand);
+}
+
+.server-browser__badge--lock {
+  background: var(--yellow);
+  color: #000;
+}
+
+.server-browser__card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.server-browser__card-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.server-browser__card-connect {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--brand);
+  margin-top: var(--space-1);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.server-browser__card:hover .server-browser__card-connect {
+  opacity: 1;
+}
+
+.server-browser__count {
+  text-align: center;
+  margin-top: var(--space-4);
+  font-size: 12px;
+  color: var(--text-muted);
+}

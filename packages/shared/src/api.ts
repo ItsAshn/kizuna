@@ -19,6 +19,7 @@ import type {
   LinkEmbed,
   TaggerStatus,
   Thread,
+  PublicServerEntry,
 } from './types'
 
 function normalizeUrl(url: string): string {
@@ -242,6 +243,13 @@ export async function fetchServerInfo(serverUrl: string): Promise<ServerInfo> {
     params: { _t: Date.now() },
   })
   return res.data as ServerInfo
+}
+
+export async function fetchPublicServers(registryUrl: string): Promise<PublicServerEntry[]> {
+  const res = await axios.get(`${normalizeUrl(registryUrl)}/api/registry/servers`, {
+    timeout: 8000,
+  })
+  return res.data as PublicServerEntry[]
 }
 
 export async function resolveInviteCode(

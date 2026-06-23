@@ -80,6 +80,7 @@ const EXPECTED_SCHEMA: Record<string, string[]> = {
   group_dm_messages: ['id', 'channel_id', 'from_id', 'from_username', 'content', 'encrypted', 'edited_at', 'created_at', 'reply_to_message_id', 'reply_to_username', 'reply_to_content'],
   group_dm_reads: ['user_id', 'channel_id', 'last_read_at'],
   group_dm_voice_participants: ['id', 'channel_id', 'user_id', 'joined_at', 'left_at'],
+  registry_servers: ['url', 'name', 'description', 'icon', 'password_protected', 'player_count', 'last_heartbeat'],
   _migrations: ['name', 'applied_at'],
 }
 
@@ -234,6 +235,7 @@ function seedPreExistingMigrations(database: Database.Database): void {
     ['group_dm_voice_participants_table', tableExists(database, 'group_dm_voice_participants')],
     ['idx_group_dm_vp_channel', indexExists(database, 'idx_group_dm_vp_channel')],
     ['idx_group_dm_vp_user', indexExists(database, 'idx_group_dm_vp_user')],
+    ['registry_servers_table', tableExists(database, 'registry_servers')],
   ]
 
   for (const [name, isApplied] of checks) {
@@ -617,6 +619,15 @@ function runMigrations(database: Database.Database): void {
         DELETE FROM messages_fts WHERE source='group_dm' AND message_id=OLD.id;
       END;
     ` },
+    { name: 'registry_servers_table', sql: `CREATE TABLE IF NOT EXISTS registry_servers (
+      url TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      icon TEXT DEFAULT NULL,
+      password_protected INTEGER NOT NULL DEFAULT 0,
+      player_count INTEGER NOT NULL DEFAULT 0,
+      last_heartbeat INTEGER NOT NULL
+    )` },
   ]
 
   const insertStmt = database.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)')

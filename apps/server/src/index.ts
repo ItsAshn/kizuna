@@ -8,6 +8,9 @@ import { loadConfig, validateJwtSecret } from './config'
 import { setTaggingEnabled } from './media/tagGenerator'
 import { openPorts, upnpClient, getMappedPorts } from './services/upnp'
 import { resolvePublicAddress, startIpWatcher } from './services/publicAddress'
+import { startHeartbeat } from './heartbeat'
+import { startRegistryCleanup } from './routes/registry'
+import { getServerInfo } from './routes/serverInfo'
 
 function printBanner(): void {
   console.log(`
@@ -73,7 +76,29 @@ async function start(): Promise<void> {
     console.error('[!] Failed to start mediasoup worker:', err.message)
   }
 
-  const { server: _server } = createApp(PORT)
+  const { server: _server, io } = createApp(PORT)
+
+  if (config.IS_REGISTRY) {
+    startRegistryCleanup()
+    console.log('[i] Registry enabled')
+  }
+
+  if (config.IS_PUBLIC) {
+    startHeartbeat(
+      config,
+      () => io.engine.clientsCount,
+      () => {
+        const info = getServerInfo()
+        return {
+          name: info.name,
+          description: info.description,
+          passwordProtected: info.passwordProtected,
+          icon: info.icon,
+        }
+      },
+    )
+    console.log('[i] Public listing enabled')
+  }
 
   console.log(`\n[✓] Server "${config.SERVER_NAME}" running`)
   console.log(`[i] HTTP:       http://localhost:${PORT}`)

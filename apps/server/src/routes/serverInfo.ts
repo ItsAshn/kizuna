@@ -105,7 +105,7 @@ if (!fs.existsSync(BACKGROUNDS_DIR)) {
 let cachedServerInfo: { data: ReturnType<typeof buildServerInfo>; at: number } | null = null
 const SERVER_INFO_CACHE_TTL = 5000
 
-function getServerInfo() {
+export function getServerInfo() {
   const now = Date.now()
   if (cachedServerInfo && now - cachedServerInfo.at < SERVER_INFO_CACHE_TTL) {
     return cachedServerInfo.data

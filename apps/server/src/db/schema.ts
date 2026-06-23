@@ -295,6 +295,16 @@ export const SCHEMA_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
+  CREATE TABLE IF NOT EXISTS registry_servers (
+    url TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    icon TEXT DEFAULT NULL,
+    password_protected INTEGER NOT NULL DEFAULT 0,
+    player_count INTEGER NOT NULL DEFAULT 0,
+    last_heartbeat INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS _migrations (
     name TEXT PRIMARY KEY,
     applied_at INTEGER NOT NULL DEFAULT (unixepoch())

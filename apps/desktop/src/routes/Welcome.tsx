@@ -10,6 +10,7 @@ import { Settings } from 'lucide-react'
 import AuthForm from '../components/AuthForm'
 import BackupTokenModal from '../components/BackupTokenModal'
 import ServerConnectForm from '../components/ServerConnectForm'
+import ServerBrowser from '../components/ServerBrowser'
 import Landing from './Landing'
 import './Welcome.css'
 
@@ -45,6 +46,7 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
   const [displayName, setDisplayName] = useState('')
   const [serverPassword, setServerPassword] = useState('')
   const [isRegister, setIsRegister] = useState(false)
+  const [dashboardTab, setDashboardTab] = useState<'saved' | 'explore'>('saved')
 
   const { authenticate, loading, error, setError, backupToken, clearBackupToken } = useAuth(serverUrl)
 
@@ -215,6 +217,27 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
         )}
       </div>
 
+      <div className="welcome__tabs">
+        <button
+          className={`welcome__tab ${dashboardTab === 'saved' ? 'welcome__tab--active' : ''}`}
+          onClick={() => setDashboardTab('saved')}
+        >
+          Saved Servers
+        </button>
+        <button
+          className={`welcome__tab ${dashboardTab === 'explore' ? 'welcome__tab--active' : ''}`}
+          onClick={() => setDashboardTab('explore')}
+        >
+          Explore
+        </button>
+      </div>
+
+      {dashboardTab === 'explore' ? (
+        <div className="welcome__explore">
+          <ServerBrowser onConnect={handleConnect} />
+        </div>
+      ) : (
+        <>
       <div className="welcome__dashboard-grid">
         <div className="welcome__dashboard-panel">
           <div className="welcome__dashboard-panel-header">
@@ -322,6 +345,8 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
       </div>
 
       <button className="welcome__dashboard-cta" onClick={() => setShowConnect(true)}>Connect to Server</button>
+        </>
+      )}
 
       <button
         className="welcome__settings-btn"

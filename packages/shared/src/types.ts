@@ -381,6 +381,15 @@ export interface ServerInfo {
   gifsEnabled: boolean;
 }
 
+export interface PublicServerEntry {
+  url: string;
+  name: string;
+  description: string;
+  icon: string | null;
+  passwordProtected: boolean;
+  playerCount: number;
+}
+
 export type GifType = 'gif' | 'sticker';
 
 export interface GifInfo {

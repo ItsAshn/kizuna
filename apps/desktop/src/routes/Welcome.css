@@ -129,6 +129,45 @@
   padding-top: var(--space-6);
 }
 
+.welcome__tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  width: 100%;
+  max-width: 56rem;
+}
+
+.welcome__tab {
+  flex: 1;
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.welcome__tab:hover {
+  color: var(--text-primary);
+}
+
+.welcome__tab--active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.welcome__explore {
+  width: 100%;
+  max-width: 56rem;
+}
+
 .welcome__dashboard-grid {
   width: 100%;
   max-width: 56rem;

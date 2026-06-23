@@ -29,6 +29,7 @@ import pinsRoutes from './routes/pins';
 import threadsRoutes from './routes/threads';
 import categoryRoutes from './routes/categories';
 import embedRoutes from './routes/embeds';
+import registryRoutes from './routes/registry';
 import { authLimiter, messageLimiter, uploadLimiter, apiLimiter } from './middleware/rateLimiter';
 
 const log = createLogger('app');
@@ -138,6 +139,9 @@ export function createApp(httpPort: number) {
 
   app.use('/api/embeds/*', apiLimiter);
   app.route('/api/embeds', embedRoutes);
+
+  app.use('/api/registry/*', apiLimiter);
+  app.route('/api/registry', registryRoutes);
 
   app.onError((err, c) => {
     log.error('Unhandled error:', err.message || err);
