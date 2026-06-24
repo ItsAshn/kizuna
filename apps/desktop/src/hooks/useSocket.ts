@@ -10,7 +10,7 @@ import { useSettingsStore } from '../store/settingsStore'
 import type { DMIncomingCall } from '../store/callStore'
 import { decryptDM, isEncryptedContent, decryptGroupDM, isGroupEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import type { Message, Channel, DMChannelData, GroupDMChannelData, UserStatus, UserActivity, MessageReaction, Member, PinnedMessage, Thread } from '@kizuna/shared'
+import type { Message, Channel, GroupDMChannelData, UserStatus, UserActivity, MessageReaction, Member, PinnedMessage, Thread } from '@kizuna/shared'
 import { refreshToken } from '@kizuna/shared'
 import { showNotification } from '../utils/showNotification'
 
@@ -41,7 +41,7 @@ function tryDecryptGroupDM(message: Message): Message {
   if (!currentUserId) return { ...message, content: '[Encrypted - not authenticated]' }
   const channel = useChatStore.getState().groupDMChannels.find((d) => d.id === message.channel_id)
   const senderMember = channel?.members.find((m) => m.user_id === message.user_id)
-  const senderPubKey = senderMember?.public_key || (message as any).sender_public_key
+  const senderPubKey = senderMember?.public_key || (message as unknown as { sender_public_key?: string }).sender_public_key
   if (!senderPubKey) return { ...message, content: '[Encrypted - missing sender key]' }
   try {
     const decrypted = decryptGroupDM(parsed, senderPubKey, currentUserId, secKey)
@@ -133,7 +133,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
         const notif = serverId ? useSettingsStore.getState().notificationSettings[serverId] : undefined
         const skipUnread = notif?.level === 'none' || notif?.level === 'mentions'
 
-        const newState: any = {
+        const newState: Record<string, unknown> = {
           messages: {
             ...state.messages,
             [message.channel_id]: [...existing, message],
@@ -163,7 +163,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
       useChatStore.setState((state) => {
         const existing = state.messages[message.channel_id] || []
         if (existing.some((m) => m.id === message.id)) return {}
-        const newState: any = {
+        const newState: Record<string, unknown> = {
           messages: {
             ...state.messages,
             [message.channel_id]: [...existing, decrypted],
@@ -194,7 +194,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
       useChatStore.setState((state) => {
         const existing = state.messages[message.channel_id] || []
         if (existing.some((m) => m.id === message.id)) return {}
-        const newState: any = {
+        const newState: Record<string, unknown> = {
           messages: {
             ...state.messages,
             [message.channel_id]: [...existing, decrypted],
@@ -212,7 +212,6 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
       const serverId = useServerStore.getState().activeSession?.serverId
       if (serverId) {
-        const notif = useSettingsStore.getState().notificationSettings[serverId]
         if (message.channel_id !== useChatStore.getState().activeGroupDMChannelId) {
           showNotification({
             type: 'message',
@@ -277,7 +276,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
       }
     })
 
-    socket.on('message:mention', (mention: any) => {
+    socket.on('message:mention', (mention: { channel_id: string; author_username?: string; content?: string | null; mention_type?: string }) => {
       const serverId = useServerStore.getState().activeSession?.serverId
       const notif = serverId ? useSettingsStore.getState().notificationSettings[serverId] : undefined
       const isEveryone = mention.mention_type === 'everyone' || mention.mention_type === 'here'
@@ -299,7 +298,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
         showNotification({
           type: 'mention',
           title: mention.author_username || 'Someone',
-          body: mention.content?.length > 100 ? mention.content.slice(0, 100) + '...' : mention.content || '',
+          body: mention.content ? (mention.content.length > 100 ? mention.content.slice(0, 100) + '...' : mention.content) : '',
           channelId: mention.channel_id,
         })
       }
@@ -466,7 +465,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
       store.setUserActivities(activities)
     })
 
-    socket.on('user:status', ({ userId, status, status_text, status_emoji, activity }: { userId: string; status?: UserStatus; status_text?: string | null; status_emoji?: string | null; activity?: any }) => {
+    socket.on('user:status', ({ userId, status, status_text, status_emoji, status_sticker_id, activity }: { userId: string; status?: UserStatus; status_text?: string | null; status_emoji?: string | null; status_sticker_id?: string | null; activity?: UserActivity | null }) => {
       if (status !== undefined) {
         useVoiceStore.getState().setUserStatus(userId, status)
       }
@@ -483,6 +482,10 @@ export function useSocket(): MutableRefObject<Socket | null> {
         }
         if (status_emoji !== undefined) {
           sessionUser.status_emoji = status_emoji
+          changed = true
+        }
+        if (status_sticker_id !== undefined) {
+          sessionUser.status_sticker_id = status_sticker_id
           changed = true
         }
         if (changed) {

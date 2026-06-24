@@ -54,8 +54,9 @@ export default function CreateGroupDMModal({ onClose }: CreateGroupDMModalProps)
       const channel = await createGroupDM(session.url, name.trim(), [...selectedIds])
       addGroupDMChannel([channel, ...existingChannels])
       onClose()
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || 'Failed to create group DM')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string }
+      setError(e?.response?.data?.error || e?.message || 'Failed to create group DM')
     } finally {
       setCreating(false)
     }

@@ -1,12 +1,65 @@
 import { useRef, useCallback, useEffect } from 'react'
 import type { Socket } from 'socket.io-client'
 import { Device } from 'mediasoup-client'
-import type { Transport, Producer, Consumer } from 'mediasoup-client/types'
+import type { Transport, Producer, Consumer, RtpCapabilities } from 'mediasoup-client/types'
 import { useServerStore } from '../store/serverStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
 import type { ConnectionQuality } from '@kizuna/shared'
 import { isTauri, isMobileTauri } from '../utils/platform'
+
+interface VoiceJoinResult {
+  error?: string
+  routerRtpCapabilities?: RtpCapabilities
+  iceServers?: { urls: string; username?: string; credential?: string }[]
+  peers?: { id: string; userId: string; username: string }[]
+  voiceBitrateKbps?: number
+  screenSharePeer?: { peerId: string; username: string }
+}
+
+interface ConsumeResult {
+  id?: string
+  error?: string
+  rtpParameters?: { encodings?: { ssrc?: number }[] }
+  [key: string]: unknown
+}
+
+interface TransportResult {
+  id?: string
+  error?: string
+  [key: string]: unknown
+}
+
+interface RTCStatEntry {
+  type: string
+  state?: string
+  currentRoundTripTime?: number
+  kind?: string
+  jitter?: number
+  packetsReceived?: number
+  packetsLost?: number
+  roundTripTime?: number
+  fractionLost?: number
+  [key: string]: unknown
+}
+
+interface VoiceEventPayload {
+  type: string
+  data: {
+    peer_id?: string
+    user_id?: string
+    username?: string
+    state?: string
+    error?: string
+    speaking?: boolean
+  }
+}
+
+interface VoiceSpeakingPayload {
+  channelId: string
+  speaking: boolean
+  level?: number
+}
 
 const SPEAKING_RMS_THRESHOLD = 8
 const SPEAKING_POLL_MS = 80
@@ -45,7 +98,7 @@ function computeQualityFromStats(report: RTCStatsReport): ConnectionQuality {
   let rttMs = 0
   let jitterMs = 0
   let lossRate = 0
-  report.forEach((stat: any) => {
+  report.forEach((stat: RTCStatEntry) => {
     if (stat.type === 'candidate-pair' && stat.state === 'succeeded' && stat.currentRoundTripTime != null) {
       rttMs = stat.currentRoundTripTime * 1000
     }
@@ -136,65 +189,6 @@ function startSpeakingDetection(
     source.disconnect()
     if (!audioCtx) ctx.close()
     analyserStream.getTracks().forEach((t) => t.stop())
-  }
-}
-
-function startNativeSpeakingDetection(
-  pcmRingBuffer: Float32Array[],
-  onSpeaking: (speaking: boolean) => void,
-  onLevel?: (level: number) => void,
-): () => void {
-  let speaking = false
-  let stopped = false
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let holdTimer: ReturnType<typeof setTimeout> | null = null
-
-  const poll = () => {
-    if (stopped) return
-
-    const combinedLength = pcmRingBuffer.reduce((s, c) => s + c.length, 0)
-    if (combinedLength === 0) {
-      timer = setTimeout(poll, SPEAKING_POLL_MS)
-      return
-    }
-
-    let squareSum = 0
-    let sampleCount = 0
-    for (const chunk of pcmRingBuffer) {
-      for (let i = 0; i < chunk.length; i++) {
-        squareSum += chunk[i] * chunk[i]
-        sampleCount++
-      }
-    }
-    const rms = Math.sqrt(squareSum / sampleCount)
-    onLevel?.(rms)
-
-    const nowSpeaking = rms > SPEAKING_RMS_THRESHOLD
-    if (nowSpeaking) {
-      if (holdTimer !== null) {
-        clearTimeout(holdTimer)
-        holdTimer = null
-      }
-      if (!speaking) {
-        speaking = true
-        onSpeaking(true)
-      }
-    } else if (speaking && holdTimer === null) {
-      holdTimer = setTimeout(() => {
-        holdTimer = null
-        speaking = false
-        onSpeaking(false)
-      }, SPEAKING_HOLD_MS)
-    }
-    timer = setTimeout(poll, SPEAKING_POLL_MS)
-  }
-
-  timer = setTimeout(poll, SPEAKING_POLL_MS)
-
-  return () => {
-    stopped = true
-    if (timer !== null) clearTimeout(timer)
-    if (holdTimer !== null) clearTimeout(holdTimer)
   }
 }
 
@@ -388,14 +382,14 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     remoteCtx: AudioContext,
   ) => {
     vlog('consume', `consuming peer peerId=${peerId}`)
-    const params: any = await new Promise((resolve) =>
+    const params: Record<string, unknown> = await new Promise((resolve) =>
       socket.emit('voice:consume', { channelId, peerId, rtpCapabilities: device.rtpCapabilities }, resolve),
     )
     if (!params?.id) {
       verr('consume', `no id returned for peer ${peerId}`, params)
       return
     }
-    const consumer = await recvTransport.consume(params)
+    const consumer = await recvTransport.consume(params as Parameters<typeof recvTransport.consume>[0])
     consumersRef.current.set(peerId, consumer)
     vlog('consume', `consumer created | id=${consumer.id} | kind=${consumer.kind} | paused=${consumer.paused}`)
 
@@ -455,7 +449,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     username: string,
   ) => {
     try {
-      const params: any = await new Promise((resolve) =>
+      const params: Record<string, unknown> = await new Promise((resolve) =>
         socket.emit('voice:consume', {
           channelId,
           peerId: sharerPeerId,
@@ -468,7 +462,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         return
       }
 
-      const consumer = await recvTransport.consume(params)
+      const consumer = await recvTransport.consume(params as Parameters<typeof recvTransport.consume>[0])
       videoConsumerRef.current = consumer
 
       await new Promise<void>((resolve) =>
@@ -532,7 +526,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     nativeSpeakingUnlistenRef.current?.()
     return import('@tauri-apps/api/event').then(({ listen }) =>
       Promise.all([
-        listen<any>('voice:event', (event) => {
+        listen<VoiceEventPayload>('voice:event', (event) => {
           const ev = event.payload
           vlog('voice:event', `type=${ev.type}`, ev)
           switch (ev.type) {
@@ -551,27 +545,27 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
             }
             case 'PeerJoined': {
               addVoicePeer({
-                id: ev.data.peer_id,
-                userId: ev.data.user_id,
-                username: ev.data.username,
+                id: ev.data.peer_id!,
+                userId: ev.data.user_id!,
+                username: ev.data.username!,
                 speaking: false,
                 muted: false,
               })
               break
             }
             case 'PeerLeft': {
-              removeVoicePeer(ev.data.peer_id)
+              removeVoicePeer(ev.data.peer_id!)
               import('@tauri-apps/api/core').then(({ invoke }) =>
                 invoke('voice_remove_peer', { peerId: ev.data.peer_id }).catch((err) => { console.error('Failed to remove voice peer (native):', err) })
               )
               break
             }
             case 'PeerSpeaking': {
-              updateVoicePeer(ev.data.peer_id, { speaking: ev.data.speaking })
+              updateVoicePeer(ev.data.peer_id!, { speaking: ev.data.speaking })
               break
             }
             case 'ScreenShareStarted': {
-              setScreenSharePeer(ev.data.peer_id, ev.data.username)
+              setScreenSharePeer(ev.data.peer_id!, ev.data.username!)
               break
             }
             case 'ScreenShareStopped': {
@@ -582,7 +576,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         }).then((unlisten) => {
           nativeVoiceUnlistenRef.current = unlisten
         }),
-        listen<any>('voice:speaking', (event) => {
+        listen<VoiceSpeakingPayload>('voice:speaking', (event) => {
           const { channelId, speaking, level } = event.payload
           const socket = socketRef.current
           if (socket && channelId) {
@@ -627,7 +621,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         vlog('nativePeer', `voice:newPeer peerId=${peer.peerId}`)
         addVoicePeer({ id: peer.peerId, userId: peer.userId, username: peer.username, speaking: false, muted: false })
         try {
-          const consumeResult: any = await new Promise((resolve) =>
+          const consumeResult: ConsumeResult = await new Promise((resolve) =>
             socket!.emit('voice:consume', {
               channelId: channelIdRef.current,
               peerId: peer.peerId,
@@ -668,7 +662,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     try {
       // Step 1: voice:join via chat socket
       vlog('joinVoiceNative', 'sending voice:join via chat socket')
-      const joinResult: any = await new Promise((resolve) =>
+      const joinResult: VoiceJoinResult = await new Promise((resolve) =>
         socket!.emit('voice:join', { channelId }, resolve),
       )
       if (joinResult?.error) {
@@ -677,6 +671,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       vlog('joinVoiceNative', 'voice:join OK', { peers: joinResult?.peers?.length, bitrate: joinResult?.voiceBitrateKbps })
 
       setActiveVoiceChannel(channelId)
+      useVoiceStore.getState().setRouterRtpCapabilities(joinResult.routerRtpCapabilities!)
 
       // Enable Socket.IO RTP forwarding as fallback for broken recv DTLS
       socket!.emit('voice:enableSocketRtp')
@@ -692,14 +687,14 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       setServerVoiceBitrateKbps(voiceBitrateKbps)
 
       // Step 2: create send transport via chat socket
-      const sendParams: any = await new Promise((resolve) =>
+      const sendParams: TransportResult = await new Promise((resolve) =>
         socket!.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
       )
       if (sendParams?.error) throw new Error(`send transport create: ${sendParams.error}`)
       vlog('joinVoiceNative', 'send transport created', { id: sendParams?.id })
 
       // Step 3: create DirectTransport for recv (no ICE/DTLS needed)
-      const recvParams: any = await new Promise((resolve) =>
+      const recvParams: TransportResult = await new Promise((resolve) =>
         socket!.emit('voice:createDirectTransport', { channelId }, resolve),
       )
       if (recvParams?.error) throw new Error(`recv direct transport create: ${recvParams.error}`)
@@ -707,17 +702,17 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
       // Step 4: create WebRTC send transport in Rust (recv uses DirectTransport, no Rust PC needed)
       vlog('joinVoiceNative', 'calling voice_begin')
-      const [sendDtls, _recvDtls, rtpParams] = await invoke('voice_begin', {
+      const [sendDtls, _recvDtls, audioRtpParams] = await invoke('voice_begin', {
         channelId,
         iceServers,
         sendParams,
         recvParams,
         voiceBitrateKbps,
-      }) as [any, any, any]
-      vlog('joinVoiceNative', 'voice_begin OK', { ssrc: rtpParams?.ssrc })
+      }) as [Record<string, unknown>, Record<string, unknown>, Record<string, unknown>]
+      vlog('joinVoiceNative', 'voice_begin OK')
 
       // Step 5: connect send transport
-      const sendConnectResult: any = await new Promise((resolve) =>
+      const sendConnectResult: TransportResult = await new Promise((resolve) =>
         socket!.emit('voice:connectTransport', {
           channelId,
           transportId: sendParams.id,
@@ -727,17 +722,17 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       if (sendConnectResult?.error) throw new Error(`send connectTransport: ${sendConnectResult.error}`)
       vlog('joinVoiceNative', 'send connectTransport OK')
 
-      // Step 7: produce
-      const produceResult: any = await new Promise((resolve) =>
+      // Step 6: produce audio
+      const produceResult: TransportResult = await new Promise((resolve) =>
         socket!.emit('voice:produce', {
           channelId,
           transportId: sendParams.id,
           kind: 'audio',
-          rtpParameters: rtpParams,
+          rtpParameters: audioRtpParams,
         }, resolve),
       )
-      if (produceResult?.error) throw new Error(`produce: ${produceResult.error}`)
-      vlog('joinVoiceNative', 'produce OK', { producerId: produceResult?.id })
+      if (produceResult?.error) throw new Error(`audio produce: ${produceResult.error}`)
+      vlog('joinVoiceNative', 'audio produce OK', { producerId: produceResult?.id })
 
       // Step 8: start audio capture in Rust with DSP config
       const gateDb = -(noiseGateThreshold * 0.5) - 25 // 0..100 -> -25..-75 dB
@@ -767,7 +762,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
             speaking: false,
             muted: false,
           })
-          const consumeResult: any = await new Promise((resolve) =>
+          const consumeResult: ConsumeResult = await new Promise((resolve) =>
             socket!.emit('voice:consume', {
               channelId,
               peerId: peer.id,
@@ -789,8 +784,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       vlog('joinVoiceNative', 'flush_peers done')
 
       return null
-    } catch (e: any) {
-      const err = e?.toString?.() || 'Failed to join voice'
+    } catch (e: unknown) {
+      const err = (e as { toString?: () => string })?.toString?.() || 'Failed to join voice'
       verr('joinVoiceNative', 'failed', e)
       setVoiceError(err)
       socket?.emit('voice:leave', { channelId })
@@ -863,13 +858,13 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setVoiceError(null)
 
     vlog('joinVoice', 'emitting voice:join')
-    const joinResult: any = await new Promise((resolve) =>
+    const joinResult: VoiceJoinResult = await new Promise((resolve) =>
       socket.emit('voice:join', { channelId }, resolve),
     )
 
     if (joinResult?.error) {
-      verr('joinVoice', 'voice:join error', joinResult.error)
-      setVoiceError(joinResult.error)
+      verr('joinVoice', 'voice:join error', joinResult.error as string)
+      setVoiceError(joinResult.error as string)
       cleanupVoice()
       socket.emit('voice:leave', { channelId })
       channelIdRef.current = null
@@ -886,6 +881,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     }
 
     setActiveVoiceChannel(channelId)
+    useVoiceStore.getState().setRouterRtpCapabilities(joinResult.routerRtpCapabilities)
 
     if (typeof RTCPeerConnection === 'undefined') {
       verr('joinVoice', 'RTCPeerConnection undefined - WebRTC not supported')
@@ -902,9 +898,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     try {
       device = new Device()
       await device.load({ routerRtpCapabilities: joinResult.routerRtpCapabilities })
-    } catch (loadErr: any) {
+    } catch (loadErr: unknown) {
       verr('joinVoice', 'mediasoup Device.load() failed', loadErr)
-      const err = `WebRTC codec/device initialization failed: ${loadErr?.message || loadErr}. On Linux, ensure webkit2gtk is built with full WebRTC support and required audio codecs (opus) are available.`
+      const e = loadErr as { message?: string }
+      const err = `WebRTC codec/device initialization failed: ${e?.message || loadErr}. On Linux, ensure webkit2gtk is built with full WebRTC support and required audio codecs (opus) are available.`
       setVoiceError(err)
       cleanupVoice()
       socket.emit('voice:leave', { channelId })
@@ -917,11 +914,11 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     const iceServers = joinResult.iceServers || []
 
     vlog('joinVoice', 'creating send transport')
-    const sendParams: any = await new Promise((resolve) =>
+    const sendParams: Record<string, unknown> = await new Promise((resolve) =>
       socket.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
     )
     if (sendParams?.error) {
-      verr('joinVoice', 'send transport create failed', sendParams.error)
+      verr('joinVoice', 'send transport create failed', sendParams.error as string)
       const err = `Send transport failed: ${sendParams.error}`
       setVoiceError(err)
       cleanupVoice()
@@ -934,7 +931,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     const sendTransport = device.createSendTransport({
       ...sendParams,
       iceServers: iceServers.length > 0 ? iceServers : undefined,
-    })
+    } as Parameters<typeof device.createSendTransport>[0])
     sendTransportRef.current = sendTransport
 
     sendTransport.on('connect', ({ dtlsParameters }, cb) => {
@@ -958,11 +955,11 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     })
 
     vlog('joinVoice', 'creating recv transport')
-    const recvParams: any = await new Promise((resolve) =>
+    const recvParams: Record<string, unknown> = await new Promise((resolve) =>
       socket.emit('voice:createTransport', { channelId, direction: 'recv' }, resolve),
     )
     if (recvParams?.error) {
-      verr('joinVoice', 'recv transport create failed', recvParams.error)
+      verr('joinVoice', 'recv transport create failed', recvParams.error as string)
       const err = `Recv transport failed: ${recvParams.error}`
       setVoiceError(err)
       cleanupVoice()
@@ -975,7 +972,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     const recvTransport = device.createRecvTransport({
       ...recvParams,
       iceServers: iceServers.length > 0 ? iceServers : undefined,
-    })
+    } as Parameters<typeof device.createRecvTransport>[0])
     recvTransportRef.current = recvTransport
 
     recvTransport.on('connect', ({ dtlsParameters }, cb) => {
@@ -1095,18 +1092,19 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       vlog('mic', 'taking BROWSER microphone path')
       await setupBrowserMicrophone(socket, channelId, sendTransport, voiceBitrateKbps)
       vlog('joinVoice', 'microphone setup complete - voice joined successfully')
-    } catch (err: any) {
+    } catch (err: unknown) {
       verr('joinVoice', `microphone setup FAILED (isTauri=${isTauri()})`, err)
       console.error('Microphone access error', err)
+      const e = err as Error & { name?: string }
       let errorMsg: string
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
         errorMsg = 'Microphone access was denied. Please allow microphone access and try again.'
-      } else if (err.name === 'NotFoundError') {
+      } else if (e.name === 'NotFoundError') {
         errorMsg = 'No microphone found. Please connect a microphone and try again.'
-      } else if (err.name === 'NotReadableError' || err.name === 'OverconstrainedError' || err.message?.includes('timed out')) {
+      } else if (e.name === 'NotReadableError' || e.name === 'OverconstrainedError' || e.message?.includes('timed out')) {
         errorMsg = 'Microphone is unavailable or in use by another application. On Linux, ensure pipewire-pulse and pipewire-alsa are installed and running.'
       } else {
-        const msg = err.message || err.toString?.() || 'Unknown error'
+        const msg = e.message || (e as { toString?: () => string }).toString?.() || 'Unknown error'
         const linuxHint = navigator.platform?.toLowerCase().includes('linux') || isTauri()
           ? ' On Linux, ensure pipewire, pipewire-pulse, and pipewire-alsa are installed and your user session is running PipeWire.'
           : ''
@@ -1176,8 +1174,9 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
           setTimeout(() => reject(new Error('Microphone access timed out')), 5000)
         ),
       ])
-    } catch (err: any) {
-      if (audioInputDeviceId && (err.name === 'NotFoundError' || err.name === 'OverconstrainedError')) {
+    } catch (err: unknown) {
+      const e = err as Error & { name?: string }
+      if (audioInputDeviceId && (e.name === 'NotFoundError' || e.name === 'OverconstrainedError')) {
         vlog('browserMic', `stale device ${audioInputDeviceId}, retrying without device constraint`)
         setAudioInputDeviceId(null)
         stream = await Promise.race([
@@ -1391,9 +1390,9 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     setDMCallChannelId(dmChannelId)
     setDMCallOtherUser(otherUserId, otherUsername)
 
-    const result: any = await new Promise<any>((resolve) => {
+    const result: Record<string, unknown> = await new Promise<Record<string, unknown>>((resolve) => {
       const timeout = setTimeout(() => resolve({ error: 'Call timed out' }), 30_000)
-      socket.emit('dm:call:start', { dmChannelId }, (res: any) => {
+      socket.emit('dm:call:start', { dmChannelId }, (res: Record<string, unknown>) => {
         clearTimeout(timeout)
         resolve(res)
       })
@@ -1401,7 +1400,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
 
     if (result?.error) {
       clearDMCall()
-      setVoiceError(result.error)
+      setVoiceError(result.error as string)
     }
   }, [socketRef, setDMCallStatus, setDMCallChannelId, setDMCallOtherUser, clearDMCall, setVoiceError])
 
@@ -1437,7 +1436,6 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       clearDMCall()
       return
     }
-    const voiceChannelId = `dm:${channelId}`
     socket.emit('dm:call:end', { dmChannelId: channelId })
     await leaveVoice()
     clearDMCall()

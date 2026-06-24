@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { unfurlUrls } from '@kizuna/shared'
+import type { LinkEmbed } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
 import Skeleton from './Skeleton'
 import './EmbedCard.css'
@@ -10,7 +11,7 @@ interface EmbedCardProps {
 
 export default function EmbedCard({ urls }: EmbedCardProps) {
   const session = useServerStore((s) => s.activeSession)
-  const [embeds, setEmbeds] = useState<Record<string, any>>({})
+  const [embeds, setEmbeds] = useState<Record<string, LinkEmbed>>({})
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
@@ -53,7 +54,7 @@ export default function EmbedCard({ urls }: EmbedCardProps) {
             <div className="embed-card__body">
               <div className="embed-card__header">
                 {embed.favicon && <img src={embed.favicon} alt="" className="embed-card__favicon" />}
-                <span className="embed-card__site">{embed.siteName || new URL(url).hostname}</span>
+                <span className="embed-card__site">{embed.site_name || new URL(url).hostname}</span>
               </div>
               <span className="embed-card__title">{embed.title}</span>
               {embed.description && (

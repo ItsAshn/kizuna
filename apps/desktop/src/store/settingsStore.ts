@@ -20,8 +20,12 @@ interface SettingsState {
   recentChannels: RecentChannel[];
   channelNotificationLevels: Record<string, NotificationLevel>;
   notificationSoundEnabled: boolean;
-  shareActivity: boolean;
   shareMediaActivity: boolean;
+  shareAppActivity: boolean;
+  customMediaActivity: string | null;
+  customAppActivity: string | null;
+  recentMediaActivities: string[];
+  recentAppActivities: string[];
   updateState: 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
   updateProgress: number;
   updateVersion: string | null;
@@ -36,8 +40,14 @@ interface SettingsState {
   pushRecentChannel: (channel: RecentChannel) => void;
   setChannelNotificationLevel: (channelId: string, level: NotificationLevel | null) => void;
   setNotificationSoundEnabled: (enabled: boolean) => void;
-  setShareActivity: (enabled: boolean) => void;
   setShareMediaActivity: (enabled: boolean) => void;
+  setShareAppActivity: (enabled: boolean) => void;
+  setCustomMediaActivity: (text: string | null) => void;
+  setCustomAppActivity: (text: string | null) => void;
+  addRecentMediaActivity: (name: string) => void;
+  addRecentAppActivity: (name: string) => void;
+  removeRecentMediaActivity: (name: string) => void;
+  removeRecentAppActivity: (name: string) => void;
   setUpdateState: (state: 'idle' | 'checking' | 'downloading' | 'ready' | 'error') => void;
   setUpdateProgress: (progress: number) => void;
   setUpdateVersion: (version: string | null) => void;
@@ -49,15 +59,19 @@ interface SettingsState {
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
-    (set, get) => ({
+    (set, _get) => ({
       serverBackgroundEnabled: true,
       customCssEnabled: true,
       notificationSettings: {},
       recentChannels: [] as RecentChannel[],
       channelNotificationLevels: {},
       notificationSoundEnabled: true,
-      shareActivity: false,
       shareMediaActivity: false,
+      shareAppActivity: false,
+      customMediaActivity: null,
+      customAppActivity: null,
+      recentMediaActivities: [] as string[],
+      recentAppActivities: [] as string[],
       updateState: 'idle',
       updateProgress: 0,
       updateVersion: null,
@@ -87,8 +101,26 @@ export const useSettingsStore = create<SettingsState>()(
           return { channelNotificationLevels: { ...s.channelNotificationLevels, [channelId]: level } }
         }),
       setNotificationSoundEnabled: (notificationSoundEnabled) => set({ notificationSoundEnabled }),
-      setShareActivity: (shareActivity) => set({ shareActivity }),
       setShareMediaActivity: (shareMediaActivity) => set({ shareMediaActivity }),
+      setShareAppActivity: (shareAppActivity) => set({ shareAppActivity }),
+      setCustomMediaActivity: (customMediaActivity) => set({ customMediaActivity }),
+      setCustomAppActivity: (customAppActivity) => set({ customAppActivity }),
+      addRecentMediaActivity: (name) =>
+        set((s) => ({
+          recentMediaActivities: [name, ...s.recentMediaActivities.filter((n) => n !== name)].slice(0, 10),
+        })),
+      addRecentAppActivity: (name) =>
+        set((s) => ({
+          recentAppActivities: [name, ...s.recentAppActivities.filter((n) => n !== name)].slice(0, 10),
+        })),
+      removeRecentMediaActivity: (name) =>
+        set((s) => ({
+          recentMediaActivities: s.recentMediaActivities.filter((n) => n !== name),
+        })),
+      removeRecentAppActivity: (name) =>
+        set((s) => ({
+          recentAppActivities: s.recentAppActivities.filter((n) => n !== name),
+        })),
       setUpdateState: (updateState) => set({ updateState }),
       setUpdateProgress: (updateProgress) => set({ updateProgress }),
       setUpdateVersion: (updateVersion) => set({ updateVersion }),
@@ -108,8 +140,12 @@ export const useSettingsStore = create<SettingsState>()(
         recentChannels: state.recentChannels,
         channelNotificationLevels: state.channelNotificationLevels,
         notificationSoundEnabled: state.notificationSoundEnabled,
-        shareActivity: state.shareActivity,
         shareMediaActivity: state.shareMediaActivity,
+        shareAppActivity: state.shareAppActivity,
+        customMediaActivity: state.customMediaActivity,
+        customAppActivity: state.customAppActivity,
+        recentMediaActivities: state.recentMediaActivities,
+        recentAppActivities: state.recentAppActivities,
       }),
     },
   ),

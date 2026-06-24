@@ -1,11 +1,13 @@
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod media;
+pub mod focus;
 #[cfg(target_os = "linux")]
 pub mod wayland;
 pub mod windows;
 #[cfg(not(target_os = "windows"))]
 pub mod x11;
+pub mod camera;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

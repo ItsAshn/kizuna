@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useServerStore } from '../store/serverStore'
 import { useAuth } from '../hooks/useAuth'
+import type { ServerInfo } from '@kizuna/shared'
 import Modal from './ui/Modal'
 import AuthForm from './AuthForm'
 import BackupTokenModal from './BackupTokenModal'
@@ -15,7 +16,7 @@ export default function ConnectDialog({ onClose }: Props) {
   const { addServer, setActiveSession, servers } = useServerStore()
 
   const [serverUrl, setServerUrl] = useState('')
-  const [serverInfo, setServerInfo] = useState<any>(null)
+  const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null)
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -25,9 +26,9 @@ export default function ConnectDialog({ onClose }: Props) {
 
   const { authenticate, loading, error, setError, backupToken, clearBackupToken } = useAuth(serverUrl)
 
-  function handleServerConnect(resolvedUrl: string, info: any) {
+  function handleServerConnect(resolvedUrl: string, info: ServerInfo | { serverUrl: string; name: string; description: string }) {
     setServerUrl(resolvedUrl)
-    setServerInfo(info)
+    setServerInfo(info as ServerInfo)
   }
 
   async function handleAuth() {
@@ -38,7 +39,7 @@ export default function ConnectDialog({ onClose }: Props) {
       displayName,
       serverPassword,
     })
-    if (!success) return
+    if (!success || !result) return
 
     const id = serverUrl.trim()
     addServer({

@@ -161,8 +161,9 @@ export async function updateStatus(
   serverUrl: string,
   status_text?: string | null,
   status_emoji?: string | null,
+  status_sticker_id?: string | null,
 ): Promise<void> {
-  await client(serverUrl).patch('/api/auth/me/status', { status_text, status_emoji })
+  await client(serverUrl).patch('/api/auth/me/status', { status_text, status_emoji, status_sticker_id })
 }
 
 export async function uploadPublicKey(

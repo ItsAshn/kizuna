@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { fetchDMChannels, fetchServerInfo, resolveInviteCode } from '@kizuna/shared'
+import type { ServerInfo } from '@kizuna/shared'
 import { useAuth } from '../hooks/useAuth'
 import { useMobile } from '../hooks/useMobile'
 import type { DMChannelData } from '@kizuna/shared'
@@ -39,7 +40,7 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
   })
   const [showConnect, setShowConnect] = useState(false)
   const [serverUrl, setServerUrl] = useState('')
-  const [serverInfo, setServerInfo] = useState<any>(null)
+  const [serverInfo, setServerInfo] = useState<ServerInfo | { serverUrl: string; name: string; description: string } | null>(null)
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -83,8 +84,9 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
         setServerUrl(urlToUse.trim())
       }
       setShowConnect(true)
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Could not reach server. Check the URL or invite code and try again.')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string }
+      setError(e.response?.data?.error || e.message || 'Could not reach server. Check the URL or invite code and try again.')
     }
   }
 
@@ -96,14 +98,14 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
       displayName,
       serverPassword,
     })
-    if (!success) return
+    if (!success || !result) return
 
     const id = serverUrl.trim()
     addServer({
       id,
       name: serverInfo?.name || serverUrl,
       url: id,
-      icon: serverInfo?.icon || undefined,
+      icon: (serverInfo as ServerInfo | null)?.icon || undefined,
       addedAt: Date.now(),
     })
 
@@ -142,10 +144,10 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
 
           <div className="welcome__card">
             <AuthForm
-              serverName={serverInfo.name}
+              serverName={(serverInfo as ServerInfo | null)?.name || ''}
               serverUrl={serverUrl}
-              serverIcon={serverInfo.icon}
-              serverDescription={serverInfo.description}
+              serverIcon={(serverInfo as ServerInfo | null)?.icon}
+              serverDescription={(serverInfo as ServerInfo | null)?.description}
               isRegister={isRegister}
               setIsRegister={setIsRegister}
               username={username}
@@ -156,7 +158,7 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
               setDisplayName={setDisplayName}
               serverPassword={serverPassword}
               setServerPassword={setServerPassword}
-              serverPasswordProtected={!!serverInfo.passwordProtected}
+              serverPasswordProtected={!!(serverInfo as ServerInfo | null)?.passwordProtected}
               error={error}
               loading={loading}
               onSubmit={handleAuth}
@@ -207,14 +209,12 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
         <img src="/Logo.svg" alt="Kizuna" className="welcome__logo" />
         <h1 className="welcome__title">Kizuna</h1>
         <p className="welcome__subtitle">Self-hosted voice & chat</p>
-        {import.meta.env.DEV && (
-          <button
-            className="welcome__dev-toggle"
-            onClick={() => setShowLanding((v) => !v)}
-          >
-            Show Landing Preview
-          </button>
-        )}
+        <button
+          className="welcome__dev-toggle"
+          onClick={() => setShowLanding((v) => !v)}
+        >
+          About Kizuna
+        </button>
       </div>
 
       <div className="welcome__tabs">

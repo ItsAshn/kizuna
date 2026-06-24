@@ -77,24 +77,22 @@
 }
 
 .chat-area__call-btn {
-  margin-left: auto;
   width: 32px;
   height: 32px;
   border-radius: 8px;
   border: none;
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: none;
+  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s ease;
+  transition: transform 0.15s ease, color 0.15s ease;
   flex-shrink: 0;
 }
 
 .chat-area__call-btn:hover {
-  background: var(--brand);
-  color: var(--text-primary);
+  transform: scale(1.1);
 }
 
 .chat-area__call-btn:disabled {
@@ -103,12 +101,12 @@
 }
 
 .chat-area__call-btn--active {
-  background: var(--red);
-  color: var(--text-primary);
+  color: var(--red);
 }
 
 .chat-area__call-btn--active:hover {
-  background: var(--red-hover);
+  color: var(--red);
+  transform: scale(1.1);
 }
 
 .chat-area__messages {
@@ -761,13 +759,14 @@
 
 .chat-area__encrypted-badge {
   margin-left: 8px;
-  font-size: 13px;
-  cursor: default;
-  opacity: 0.6;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--green);
 }
 
 .chat-area__encrypted-badge--warn {
-  opacity: 0.4;
+  color: var(--text-muted);
 }
 
 /* ── Locked channel badge ────────────────────────────────────── */
@@ -843,32 +842,40 @@
 
 /* ── Header action buttons (desktop) ────────────────────────── */
 
-.chat-area__header-members-btn {
+.chat-area__header-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.chat-area__header-members-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   height: 36px;
   padding: 0 10px;
-  background: var(--bg-tertiary);
+  background: none;
   color: var(--text-secondary);
-  border: 1px solid var(--border-color);
+  border: none;
   border-radius: var(--radius-md);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
 .chat-area__header-members-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+  transform: scale(1.05);
 }
 
 .chat-area__header-members-btn--active {
-  border-color: var(--brand-dim-border);
-  background: var(--brand-dim);
   color: var(--brand);
+  transform: scale(1.05);
 }
 
 .chat-area__header-pins-btn {
@@ -877,24 +884,24 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  background: var(--bg-tertiary);
+  background: none;
   color: var(--text-secondary);
-  border: 1px solid var(--border-color);
+  border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
   flex-shrink: 0;
-  margin-left: var(--space-2);
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
 .chat-area__header-pins-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+  transform: scale(1.1);
 }
 
 .chat-area__header-pins-btn--active {
-  border-color: var(--brand-dim-border);
-  background: var(--brand-dim);
   color: var(--brand);
+  transform: scale(1.1);
 }
 
 .chat-area__header-search-btn {
@@ -903,24 +910,50 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  background: var(--bg-tertiary);
+  background: none;
   color: var(--text-secondary);
-  border: 1px solid var(--border-color);
+  border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
   flex-shrink: 0;
-  margin-left: var(--space-2);
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
 .chat-area__header-search-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+  transform: scale(1.1);
 }
 
 .chat-area__header-search-btn--active {
-  border-color: var(--brand-dim-border);
-  background: var(--brand-dim);
   color: var(--brand);
+  transform: scale(1.1);
+}
+
+.chat-area__header-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: none;
+  color: var(--text-secondary);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.chat-area__header-settings-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  transform: scale(1.1);
+}
+
+.chat-area__header-settings-btn--active {
+  color: var(--brand);
+  transform: scale(1.1);
 }
 
 /* ── Mobile styles ──────────────────────────────────────────── */
@@ -1016,6 +1049,11 @@
   }
 
   .chat-area__header-search-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .chat-area__header-settings-btn {
     width: 44px;
     height: 44px;
   }

@@ -22,7 +22,7 @@ function formatDate(ts: number | null | undefined): string | null {
   return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, onMention }: UserProfileCardProps) {
+export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, onMention: _onMention }: UserProfileCardProps) {
   const members = useChatStore((s) => s.members)
   const session = useServerStore((s) => s.activeSession)
   const userStatuses = useVoiceStore((s) => s.userStatuses)
@@ -100,6 +100,7 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
   const lastSeenAt = formatDate(fullProfile?.last_seen_at ?? member.last_seen_at)
   const statusText = profile.status_text || null
   const statusEmoji = profile.status_emoji || null
+  const statusStickerId = profile.status_sticker_id || null
   const activity = userActivities[userId]
 
   return createPortal(
@@ -117,9 +118,16 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
       <div className="user-profile-card__info">
         <h3 className="user-profile-card__name">{displayName}</h3>
         <p className="user-profile-card__username">@{member.username}</p>
-        {statusText && (
+        {(statusText || statusStickerId) && (
           <p className="user-profile-card__status-text">
-            {statusEmoji && <span className="user-profile-card__status-emoji">{statusEmoji}</span>}
+            {statusStickerId && session && (
+              <img
+                src={`${session.url}/api/gifs/${statusStickerId}/file`}
+                alt=""
+                className="user-profile-card__status-sticker"
+              />
+            )}
+            {statusEmoji && !statusStickerId && <span className="user-profile-card__status-emoji">{statusEmoji}</span>}
             {statusText}
           </p>
         )}
@@ -167,7 +175,7 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
             <MessageCircle size={14} />
             Message
           </button>
-          <button className="user-profile-card__action-btn" onClick={() => { onMention?.(member.username); onClose() }}>
+          <button className="user-profile-card__action-btn" onClick={() => { useChatStore.getState().setPendingMention(member.username); onClose() }}>
             @
             Mention
           </button>

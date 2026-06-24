@@ -58,7 +58,7 @@ export function useBackgroundNotifications(): void {
         }
       })
 
-      socket.on('message:mention', (mention: any) => {
+      socket.on('message:mention', (mention: { channel_id: string; author_username?: string; content?: string | null }) => {
         if (activeServerId === server.id) return
         const store = useChatStore.getState()
         store.setMentionCounts({
@@ -68,7 +68,7 @@ export function useBackgroundNotifications(): void {
         showNotification({
           type: 'mention',
           title: mention.author_username || 'Someone',
-          body: mention.content?.length > 100 ? mention.content.slice(0, 100) + '...' : mention.content || '',
+          body: mention.content ? (mention.content.length > 100 ? mention.content.slice(0, 100) + '...' : mention.content) : '',
           channelId: mention.channel_id,
         })
       })

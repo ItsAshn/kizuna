@@ -1,6 +1,6 @@
 import { useRef, useCallback } from 'react'
 import type { Socket } from 'socket.io-client'
-import type { Transport, Producer } from 'mediasoup-client/types'
+import type { Transport, Producer, Device } from 'mediasoup-client/types'
 import { useCallStore } from '../store/callStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { isTauri } from '../utils/platform'
@@ -19,6 +19,7 @@ export function useScreenshare(
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const unlistenRef = useRef<(() => void) | null>(null)
+  const localTransportRef = useRef(false)
 
   const callStore = useCallStore
   const voiceStore = useVoiceStore
@@ -65,9 +66,44 @@ export function useScreenshare(
     fps: number = 15,
   ): Promise<string | null> => {
     const socket = socketRef.current
-    const sendTransport = sendTransportRef.current
-    if (!socket || !sendTransport) return 'No active voice connection'
+    let sendTransport = sendTransportRef.current
+
+    if (!socket) return 'No socket connection'
     if (!isTauri()) return 'Screensharing only works in the Tauri desktop app'
+
+    if (!sendTransport) {
+      try {
+        const rtpCapabilities = voiceStore.getState().routerRtpCapabilities
+        if (!rtpCapabilities) return 'Voice connection not established. Join a voice channel first.'
+
+        const { Device: DeviceClass } = await import('mediasoup-client')
+        const device = new DeviceClass() as Device
+        await device.load({ routerRtpCapabilities: rtpCapabilities })
+
+        const sendParams: Record<string, unknown> = await new Promise((resolve) =>
+          socket.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
+        )
+        if (sendParams?.error) return `Transport creation failed: ${sendParams.error}`
+
+        sendTransport = device.createSendTransport({
+          ...sendParams,
+          iceServers: [],
+        } as unknown as Parameters<typeof device.createSendTransport>[0]) as Transport
+
+        sendTransport.on('connect', ({ dtlsParameters }, cb) => {
+          socket.emit('voice:connectTransport', { channelId, transportId: sendTransport!.id, dtlsParameters }, cb)
+        })
+        sendTransport.on('produce', ({ kind, rtpParameters }, cb) => {
+          socket.emit('voice:produce', { channelId, transportId: sendTransport!.id, kind, rtpParameters }, cb)
+        })
+
+        sendTransportRef.current = sendTransport
+        localTransportRef.current = true
+      } catch (err: unknown) {
+        const e = err as { message?: string }
+        return `Failed to initialize video transport: ${e?.message || err}`
+      }
+    }
 
     try {
       const [{ invoke }, { listen }] = await Promise.all([
@@ -114,7 +150,7 @@ export function useScreenshare(
       videoProducerRef.current = producer
 
       await new Promise<void>((resolve, reject) => {
-        socket.emit('screen:start', { channelId }, (result: any) => {
+        socket.emit('screen:start', { channelId }, (result: { error?: string } | undefined) => {
           if (result?.error) {
             producer.close()
             videoProducerRef.current = null
@@ -127,9 +163,15 @@ export function useScreenshare(
 
       callStore.getState().setIsScreenSharing(true)
       return null
-    } catch (err: any) {
+    } catch (err: unknown) {
       cleanupLocal()
-      return err?.message || err?.toString() || 'Failed to start screenshare'
+      if (localTransportRef.current) {
+        sendTransportRef.current?.close()
+        sendTransportRef.current = null
+        localTransportRef.current = false
+      }
+      const e = err as { message?: string; toString?: () => string }
+      return e?.message || e?.toString?.() || 'Failed to start screenshare'
     }
   }, [socketRef, sendTransportRef, cleanupLocal])
 

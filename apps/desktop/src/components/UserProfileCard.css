@@ -110,6 +110,13 @@
   line-height: 1;
 }
 
+.user-profile-card__status-sticker {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 2px;
+}
+
 .user-profile-card__activity {
   font-size: 11px;
   color: var(--text-muted);

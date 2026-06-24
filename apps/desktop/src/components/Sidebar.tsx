@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import type { Socket } from 'socket.io-client'
 import { createPortal } from 'react-dom'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
@@ -19,16 +20,13 @@ import './Sidebar.css'
 interface SidebarProps {
   joinVoice: (channelId: string) => Promise<string | null>
   leaveVoice: () => Promise<void>
-  toggleMute: () => void
-  socketRef: React.MutableRefObject<any>
-  startScreenshare: (channelId: string, monitorIndex: number, fps: number) => Promise<string | null>
-  stopScreenshare: () => void
+  socketRef: React.MutableRefObject<Socket | null>
   onOpenMenu: () => void
   onBackToServers?: () => void
   onOpenChat?: () => void
 }
 
-export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare, onOpenMenu, onBackToServers, onOpenChat }: SidebarProps) {
+export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, onBackToServers, onOpenChat }: SidebarProps) {
   const navigate = useNavigate()
   const isMobile = useMobile()
   const haptics = useHaptics()
@@ -49,7 +47,8 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
     voiceChannelUsers,
     userActivities,
   } = useVoiceStore()
-  const shareActivity = useSettingsStore((s) => s.shareActivity)
+  const shareMediaActivity = useSettingsStore((s) => s.shareMediaActivity)
+  const shareAppActivity = useSettingsStore((s) => s.shareAppActivity)
   const channelNotifLevels = useSettingsStore((s) => s.channelNotificationLevels)
   const setChannelNotifLevel = useSettingsStore((s) => s.setChannelNotificationLevel)
   const [newChannelName, setNewChannelName] = useState('')
@@ -420,15 +419,22 @@ export default function Sidebar({ joinVoice, leaveVoice, toggleMute, socketRef, 
             <div className="sidebar__user-info">
               <p className="sidebar__user-displayname">{session?.user.display_name || session?.user.username}</p>
               <p className="sidebar__user-subtitle">@{session?.user.username}{isAdmin ? ' · admin' : ''}</p>
-              {(session?.user.status_text || session?.user.status_emoji) && (
+              {(session?.user.status_text || session?.user.status_emoji || session?.user.status_sticker_id) && (
                 <p className="sidebar__user-status">
-                  {session?.user.status_emoji && <span className="sidebar__user-status-emoji">{session.user.status_emoji}</span>}
+                  {session?.user.status_sticker_id && (
+                    <img
+                      src={`${session.url}/api/gifs/${session.user.status_sticker_id}/file`}
+                      alt=""
+                      className="sidebar__user-status-sticker"
+                    />
+                  )}
+                  {session?.user.status_emoji && !session?.user.status_sticker_id && <span className="sidebar__user-status-emoji">{session.user.status_emoji}</span>}
                   {session?.user.status_text && <span className="sidebar__user-status-text">{session.user.status_text}</span>}
                 </p>
               )}
-              {shareActivity && session?.user.id && userActivities[session.user.id] && (
+              {(shareMediaActivity || shareAppActivity) && session?.user.id && userActivities[session.user.id] && (
                 <p className="sidebar__user-activity">
-                  {userActivities[session.user.id].type === 'music' ? '\u266B' : '\u25B6'} {userActivities[session.user.id].name}
+                  {userActivities[session.user.id].type === 'game' ? '\u{1F3AE}' : userActivities[session.user.id].type === 'music' ? '\u{1F3B5}' : userActivities[session.user.id].type === 'video' ? '\u25B6' : userActivities[session.user.id].type === 'app' ? '\u{1F4BB}' : '\u25B6'} {userActivities[session.user.id].name}
                 </p>
               )}
             </div>

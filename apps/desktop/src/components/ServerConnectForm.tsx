@@ -1,5 +1,12 @@
 import { useState } from 'react'
 import { fetchServerInfo, resolveInviteCode } from '@kizuna/shared'
+import type { ServerInfo } from '@kizuna/shared'
+
+interface ResolvedInviteInfo {
+  serverUrl: string
+  name: string
+  description: string
+}
 import './ServerConnectForm.css'
 
 const INVITE_CODE_RE = /^[A-Za-z0-9+\-_=]+\.[A-Za-z0-9+\-_=]+$/
@@ -15,7 +22,7 @@ interface SavedServer {
 }
 
 interface Props {
-  onConnect: (resolvedUrl: string, serverInfo: any) => void
+  onConnect: (resolvedUrl: string, serverInfo: ServerInfo | ResolvedInviteInfo) => void
   savedServers?: SavedServer[]
   onBack?: () => void
   backLabel?: string
@@ -41,10 +48,11 @@ export default function ServerConnectForm({ onConnect, savedServers = [], onBack
         resolvedUrl = urlToUse.trim()
         onConnect(resolvedUrl, info)
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string }
       setError(
-        err.response?.data?.error ||
-          err.message ||
+        e.response?.data?.error ||
+          e.message ||
           'Could not reach server. Check the URL or invite code and try again.',
       )
     }

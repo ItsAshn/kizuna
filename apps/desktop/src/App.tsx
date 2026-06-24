@@ -31,7 +31,7 @@ function AppContent() {
 
   useEffect(() => {
     const dismissed = localStorage.getItem(WIZARD_KEY)
-    if (!dismissed && !!(window as any).__TAURI_INTERNALS__) {
+    if (!dismissed && !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
       setShowWizard(true)
     }
   }, [])
@@ -55,7 +55,6 @@ function AppContent() {
 }
 
 export default function App() {
-  const activeSession = useServerStore((s) => s.activeSession)
   useUpdater()
   useBackgroundNotifications()
 

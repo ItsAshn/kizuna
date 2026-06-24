@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>NSCameraUsageDescription</key>
+  <string>Kizuna needs camera access for video sharing in voice channels.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>Kizuna needs microphone access for voice channels.</string>
 </dict>

@@ -1,26 +1,33 @@
-import { useRef, useEffect, useState } from 'react'
-import { useVoiceStore } from '../store/voiceStore'
-import { useCallStore } from '../store/callStore'
-import { Monitor, X, GripHorizontal } from 'lucide-react'
-import './ScreenShareOverlay.css'
+import { useRef, useCallback, useEffect, useState } from 'react'
+import { X, GripHorizontal } from 'lucide-react'
+import './CameraPreviewOverlay.css'
 
-interface ScreenShareOverlayProps {
-  videoElRef: React.MutableRefObject<HTMLVideoElement | null>
-  stopScreenshare: () => void
+interface CameraPreviewOverlayProps {
+  cameraStreamRef: React.MutableRefObject<MediaStream | null>
+  isCameraOn: boolean
+  toggleCamera: (channelId: string) => void
+  channelId: string | null
 }
 
-export default function ScreenShareOverlay({ videoElRef, stopScreenshare }: ScreenShareOverlayProps) {
-  const { screenSharePeerId, screenShareUsername, isScreenSharing } = useCallStore()
-  const { activeVoiceChannelId } = useVoiceStore()
+export default function CameraPreviewOverlay({ cameraStreamRef, isCameraOn, toggleCamera, channelId }: CameraPreviewOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const videoContainerRef = useRef<HTMLDivElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
   const [mounted, setMounted] = useState(false)
 
-  const isActive = !!(screenSharePeerId || isScreenSharing)
+  useEffect(() => {
+    if (isCameraOn && !mounted) setMounted(true)
+  }, [isCameraOn, mounted])
 
   useEffect(() => {
-    if (isActive && !mounted) setMounted(true)
-  }, [isActive, mounted])
+    const video = videoRef.current
+    const stream = cameraStreamRef.current
+    if (video && stream) {
+      video.srcObject = stream
+    }
+    return () => {
+      if (video) video.srcObject = null
+    }
+  }, [cameraStreamRef, isCameraOn])
 
   useEffect(() => {
     const container = containerRef.current
@@ -34,7 +41,7 @@ export default function ScreenShareOverlay({ videoElRef, stopScreenshare }: Scre
 
     const onMouseDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement
-      if (!target.closest('.screenshare-overlay__header')) return
+      if (!target.closest('.camera-overlay__header')) return
       dragging = true
       startX = e.clientX
       startY = e.clientY
@@ -61,7 +68,7 @@ export default function ScreenShareOverlay({ videoElRef, stopScreenshare }: Scre
 
     const onTouchStart = (e: TouchEvent) => {
       const target = e.target as HTMLElement
-      if (!target.closest('.screenshare-overlay__header')) return
+      if (!target.closest('.camera-overlay__header')) return
       e.preventDefault()
       dragging = true
       startX = e.touches[0].clientX
@@ -101,61 +108,42 @@ export default function ScreenShareOverlay({ videoElRef, stopScreenshare }: Scre
       window.removeEventListener('touchmove', onTouchMove)
       window.removeEventListener('touchend', onTouchEnd)
     }
-  }, [isActive])
+  }, [])
 
-  useEffect(() => {
-    const videoContainer = videoContainerRef.current
-    if (!videoContainer || !videoElRef.current) return
-    videoContainer.innerHTML = ''
-    videoContainer.appendChild(videoElRef.current)
-  }, [screenSharePeerId, videoElRef])
+  const handleClose = useCallback(() => {
+    if (channelId) toggleCamera(channelId)
+  }, [channelId, toggleCamera])
 
-  if (!mounted && !isActive) return null
-  if (!activeVoiceChannelId && !isScreenSharing) return null
-
-  const sharerName = isScreenSharing ? 'You' : (screenShareUsername || 'Unknown')
+  if (!mounted && !isCameraOn) return null
+  if (!channelId) return null
 
   return (
     <div
       ref={containerRef}
-      className="screenshare-overlay"
-      style={!isActive ? { display: 'none' } : undefined}
+      className="camera-overlay"
+      style={!isCameraOn ? { display: 'none' } : undefined}
     >
-      <div className="screenshare-overlay__header">
-        <span className="screenshare-overlay__title">
-          <GripHorizontal className="screenshare-overlay__title-icon" />
-          {sharerName}'s Screen
+      <div className="camera-overlay__header">
+        <span className="camera-overlay__title">
+          <GripHorizontal className="camera-overlay__title-icon" />
+          Your Camera
         </span>
-        <div className="screenshare-overlay__actions">
-          {isScreenSharing && (
-            <button
-              className="screenshare-overlay__btn screenshare-overlay__btn--close"
-              onClick={stopScreenshare}
-              title="Stop sharing"
-            >
-              <X size={16} />
-            </button>
-          )}
-          {!isScreenSharing && (
-            <button
-              className="screenshare-overlay__btn screenshare-overlay__btn--close"
-              onClick={() => {
-                useCallStore.getState().clearScreenSharePeer()
-              }}
-              title="Close"
-            >
-              <X size={16} />
-            </button>
-          )}
-        </div>
+        <button
+          className="camera-overlay__btn camera-overlay__btn--close"
+          onClick={handleClose}
+          title="Turn off camera"
+        >
+          <X size={16} />
+        </button>
       </div>
-      <div className="screenshare-overlay__body" ref={videoContainerRef}>
-        {!videoElRef.current && (
-          <div className="screenshare-overlay__empty">
-            <Monitor size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
-            <div>Waiting for video...</div>
-          </div>
-        )}
+      <div className="camera-overlay__body">
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          className="camera-overlay__video"
+        />
       </div>
     </div>
   )

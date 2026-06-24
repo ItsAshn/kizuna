@@ -73,7 +73,7 @@ const ServerIcon = memo(function ServerIcon({
   )
 })
 
-export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExport, onAddServer, onBackToServers }: ServerPanelProps) {
+export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExport, onAddServer, onBackToServers: _onBackToServers }: ServerPanelProps) {
   const navigate = useNavigate()
   const isMobile = useMobile()
   const {

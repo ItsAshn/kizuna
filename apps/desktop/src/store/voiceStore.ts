@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { RtpCapabilities } from 'mediasoup-client/types';
 import type { VoicePeer, ConnectionQuality, UserStatus, UserActivity } from '@kizuna/shared';
 
 export type VoiceInputMode = 'voice-activity' | 'push-to-talk';
@@ -29,6 +30,7 @@ interface VoiceState {
   liveAudioLevel: number;
   voiceChannelUsers: Record<string, { userId: string; username: string }[]>;
   peerVolumes: Record<string, number>;
+  routerRtpCapabilities: RtpCapabilities | null;
 
   setActiveVoiceChannel: (channelId: string | null) => void;
   setVoicePeers: (peers: VoicePeer[]) => void;
@@ -50,6 +52,7 @@ interface VoiceState {
   addVoiceChannelUser: (channelId: string, user: { userId: string; username: string }) => void;
   removeVoiceChannelUser: (channelId: string, userId: string) => void;
   setPeerVolume: (peerId: string, volume: number) => void;
+  setRouterRtpCapabilities: (caps: RtpCapabilities) => void;
   setVoiceInputMode: (mode: VoiceInputMode) => void;
   setPushToTalkKey: (key: string) => void;
   setNoiseSuppression: (enabled: boolean) => void;
@@ -90,6 +93,7 @@ export const useVoiceStore = create<VoiceState>()(
       liveAudioLevel: 0,
       voiceChannelUsers: {},
       peerVolumes: {},
+      routerRtpCapabilities: null,
 
       setActiveVoiceChannel: (activeVoiceChannelId) => set({ activeVoiceChannelId }),
       setVoicePeers: (voicePeers) => set({ voicePeers }),
@@ -145,6 +149,7 @@ export const useVoiceStore = create<VoiceState>()(
         }),
       setPeerVolume: (peerId, volume) =>
         set((s) => ({ peerVolumes: { ...s.peerVolumes, [peerId]: volume } })),
+      setRouterRtpCapabilities: (routerRtpCapabilities) => set({ routerRtpCapabilities }),
       setVoiceInputMode: (voiceInputMode) => set({ voiceInputMode }),
       setPushToTalkKey: (pushToTalkKey) => set({ pushToTalkKey }),
       setNoiseSuppression: (noiseSuppression) => set({ noiseSuppression }),

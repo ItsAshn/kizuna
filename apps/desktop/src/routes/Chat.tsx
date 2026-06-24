@@ -21,6 +21,7 @@ import ChatArea from '../components/ChatArea'
 import MemberList from '../components/MemberList'
 import VoiceOverlay from '../components/VoiceOverlay'
 import ScreenShareOverlay from '../components/ScreenShareOverlay'
+import CameraPreviewOverlay from '../components/CameraPreviewOverlay'
 import ServerMenuModal from '../components/ServerMenuModal'
 import SetupWizard from '../components/SetupWizard'
 import LoginDialog from '../components/LoginDialog'
@@ -53,11 +54,14 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const setChannelMutes = useChatStore((s) => s.setChannelMutes)
   const activeChannelId = useChatStore((s) => s.activeChannelId)
   const activeDMChannelId = useChatStore((s) => s.activeDMChannelId)
+  const activeGroupDMChannelId = useChatStore((s) => s.activeGroupDMChannelId)
   const setActiveChannel = useChatStore((s) => s.setActiveChannel)
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
+  const setActiveGroupDMChannel = useChatStore((s) => s.setActiveGroupDMChannel)
   const members = useChatStore((s) => s.members)
   const channels = useChatStore((s) => s.channels)
   const dmChannels = useChatStore((s) => s.dmChannels)
+  const groupDMChannels = useChatStore((s) => s.groupDMChannels)
   const unreadCounts = useChatStore((s) => s.unreadCounts)
   const serverMentionCounts = useChatStore((s) => s.serverMentionCounts)
   const serverBackgroundEnabled = useSettingsStore((s) => s.serverBackgroundEnabled)
@@ -80,7 +84,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   } = useVoice(socketRef)
   useActivityDetector(socketRef)
   const { startScreenshare, stopScreenshare } = useScreenshare(socketRef, sendTransportRef)
-  const { toggleCamera, getStream } = useCamera(socketRef, sendTransportRef)
+  const { toggleCamera, cameraStreamRef } = useCamera(socketRef, sendTransportRef)
   const isCameraOn = useCallStore((s) => s.isCameraOn)
   const dmCallStatus = useCallStore((s) => s.dmCallStatus)
   const dmCallChannelId = useCallStore((s) => s.dmCallChannelId)
@@ -99,12 +103,13 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const [showExport, setShowExport] = useState(false)
   const [showConnect, setShowConnect] = useState(false)
   const [bgInfo, setBgInfo] = useState<{ hasBackground: boolean; backgroundBlur: number; customCss: string | null } | null>(null)
-  const [initialLoading, setInitialLoading] = useState(true)
+  const [, setInitialLoading] = useState(true)
 
   type NavEntry =
     | { type: 'server'; serverId: string }
     | { type: 'channel'; channelId: string }
     | { type: 'dm'; dmChannelId: string }
+    | { type: 'group-dm'; groupDmId: string }
 
   const [activeTab, setActiveTab] = useState(0)
   const [navStack, setNavStack] = useState<NavEntry[]>([])
@@ -115,6 +120,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     if (entry.type === 'server') setActiveServer(entry.serverId)
     else if (entry.type === 'channel') setActiveChannel(entry.channelId)
     else if (entry.type === 'dm') setActiveDMChannel(entry.dmChannelId)
+    else if (entry.type === 'group-dm') setActiveGroupDMChannel(entry.groupDmId)
     setNavStack(prev => [...prev, entry])
     setTimeout(() => setIsPushAnim(false), 300)
   }
@@ -126,6 +132,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     if (!newTop || newTop.type === 'server') {
       setActiveChannel(null)
       setActiveDMChannel(null)
+      setActiveGroupDMChannel(null)
     }
     setNavStack(newStack)
   }
@@ -135,6 +142,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     setNavStack([])
     setActiveChannel(null)
     setActiveDMChannel(null)
+    setActiveGroupDMChannel(null)
   }
 
   const navStackRef = useRef(navStack)
@@ -158,7 +166,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
 
   const topEntry = navStack[navStack.length - 1]
   const viewKey = topEntry
-    ? `${topEntry.type}-${'serverId' in topEntry ? topEntry.serverId : 'channelId' in topEntry ? topEntry.channelId : topEntry.dmChannelId}`
+    ? `${topEntry.type}-${'serverId' in topEntry ? topEntry.serverId : 'channelId' in topEntry ? topEntry.channelId : 'groupDmId' in topEntry ? topEntry.groupDmId : topEntry.dmChannelId}`
     : `tab-${activeTab}`
 
   const dmUnreadTotal = useMemo(() => {
@@ -177,15 +185,16 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     return total
   }, [serverMentionCounts])
 
-  const chatOpen = !!(activeChannelId || activeDMChannelId)
+  const chatOpen = !!(activeChannelId || activeDMChannelId || activeGroupDMChannelId)
 
   const channelNavList = useMemo(() => {
-    const list: { id: string; type: 'channel' | 'dm' }[] = [
+    const list: { id: string; type: 'channel' | 'dm' | 'group-dm' }[] = [
       ...channels.filter(c => c.type === 'text').map(c => ({ id: c.id, type: 'channel' as const })),
       ...dmChannels.map(d => ({ id: d.id, type: 'dm' as const })),
+      ...groupDMChannels.map(g => ({ id: g.id, type: 'group-dm' as const })),
     ]
     return list
-  }, [channels, dmChannels])
+  }, [channels, dmChannels, groupDMChannels])
 
   useKeyboardShortcuts(useMemo(() => [
     {
@@ -208,10 +217,11 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
       alt: true,
       handler: () => {
         if (!channelNavList.length) return
-        const currentId = activeChannelId || activeDMChannelId
+        const currentId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
         const idx = channelNavList.findIndex(c => c.id === currentId)
         const prev = idx <= 0 ? channelNavList[channelNavList.length - 1] : channelNavList[idx - 1]
         if (prev.type === 'channel') setActiveChannel(prev.id)
+        else if (prev.type === 'group-dm') setActiveGroupDMChannel(prev.id)
         else setActiveDMChannel(prev.id)
       },
     },
@@ -220,10 +230,11 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
       alt: true,
       handler: () => {
         if (!channelNavList.length) return
-        const currentId = activeChannelId || activeDMChannelId
+        const currentId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
         const idx = channelNavList.findIndex(c => c.id === currentId)
         const next = idx < 0 || idx >= channelNavList.length - 1 ? channelNavList[0] : channelNavList[idx + 1]
         if (next.type === 'channel') setActiveChannel(next.id)
+        else if (next.type === 'group-dm') setActiveGroupDMChannel(next.id)
         else setActiveDMChannel(next.id)
       },
     },
@@ -543,10 +554,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         <Sidebar
           joinVoice={joinVoice}
           leaveVoice={leaveVoice}
-          toggleMute={toggleMute}
           socketRef={socketRef}
-          startScreenshare={startScreenshare}
-          stopScreenshare={stopScreenshare}
           onOpenMenu={() => setShowMenu(true)}
           onBackToServers={popView}
           onOpenChat={() => {
@@ -555,13 +563,15 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
               pushView({ type: 'channel', channelId: state.activeChannelId })
             } else if (state.activeDMChannelId) {
               pushView({ type: 'dm', dmChannelId: state.activeDMChannelId })
+            } else if (state.activeGroupDMChannelId) {
+              pushView({ type: 'group-dm', groupDmId: state.activeGroupDMChannelId })
             }
           }}
         />
       )
     }
 
-    if (topEntry.type === 'channel' || topEntry.type === 'dm') {
+    if (topEntry.type === 'channel' || topEntry.type === 'dm' || topEntry.type === 'group-dm') {
       return (
         <ChatArea
           socketRef={socketRef}
@@ -622,7 +632,6 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
             dmCallOtherUsername={dmCallOtherUsername}
             toggleCamera={toggleCamera}
             isCameraOn={isCameraOn}
-            localCameraStream={getStream()}
           />
           <BottomTabBar
             activeTab={activeTab}
@@ -631,7 +640,19 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
             dmUnreadCount={dmUnreadTotal}
           />
           <MemberList visible={showMembers} onClose={() => setShowMembers(false)} />
-          <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
+      <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
+      <CameraPreviewOverlay
+        cameraStreamRef={cameraStreamRef}
+        isCameraOn={isCameraOn}
+        toggleCamera={toggleCamera}
+        channelId={activeVoiceChannelId}
+      />
+          <CameraPreviewOverlay
+            cameraStreamRef={cameraStreamRef}
+            isCameraOn={isCameraOn}
+            toggleCamera={toggleCamera}
+            channelId={activeVoiceChannelId}
+          />
           <ThreadPanel channelId={activeChannelId!} />
           <NotificationContainer />
         </div>
@@ -686,10 +707,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           <Sidebar
             joinVoice={joinVoice}
             leaveVoice={leaveVoice}
-            toggleMute={toggleMute}
             socketRef={socketRef}
-            startScreenshare={startScreenshare}
-            stopScreenshare={stopScreenshare}
             onOpenMenu={() => setShowMenu(true)}
           />
           <VoiceOverlay
@@ -701,7 +719,6 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
             dmCallOtherUsername={dmCallOtherUsername}
             toggleCamera={toggleCamera}
             isCameraOn={isCameraOn}
-            localCameraStream={getStream()}
           />
         </div>
       </div>

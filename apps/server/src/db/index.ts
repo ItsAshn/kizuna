@@ -221,6 +221,7 @@ function seedPreExistingMigrations(database: Database.Database): void {
     ['gifs_add_suggested_tags', columnExists(database, 'gifs', 'suggested_tags')],
     ['users_add_status_text', columnExists(database, 'users', 'status_text')],
     ['users_add_status_emoji', columnExists(database, 'users', 'status_emoji')],
+    ['users_add_status_sticker_id', columnExists(database, 'users', 'status_sticker_id')],
     ['threads_table', tableExists(database, 'threads')],
     ['messages_add_thread_id', columnExists(database, 'messages', 'thread_id')],
     ['idx_threads_channel', indexExists(database, 'idx_threads_channel')],
@@ -501,6 +502,7 @@ function runMigrations(database: Database.Database): void {
     { name: 'gifs_add_suggested_tags', sql: `ALTER TABLE gifs ADD COLUMN suggested_tags TEXT DEFAULT ''` },
     { name: 'users_add_status_text', sql: `ALTER TABLE users ADD COLUMN status_text TEXT DEFAULT NULL` },
     { name: 'users_add_status_emoji', sql: `ALTER TABLE users ADD COLUMN status_emoji TEXT DEFAULT NULL` },
+    { name: 'users_add_status_sticker_id', sql: `ALTER TABLE users ADD COLUMN status_sticker_id TEXT DEFAULT NULL` },
     { name: 'users_add_status', sql: `ALTER TABLE users ADD COLUMN status TEXT DEFAULT NULL` },
     { name: 'threads_table', sql: `CREATE TABLE IF NOT EXISTS threads (
        id TEXT PRIMARY KEY,

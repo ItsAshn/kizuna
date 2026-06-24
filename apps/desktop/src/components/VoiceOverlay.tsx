@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import type { Socket } from 'socket.io-client'
 import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
@@ -11,13 +12,12 @@ import './VoiceOverlay.css'
 interface VoiceOverlayProps {
   leaveVoice: () => void
   toggleMute: () => void
-  socketRef: React.MutableRefObject<any>
+  socketRef: React.MutableRefObject<Socket | null>
   startScreenshare: (channelId: string, monitorIndex: number, fps: number) => Promise<string | null>
   stopScreenshare: () => void
   dmCallOtherUsername?: string | null
   toggleCamera?: (channelId: string) => void
   isCameraOn?: boolean
-  localCameraStream?: MediaStream | null
 }
 
 function ConnectionQualityBars({ quality }: { quality: ConnectionQuality | null | undefined }) {
@@ -47,7 +47,7 @@ function ConnectionQualityBars({ quality }: { quality: ConnectionQuality | null 
   )
 }
 
-export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startScreenshare, stopScreenshare, dmCallOtherUsername, toggleCamera, isCameraOn, localCameraStream }: VoiceOverlayProps) {
+export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare, stopScreenshare, dmCallOtherUsername, toggleCamera, isCameraOn }: VoiceOverlayProps) {
   const {
     channels,
   } = useChatStore()
@@ -70,16 +70,6 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
   const [closing, setClosing] = useState(false)
   const [showMonitorPicker, setShowMonitorPicker] = useState(false)
   const [screenShareError, setScreenShareError] = useState<string | null>(null)
-  const localVideoRef = useRef<HTMLVideoElement>(null)
-
-  useEffect(() => {
-    if (localVideoRef.current && localCameraStream) {
-      localVideoRef.current.srcObject = localCameraStream
-    }
-    return () => {
-      if (localVideoRef.current) localVideoRef.current.srcObject = null
-    }
-  }, [localCameraStream])
   useEffect(() => {
     if (activeVoiceChannelId) setClosing(false)
   }, [activeVoiceChannelId])
@@ -247,18 +237,6 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, socketRef, startS
       )}
 
       <div className="voice-body">
-        {isCameraOn && localCameraStream && (
-          <div className="voice-camera-preview">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="voice-camera-preview__video"
-            />
-            <span className="voice-camera-preview__label">You</span>
-          </div>
-        )}
         {!voiceError && (
           <div className="voice-peer">
             <div className="voice-peer__avatar-wrap">

@@ -1,5 +1,5 @@
 export function isTauri(): boolean {
-  return !!(window as any).__TAURI_INTERNALS__
+  return !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
 }
 
 export function isMobileTauri(): boolean {

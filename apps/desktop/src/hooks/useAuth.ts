@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { login, register, uploadPublicKey, getChallenge } from '@kizuna/shared'
+import type { User } from '@kizuna/shared'
 import { solvePoW } from '@kizuna/shared/pow'
 import { generateAndStoreKey, initializeCrypto, userNeedsKeyUpload } from '../store/keyStore'
 
@@ -13,7 +14,7 @@ interface AuthParams {
 
 interface AuthResult {
   success: boolean
-  result?: any
+  result?: { token: string; user: User; backuptoken?: string }
 }
 
 export function useAuth(serverUrl: string) {
@@ -77,8 +78,9 @@ export function useAuth(serverUrl: string) {
         setLoading(false)
         return { success: true, result }
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Authentication failed')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string }
+      setError(e.response?.data?.error || e.message || 'Authentication failed')
       setLoading(false)
       return { success: false }
     }

@@ -206,25 +206,22 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-top: 1px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.member-list__member-role {
-  font-size: 9px;
+.member-list__member-activity-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
   color: var(--text-muted);
+}
+
+.member-list__member-activity-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.member-list__member-role--admin {
-  color: var(--yellow);
-}
-
-.member-list__admin-badge {
-  font-size: 10px;
-  color: var(--yellow);
-  font-weight: 600;
-  flex-shrink: 0;
 }
 
 .member-list__host-badge {

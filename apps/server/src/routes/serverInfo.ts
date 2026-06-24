@@ -13,7 +13,7 @@ function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 export function getMemberById(userId: string) {
   const db = getDb()
   const user = db.prepare(`
-    SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.reset_requested_at, u.status_text, u.status_emoji, u.created_at, sm.is_host, sm.joined_at, sm.custom_role_id
+    SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.reset_requested_at, u.status_text, u.status_emoji, u.status_sticker_id, u.created_at, sm.is_host, sm.joined_at, sm.custom_role_id
     FROM users u
     LEFT JOIN server_members sm ON sm.user_id = u.id
     WHERE u.id = ?
@@ -87,6 +87,7 @@ export function getMemberById(userId: string) {
     hoist_role_color: hoistedRole?.color ?? null,
     status_text: user.status_text || null,
     status_emoji: user.status_emoji || null,
+    status_sticker_id: user.status_sticker_id || null,
     created_at: user.created_at ? user.created_at * 1000 : null,
     joined_at: user.joined_at ? user.joined_at * 1000 : null,
   }

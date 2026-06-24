@@ -17,7 +17,7 @@ export interface SavedServer {
 /** User presence status. */
 export type UserStatus = 'online' | 'idle' | 'busy' | 'offline' | 'invisible';
 
-export type UserActivityType = 'game' | 'music' | 'video' | 'other';
+export type UserActivityType = 'game' | 'music' | 'video' | 'app' | 'other';
 
 export interface UserActivity {
   type: UserActivityType;
@@ -39,6 +39,7 @@ export interface BaseUser {
   status?: UserStatus;
   status_text?: string | null;
   status_emoji?: string | null;
+  status_sticker_id?: string | null;
   activity?: UserActivity | null;
 }
 

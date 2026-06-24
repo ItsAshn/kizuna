@@ -1121,7 +1121,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     } catch { /* ignore */ }
   })
 
-  socket.on('user:status', ({ status, status_text, status_emoji }: { status?: UserStatus; status_text?: string | null; status_emoji?: string | null }) => {
+  socket.on('user:status', ({ status, status_text, status_emoji, status_sticker_id }: { status?: UserStatus; status_text?: string | null; status_emoji?: string | null; status_sticker_id?: string | null }) => {
     if (!userId) return
     const db = getDb()
     const prevStatus = userStatuses.get(userId)
@@ -1135,15 +1135,17 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     if (status !== undefined) textPayload.status = status
     if (status_text !== undefined) textPayload.status_text = status_text
     if (status_emoji !== undefined) textPayload.status_emoji = status_emoji
+    if (status_sticker_id !== undefined) textPayload.status_sticker_id = status_sticker_id
     if (status === 'invisible' && prevStatus !== 'invisible') {
       socket.emit('user:status', textPayload)
       socket.broadcast.emit('user:offline', { userId })
     } else if (prevStatus === 'invisible' && status && status !== 'invisible') {
       io.emit('user:online', { userId, username, status })
-      if (status_text !== undefined || status_emoji !== undefined) {
+      if (status_text !== undefined || status_emoji !== undefined || status_sticker_id !== undefined) {
         const extra: any = { userId }
         if (status_text !== undefined) extra.status_text = status_text
         if (status_emoji !== undefined) extra.status_emoji = status_emoji
+        if (status_sticker_id !== undefined) extra.status_sticker_id = status_sticker_id
         io.emit('user:status', extra)
       }
     } else {

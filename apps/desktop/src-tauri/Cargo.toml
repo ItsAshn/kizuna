@@ -1,6 +1,6 @@
 [package]
 name = "kizuna"
-version = "0.18.3"
+version = "0.26.0"
 description = "Kizuna Desktop Client"
 authors = ["ItsAshn"]
 edition = "2021"
@@ -39,6 +39,8 @@ windows = { version = "0.62", features = [
   "Win32_Graphics_Gdi",
   "Win32_Foundation",
   "Win32_System_Threading",
+  "Win32_System_ProcessStatus",
+  "Win32_UI_WindowsAndMessaging",
 ] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
@@ -52,6 +54,7 @@ opus2 = "0.4"
 bytes = "1"
 nnnoiseless = "0.4"
 ringbuf = "0.5"
+nokhwa = "0.10"
 
 [features]
 default = ["custom-protocol"]

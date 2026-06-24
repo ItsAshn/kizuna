@@ -388,6 +388,14 @@
   flex-shrink: 0;
 }
 
+.sidebar__user-status-sticker {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 2px;
+}
+
 .sidebar__user-status-text {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
 import { fetchServerInfo } from '@kizuna/shared'
+import type { ServerInfo } from '@kizuna/shared'
 import { useAuth } from '../hooks/useAuth'
 import Modal from './ui/Modal'
 import AuthForm from './AuthForm'
@@ -24,7 +25,7 @@ export default function LoginDialog({ serverId, onClose }: Props) {
   const [displayName, setDisplayName] = useState('')
   const [serverPassword, setServerPassword] = useState('')
   const [isRegister, setIsRegister] = useState(false)
-  const [serverInfo, setServerInfo] = useState<any>(null)
+  const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null)
 
   const { authenticate, loading, error, setError, backupToken, clearBackupToken } = useAuth(serverUrl)
 
@@ -44,7 +45,7 @@ export default function LoginDialog({ serverId, onClose }: Props) {
       displayName,
       serverPassword,
     })
-    if (!success) return
+    if (!success || !result) return
 
     setActiveSession({
       serverId: serverUrl,

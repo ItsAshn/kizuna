@@ -26,6 +26,7 @@ interface ChatState {
   hasMoreMessages: Record<string, boolean>;
   loadingMoreMessages: Record<string, boolean>;
   loadMoreErrors: Record<string, string | null>;
+  pendingMention: string | null;
 
   setChannels: (channels: Channel[]) => void;
   setCategories: (categories: { id: string; name: string; position: number }[]) => void;
@@ -64,6 +65,7 @@ interface ChatState {
   prependMessages: (channelId: string, messages: Message[]) => void;
   updateMessageReactions: (channelId: string, messageId: string, reactions: MessageReaction[]) => void;
   clearServerData: () => void;
+  setPendingMention: (username: string | null) => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -92,6 +94,7 @@ export const useChatStore = create<ChatState>()(
       hasMoreMessages: {},
       loadingMoreMessages: {},
       loadMoreErrors: {},
+      pendingMention: null,
 
       setChannels: (channels) => set({ channels }),
       setCategories: (categories) => set({ categories }),
@@ -296,7 +299,9 @@ export const useChatStore = create<ChatState>()(
           loadMoreErrors: {},
           activeThreadId: null,
           threadPanelVisible: false,
+          pendingMention: null,
         }),
+      setPendingMention: (pendingMention) => set({ pendingMention }),
     }),
     {
       name: 'kizuna-chat-v1',

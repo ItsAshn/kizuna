@@ -18,6 +18,7 @@ pub struct ActiveCall {
     pub send_pc: webrtc::peer_connection::RTCPeerConnection,
     pub voice_bitrate_kbps: u64,
     pub audio_track: Option<Arc<TrackLocalStaticSample>>,
+    pub video_track: Option<Arc<TrackLocalStaticSample>>,
     pub audio_send: Option<AudioSendSession>,
     pub processor: Option<Arc<tokio::sync::Mutex<AudioProcessor>>>,
 }
@@ -100,6 +101,10 @@ impl VoiceController {
         self.signal_tx.clone()
     }
 
+    pub fn video_track(&self) -> Option<Arc<TrackLocalStaticSample>> {
+        self.active_call.as_ref().and_then(|c| c.video_track.clone())
+    }
+
     pub async fn drain_signals(&mut self) -> Vec<(String, Value)> {
         let mut out = Vec::new();
         while let Ok((event, data)) = self.signal_rx.try_recv() {
@@ -142,7 +147,7 @@ impl VoiceController {
         send_params: Value,
         recv_params: Value,
         voice_bitrate_kbps: u64,
-    ) -> Result<(Value, Value, Value), String> {
+    ) -> Result<(Value, Value, Value, Value), String> {
         eprintln!("[VoiceNative] begin_join channel={channel_id}");
 
         let (transport_pair, send_dtls) =
@@ -186,17 +191,42 @@ impl VoiceController {
             },
         });
 
+        let video_sender = transport_pair.video_sender.clone();
+        let video_params = video_sender.get_parameters().await;
+        let video_ssrc = video_params.encodings.first().map(|e| e.ssrc).unwrap_or(2);
+
+        let video_rtp_params = json!({
+            "codecs": [{
+                "mimeType": "video/VP8",
+                "payloadType": 100,
+                "clockRate": 90000,
+                "channels": 0,
+                "parameters": {},
+                "rtcpFeedback": [],
+            }],
+            "headerExtensions": [],
+            "encodings": [{
+                "ssrc": video_ssrc,
+                "maxBitrate": 300_000,
+            }],
+            "rtcp": {
+                "cname": "",
+                "reducedSize": true,
+            },
+        });
+
         self.active_call = Some(ActiveCall {
             channel_id: channel_id.to_string(),
             send_pc: transport_pair.send_pc,
             voice_bitrate_kbps,
             audio_track: Some(transport_pair.audio_track),
+            video_track: Some(transport_pair.video_track),
             audio_send: None,
             processor: None,
         });
 
-        eprintln!("[VoiceNative] begin_join OK: ssrc={ssrc}");
-        Ok((send_dtls, json!({}), rtp_params))
+        eprintln!("[VoiceNative] begin_join OK: audio_ssrc={ssrc} video_ssrc={video_ssrc}");
+        Ok((send_dtls, json!({}), rtp_params, video_rtp_params))
     }
 
     /// Called after TypeScript has sent connectTransport + produce successfully.

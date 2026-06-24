@@ -19,6 +19,7 @@ pub struct TransportPair {
     pub audio_track: Arc<TrackLocalStaticSample>,
     pub audio_sender: Arc<RTCRtpSender>,
     pub video_track: Arc<TrackLocalStaticSample>,
+    pub video_sender: Arc<RTCRtpSender>,
 }
 
 fn build_ice_servers(ice_servers: &[Value]) -> Vec<RTCIceServer> {
@@ -206,7 +207,7 @@ pub async fn create_transports(
         "kizuna-video".to_string(),
     ));
 
-    send_pc
+    let video_sender = send_pc
         .add_track(video_track.clone() as Arc<dyn TrackLocal + Send + Sync>)
         .await
         .map_err(|e| format!("Failed to add video track: {e}"))?;
@@ -249,6 +250,7 @@ pub async fn create_transports(
             audio_track,
             audio_sender: rtp_sender,
             video_track,
+            video_sender,
         },
         send_dtls,
     ))

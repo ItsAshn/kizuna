@@ -91,8 +91,9 @@ export default function ResetPassword() {
     try {
       await requestPasswordReset(resolvedServer.url, username.trim())
       setPhase('choice')
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Request failed')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string }
+      setError(e.response?.data?.error || e.message || 'Request failed')
     }
     setLoading(false)
   }
@@ -114,8 +115,9 @@ export default function ResetPassword() {
       const result = await resetWithBackupToken(resolvedServer.url, username.trim(), backuptoken.trim(), newPassword)
       setNewBackupToken(result.backuptoken)
       setPhase('done')
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to reset password')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string }
+      setError(e.response?.data?.error || e.message || 'Failed to reset password')
     }
     setLoading(false)
   }
@@ -131,8 +133,9 @@ export default function ResetPassword() {
       setValidatedUsername(res.username)
       setResetMethod('admin')
       setPhase('newPassword')
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Invalid or expired token')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string }
+      setError(e.response?.data?.error || e.message || 'Invalid or expired token')
     }
     setLoading(false)
   }
@@ -157,8 +160,9 @@ export default function ResetPassword() {
 
       setNewBackupToken(result.backuptoken)
       setPhase('done')
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to reset password')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string }
+      setError(e.response?.data?.error || e.message || 'Failed to reset password')
     }
     setLoading(false)
   }

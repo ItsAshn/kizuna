@@ -195,9 +195,9 @@ authRoutes.get('/me', authMiddleware, (c) => {
 
   const user = db
     .prepare(
-      'SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.key_salt, u.status_text, u.status_emoji, u.created_at, sm.is_host FROM users u LEFT JOIN server_members sm ON sm.user_id = u.id WHERE u.id = ?',
+      'SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.key_salt, u.status_text, u.status_emoji, u.status_sticker_id, u.created_at, sm.is_host FROM users u LEFT JOIN server_members sm ON sm.user_id = u.id WHERE u.id = ?',
     )
-    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; banner: string | null; public_key: string | null; key_salt: string | null; status_text: string | null; status_emoji: string | null; created_at: number; is_host: number | null } | undefined
+    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; banner: string | null; public_key: string | null; key_salt: string | null; status_text: string | null; status_emoji: string | null; status_sticker_id: string | null; created_at: number; is_host: number | null } | undefined
 
   if (!user) {
     return c.json({ error: 'User not found' }, 404)
@@ -211,7 +211,7 @@ authRoutes.get('/me', authMiddleware, (c) => {
 
 authRoutes.patch('/me/status', authMiddleware, async (c) => {
   const auth = getAuth(c)
-  const { status_text, status_emoji } = await c.req.json() as { status_text?: string | null; status_emoji?: string | null }
+  const { status_text, status_emoji, status_sticker_id } = await c.req.json() as { status_text?: string | null; status_emoji?: string | null; status_sticker_id?: string | null }
 
   const db = getDb()
   const updates: string[] = []
@@ -234,6 +234,14 @@ authRoutes.patch('/me/status', authMiddleware, async (c) => {
       values.push(status_emoji.slice(0, 8))
     }
   }
+  if (status_sticker_id !== undefined) {
+    if (status_sticker_id === null || status_sticker_id === '') {
+      updates.push('status_sticker_id = NULL')
+    } else {
+      updates.push('status_sticker_id = ?')
+      values.push(status_sticker_id)
+    }
+  }
 
   if (updates.length === 0) {
     return c.json({ error: 'Nothing to update' }, 400)
@@ -249,6 +257,7 @@ authRoutes.patch('/me/status', authMiddleware, async (c) => {
         userId: auth.userId,
         status_text: status_text !== undefined ? (status_text?.trim().slice(0, 128) || null) : undefined,
         status_emoji: status_emoji !== undefined ? (status_emoji?.slice(0, 8) || null) : undefined,
+        status_sticker_id: status_sticker_id !== undefined ? (status_sticker_id || null) : undefined,
       })
     }
   } catch { /* best-effort */ }
@@ -306,7 +315,7 @@ authRoutes.get('/users', authMiddleware, (c) => {
 
   const users = db
     .prepare(
-       `SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.status_text, u.status_emoji, u.reset_requested_at, sm.is_host
+       `SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.status_text, u.status_emoji, u.status_sticker_id, u.reset_requested_at, sm.is_host
        FROM users u
        LEFT JOIN server_members sm ON sm.user_id = u.id
        ORDER BY u.username

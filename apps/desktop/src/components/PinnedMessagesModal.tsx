@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { X, Pin, User, Trash2 } from 'lucide-react'
+import { X, Pin, Trash2 } from 'lucide-react'
 import type { PinnedMessage } from '@kizuna/shared'
 import './PinnedMessagesModal.css'
 

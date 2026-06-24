@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function ExportModal({ onClose }: Props) {
-  const { servers, setActiveSession } = useServerStore()
+  const { servers } = useServerStore()
   const [importText, setImportText] = useState('')
   const [status, setStatus] = useState('')
   const [statusIsError, setStatusIsError] = useState(false)

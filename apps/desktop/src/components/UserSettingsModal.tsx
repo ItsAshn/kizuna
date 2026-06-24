@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useVoiceStore, type VoiceInputMode } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
+import { useServerStore } from '../store/serverStore'
 import { useUpdaterActions } from '../hooks/useUpdater'
 import { isTauri, isMobileTauri } from '../utils/platform'
 import { clearCryptoState } from '../store/keyStore'
@@ -201,9 +202,15 @@ export default function UserSettingsModal({ onClose }: Props) {
   } = useVoiceStore()
   const {
     updateState, updateProgress, updateVersion, updateError,
-    shareActivity, setShareActivity,
     shareMediaActivity, setShareMediaActivity,
+    shareAppActivity, setShareAppActivity,
+    customMediaActivity, setCustomMediaActivity,
+    customAppActivity, setCustomAppActivity,
+    recentMediaActivities, removeRecentMediaActivity,
+    recentAppActivities, removeRecentAppActivity,
   } = useSettingsStore()
+  const userActivities = useVoiceStore((s) => s.userActivities)
+  const session = useServerStore((s) => s.activeSession)
   const { checkForUpdates, installUpdate, getVersion } = useUpdaterActions()
 
   const [activeTab, setActiveTab] = useState('voice')
@@ -216,6 +223,8 @@ export default function UserSettingsModal({ onClose }: Props) {
   const [listeningForKey, setListeningForKey] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
   const [monitoring, setMonitoring] = useState(false)
+  const [customMediaInput, setCustomMediaInput] = useState('')
+  const [customAppInput, setCustomAppInput] = useState('')
   const unmountedRef = useRef(false)
   const audioLevelCleanupRef = useRef<(() => void) | null>(null)
 
@@ -646,18 +655,162 @@ export default function UserSettingsModal({ onClose }: Props) {
         <div className="settings-tab-content">
           <div className="settings-card">
             <p className="settings-card-title">activity sharing</p>
+
             <SettingsToggleRow
-              label="share activity"
-              hint="show what you're listening to or watching to other members"
-              checked={shareActivity}
-              onChange={setShareActivity}
-            />
-            <SettingsToggleRow
-              label="share media activity"
-              hint="detect music and video from your browser's media session"
+              label="share my music &amp; media"
+              hint="automatically detect music and videos you're playing from your media session"
               checked={shareMediaActivity}
               onChange={setShareMediaActivity}
             />
+
+            {shareMediaActivity && (() => {
+              const userId = session?.user.id
+              const ownActivity = userId ? userActivities[userId] : undefined
+              const current = ownActivity && (ownActivity.type === 'music' || ownActivity.type === 'video')
+                ? ownActivity
+                : undefined
+              const displayText = current
+                ? `${current.type === 'music' ? '\u266B' : '\u25B6'} ${current.name}${current.details ? ' \u2014 ' + current.details : ''}`
+                : customMediaActivity
+                  ? `${customMediaActivity} (custom)`
+                  : 'nothing detected'
+
+              return (
+                <div className="settings-activity-preview">
+                  <div className="settings-activity-preview-header">
+                    <span className="settings-activity-preview-label">
+                      currently sharing: {displayText}
+                    </span>
+                  </div>
+                  <div className="settings-activity-custom">
+                    <input
+                      className="settings-activity-input"
+                      placeholder="type custom activity..."
+                      value={customMediaInput}
+                      onChange={(e) => setCustomMediaInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          setCustomMediaActivity(customMediaInput || null)
+                        }
+                      }}
+                    />
+                    <button
+                      className="settings-btn"
+                      onClick={() => setCustomMediaActivity(customMediaInput || null)}
+                      disabled={!customMediaInput.trim()}
+                    >
+                      set
+                    </button>
+                    {customMediaActivity && (
+                      <button
+                        className="settings-btn settings-btn--danger"
+                        onClick={() => { setCustomMediaActivity(null); setCustomMediaInput('') }}
+                      >
+                        clear
+                      </button>
+                    )}
+                  </div>
+                  {recentMediaActivities.length > 0 && (
+                    <div className="settings-activity-suggestions">
+                      <span className="settings-activity-suggestions-label">suggestions:</span>
+                      {recentMediaActivities.map((name) => (
+                        <button
+                          key={name}
+                          className="settings-activity-chip"
+                          onClick={() => { setCustomMediaInput(name); setCustomMediaActivity(name) }}
+                        >
+                          {name}
+                          <span
+                            className="settings-activity-chip-remove"
+                            onClick={(e) => { e.stopPropagation(); removeRecentMediaActivity(name) }}
+                          >
+                            &times;
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            <SettingsToggleRow
+              label="share my games &amp; apps"
+              hint="show the game or application currently in focus on your desktop"
+              checked={shareAppActivity}
+              onChange={setShareAppActivity}
+            />
+
+            {shareAppActivity && (() => {
+              const userId = session?.user.id
+              const ownActivity = userId ? userActivities[userId] : undefined
+              const current = ownActivity && (ownActivity.type === 'game' || ownActivity.type === 'app')
+                ? ownActivity
+                : undefined
+              const displayText = current
+                ? `${current.type === 'game' ? '\u{1F3AE}' : '\u{1F4BB}'} ${current.name}${current.details ? ' \u2014 ' + current.details : ''}`
+                : customAppActivity
+                  ? `${customAppActivity} (custom)`
+                  : 'nothing detected'
+
+              return (
+                <div className="settings-activity-preview">
+                  <div className="settings-activity-preview-header">
+                    <span className="settings-activity-preview-label">
+                      currently sharing: {displayText}
+                    </span>
+                  </div>
+                  <div className="settings-activity-custom">
+                    <input
+                      className="settings-activity-input"
+                      placeholder="type custom activity..."
+                      value={customAppInput}
+                      onChange={(e) => setCustomAppInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          setCustomAppActivity(customAppInput || null)
+                        }
+                      }}
+                    />
+                    <button
+                      className="settings-btn"
+                      onClick={() => setCustomAppActivity(customAppInput || null)}
+                      disabled={!customAppInput.trim()}
+                    >
+                      set
+                    </button>
+                    {customAppActivity && (
+                      <button
+                        className="settings-btn settings-btn--danger"
+                        onClick={() => { setCustomAppActivity(null); setCustomAppInput('') }}
+                      >
+                        clear
+                      </button>
+                    )}
+                  </div>
+                  {recentAppActivities.length > 0 && (
+                    <div className="settings-activity-suggestions">
+                      <span className="settings-activity-suggestions-label">suggestions:</span>
+                      {recentAppActivities.map((name) => (
+                        <button
+                          key={name}
+                          className="settings-activity-chip"
+                          onClick={() => { setCustomAppInput(name); setCustomAppActivity(name) }}
+                        >
+                          {name}
+                          <span
+                            className="settings-activity-chip-remove"
+                            onClick={(e) => { e.stopPropagation(); removeRecentAppActivity(name) }}
+                          >
+                            &times;
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         </div>
       )}

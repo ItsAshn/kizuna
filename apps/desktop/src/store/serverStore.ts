@@ -89,14 +89,45 @@ export const useServerStore = create<ServerState>()(
           if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return state
           const fromServer = state.servers[fromIdx]
           const toServer = state.servers[toIdx]
-          if (fromServer.folder !== toServer.folder) return state
-          const reordered = [...state.servers]
-          reordered.splice(fromIdx, 1)
-          let insertAt = reordered.findIndex((s) => s.id === toId)
-          if (position === 'below') insertAt++
-          if (insertAt < 0) insertAt = reordered.length
-          reordered.splice(insertAt, 0, fromServer)
-          return { servers: reordered }
+
+          function reorder(servers: SavedServer[]): SavedServer[] {
+            const newFromIdx = servers.findIndex((s) => s.id === fromId)
+            const moved = servers[newFromIdx]
+            const reordered = [...servers]
+            reordered.splice(newFromIdx, 1)
+            let insertAt = reordered.findIndex((s) => s.id === toId)
+            if (position === 'below') insertAt++
+            if (insertAt < 0) insertAt = reordered.length
+            reordered.splice(insertAt, 0, moved)
+            return reordered
+          }
+
+          if (!fromServer.folder && !toServer.folder) {
+            const base = 'New Folder'
+            let name = base
+            let n = 2
+            while (state.servers.some((s) => s.folder === name)) {
+              name = `${base} (${n})`
+              n++
+            }
+            const folderName = name
+            const updated = state.servers.map((s) => {
+              if (s.id === fromId || s.id === toId) return { ...s, folder: folderName }
+              return s
+            })
+            return { servers: reorder(updated) }
+          }
+
+          if (fromServer.folder !== toServer.folder) {
+            const targetFolder = toServer.folder
+            const updated = state.servers.map((s) => {
+              if (s.id === fromId) return { ...s, folder: targetFolder }
+              return s
+            })
+            return { servers: reorder(updated) }
+          }
+
+          return { servers: reorder(state.servers) }
         }),
 
       refreshSessionUser: async () => {

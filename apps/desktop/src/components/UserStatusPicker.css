@@ -43,7 +43,9 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   padding: 4px;
-  min-width: 140px;
+  width: 220px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   z-index: 9999;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   animation: statusFadeIn 0.12s ease-out;
@@ -131,7 +133,7 @@
   padding: 2px 4px;
 }
 
-.status-picker__emoji-btn {
+.status-picker__sticker-btn {
   width: 28px;
   height: 28px;
   display: flex;
@@ -141,14 +143,26 @@
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   cursor: pointer;
-  font-size: 14px;
+  color: var(--text-muted);
   padding: 0;
   flex-shrink: 0;
   transition: background 0.1s ease;
+  overflow: hidden;
 }
 
-.status-picker__emoji-btn:hover {
+.status-picker__sticker-btn:hover {
   background: var(--bg-hover);
+}
+
+.status-picker__sticker-btn--has {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.status-picker__sticker-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .status-picker__text-input {
@@ -171,57 +185,109 @@
   color: var(--text-muted);
 }
 
-.status-picker__emoji-grid {
+.status-picker__sticker-panel {
+  margin-top: 6px;
+}
+
+.status-picker__packs {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px;
-  padding: 4px;
-  margin-top: 4px;
-  max-width: 192px;
+  gap: 3px;
+  padding: 0 4px;
+  margin-bottom: 6px;
 }
 
-.status-picker__emoji-option {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
+.status-picker__pack-btn {
+  padding: 3px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+
+.status-picker__pack-btn:hover {
+  background: var(--bg-hover);
+}
+
+.status-picker__pack-btn--active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+.status-picker__sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 46px);
+  gap: 4px;
   justify-content: center;
+  padding: 0 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.status-picker__sticker-option {
+  width: 46px;
+  height: 46px;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: 4px;
-  background: none;
+  background: var(--bg-tertiary);
   cursor: pointer;
-  font-size: 14px;
-  padding: 0;
-  transition: background 0.1s ease;
+  overflow: hidden;
+  transition: border-color 0.1s;
 }
 
-.status-picker__emoji-option:hover,
-.status-picker__emoji-option--active {
-  background: var(--bg-hover);
-  border-color: var(--border-color);
+.status-picker__sticker-option:hover {
+  border-color: var(--brand);
+}
+
+.status-picker__sticker-option--active {
+  border-color: var(--brand);
+  background: var(--brand-dim);
+}
+
+.status-picker__sticker-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.status-picker__sticker-status {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 12px 0;
 }
 
 .status-picker__save-btn {
   display: block;
   width: 100%;
-  margin-top: 4px;
-  padding: 4px 8px;
-  font-size: 11px;
-  color: var(--brand);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  margin-top: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--brand);
+  border: none;
   border-radius: 4px;
   cursor: pointer;
   text-align: center;
+  transition: opacity 0.1s;
 }
 
 .status-picker__save-btn:hover {
-  background: var(--brand-dim);
+  opacity: 0.85;
 }
 
 @media (max-width: 767px) {
   .status-picker__dropdown {
-    min-width: 200px;
+    width: 240px;
     padding: 6px;
   }
 
@@ -229,5 +295,14 @@
     min-height: 44px;
     font-size: 15px;
     padding: 10px 12px;
+  }
+
+  .status-picker__sticker-grid {
+    grid-template-columns: repeat(4, 52px);
+  }
+
+  .status-picker__sticker-option {
+    width: 52px;
+    height: 52px;
   }
 }

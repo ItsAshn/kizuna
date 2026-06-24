@@ -2,17 +2,18 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
 import { Virtuoso } from 'react-virtuoso'
+import type { VirtuosoHandle } from 'react-virtuoso'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useCallStore } from '../store/callStore'
 import { useMobile } from '../hooks/useMobile'
 import { useSwipeBack } from '../hooks/useSwipeBack'
 import { useKeyboard } from '../hooks/useKeyboard'
-import { fetchMessages, fetchDMMessages, fetchGroupDMMessages, sendMessage, sendDMMessage, sendGroupDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, deleteGroupDMMessage, editGroupDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles, pinMessage, unpinMessage, fetchPinnedMessages, createThread } from '@kizuna/shared'
+import { fetchMessages, fetchDMMessages, fetchGroupDMMessages, sendMessage, sendDMMessage, sendGroupDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles, pinMessage, unpinMessage, fetchPinnedMessages, createThread } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent, encryptGroupDM, decryptGroupDM, isGroupEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import { Lock, Paperclip, Send, Sticker, Phone, ChevronLeft, Users, Pin, MessageSquare, Mic, Square, Trash2, Search } from 'lucide-react'
-import type { Message, Member, DMChannelData, GroupDMChannelData, CustomRole, PinnedMessage } from '@kizuna/shared'
+import { Lock, Paperclip, Send, ShieldCheck, ShieldAlert, Sticker, Phone, ChevronLeft, Users, Pin, MessageSquare, Mic, Square, Trash2, Search, Settings } from 'lucide-react'
+import type { Message, Member, DMChannelData, CustomRole, PinnedMessage } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
 import Skeleton from './Skeleton'
@@ -20,6 +21,7 @@ import Lightbox from './Lightbox'
 import SearchBar from './SearchBar'
 import PinnedMessagesModal from './PinnedMessagesModal'
 import EnvStatus from './EnvStatus'
+import GroupDMSettingsModal from './GroupDMSettingsModal'
 import './ChatArea.css'
 
 interface ChatAreaProps {
@@ -109,12 +111,10 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const hasMoreMessages = useChatStore((s) => s.hasMoreMessages)
   const loadingMoreMessages = useChatStore((s) => s.loadingMoreMessages)
   const loadMoreErrors = useChatStore((s) => s.loadMoreErrors)
-  const setLoadingMoreMessages = useChatStore((s) => s.setLoadingMoreMessages)
-  const setLoadMoreError = useChatStore((s) => s.setLoadMoreError)
+  const pendingMention = useChatStore((s) => s.pendingMention)
+  const setPendingMention = useChatStore((s) => s.setPendingMention)
   const pinnedMessages = useChatStore((s) => s.pinnedMessages)
   const setPinned = useChatStore((s) => s.setPinnedMessages)
-  const addPinned = useChatStore((s) => s.addPinnedMessage)
-  const removePinned = useChatStore((s) => s.removePinnedMessage)
   const setActiveChannel = useChatStore((s) => s.setActiveChannel)
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
   const setActiveGroupDMChannel = useChatStore((s) => s.setActiveGroupDMChannel)
@@ -146,7 +146,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [channelPerms, setChannelPerms] = useState<{ can_write: boolean; locked: boolean; write_role_name: string | null } | null>(null)
-  const virtuosoRef = useRef<any>(null)
+  const virtuosoRef = useRef<VirtuosoHandle | null>(null)
   const chatAreaRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -154,10 +154,10 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [atBottom, setAtBottom] = useState(true)
   const lastCountAtBottom = useRef(0)
-  const scrolledChannelRef = useRef<string | null>(null)
   const [lightboxImages, setLightboxImages] = useState<{ url: string; filename: string }[] | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const [showSearch, setShowSearch] = useState(false)
+  const [showGroupDMSettings, setShowGroupDMSettings] = useState(false)
   const [mentionableRoles, setMentionableRoles] = useState<CustomRole[]>([])
   const newMessagesRef = useRef<string | null>(null)
   useSwipeBack(chatAreaRef, onBackToSidebar || (() => {}), !!isMobile && !!onBackToSidebar)
@@ -189,7 +189,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     if (!currentUserId) return { ...msg, content: '[Encrypted - not authenticated]' }
     const channel = groupDMChannels.find((d) => d.id === msg.channel_id)
     const senderMember = channel?.members.find((m) => m.user_id === msg.user_id)
-    const senderPubKey = senderMember?.public_key || (msg as any).sender_public_key
+    const senderPubKey = senderMember?.public_key || (msg as unknown as { sender_public_key?: string }).sender_public_key
     if (!senderPubKey) return { ...msg, content: '[Encrypted - missing sender key]' }
     try {
       const decrypted = decryptGroupDM(parsed, senderPubKey, currentUserId, secKey)
@@ -283,9 +283,9 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       }))
 
       fetchPinnedMessages(session!.url, activeChannelId)
-        .then((pins: any) => {
+        .then((pins: Message[]) => {
           if (cancelled) return
-          setPinned(activeChannelId, pins as PinnedMessage[])
+          setPinned(activeChannelId, pins as unknown as PinnedMessage[])
         })
         .catch((err) => { console.error('Failed to load pins:', err) })
 
@@ -543,6 +543,13 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     })
   }
 
+  useEffect(() => {
+    if (pendingMention) {
+      insertMention(pendingMention)
+      setPendingMention(null)
+    }
+  }, [pendingMention])
+
   const insertEmoji = (entry: typeof EMOJI_LIST[0]) => {
     const before = input.slice(0, emojiIndex)
     const after = input.slice(emojiIndex + 1 + (emojiQuery?.length ?? 0))
@@ -654,9 +661,10 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           }
         })
       }
-    } catch (err: any) {
-      const status = err?.response?.status
-      const serverMsg = err?.response?.data?.error
+    } catch (err: unknown) {
+      const e = err as { response?: { status?: number; data?: { error?: string } }; message?: string }
+      const status = e?.response?.status
+      const serverMsg = e?.response?.data?.error
       if (status === 403) setSendError(serverMsg || 'You do not have permission to send messages')
       else setSendError('Failed to send message. Try again.')
     }
@@ -738,8 +746,9 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           }
         })
       }
-    } catch (err: any) {
-      setSendError(err?.response?.data?.error || err?.message || 'Failed to upload file')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string }
+      setSendError(e?.response?.data?.error || e?.message || 'Failed to upload file')
       if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
       setPendingPreviewUrl(null)
       setPendingAttachmentId(null)
@@ -924,14 +933,6 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     } catch (err) { console.error('Failed to create thread:', err) }
   }, [session, activeChannelId])
 
-  const loadPinnedMessages = useCallback(async () => {
-    if (!session || !activeChannelId) return
-    try {
-      const pins = await fetchPinnedMessages(session.url, activeChannelId)
-      setPinned(activeChannelId, pins as unknown as PinnedMessage[])
-    } catch (err) { console.error('Failed to load pins:', err) }
-  }, [session, activeChannelId, setPinned])
-
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -989,7 +990,6 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       ? `${typingList.length} people are typing...`
       : ''
   const dmHasKey = activeDMChannelId ? !!(activeDM?.other_public_key && getSecretKey()) : false
-  const groupDMHasKey = activeGroupDMChannelId ? !!(groupDMChannels.find(c => c.id === activeGroupDMChannelId)?.members.some(m => m.public_key) && getSecretKey()) : false
   const inputMaxLen = activeDMChannelId ? 2700 : 4000
   const inputRemaining = inputMaxLen - input.length
   const showCharCounter = inputRemaining < 500
@@ -1076,7 +1076,6 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           onUnpin={activeChannelId ? handleUnpinMessage : undefined}
           isPinned={activeChannelId ? pinnedMessages[activeChannelId]?.some((p) => p.messageId === msg.id) ?? false : undefined}
           onCreateThread={activeChannelId ? handleCreateThread : undefined}
-          onUserClick={() => {}}
           onImageClick={(imageUrl) => {
             setLightboxImages(lightboxImageMap.images)
             setLightboxIndex(lightboxImageMap.urlToIndex.get(imageUrl) ?? 0)
@@ -1120,27 +1119,11 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
         )}
         <span className="chat-area__header-prefix">{activeDMChannelId ? '@' : '#'}</span>
         <h2 className="chat-area__header-title">{headerTitle}</h2>
-        {activeDMChannelId && activeDM && canCall && (
-          <button
-            onClick={() => {
-              if (dmCallStatus === 'active' && dmCallChannelId === activeDM.id) {
-                onEndDMCall?.()
-              } else if (dmCallStatus !== 'ringing-outgoing') {
-                onStartDMCall?.(activeDM.id, activeDM.other_user_id, activeDM.other_display_name)
-              }
-            }}
-            className={`chat-area__call-btn ${dmCallStatus === 'active' && dmCallChannelId === activeDM.id ? 'chat-area__call-btn--active' : ''}`}
-            title={dmCallStatus === 'active' && dmCallChannelId === activeDM.id ? 'End call' : dmCallStatus === 'ringing-outgoing' && dmCallChannelId === activeDM.id ? 'Calling...' : 'Start call'}
-            disabled={dmCallStatus === 'ringing-outgoing' && dmCallChannelId === activeDM.id}
-          >
-            <Phone className="icon-xs" />
-          </button>
-        )}
         {activeDMChannelId && dmHasKey && (
-          <span className="chat-area__encrypted-badge" title="End-to-end encrypted">🔒</span>
+          <span className="chat-area__encrypted-badge" title="End-to-end encrypted"><ShieldCheck size={14} /></span>
         )}
         {activeDMChannelId && !dmHasKey && activeDM?.other_public_key !== undefined && (
-          <span className="chat-area__encrypted-badge chat-area__encrypted-badge--warn" title="Not encrypted - keys unavailable">{activeDM?.other_public_key === null ? '⚠️' : '⚠️'}</span>
+          <span className="chat-area__encrypted-badge chat-area__encrypted-badge--warn" title="Not encrypted - keys unavailable"><ShieldAlert size={14} /></span>
         )}
         {activeChannel?.topic && (
           <span className="chat-area__header-topic">{activeChannel.topic}</span>
@@ -1151,46 +1134,74 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             {channelPerms.can_write ? 'Locked' : `Locked to ${channelPerms.write_role_name || 'a role'}`}
           </span>
         )}
-        {onToggleMembers && activeChannelId && (
-          <button
-            className={`chat-area__header-members-btn${membersOpen ? ' chat-area__header-members-btn--active' : ''}`}
-            onClick={onToggleMembers}
-            aria-label="Show members"
-          >
-            <Users className="icon-sm" />
-            <span>{members.length}</span>
-          </button>
-        )}
-        {(activeChannelId || activeDMChannelId || activeGroupDMChannelId) && (
-          <button
-            className={`chat-area__header-search-btn${showSearch ? ' chat-area__header-search-btn--active' : ''}`}
-            onClick={() => setShowSearch(v => !v)}
-            aria-label="Search messages"
-            title="Search messages"
-          >
-            <Search className="icon-sm" />
-          </button>
-        )}
-        {activeChannelId && (
-          <button
-            className={`chat-area__header-pins-btn${pinsOpen ? ' chat-area__header-pins-btn--active' : ''}`}
-            onClick={() => setPinsOpen(true)}
-            aria-label="Pinned messages"
-            title="Pinned Messages"
-          >
-            <Pin className="icon-sm" />
-          </button>
-        )}
-        {activeChannelId && (
-          <button
-            className={`chat-area__header-pins-btn${threadPanelVisible ? ' chat-area__header-pins-btn--active' : ''}`}
-            onClick={() => setThreadPanelVisible(!threadPanelVisible)}
-            aria-label="Toggle threads"
-            title="Threads"
-          >
-            <MessageSquare className="icon-sm" />
-          </button>
-        )}
+        <div className="chat-area__header-actions">
+          {activeDMChannelId && activeDM && canCall && (
+            <button
+              onClick={() => {
+                if (dmCallStatus === 'active' && dmCallChannelId === activeDM.id) {
+                  onEndDMCall?.()
+                } else if (dmCallStatus !== 'ringing-outgoing') {
+                  onStartDMCall?.(activeDM.id, activeDM.other_user_id, activeDM.other_display_name)
+                }
+              }}
+              className={`chat-area__call-btn ${dmCallStatus === 'active' && dmCallChannelId === activeDM.id ? 'chat-area__call-btn--active' : ''}`}
+              title={dmCallStatus === 'active' && dmCallChannelId === activeDM.id ? 'End call' : dmCallStatus === 'ringing-outgoing' && dmCallChannelId === activeDM.id ? 'Calling...' : 'Start call'}
+              disabled={dmCallStatus === 'ringing-outgoing' && dmCallChannelId === activeDM.id}
+            >
+              <Phone className="icon-xs" />
+            </button>
+          )}
+          {onToggleMembers && activeChannelId && (
+            <button
+              className={`chat-area__header-members-btn${membersOpen ? ' chat-area__header-members-btn--active' : ''}`}
+              onClick={onToggleMembers}
+              aria-label="Show members"
+            >
+              <Users className="icon-sm" />
+              <span>{members.length}</span>
+            </button>
+          )}
+          {(activeChannelId || activeDMChannelId || activeGroupDMChannelId) && (
+            <button
+              className={`chat-area__header-search-btn${showSearch ? ' chat-area__header-search-btn--active' : ''}`}
+              onClick={() => setShowSearch(v => !v)}
+              aria-label="Search messages"
+              title="Search messages"
+            >
+              <Search className="icon-sm" />
+            </button>
+          )}
+          {activeGroupDMChannelId && activeGroupDM && activeGroupDM.owner_id === session?.user.id && (
+            <button
+              className={`chat-area__header-settings-btn${showGroupDMSettings ? ' chat-area__header-settings-btn--active' : ''}`}
+              onClick={() => setShowGroupDMSettings(v => !v)}
+              aria-label="Group settings"
+              title="Group Settings"
+            >
+              <Settings className="icon-sm" />
+            </button>
+          )}
+          {activeChannelId && (
+            <button
+              className={`chat-area__header-pins-btn${pinsOpen ? ' chat-area__header-pins-btn--active' : ''}`}
+              onClick={() => setPinsOpen(true)}
+              aria-label="Pinned messages"
+              title="Pinned Messages"
+            >
+              <Pin className="icon-sm" />
+            </button>
+          )}
+          {activeChannelId && (
+            <button
+              className={`chat-area__header-pins-btn${threadPanelVisible ? ' chat-area__header-pins-btn--active' : ''}`}
+              onClick={() => setThreadPanelVisible(!threadPanelVisible)}
+              aria-label="Toggle threads"
+              title="Threads"
+            >
+              <MessageSquare className="icon-sm" />
+            </button>
+          )}
+        </div>
       </div>
 
       {showSearch && (activeChannelId || activeDMChannelId || activeGroupDMChannelId) && (
@@ -1455,6 +1466,13 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           onClose={() => setPinsOpen(false)}
           onJump={(messageId) => handleJumpToMessage(messageId, activeChannelId!)}
           onUnpin={handleUnpinMessage}
+        />
+      )}
+
+      {showGroupDMSettings && activeGroupDM && (
+        <GroupDMSettingsModal
+          groupDM={activeGroupDM}
+          onClose={() => setShowGroupDMSettings(false)}
         />
       )}
     </div>

@@ -37,7 +37,7 @@ export default function GifPicker({ serverUrl, onSelect, onClose }: GifPickerPro
       if (activeTab === 'stickers' && activePack) params.pack = activePack
       if (search.trim()) params.search = search.trim()
 
-      const gifs = await fetchGifs(serverUrl, params as any)
+      const gifs = await fetchGifs(serverUrl, params)
       setItems(gifs)
     } catch {
       setError('Failed to load')

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
 import { createPortal } from 'react-dom'
-import { Trash2, Pencil, Reply, Copy, Pin, User } from 'lucide-react'
+import { Trash2, Pencil } from 'lucide-react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import hljs from 'highlight.js/lib/core'
@@ -71,7 +71,6 @@ interface MessageBubbleProps {
   onUnpin?: (messageId: string) => void
   isPinned?: boolean
   onCreateThread?: (messageId: string, name: string) => void
-  onUserClick?: (userId: string) => void
   onImageClick?: (imageUrl: string, filename: string) => void
 }
 
@@ -230,7 +229,6 @@ function MessageBubble({
   onUnpin,
   isPinned,
   onCreateThread,
-  onUserClick,
   onImageClick,
 }: MessageBubbleProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)

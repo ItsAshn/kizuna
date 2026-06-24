@@ -40,7 +40,7 @@ import {
   unloadTagger,
   getTaggerStatus,
 } from '@kizuna/shared'
-import type { Member, CustomRole, Permission, UserStatus, GifInfo, TaggerStatus } from '@kizuna/shared'
+import type { Member, CustomRole, Permission, UserStatus, GifInfo, TaggerStatus, InviteCode } from '@kizuna/shared'
 import { hexToRgba } from '../utils/color'
 import './ServerMenuModal.css'
 
@@ -50,7 +50,7 @@ interface Props {
 }
 
 function handleApiErr(err: unknown): string {
-  const e = err as any
+  const e = err as { response?: { data?: { error?: string } }; message?: string }
   return e?.response?.data?.error || e?.message || 'request failed'
 }
 
@@ -214,7 +214,6 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
   const [voiceBitrateKbps, setVoiceBitrateKbps] = useState(64)
   const [infoLoading, setInfoLoading] = useState(false)
 
-  const existingIcon = session ? servers.find(s => s.id === session.serverId)?.icon ?? null : null
   const serverIconDisplay = serverIconPreview
 
   const bgPreviewUrl = serverUrl && bgHasImage ? `${serverUrl}/api/server/background?t=${bgPreviewTs}` : null
@@ -325,7 +324,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
   }, [openOverflowMember])
 
   // ─── Invites ─────────────────────────────────────────
-  const [invites, setInvites] = useState<any[]>([])
+  const [invites, setInvites] = useState<InviteCode[]>([])
   const [invitesLoading, setInvitesLoading] = useState(false)
   const [newMaxUses, setNewMaxUses] = useState('')
   const [newExpiry, setNewExpiry] = useState('0')
@@ -768,7 +767,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
     setCreatingInvite(false)
   }
 
-  const handleShowQr = async (invite: any) => {
+  const handleShowQr = async (invite: InviteCode) => {
     if (activeQr?.code === invite.code) {
       setActiveQr(null)
       return
@@ -1673,7 +1672,6 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
                                           if (!serverUrl) return
                                           setReorderingRoles(true)
                                           const newRoles = [...roles]
-                                          const currentIdx = newRoles.findIndex(r => r.id === role.id)
                                           if (idx > 0) {
                                             const prev = newRoles[idx - 1]
                                             const prevPos = prev.position ?? 0
@@ -1736,7 +1734,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
                               <div className="server-menu__perm-toggles">
                                 {ALL_PERMISSIONS.map(p => (
                                   <span key={p.key}
-                                    className={`server-menu__perm-toggle ${(role.permissions as any)?.[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
+                                    className={`server-menu__perm-toggle ${role.permissions?.[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
                                     style={{ cursor: 'default' }}
                                     title={p.desc}
                                   >

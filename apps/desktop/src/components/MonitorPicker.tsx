@@ -22,7 +22,7 @@ export default function MonitorPicker({ onSelect, onCancel }: MonitorPickerProps
   }, [onCancel])
 
   useEffect(() => {
-    const w = window as any
+    const w = window as { __TAURI_INTERNALS__?: unknown }
     if (!w.__TAURI_INTERNALS__) {
       setError('Screensharing requires the desktop app. Run `pnpm tauri dev`.')
       setLoading(false)
@@ -35,7 +35,7 @@ export default function MonitorPicker({ onSelect, onCancel }: MonitorPickerProps
         setMonitors(list)
         setLoading(false)
       })
-      .catch((err: any) => {
+      .catch((err: unknown) => {
         setError(`Failed to enumerate monitors: ${err}`)
         setLoading(false)
       })

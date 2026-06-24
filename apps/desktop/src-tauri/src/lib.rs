@@ -13,6 +13,8 @@ use std::sync::Mutex;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use capture::{CaptureSession, MonitorInfo, SessionType};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+use capture::focus::WindowInfo;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use voice::device::AudioDeviceInfo;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use voice::output::AudioOutput;
@@ -23,6 +25,8 @@ use voice::VoiceController;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 static CAPTURE_SESSION: Mutex<Option<CaptureSession>> = Mutex::new(None);
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+static CAMERA_SESSION: Mutex<Option<capture::camera::CameraSession>> = Mutex::new(None);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 static SESSION_TYPE: Mutex<Option<SessionType>> = Mutex::new(None);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -55,6 +59,12 @@ fn list_monitors() -> Result<Vec<MonitorInfo>, String> {
         SessionType::X11 => capture::x11::list_monitors(),
         _ => capture::windows::list_monitors(),
     }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn get_active_window_info() -> Result<Option<WindowInfo>, String> {
+    Ok(capture::focus::get_active_window_info(get_session_type()))
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -149,7 +159,7 @@ fn voice_begin(
     send_params: serde_json::Value,
     recv_params: serde_json::Value,
     voice_bitrate_kbps: u64,
-) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value), String> {
+) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), String> {
     let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
     let controller = guard.as_mut().ok_or("Voice not initialized")?;
     tauri::async_runtime::block_on(controller.begin_join(&channel_id, ice_servers, send_params, recv_params, voice_bitrate_kbps))
@@ -425,6 +435,52 @@ fn voice_remove_peer(peer_id: String) -> Result<(), String> {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
+fn camera_list_devices() -> Result<Vec<capture::camera::CameraDevice>, String> {
+    capture::camera::list_cameras()
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn camera_start(
+    app: tauri::AppHandle,
+    camera_index: usize,
+    width: u32,
+    height: u32,
+    fps: u32,
+) -> Result<(), String> {
+    let mut session_guard =
+        CAMERA_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if session_guard.is_some() {
+        return Err("A camera session is already active".into());
+    }
+
+    let session = capture::camera::start_camera(
+        app,
+        camera_index,
+        width,
+        height,
+        fps,
+    )?;
+
+    *session_guard = Some(session);
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn camera_stop() -> Result<(), String> {
+    let mut session_guard =
+        CAMERA_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(mut session) = session_guard.take() {
+        session.stop();
+        Ok(())
+    } else {
+        Err("No active camera session".into())
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
 async fn voice_screen_share_start(app: tauri::AppHandle, monitor_index: usize, fps: u32) -> Result<(), String> {
     {
         let guard = CAPTURE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
@@ -474,8 +530,12 @@ pub fn run() {
                 tauri::generate_handler![
                     greet,
                     list_monitors,
+                    get_active_window_info,
                     start_screen_capture,
                     stop_screen_capture,
+                    camera_list_devices,
+                    camera_start,
+                    camera_stop,
                     list_audio_input_devices,
                     list_audio_output_devices,
                     get_environment,

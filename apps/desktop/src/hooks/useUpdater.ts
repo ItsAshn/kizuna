@@ -1,6 +1,6 @@
-import { useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
 import { useSettingsStore } from '../store/settingsStore'
-import { isTauri, isMobileTauri } from '../utils/platform'
+import { isMobileTauri } from '../utils/platform'
 
 const GITHUB_REPO = 'ItsAshn/kizuna'
 
@@ -71,10 +71,11 @@ export function useUpdaterActions() {
         }
       })
       return { updateAvailable: true }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const e = err as Error | { message?: string }
       setUpdateState('error')
-      setUpdateError(err.message || String(err))
-      return { updateAvailable: false, error: err.message }
+      setUpdateError(e.message || String(err))
+      return { updateAvailable: false, error: e.message }
     }
   }, [setUpdateState, setUpdateProgress, setUpdateVersion, setUpdateError])
 
