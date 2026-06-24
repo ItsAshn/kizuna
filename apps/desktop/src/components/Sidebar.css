@@ -355,6 +355,12 @@
   min-width: 0;
 }
 
+.sidebar__user-info--centered {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .sidebar__user-displayname {
   font-size: 12px;
   font-weight: 600;

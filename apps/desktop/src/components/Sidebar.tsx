@@ -381,6 +381,10 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
 
   const activeServer = servers.find(s => s.id === session?.serverId)
 
+  const hasOwnStatus = !!(session?.user.status_text || (session?.user.status_emoji && !session?.user.status_sticker_id))
+  const hasActivity = !(session?.user.status_text || session?.user.status_emoji || session?.user.status_sticker_id) && isTauri() && (shareMediaActivity || shareAppActivity) && session?.user.id && userActivities[session.user.id]
+  const showStatusLine = hasOwnStatus || hasActivity
+
   return (
     <div className="sidebar" role="navigation" aria-label="Channels and direct messages">
       {isMobile && onBackToServers && (
@@ -417,18 +421,20 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
                 ) : session?.user.display_name?.[0]?.toUpperCase()}
               </div>
             </UserStatusPicker>
-            <div className="sidebar__user-info">
+            <div className={`sidebar__user-info${showStatusLine ? '' : ' sidebar__user-info--centered'}`}>
               <p className="sidebar__user-displayname">{session?.user.display_name || session?.user.username}</p>
               <p className="sidebar__user-subtitle">@{session?.user.username}{isAdmin ? ' · admin' : ''}</p>
-              <p className="sidebar__user-status">
-                {session?.user.status_emoji && !session?.user.status_sticker_id && <span className="sidebar__user-status-emoji">{session.user.status_emoji}</span>}
-                {session?.user.status_text && <span className="sidebar__user-status-text">{session.user.status_text}</span>}
-                {!(session?.user.status_text || session?.user.status_emoji || session?.user.status_sticker_id) && isTauri() && (shareMediaActivity || shareAppActivity) && session?.user.id && userActivities[session.user.id] && (
-                  <>
-                    {userActivities[session.user.id].type === 'game' ? '\u{1F3AE}' : userActivities[session.user.id].type === 'music' ? '\u{1F3B5}' : userActivities[session.user.id].type === 'video' ? '\u25B6' : userActivities[session.user.id].type === 'app' ? '\u{1F4BB}' : '\u25B6'} {userActivities[session.user.id].name}
-                  </>
-                )}
-              </p>
+              {showStatusLine && (
+                <p className="sidebar__user-status">
+                  {session?.user.status_emoji && !session?.user.status_sticker_id && <span className="sidebar__user-status-emoji">{session.user.status_emoji}</span>}
+                  {session?.user.status_text && <span className="sidebar__user-status-text">{session.user.status_text}</span>}
+                  {hasActivity && (
+                    <>
+                      {userActivities[session.user.id].type === 'game' ? '\u{1F3AE}' : userActivities[session.user.id].type === 'music' ? '\u{1F3B5}' : userActivities[session.user.id].type === 'video' ? '\u25B6' : userActivities[session.user.id].type === 'app' ? '\u{1F4BB}' : '\u25B6'} {userActivities[session.user.id].name}
+                    </>
+                  )}
+                </p>
+              )}
             </div>
             <button
               onClick={onOpenMenu}
