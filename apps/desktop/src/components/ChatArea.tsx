@@ -9,7 +9,7 @@ import { useCallStore } from '../store/callStore'
 import { useMobile } from '../hooks/useMobile'
 import { useSwipeBack } from '../hooks/useSwipeBack'
 import { useKeyboard } from '../hooks/useKeyboard'
-import { fetchMessages, fetchDMMessages, fetchGroupDMMessages, sendMessage, sendDMMessage, sendGroupDMMessage, deleteMessage, editMessage, deleteDMMessage, editDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles, pinMessage, unpinMessage, fetchPinnedMessages, createThread } from '@kizuna/shared'
+import { fetchMessages, fetchDMMessages, fetchGroupDMMessages, sendMessage, sendDMMessage, sendGroupDMMessage, deleteMessage, editMessage, deleteDMMessage, deleteGroupDMMessage, editDMMessage, editGroupDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles, pinMessage, unpinMessage, fetchPinnedMessages, createThread } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent, encryptGroupDM, decryptGroupDM, isGroupEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
 import { Lock, Paperclip, Send, ShieldCheck, ShieldAlert, Sticker, Phone, ChevronLeft, Users, Pin, MessageSquare, Mic, Square, Trash2, Search, Settings } from 'lucide-react'
@@ -758,16 +758,18 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
 
   const handleDeleteMessage = useCallback(async (messageId: string) => {
     if (!session) return
-    const channelId = activeChannelId || activeDMChannelId
+    const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
     if (!channelId) return
     try {
       if (activeDMChannelId) {
         await deleteDMMessage(session.url, messageId)
+      } else if (activeGroupDMChannelId) {
+        await deleteGroupDMMessage(session.url, messageId)
       } else {
         await deleteMessage(session.url, messageId)
       }
     } catch (err) { console.error('Failed to delete message:', err) }
-  }, [session, activeChannelId, activeDMChannelId])
+  }, [session, activeChannelId, activeDMChannelId, activeGroupDMChannelId])
 
   const startRecording = useCallback(async () => {
     try {
@@ -889,7 +891,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
 
   const handleEditMessage = useCallback(async (messageId: string, content: string) => {
     if (!session) return
-    const channelId = activeChannelId || activeDMChannelId
+    const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
     if (!channelId) return
     try {
       if (activeDMChannelId) {
@@ -905,11 +907,28 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           encrypted = true
         }
         await editDMMessage(session.url, messageId, sendContent, encrypted)
+      } else if (activeGroupDMChannelId) {
+        const secKey = getSecretKey()
+        let sendContent = content
+        let encrypted = false
+        if (secKey) {
+          const channel = groupDMChannels.find((c) => c.id === activeGroupDMChannelId)
+          const memberKeys = new Map<string, string>()
+          for (const member of channel?.members || []) {
+            if (member.public_key) memberKeys.set(member.user_id, member.public_key)
+          }
+          if (memberKeys.size > 0) {
+            const enc = encryptGroupDM(content, memberKeys, secKey)
+            sendContent = JSON.stringify(enc)
+            encrypted = true
+          }
+        }
+        await editGroupDMMessage(session.url, messageId, sendContent, encrypted)
       } else {
         await editMessage(session.url, messageId, content)
       }
     } catch (err) { console.error('Failed to edit message:', err) }
-  }, [session, activeChannelId, activeDMChannelId, dmChannels, resolveRecipientPublicKey])
+  }, [session, activeChannelId, activeDMChannelId, activeGroupDMChannelId, dmChannels, groupDMChannels, resolveRecipientPublicKey])
 
   const handlePinMessage = useCallback(async (messageId: string) => {
     if (!session || !activeChannelId) return

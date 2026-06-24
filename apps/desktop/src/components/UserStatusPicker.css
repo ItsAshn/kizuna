@@ -3,8 +3,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--radius-full);
   border: 2px solid transparent;
   cursor: pointer;
@@ -35,6 +35,17 @@
 .status-picker--invisible {
   border-color: var(--text-muted);
   opacity: 0.6;
+}
+
+.status-picker__sticker-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .status-picker__dropdown {

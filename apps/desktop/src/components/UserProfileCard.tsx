@@ -112,25 +112,43 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
             <img src={member.avatar} alt="" className="user-profile-card__avatar-img" />
           ) : displayName[0]?.toUpperCase()}
         </div>
+        {statusStickerId && session && (
+          <img
+            src={`${session.url}/api/gifs/${statusStickerId}/thumb`}
+            alt=""
+            className="user-profile-card__sticker-badge"
+            onMouseEnter={(e) => {
+              const img = e.currentTarget
+              if (img.dataset.thumbFailed !== '1') {
+                img.src = `${session.url}/api/gifs/${statusStickerId}/file`
+              }
+            }}
+            onMouseLeave={(e) => {
+              const img = e.currentTarget
+              if (img.dataset.thumbFailed !== '1') {
+                img.src = `${session.url}/api/gifs/${statusStickerId}/thumb`
+              }
+            }}
+            onError={(e) => {
+              const img = e.currentTarget as HTMLImageElement
+              if (img.src.includes('/thumb')) {
+                img.dataset.thumbFailed = '1'
+                img.src = `${session.url}/api/gifs/${statusStickerId}/file`
+                img.onerror = () => { img.style.display = 'none' }
+              }
+            }}
+          />
+        )}
         <span className={`user-profile-card__status user-profile-card__status--${status}`} />
       </div>
 
       <div className="user-profile-card__info">
         <h3 className="user-profile-card__name">{displayName}</h3>
         <p className="user-profile-card__username">@{member.username}</p>
-        {(statusText || statusStickerId) && (
-          <p className="user-profile-card__status-text">
-            {statusStickerId && session && (
-              <img
-                src={`${session.url}/api/gifs/${statusStickerId}/file`}
-                alt=""
-                className="user-profile-card__status-sticker"
-              />
-            )}
-            {statusEmoji && !statusStickerId && <span className="user-profile-card__status-emoji">{statusEmoji}</span>}
-            {statusText}
-          </p>
-        )}
+        <p className="user-profile-card__status-text">
+          {statusEmoji && !statusStickerId && <span className="user-profile-card__status-emoji">{statusEmoji}</span>}
+          {statusText}
+        </p>
         {activity && (
           <p className="user-profile-card__activity">
             <span className="user-profile-card__activity-label">

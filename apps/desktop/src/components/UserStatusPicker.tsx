@@ -109,28 +109,10 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
     }
   }
 
-  async function handleStatusTextChange(text: string) {
-    setStatusText(text)
-    if (!session) return
-    try {
-      await updateStatus(session.url, text || null, null, statusStickerId || null)
-      await refreshSessionUser()
-    } catch (err) {
-      console.error('Failed to update status:', err)
-    }
-  }
-
-  async function handleStickerSelect(stickerId: string) {
+  function handleStickerSelect(stickerId: string) {
     const newId = statusStickerId === stickerId ? '' : stickerId
     setStatusStickerId(newId)
     setShowStickerPicker(false)
-    if (!session) return
-    try {
-      await updateStatus(session.url, statusText || null, null, newId || null)
-      await refreshSessionUser()
-    } catch (err) {
-      console.error('Failed to update status sticker:', err)
-    }
   }
 
   async function handleSave() {
@@ -145,15 +127,43 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
   }
 
   const hasCustomStatus = statusText || statusStickerId
+  const isDirty = statusText !== (session?.user.status_text || '') || statusStickerId !== (session?.user.status_sticker_id || '')
 
   return (
     <div
       ref={wrapperRef}
-      className={`status-picker status-picker--${currentStatus}`}
+      className={`status-picker status-picker--${currentStatus}${statusStickerId ? ' status-picker--has-sticker' : ''}`}
       onClick={handleToggle}
       title={hasCustomStatus ? `Sticker + ${statusText || ''}` : currentStatus}
     >
       {children}
+      {statusStickerId && session && (
+        <img
+          src={`${session.url}/api/gifs/${statusStickerId}/thumb`}
+          alt=""
+          className="status-picker__sticker-badge"
+          onMouseEnter={(e) => {
+            const img = e.currentTarget
+            if (img.dataset.thumbFailed !== '1') {
+              img.src = `${session.url}/api/gifs/${statusStickerId}/file`
+            }
+          }}
+          onMouseLeave={(e) => {
+            const img = e.currentTarget
+            if (img.dataset.thumbFailed !== '1') {
+              img.src = `${session.url}/api/gifs/${statusStickerId}/thumb`
+            }
+          }}
+          onError={(e) => {
+            const img = e.currentTarget as HTMLImageElement
+            if (img.src.includes('/thumb')) {
+              img.dataset.thumbFailed = '1'
+              img.src = `${session.url}/api/gifs/${statusStickerId}/file`
+              img.onerror = () => { img.style.display = 'none' }
+            }
+          }}
+        />
+      )}
       {open && createPortal(
         <div className="status-picker__dropdown" style={{ top: coords.top, left: coords.left, position: 'fixed' }}>
           {STATUS_OPTIONS.map((opt) => (
@@ -191,8 +201,6 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
                 value={statusText}
                 maxLength={128}
                 onChange={(e) => setStatusText(e.target.value)}
-                onBlur={() => { if (statusText !== (session?.user.status_text || '')) handleStatusTextChange(statusText) }}
-                onKeyDown={(e) => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur() } }}
                 onClick={(e) => e.stopPropagation()}
               />
             </div>
@@ -232,7 +240,7 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
                 </div>
               </div>
             )}
-            {(statusText || statusStickerId) && (
+            {isDirty && (
               <button
                 className="status-picker__save-btn"
                 onClick={(e) => { e.stopPropagation(); handleSave() }}

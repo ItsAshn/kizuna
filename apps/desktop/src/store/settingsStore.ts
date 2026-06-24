@@ -132,7 +132,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSocketReconnectAttempts: (socketReconnectAttempts) => set({ socketReconnectAttempts }),
     }),
     {
-      name: 'kizuna-settings-v1',
+      name: 'kizuna-settings-v2',
       partialize: (state) => ({
         serverBackgroundEnabled: state.serverBackgroundEnabled,
         customCssEnabled: state.customCssEnabled,

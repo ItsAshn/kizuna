@@ -41,7 +41,6 @@ pub fn get_active_window_info(session_type: SessionType) -> Option<WindowInfo> {
 
 #[cfg(target_os = "windows")]
 fn windows_active_window() -> Option<WindowInfo> {
-    use std::os::windows::ffi::OsStringExt;
     use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND};
     use windows::Win32::System::ProcessStatus::K32GetModuleBaseNameW;
     use windows::Win32::System::Threading::OpenProcess;
@@ -51,7 +50,7 @@ fn windows_active_window() -> Option<WindowInfo> {
 
     unsafe {
         let hwnd: HWND = GetForegroundWindow();
-        if hwnd.0 == 0 {
+        if hwnd.0 == std::ptr::null_mut() {
             return None;
         }
 
@@ -70,7 +69,7 @@ fn windows_active_window() -> Option<WindowInfo> {
                 pid,
             )
             .unwrap_or(HANDLE::default());
-            if handle.0 != 0 {
+            if handle.0 != std::ptr::null_mut() {
                 let mut name_buf = [0u16; 260];
                 let name_len = K32GetModuleBaseNameW(handle, None, &mut name_buf);
                 let _ = CloseHandle(handle);

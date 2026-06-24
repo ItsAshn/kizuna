@@ -136,6 +136,7 @@ export default function MemberList({ visible, onClose }: Props) {
     const status = userStatuses[member.id] || 'offline'
     const activity = userActivities[member.id]
     const offline = !isOnline(member)
+    const stickerId = member.status_sticker_id
     return (
       <button
         key={member.id}
@@ -147,14 +148,40 @@ export default function MemberList({ visible, onClose }: Props) {
       >
         <div className="member-list__member-avatar-wrap">
           <div
-            className={`member-list__member-avatar${!offline ? ' member-list__member-avatar--online' : ''}`}
+            className={`member-list__member-avatar${!offline ? ` member-list__member-avatar--${status}` : ''}`}
             style={{ backgroundColor: member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)') }}
           >
             {member.avatar ? (
               <img src={member.avatar} alt="" className="member-list__member-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
             ) : (member.display_name || member.username)[0]?.toUpperCase()}
           </div>
-          {!offline && <span className={`member-list__online-dot member-list__online-dot--${status}`} />}
+          {stickerId && session && (
+            <img
+              src={`${session.url}/api/gifs/${stickerId}/thumb`}
+              alt=""
+              className="member-list__sticker-badge"
+              onMouseEnter={(e) => {
+                const img = e.currentTarget
+                if (img.dataset.thumbFailed !== '1') {
+                  img.src = `${session.url}/api/gifs/${stickerId}/file`
+                }
+              }}
+              onMouseLeave={(e) => {
+                const img = e.currentTarget
+                if (img.dataset.thumbFailed !== '1') {
+                  img.src = `${session.url}/api/gifs/${stickerId}/thumb`
+                }
+              }}
+              onError={(e) => {
+                const img = e.currentTarget as HTMLImageElement
+                if (img.src.includes('/thumb')) {
+                  img.dataset.thumbFailed = '1'
+                  img.src = `${session.url}/api/gifs/${stickerId}/file`
+                  img.onerror = () => { img.style.display = 'none' }
+                }
+              }}
+            />
+          )}
         </div>
         <div className="member-list__member-info">
           <div className="member-list__member-name">{member.display_name || member.username}</div>
@@ -235,7 +262,7 @@ export default function MemberList({ visible, onClose }: Props) {
         {!hasLoaded && members.length === 0 ? (
           Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="skeleton--member">
-              <Skeleton variant="circle" width={24} height={24} />
+              <Skeleton variant="circle" width={32} height={32} />
               <Skeleton variant="text" width={`${60 + (i % 3) * 15}%`} />
             </div>
           ))

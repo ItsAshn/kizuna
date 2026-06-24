@@ -195,8 +195,8 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
             addRecentAppActivity(info.title)
             bestActivity = activity
           }
-        } catch {
-          // Tauri invoke failed, skip app detection
+        } catch (err) {
+          console.warn('useActivityDetector: get_active_window_info failed', err)
         }
       }
 

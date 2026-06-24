@@ -35,7 +35,7 @@ const INPUT_MODES: { value: VoiceInputMode; label: string; desc: string }[] = [
 
 const TABS = [
   { key: 'voice', label: 'voice' },
-  { key: 'privacy', label: 'privacy' },
+  ...(isTauri() ? [{ key: 'privacy', label: 'privacy' }] : []),
   { key: 'data', label: 'data' },
   ...(isTauri() ? [{ key: 'updates', label: 'updates' }] : []),
 ]
@@ -202,11 +202,8 @@ export default function UserSettingsModal({ onClose }: Props) {
   } = useVoiceStore()
   const {
     updateState, updateProgress, updateVersion, updateError,
-    shareMediaActivity, setShareMediaActivity,
     shareAppActivity, setShareAppActivity,
-    customMediaActivity, setCustomMediaActivity,
     customAppActivity, setCustomAppActivity,
-    recentMediaActivities, removeRecentMediaActivity,
     recentAppActivities, removeRecentAppActivity,
   } = useSettingsStore()
   const userActivities = useVoiceStore((s) => s.userActivities)
@@ -223,7 +220,6 @@ export default function UserSettingsModal({ onClose }: Props) {
   const [listeningForKey, setListeningForKey] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
   const [monitoring, setMonitoring] = useState(false)
-  const [customMediaInput, setCustomMediaInput] = useState('')
   const [customAppInput, setCustomAppInput] = useState('')
   const unmountedRef = useRef(false)
   const audioLevelCleanupRef = useRef<(() => void) | null>(null)
@@ -655,84 +651,6 @@ export default function UserSettingsModal({ onClose }: Props) {
         <div className="settings-tab-content">
           <div className="settings-card">
             <p className="settings-card-title">activity sharing</p>
-
-            <SettingsToggleRow
-              label="share my music &amp; media"
-              hint="automatically detect music and videos you're playing from your media session"
-              checked={shareMediaActivity}
-              onChange={setShareMediaActivity}
-            />
-
-            {shareMediaActivity && (() => {
-              const userId = session?.user.id
-              const ownActivity = userId ? userActivities[userId] : undefined
-              const current = ownActivity && (ownActivity.type === 'music' || ownActivity.type === 'video')
-                ? ownActivity
-                : undefined
-              const displayText = current
-                ? `${current.type === 'music' ? '\u266B' : '\u25B6'} ${current.name}${current.details ? ' \u2014 ' + current.details : ''}`
-                : customMediaActivity
-                  ? `${customMediaActivity} (custom)`
-                  : 'nothing detected'
-
-              return (
-                <div className="settings-activity-preview">
-                  <div className="settings-activity-preview-header">
-                    <span className="settings-activity-preview-label">
-                      currently sharing: {displayText}
-                    </span>
-                  </div>
-                  <div className="settings-activity-custom">
-                    <input
-                      className="settings-activity-input"
-                      placeholder="type custom activity..."
-                      value={customMediaInput}
-                      onChange={(e) => setCustomMediaInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setCustomMediaActivity(customMediaInput || null)
-                        }
-                      }}
-                    />
-                    <button
-                      className="settings-btn"
-                      onClick={() => setCustomMediaActivity(customMediaInput || null)}
-                      disabled={!customMediaInput.trim()}
-                    >
-                      set
-                    </button>
-                    {customMediaActivity && (
-                      <button
-                        className="settings-btn settings-btn--danger"
-                        onClick={() => { setCustomMediaActivity(null); setCustomMediaInput('') }}
-                      >
-                        clear
-                      </button>
-                    )}
-                  </div>
-                  {recentMediaActivities.length > 0 && (
-                    <div className="settings-activity-suggestions">
-                      <span className="settings-activity-suggestions-label">suggestions:</span>
-                      {recentMediaActivities.map((name) => (
-                        <button
-                          key={name}
-                          className="settings-activity-chip"
-                          onClick={() => { setCustomMediaInput(name); setCustomMediaActivity(name) }}
-                        >
-                          {name}
-                          <span
-                            className="settings-activity-chip-remove"
-                            onClick={(e) => { e.stopPropagation(); removeRecentMediaActivity(name) }}
-                          >
-                            &times;
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
 
             <SettingsToggleRow
               label="share my games &amp; apps"

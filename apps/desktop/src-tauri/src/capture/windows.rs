@@ -232,7 +232,7 @@ mod imp {
         duplication: &IDXGIOutputDuplication,
     ) -> Result<ScreenFramePayload, String> {
         unsafe {
-            let (frame_info, desktop_resource) = loop {
+            let (_frame_info, desktop_resource) = loop {
                 let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
                 let mut desktop_resource: Option<IDXGIResource> = None;
                 match duplication.AcquireNextFrame(100, &mut frame_info, &mut desktop_resource) {

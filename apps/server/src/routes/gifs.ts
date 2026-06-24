@@ -82,6 +82,12 @@ async function saveFile(buffer: Buffer, originalFilename: string, allowedExts: s
       const processed = await processImage(buffer, originalFilename)
       const storedFilename = `${uuidv4()}${path.extname(processed.filename)}`
       fs.writeFileSync(path.join(GIFS_DIR, storedFilename), processed.buffer)
+
+      if (processed.thumbBuffer) {
+        const thumbFilename = `${storedFilename}.thumb.webp`
+        fs.writeFileSync(path.join(GIFS_DIR, thumbFilename), processed.thumbBuffer)
+      }
+
       return { storedFilename, ext: path.extname(processed.filename), size: processed.buffer.length }
     } catch (imgErr: any) {
       console.error('[gifs] Image processing failed, storing original:', imgErr.message)
@@ -265,6 +271,11 @@ gifRoutes.post('/pack', authMiddleware, async (c) => {
         const storedFilename = `${uuidv4()}${path.extname(processed.filename)}`
         fs.writeFileSync(path.join(GIFS_DIR, storedFilename), processed.buffer)
 
+        if (processed.thumbBuffer) {
+          const thumbFilename = `${storedFilename}.thumb.webp`
+          fs.writeFileSync(path.join(GIFS_DIR, thumbFilename), processed.thumbBuffer)
+        }
+
         const configEntry = packConfig?.gifs?.find(g => g.filename === entry.entryName)
         const displayName = configEntry?.display_name || path.basename(name, ext)
         const tags = configEntry?.tags || ''
@@ -376,6 +387,11 @@ gifRoutes.post('/sticker-pack', authMiddleware, async (c) => {
         const processed = await processImage(data, name)
         const storedFilename = `${uuidv4()}${path.extname(processed.filename)}`
         fs.writeFileSync(path.join(GIFS_DIR, storedFilename), processed.buffer)
+
+        if (processed.thumbBuffer) {
+          const thumbFilename = `${storedFilename}.thumb.webp`
+          fs.writeFileSync(path.join(GIFS_DIR, thumbFilename), processed.thumbBuffer)
+        }
 
         const configEntry = packConfig?.stickers?.find(s => s.filename === entry.entryName)
         const displayName = configEntry?.display_name || path.basename(name, ext)
@@ -582,6 +598,36 @@ gifRoutes.delete('/:id', authMiddleware, (c) => {
   db.prepare('DELETE FROM gifs WHERE id = ?').run(id)
 
   return c.json({ ok: true })
+})
+
+// GET /api/gifs/:id/thumb — serve a static thumbnail (first frame) for animated stickers
+gifRoutes.get('/:id/thumb', (c) => {
+  const id = c.req.param('id') || ''
+  if (!id) return c.json({ error: 'ID is required' }, 400)
+
+  const db = getDb()
+  const row = db.prepare('SELECT * FROM gifs WHERE id = ?').get(id) as any
+  if (!row) return c.json({ error: 'Not found' }, 404)
+
+  const thumbPath = path.join(GIFS_DIR, `${row.stored_filename}.thumb.webp`)
+  if (fs.existsSync(thumbPath)) {
+    const stat = fs.statSync(thumbPath)
+    const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}"`
+    const ifNoneMatch = c.req.header('if-none-match')
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      return new Response(null, { status: 304, headers: { ETag: etag } })
+    }
+    return new Response(fs.createReadStream(thumbPath), {
+      status: 200,
+      headers: {
+        'Content-Type': 'image/webp',
+        'Cache-Control': 'public, max-age=86400, immutable',
+        'ETag': etag,
+      },
+    })
+  }
+
+  return new Response(null, { status: 404 })
 })
 
 // GET /api/gifs/:id/file — serve the gif/sticker file
