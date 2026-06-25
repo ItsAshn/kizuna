@@ -7,6 +7,7 @@ import { useVoiceStore } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useMobile } from '../hooks/useMobile'
 import { useHaptics } from '../hooks/useHaptics'
+import { useSwipeBack } from '../hooks/useSwipeBack'
 import { isTauri } from '../utils/platform'
 import { useNavigate } from 'react-router-dom'
 import { createChannel, lockChannel, fetchRoles, setChannelMute, deleteChannelMute, deleteChannel, reorderChannels } from '@kizuna/shared'
@@ -30,6 +31,8 @@ interface SidebarProps {
 export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, onBackToServers, onOpenChat }: SidebarProps) {
   const navigate = useNavigate()
   const isMobile = useMobile()
+  const sidebarRef = useRef<HTMLDivElement>(null)
+  useSwipeBack(sidebarRef, onBackToServers || (() => {}), !!isMobile && !!onBackToServers)
   const haptics = useHaptics()
   const session = useServerStore((s) => s.activeSession)
   const servers = useServerStore((s) => s.servers)
@@ -386,7 +389,7 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
   const showStatusLine = hasOwnStatus || hasActivity
 
   return (
-    <div className="sidebar" role="navigation" aria-label="Channels and direct messages">
+    <div ref={sidebarRef} className="sidebar" role="navigation" aria-label="Channels and direct messages">
       {isMobile && onBackToServers && (
         <div className="sidebar__mobile-header">
           <button

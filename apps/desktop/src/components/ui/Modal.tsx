@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { useMobile } from '../../hooks/useMobile'
+import { useDragToDismiss } from '../../hooks/useDragToDismiss'
 import './Modal.css'
 
 type ModalFooter = ReactNode | ((handleClose: () => void) => ReactNode)
@@ -18,6 +20,7 @@ export default function Modal({ open, onClose, title, children, footer, classNam
   const modalRef = useRef<HTMLDivElement>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
   const titleId = `modal-title-${title.replace(/\s+/g, '-').toLowerCase()}`
+  const isMobile = useMobile()
 
   const handleClose = useCallback(() => {
     if (closing) return
@@ -27,6 +30,11 @@ export default function Modal({ open, onClose, title, children, footer, classNam
       previousFocus.current?.focus()
     }, 200)
   }, [closing, onClose])
+
+  const dragHandlers = useDragToDismiss(modalRef, {
+    onDismiss: handleClose,
+    enabled: isMobile,
+  })
 
   useEffect(() => {
     if (!open) return
@@ -92,13 +100,29 @@ export default function Modal({ open, onClose, title, children, footer, classNam
     >
       <div
         ref={modalRef}
-        className={`modal ${className}${closing ? ' modal--closing' : ''}`}
+        className={`modal ${className}${closing ? ' modal--closing' : ''}${isMobile ? ' modal--sheet' : ''}`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <div className="modal__header">
+        {isMobile && (
+          <div
+            className="modal__drag-handle"
+            onTouchStart={dragHandlers.onTouchStart}
+            onTouchMove={dragHandlers.onTouchMove}
+            onTouchEnd={dragHandlers.onTouchEnd}
+            aria-hidden="true"
+          >
+            <span className="modal__drag-grip" />
+          </div>
+        )}
+        <div
+          className="modal__header"
+          onTouchStart={isMobile ? dragHandlers.onTouchStart : undefined}
+          onTouchMove={isMobile ? dragHandlers.onTouchMove : undefined}
+          onTouchEnd={isMobile ? dragHandlers.onTouchEnd : undefined}
+        >
           <span className="modal__header-title" id={titleId}>{title}</span>
           <button onClick={handleClose} className="modal__close-btn" aria-label="Close">
             <X size={14} />

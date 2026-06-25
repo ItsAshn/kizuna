@@ -88,3 +88,23 @@
   color: var(--text-primary);
   background: var(--bg-hover);
 }
+
+@media (max-width: 767px) {
+  /* Show toasts at the top on mobile so they clear the bottom tab bar. */
+  .notification-container {
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    left: 8px;
+    right: 8px;
+  }
+
+  .notification-toast {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .notification-toast__close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

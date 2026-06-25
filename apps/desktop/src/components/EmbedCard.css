@@ -84,3 +84,14 @@
 .embed-card--loading .embed-card__body {
   gap: 8px;
 }
+
+@media (max-width: 767px) {
+  .embed-card {
+    max-width: 100%;
+  }
+
+  .embed-card__thumb {
+    width: 64px;
+    height: 64px;
+  }
+}

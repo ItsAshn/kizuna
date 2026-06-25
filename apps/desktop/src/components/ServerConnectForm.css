@@ -68,3 +68,13 @@
   font-family: var(--font-mono);
   margin-top: 4px;
 }
+
+@media (max-width: 767px) {
+  .server-connect__input {
+    font-size: 16px; /* prevent iOS zoom-on-focus */
+  }
+
+  .server-connect__saved-server {
+    min-height: 48px;
+  }
+}

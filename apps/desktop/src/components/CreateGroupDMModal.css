@@ -1,5 +1,21 @@
+/* Desktop width (mobile is overridden to a full-width sheet by ui/Modal). */
+.cgdm-modal {
+  width: 440px;
+}
+
 .cgdm__field {
   margin-bottom: 12px;
+}
+
+@media (max-width: 767px) {
+  .cgdm__input,
+  .cgdm__search-input {
+    font-size: 16px; /* prevent iOS zoom-on-focus */
+  }
+
+  .cgdm__member {
+    min-height: 48px;
+  }
 }
 
 .cgdm__label {

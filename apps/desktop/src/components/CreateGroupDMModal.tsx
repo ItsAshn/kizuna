@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { createGroupDM } from '@kizuna/shared'
-import { Users, X, Search } from 'lucide-react'
-import './ui/Modal.css'
+import { X, Search } from 'lucide-react'
+import Modal from './ui/Modal'
 import './CreateGroupDMModal.css'
 
 interface CreateGroupDMModalProps {
@@ -63,19 +63,24 @@ export default function CreateGroupDMModal({ onClose }: CreateGroupDMModalProps)
   }
 
   return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="modal" style={{ width: 440 }}>
-        <div className="modal__header">
-          <h2 className="modal__header-title">
-            <Users className="icon-sm" style={{ marginRight: 6, verticalAlign: -3 }} />
-            Create Group DM
-          </h2>
-          <button className="modal__close-btn" onClick={onClose} aria-label="Close">
-            <X className="icon-sm" />
+    <Modal
+      open
+      onClose={onClose}
+      title="Create Group DM"
+      className="cgdm-modal"
+      footer={
+        <>
+          {error && <p className="cgdm__error">{error}</p>}
+          <button
+            className="cgdm__submit"
+            onClick={handleCreate}
+            disabled={!name.trim() || selectedIds.size < 2 || creating}
+          >
+            {creating ? 'Creating...' : `Create Group DM (${selectedIds.size} members)`}
           </button>
-        </div>
-
-        <div className="modal__body">
+        </>
+      }
+    >
           <div className="cgdm__field">
             <label className="cgdm__label">Group Name</label>
             <input
@@ -146,18 +151,6 @@ export default function CreateGroupDMModal({ onClose }: CreateGroupDMModalProps)
               <p className="cgdm__empty">No members found</p>
             )}
           </div>
-
-          {error && <p className="cgdm__error">{error}</p>}
-
-          <button
-            className="cgdm__submit"
-            onClick={handleCreate}
-            disabled={!name.trim() || selectedIds.size < 2 || creating}
-          >
-            {creating ? 'Creating...' : `Create Group DM (${selectedIds.size} members)`}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

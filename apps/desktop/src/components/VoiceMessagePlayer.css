@@ -47,3 +47,20 @@
   min-width: 28px;
   text-align: right;
 }
+
+@media (max-width: 767px) {
+  .voice-player {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .voice-player__btn {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+  }
+
+  .voice-player__waveform {
+    height: 40px;
+  }
+}

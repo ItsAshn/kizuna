@@ -61,4 +61,51 @@
     user-select: none;
     -webkit-user-select: none;
   }
+
+  /* ── Native-app feel ───────────────────────────────────────────────
+     Keep the app from reading like a scaled-down website: suppress the
+     long-press callout menu, image drag-ghosts, the whole-document
+     rubber-band bounce, and ambient text selection on UI chrome. Text
+     stays selectable only where users actually copy it (messages,
+     inputs, monospace/token displays). */
+
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  body {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  img,
+  svg,
+  video {
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+
+  /* Opt back in to selection where copying is expected. */
+  input,
+  textarea,
+  [contenteditable='true'],
+  code,
+  pre,
+  .msg-bubble__content,
+  .msg-bubble__text,
+  .selectable {
+    -webkit-touch-callout: default;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Immediate press feedback — touch has no hover state to lean on. */
+  button:active,
+  a:active,
+  [role='button']:active {
+    opacity: 0.6;
+    transition: opacity 0.04s ease-out;
+  }
 }

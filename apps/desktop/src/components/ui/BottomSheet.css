@@ -1,0 +1,95 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Reusable mobile bottom sheet (pickers, action menus)
+   Shares the sheet motion language with ui/Modal's mobile sheet.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes bottomSheetOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bottomSheetOverlayOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes bottomSheetIn {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes bottomSheetOut {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
+.bottom-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: var(--modal-backdrop);
+  backdrop-filter: blur(4px);
+  animation: bottomSheetOverlayIn 0.2s ease-out;
+}
+
+.bottom-sheet-overlay--closing {
+  animation: bottomSheetOverlayOut 0.2s ease-in forwards;
+  pointer-events: none;
+}
+
+.bottom-sheet {
+  width: 100%;
+  max-width: 100%;
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--modal-bg);
+  border-top: 1px solid var(--border-color);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+  animation: bottomSheetIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+.bottom-sheet--closing {
+  animation: bottomSheetOut 0.2s ease-in forwards;
+  pointer-events: none;
+}
+
+.bottom-sheet__handle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0 6px;
+  touch-action: none;
+  cursor: grab;
+  flex-shrink: 0;
+}
+
+.bottom-sheet__grip {
+  width: 36px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--text-muted);
+  opacity: 0.5;
+}
+
+.bottom-sheet__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.bottom-sheet__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

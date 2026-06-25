@@ -189,19 +189,7 @@
 
 
 @media (max-width: 767px) {
-  .channel-settings {
-    width: calc(100vw - 16px);
-    max-width: 520px;
-    max-height: calc(
-      100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
-    );
-    align-self: center;
-    margin: auto;
-  }
-
-  .channel-settings__header {
-    padding-top: calc(16px + env(safe-area-inset-top, 0px));
-  }
+  /* Width/position handled by ui/Modal's mobile bottom sheet. */
 
   /* The permission matrix is wide — let it scroll instead of overflowing. */
   .channel-settings__perm-matrix {
@@ -209,8 +197,18 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  /* Larger, easier-to-hit permission toggles on touch. */
+  .channel-settings__perm-cell {
+    min-width: 44px;
+  }
+
+  .channel-settings__perm-btn {
+    width: 36px;
+    height: 36px;
+  }
+
   .channel-settings__tab {
-    min-height: 40px;
+    min-height: 44px;
     font-size: 14px;
   }
 

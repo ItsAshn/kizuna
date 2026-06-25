@@ -5,9 +5,22 @@ export function useKeyboard() {
     const vv = window.visualViewport
     if (!vv) return
 
+    let prevHeight = 0
+
     function update() {
       const keyboardHeight = Math.max(0, window.innerHeight - vv!.height)
       document.documentElement.style.setProperty('--keyboard-height', `${keyboardHeight}px`)
+
+      // When the keyboard opens, keep the focused field visible above it.
+      // Fixed-position composers stay put on their own; this mainly rescues
+      // inputs inside scrollable sheets/forms that the keyboard would cover.
+      if (keyboardHeight > 100 && keyboardHeight > prevHeight + 20) {
+        const el = document.activeElement as HTMLElement | null
+        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
+          requestAnimationFrame(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }))
+        }
+      }
+      prevHeight = keyboardHeight
     }
 
     update()

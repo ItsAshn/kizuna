@@ -170,3 +170,23 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+@media (max-width: 767px) {
+  .search-bar__input {
+    font-size: 16px; /* prevent iOS zoom-on-focus */
+  }
+
+  .search-bar__close,
+  .search-bar__scope-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .search-bar__result {
+    min-height: 44px;
+  }
+
+  .search-bar__results {
+    max-height: 45vh;
+  }
+}

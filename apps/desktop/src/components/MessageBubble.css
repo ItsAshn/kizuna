@@ -1363,6 +1363,8 @@
     max-height: 50vh;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     transform: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    overscroll-behavior: contain;
   }
 
   .reaction-picker__emoji-grid {

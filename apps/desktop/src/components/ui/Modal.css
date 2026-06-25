@@ -113,24 +113,66 @@
 
 /* ── Mobile ────────────────────────────────────────────────── */
 
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes sheetSlideDown {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
 @media (max-width: 767px) {
+  /* Anchor sheets to the bottom of the screen. */
   .modal-overlay {
-    align-items: stretch;
+    align-items: flex-end;
+    justify-content: center;
   }
 
-  .modal {
-    width: calc(100vw - 16px);
-    max-width: 480px;
-    height: auto;
-    max-height: calc(100vh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    margin: auto;
-    border-radius: var(--radius-lg);
+  /* `.modal.modal--sheet` (specificity 0,2,0) intentionally overrides any
+     per-modal mobile width/position rules (e.g. `.user-settings`) so every
+     modal presents as a consistent bottom sheet. */
+  .modal.modal--sheet {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px));
+    align-self: flex-end;
+    margin: 0;
+    border: none;
+    border-top: 1px solid var(--border-color);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    animation: sheetSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+    will-change: transform;
   }
 
-  .modal__header {
-    padding: 14px 16px;
-    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  .modal.modal--sheet.modal--closing {
+    animation: sheetSlideDown 0.2s ease-in forwards;
+  }
+
+  /* Grab handle at the top of the sheet. */
+  .modal__drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 0 4px;
+    touch-action: none;
+    cursor: grab;
+    flex-shrink: 0;
+  }
+
+  .modal__drag-grip {
+    width: 36px;
+    height: 4px;
+    border-radius: var(--radius-full);
+    background: var(--text-muted);
+    opacity: 0.5;
+  }
+
+  .modal--sheet .modal__header {
+    padding: 6px 16px 12px;
+    touch-action: none;
   }
 
   .modal__close-btn {
@@ -142,11 +184,13 @@
     border-radius: var(--radius-sm);
   }
 
-  .modal__body {
+  .modal--sheet .modal__body {
     padding: 16px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
-  .modal__footer {
+  .modal--sheet .modal__footer {
     padding: 12px 16px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   }

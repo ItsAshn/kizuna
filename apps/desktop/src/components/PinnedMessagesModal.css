@@ -210,3 +210,28 @@
 .pins-modal__item-unpin:hover {
   color: #ef4444;
 }
+
+@media (max-width: 767px) {
+  /* Present pinned messages as a bottom sheet on mobile. */
+  .pins-modal__overlay {
+    align-items: flex-end;
+  }
+
+  .pins-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 85dvh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .pins-modal__close,
+  .pins-modal__item-unpin {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .pins-modal__item {
+    padding: 12px;
+  }
+}

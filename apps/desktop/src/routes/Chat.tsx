@@ -138,23 +138,53 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   }
 
   function switchTab(tab: number) {
-    setActiveTab(tab)
-    setNavStack([])
+    // Tapping the already-active tab pops its drill-down back to the tab root.
+    if (tab === activeTab && navStack.length > 0) {
+      setNavStack([])
+    } else {
+      setActiveTab(tab)
+      setNavStack([])
+    }
+    useChatStore.getState().setThreadPanelVisible(false)
+    setShowMembers(false)
     setActiveChannel(null)
     setActiveDMChannel(null)
     setActiveGroupDMChannel(null)
   }
 
+  // Unified back action: peel off transient overlays (thread, member list)
+  // before popping the navigation stack, so the hardware/gesture back button
+  // behaves consistently across every surface.
+  function goBack() {
+    if (useChatStore.getState().threadPanelVisible) {
+      useChatStore.getState().setThreadPanelVisible(false)
+      return
+    }
+    if (showMembers) {
+      setShowMembers(false)
+      return
+    }
+    popView()
+  }
+
   const navStackRef = useRef(navStack)
   navStackRef.current = navStack
+  const showMembersRef = useRef(showMembers)
+  showMembersRef.current = showMembers
+  const goBackRef = useRef(goBack)
+  goBackRef.current = goBack
 
   useEffect(() => {
     if (!isMobile) return
 
     function handleBack(e: PopStateEvent) {
       e.preventDefault()
-      if (navStackRef.current.length > 0) {
-        popView()
+      const canGoBack =
+        showMembersRef.current ||
+        useChatStore.getState().threadPanelVisible ||
+        navStackRef.current.length > 0
+      if (canGoBack) {
+        goBackRef.current()
         window.history.pushState(null, '', window.location.href)
       }
     }
@@ -577,7 +607,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           socketRef={socketRef}
           onStartDMCall={startDMCall}
           onEndDMCall={endDMCall}
-          onBackToSidebar={popView}
+          onBackToSidebar={goBack}
           onToggleMembers={() => setShowMembers((v) => !v)}
           membersOpen={showMembers}
           onOpenEnvWizard={() => setShowEnvWizard(true)}
@@ -647,13 +677,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         toggleCamera={toggleCamera}
         channelId={activeVoiceChannelId}
       />
-          <CameraPreviewOverlay
-            cameraStreamRef={cameraStreamRef}
-            isCameraOn={isCameraOn}
-            toggleCamera={toggleCamera}
-            channelId={activeVoiceChannelId}
-          />
-          <ThreadPanel channelId={activeChannelId!} />
+          {activeChannelId && <ThreadPanel channelId={activeChannelId} />}
           <NotificationContainer />
         </div>
         <UpdateBanner />

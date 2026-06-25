@@ -87,6 +87,7 @@
     top: auto;
     width: 100vw;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     resize: none;
   }
 
