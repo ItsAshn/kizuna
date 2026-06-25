@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { X, Pin, Trash2 } from 'lucide-react'
 import type { PinnedMessage } from '@kizuna/shared'
+import IconButton from './ui/IconButton'
 import './PinnedMessagesModal.css'
 
 interface Props {
@@ -39,9 +40,7 @@ export default function PinnedMessagesModal({ pins, open, onClose, onJump, onUnp
             <h3 className="pins-modal__title">Pinned Messages</h3>
             <span className="pins-modal__count">{pins.length}</span>
           </div>
-          <button className="pins-modal__close" onClick={onClose} aria-label="Close">
-            <X className="icon-sm" />
-          </button>
+          <IconButton size="sm" icon={<X className="icon-sm" />} label="Close" onClick={onClose} />
         </div>
         <div className="pins-modal__list">
           {pins.length === 0 && (

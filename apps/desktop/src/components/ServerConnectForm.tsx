@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { fetchServerInfo, resolveInviteCode } from '@kizuna/shared'
 import type { ServerInfo } from '@kizuna/shared'
+import Button from './ui/Button'
 
 interface ResolvedInviteInfo {
   serverUrl: string
@@ -69,14 +70,13 @@ export default function ServerConnectForm({ onConnect, savedServers = [], onBack
         onKeyDown={(e) => e.key === 'Enter' && handleConnect(url)}
         autoFocus
       />
-      <button
-        className="btn-primary"
-        style={{ width: '100%' }}
+      <Button
+        fullWidth
         onClick={() => handleConnect(url)}
         disabled={connecting || !url.trim()}
       >
         {connecting ? 'Connecting...' : 'Connect'}
-      </button>
+      </Button>
 
       {savedServers.length > 0 && (
         <div>
@@ -97,13 +97,13 @@ export default function ServerConnectForm({ onConnect, savedServers = [], onBack
       )}
 
       {onBack && (
-        <button
-          className="btn-secondary"
-          style={{ width: '100%' }}
+        <Button
+          variant="secondary"
+          fullWidth
           onClick={onBack}
         >
           {backLabel}
-        </button>
+        </Button>
       )}
 
       {error && <p className="server-connect__error">{error}</p>}

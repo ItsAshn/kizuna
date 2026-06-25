@@ -1,0 +1,78 @@
+/* Canonical icon-only button. Styling mirrors the original
+   .chat-area__header-search-btn: a transparent square that lifts (scale)
+   and gains a hover surface, brightening from secondary to primary text. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  background: none;
+  color: var(--text-secondary);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  transform: scale(1.1);
+}
+
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.icon-btn--sm {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+}
+
+.icon-btn--lg {
+  width: 44px;
+  height: 44px;
+}
+
+.icon-btn--solid {
+  background: var(--bg-tertiary);
+}
+
+/* Close/destructive: neutral until hovered, then red — the prevailing
+   affordance for close/unpin/remove controls. */
+.icon-btn--danger:hover:not(:disabled) {
+  color: var(--red);
+  background: var(--red-dim);
+}
+
+/* Controls sitting over media (lightbox, screen-share preview): a translucent
+   surface on a dark backdrop. No scale-lift — matches the original overlays. */
+.icon-btn--floating {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.icon-btn--floating:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+  transform: none;
+}
+
+/* Declared after :hover so an active button keeps the brand color while hovered. */
+.icon-btn--active {
+  color: var(--brand);
+  transform: scale(1.1);
+}
+
+@media (max-width: 767px) {
+  /* All icon buttons meet the 44px touch target on mobile. */
+  .icon-btn,
+  .icon-btn--sm {
+    width: 44px;
+    height: 44px;
+  }
+}

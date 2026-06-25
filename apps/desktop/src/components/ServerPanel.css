@@ -137,20 +137,26 @@
 
 /* ── Action buttons (+ / import / settings) ─────────────────── */
 
+/* Appearance matches the shared IconButton ghost (neutral hover + scale 1.1),
+   while keeping the rail's compact, responsive action size. */
 .server-panel__icon--action {
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-sm);
   border: none;
   background: none;
-  color: var(--text-muted);
+  border-radius: var(--radius-md);
   font-size: 18px;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .server-panel__icon--action:hover {
-  color: var(--green);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   background: var(--bg-hover);
-  transform: scale(1.06);
+  transform: scale(1.1);
 }
 
 .server-panel__icon--action:active {

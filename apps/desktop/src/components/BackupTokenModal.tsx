@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Check, Copy, CheckCheck } from 'lucide-react'
+import Button from './ui/Button'
 import './BackupTokenModal.css'
 
 interface Props {
@@ -58,9 +59,9 @@ export default function BackupTokenModal({ backuptoken, onComplete }: Props) {
               Store it in a password manager, write it down, or save it somewhere safe.
             </p>
 
-            <button className="btn-primary" style={{ width: '100%', marginTop: '12px' }} onClick={() => setStep('confirm')}>
+            <Button fullWidth style={{ marginTop: '12px' }} onClick={() => setStep('confirm')}>
               I Have Copied It
-            </button>
+            </Button>
           </>
         )}
 
@@ -79,18 +80,17 @@ export default function BackupTokenModal({ backuptoken, onComplete }: Props) {
             />
 
             <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <button className="btn-secondary" onClick={() => { setConfirmInput(''); setStep('display') }}>
+              <Button variant="secondary" onClick={() => { setConfirmInput(''); setStep('display') }}>
                 Back
-              </button>
-              <button
-                className="btn-primary"
+              </Button>
+              <Button
                 style={{ flex: 1 }}
                 disabled={!confirmed}
+                leadingIcon={confirmed ? <Check size={16} /> : undefined}
                 onClick={() => setStep('agree')}
               >
-                {confirmed ? <Check size={16} /> : null}
                 Confirm
-              </button>
+              </Button>
             </div>
           </>
         )}
@@ -115,17 +115,16 @@ export default function BackupTokenModal({ backuptoken, onComplete }: Props) {
             </label>
 
             <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <button className="btn-secondary" onClick={() => setStep('confirm')}>
+              <Button variant="secondary" onClick={() => setStep('confirm')}>
                 Back
-              </button>
-              <button
-                className="btn-primary"
+              </Button>
+              <Button
                 style={{ flex: 1 }}
                 disabled={!agreed}
                 onClick={onComplete}
               >
                 I Have Saved My Backup Token
-              </button>
+              </Button>
             </div>
           </>
         )}

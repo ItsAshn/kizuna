@@ -43,23 +43,6 @@
   gap: 8px;
 }
 
-.lightbox__btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 8px;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.lightbox__btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
 .lightbox__content {
   display: flex;
   align-items: center;
@@ -111,10 +94,6 @@
 @media (max-width: 767px) {
   .lightbox__header {
     padding-top: calc(12px + env(safe-area-inset-top, 0px));
-  }
-
-  .lightbox__btn {
-    padding: 12px;
   }
 
   /* Pull the nav arrows in and shrink so they don't sit under the image edges. */

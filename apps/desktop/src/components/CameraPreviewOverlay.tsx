@@ -1,5 +1,6 @@
 import { useRef, useCallback, useEffect, useState } from 'react'
 import { X, GripHorizontal } from 'lucide-react'
+import IconButton from './ui/IconButton'
 import './CameraPreviewOverlay.css'
 
 interface CameraPreviewOverlayProps {
@@ -128,13 +129,14 @@ export default function CameraPreviewOverlay({ cameraStreamRef, isCameraOn, togg
           <GripHorizontal className="camera-overlay__title-icon" />
           Your Camera
         </span>
-        <button
-          className="camera-overlay__btn camera-overlay__btn--close"
-          onClick={handleClose}
+        <IconButton
+          size="sm"
+          variant="danger"
+          icon={<X size={16} />}
+          label="Turn off camera"
           title="Turn off camera"
-        >
-          <X size={16} />
-        </button>
+          onClick={handleClose}
+        />
       </div>
       <div className="camera-overlay__body">
         <video

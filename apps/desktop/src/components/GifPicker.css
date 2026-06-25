@@ -54,23 +54,6 @@
   background: var(--bg-primary);
 }
 
-.gif-picker__close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: var(--radius-sm, 4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.gif-picker__close:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
 .gif-picker__search {
   display: flex;
   align-items: center;

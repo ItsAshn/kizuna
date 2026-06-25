@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useServerStore } from '../store/serverStore'
 import Modal from './ui/Modal'
+import Button from './ui/Button'
 import './ExportModal.css'
 
 interface Props {
@@ -49,7 +50,7 @@ export default function ExportModal({ onClose }: Props) {
       onClose={onClose}
       title="// data"
       className="export-modal"
-      footer={(handleClose) => <button onClick={handleClose} className="btn-secondary export-modal__done-btn">close</button>}
+      footer={(handleClose) => <Button variant="secondary" onClick={handleClose} className="export-modal__done-btn">close</Button>}
     >
       <label className="export-modal__label">exported json</label>
       <pre className="export-modal__json">{jsonData}</pre>

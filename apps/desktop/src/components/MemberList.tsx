@@ -8,6 +8,7 @@ import { X } from 'lucide-react'
 import { Gamepad2, Headphones, Film, Monitor, Activity } from 'lucide-react'
 import UserProfileCard from './UserProfileCard'
 import Skeleton from './Skeleton'
+import IconButton from './ui/IconButton'
 import './MemberList.css'
 
 interface Props {
@@ -242,13 +243,12 @@ export default function MemberList({ visible, onClose }: Props) {
       <div className="member-list__header">
         <h3 className="member-list__title">Members — {onlineCount(members)}/{members.length}</h3>
         {isOverlay && onClose && (
-          <button
-            className="member-list__close-btn"
+          <IconButton
+            icon={<X size={20} />}
+            label="Close member list"
+            size="lg"
             onClick={onClose}
-            aria-label="Close member list"
-          >
-            <X size={20} />
-          </button>
+          />
         )}
         <input
           className="member-list__search"

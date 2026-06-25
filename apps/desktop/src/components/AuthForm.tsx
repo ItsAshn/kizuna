@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
+import Button from './ui/Button'
 import './AuthForm.css'
 
 interface AuthFormProps {
@@ -151,15 +152,14 @@ export default function AuthForm({
           </>
         )}
 
-        <button
+        <Button
           type="submit"
-          className="btn-primary"
-          style={{ width: '100%' }}
-          disabled={loading || !username.trim() || !password.trim()}
+          fullWidth
+          loading={loading}
+          disabled={!username.trim() || !password.trim()}
         >
-          {loading && <Loader2 size={16} className="spinner-icon" />}
           {loading ? 'Please wait...' : isRegister ? 'Create Account' : 'Sign In'}
-        </button>
+        </Button>
 
         {!isRegister && onForgotPassword && (
           <button type="button" className="auth-form__forgot-btn" onClick={onForgotPassword}>

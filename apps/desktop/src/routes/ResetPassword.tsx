@@ -4,6 +4,7 @@ import { useServerStore } from '../store/serverStore'
 import { requestPasswordReset, validateResetToken, resetPassword, resetWithBackupToken, getAdminList, fetchServerInfo } from '@kizuna/shared'
 import type { AdminInfo } from '@kizuna/shared'
 import BackupTokenModal from '../components/BackupTokenModal'
+import Button from '../components/ui/Button'
 import './Login.css'
 
 type Phase = 'username' | 'choice' | 'adminToken' | 'newPassword' | 'done'
@@ -76,7 +77,7 @@ export default function ResetPassword() {
       <div className="login">
         <div className="login__card">
           <p style={{ color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '12px' }}>Server not found</p>
-          <button className="btn-primary" style={{ width: '100%' }} onClick={() => navigate('/')}>Go back</button>
+          <Button fullWidth onClick={() => navigate('/')}>Go back</Button>
         </div>
       </div>
     )
@@ -202,14 +203,13 @@ export default function ResetPassword() {
               </div>
             )}
 
-            <button
+            <Button
               type="submit"
-              className="btn-primary"
-              style={{ width: '100%' }}
+              fullWidth
               disabled={loading || !username.trim()}
             >
               {loading ? 'Checking...' : 'Continue'}
-            </button>
+            </Button>
 
             <button type="button" className="auth-form__back-btn" onClick={() => navigate('/')}>
               Back to servers
@@ -227,25 +227,26 @@ export default function ResetPassword() {
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <button
-                className="btn-primary"
+              <Button
+                fullWidth
                 onClick={() => {
                   setResetMethod('backuptoken')
                   setPhase('newPassword')
                 }}
               >
                 I have my backup token
-              </button>
+              </Button>
 
-              <button
-                className="btn-secondary"
+              <Button
+                variant="secondary"
+                fullWidth
                 onClick={() => {
                   setResetMethod('admin')
                   setPhase('adminToken')
                 }}
               >
                 I lost my backup token — I need an admin
-              </button>
+              </Button>
             </div>
 
             <button type="button" className="auth-form__back-btn" onClick={() => { setPhase('username'); setError('') }}>
@@ -279,14 +280,13 @@ export default function ResetPassword() {
               value={adminToken}
               onChange={(e) => setAdminToken(e.target.value)}
             />
-            <button
+            <Button
               type="submit"
-              className="btn-primary"
-              style={{ width: '100%' }}
+              fullWidth
               disabled={loading || !adminToken.trim()}
             >
               {loading ? 'Validating...' : 'Continue'}
-            </button>
+            </Button>
 
             <button type="button" className="auth-form__back-btn" onClick={() => { setPhase('choice'); setError('') }}>
               Back
@@ -336,14 +336,13 @@ export default function ResetPassword() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
-            <button
+            <Button
               type="submit"
-              className="btn-primary"
-              style={{ width: '100%' }}
+              fullWidth
               disabled={loading || (resetMethod === 'backuptoken' ? (!backuptoken.trim() || !newPassword || !confirmPassword) : (!newPassword || !confirmPassword))}
             >
               {loading ? 'Setting password...' : 'Set New Password'}
-            </button>
+            </Button>
 
             <button type="button" className="auth-form__back-btn" onClick={() => { setPhase(resetMethod === 'admin' ? 'adminToken' : 'choice'); setError('') }}>
               Back
@@ -358,13 +357,12 @@ export default function ResetPassword() {
             <p style={{ color: 'var(--green)', fontSize: '14px', marginBottom: '16px' }}>
               Password reset successfully.
             </p>
-            <button
-              className="btn-primary"
-              style={{ width: '100%' }}
+            <Button
+              fullWidth
               onClick={() => navigate(`/login/${encodeURIComponent(resolvedServer.url)}`)}
             >
               Go to Login
-            </button>
+            </Button>
           </div>
         )}
       </div>

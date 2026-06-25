@@ -6,6 +6,7 @@ import type { ServerInfo } from '@kizuna/shared'
 import { useAuth } from '../hooks/useAuth'
 import AuthForm from '../components/AuthForm'
 import BackupTokenModal from '../components/BackupTokenModal'
+import Button from '../components/ui/Button'
 import './Login.css'
 
 export default function Login() {
@@ -37,7 +38,7 @@ export default function Login() {
       <div className="login__not-found">
         <div>
           <p className="login__not-found-text">Server not found</p>
-          <button className="btn-primary" onClick={() => navigate('/')}>Go back</button>
+          <Button onClick={() => navigate('/')}>Go back</Button>
         </div>
       </div>
     )

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight, Download } from 'lucide-react'
+import IconButton from './ui/IconButton'
 import './Lightbox.css'
 
 interface LightboxImage {
@@ -124,12 +125,8 @@ export default function Lightbox({ images, initialIndex, onClose }: LightboxProp
       <div className="lightbox__header">
         <span className="lightbox__counter">{index + 1} / {images.length}</span>
         <div className="lightbox__header-actions">
-          <button className="lightbox__btn" onClick={handleDownload} title="Download" aria-label="Download">
-            <Download size={18} />
-          </button>
-          <button className="lightbox__btn" onClick={onClose} title="Close" aria-label="Close">
-            <X size={20} />
-          </button>
+          <IconButton variant="floating" icon={<Download size={18} />} label="Download" title="Download" onClick={handleDownload} />
+          <IconButton variant="floating" icon={<X size={20} />} label="Close" title="Close" onClick={onClose} />
         </div>
       </div>
 

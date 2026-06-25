@@ -6,6 +6,7 @@ import { useCallStore } from '../store/callStore'
 import type { ConnectionQuality } from '@kizuna/shared'
 import { Volume2, Mic, MicOff, PhoneOff, Monitor, MonitorOff, Video, VideoOff } from 'lucide-react'
 import MonitorPicker from './MonitorPicker'
+import Slider from './ui/Slider'
 import { getVoiceLogLines } from '../hooks/useVoice'
 import './VoiceOverlay.css'
 
@@ -285,13 +286,13 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
               </span>
               <ConnectionQualityBars quality={peer.connectionQuality} />
               <div className="voice-peer__volume">
-                <input
-                  type="range"
+                <Slider
+                  size="sm"
                   min={0}
                   max={200}
                   value={peerVolumes[peer.id] ?? 100}
-                  onChange={(e) => setPeerVolume(peer.id, Number(e.target.value))}
-                  aria-label={`Volume for ${peer.username}`}
+                  onChange={(value) => setPeerVolume(peer.id, value)}
+                  ariaLabel={`Volume for ${peer.username}`}
                 />
               </div>
               {peer.muted && (

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Search, X } from 'lucide-react'
 import { fetchGifs, fetchGifCategories, fetchStickerPacks } from '@kizuna/shared'
 import type { GifInfo, GifType } from '@kizuna/shared'
+import IconButton from './ui/IconButton'
 import './GifPicker.css'
 
 interface GifPickerProps {
@@ -110,7 +111,7 @@ export default function GifPicker({ serverUrl, onSelect, onClose }: GifPickerPro
               Stickers
             </button>
           </div>
-          <button className="gif-picker__close" onClick={onClose}><X size={18} /></button>
+          <IconButton size="sm" icon={<X size={18} />} label="Close" onClick={onClose} />
         </div>
 
         <div className="gif-picker__search">

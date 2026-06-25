@@ -22,6 +22,7 @@ import SearchBar from './SearchBar'
 import PinnedMessagesModal from './PinnedMessagesModal'
 import EnvStatus from './EnvStatus'
 import GroupDMSettingsModal from './GroupDMSettingsModal'
+import IconButton from './ui/IconButton'
 import './ChatArea.css'
 
 interface ChatAreaProps {
@@ -1181,44 +1182,40 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             </button>
           )}
           {(activeChannelId || activeDMChannelId || activeGroupDMChannelId) && (
-            <button
-              className={`chat-area__header-search-btn${showSearch ? ' chat-area__header-search-btn--active' : ''}`}
-              onClick={() => setShowSearch(v => !v)}
-              aria-label="Search messages"
+            <IconButton
+              icon={<Search className="icon-sm" />}
+              label="Search messages"
               title="Search messages"
-            >
-              <Search className="icon-sm" />
-            </button>
+              active={showSearch}
+              onClick={() => setShowSearch(v => !v)}
+            />
           )}
           {activeGroupDMChannelId && activeGroupDM && activeGroupDM.owner_id === session?.user.id && (
-            <button
-              className={`chat-area__header-settings-btn${showGroupDMSettings ? ' chat-area__header-settings-btn--active' : ''}`}
-              onClick={() => setShowGroupDMSettings(v => !v)}
-              aria-label="Group settings"
+            <IconButton
+              icon={<Settings className="icon-sm" />}
+              label="Group settings"
               title="Group Settings"
-            >
-              <Settings className="icon-sm" />
-            </button>
+              active={showGroupDMSettings}
+              onClick={() => setShowGroupDMSettings(v => !v)}
+            />
           )}
           {activeChannelId && (
-            <button
-              className={`chat-area__header-pins-btn${pinsOpen ? ' chat-area__header-pins-btn--active' : ''}`}
-              onClick={() => setPinsOpen(true)}
-              aria-label="Pinned messages"
+            <IconButton
+              icon={<Pin className="icon-sm" />}
+              label="Pinned messages"
               title="Pinned Messages"
-            >
-              <Pin className="icon-sm" />
-            </button>
+              active={pinsOpen}
+              onClick={() => setPinsOpen(true)}
+            />
           )}
           {activeChannelId && (
-            <button
-              className={`chat-area__header-pins-btn${threadPanelVisible ? ' chat-area__header-pins-btn--active' : ''}`}
-              onClick={() => setThreadPanelVisible(!threadPanelVisible)}
-              aria-label="Toggle threads"
+            <IconButton
+              icon={<MessageSquare className="icon-sm" />}
+              label="Toggle threads"
               title="Threads"
-            >
-              <MessageSquare className="icon-sm" />
-            </button>
+              active={threadPanelVisible}
+              onClick={() => setThreadPanelVisible(!threadPanelVisible)}
+            />
           )}
         </div>
       </div>
@@ -1396,12 +1393,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             onChange={handleFileSelect}
             accept="image/*,video/*,audio/*,.pdf,.txt,.json"
           />
-          <button className="chat-area__attach-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Attach file" aria-label="Attach file">
-            <Paperclip size={16} />
-          </button>
-          <button className="chat-area__gif-btn" onClick={() => setGifPickerOpen(true)} title="GIFs & Stickers" aria-label="GIFs and stickers">
-            <Sticker size={16} />
-          </button>
+          <IconButton icon={<Paperclip size={16} />} label="Attach file" title="Attach file" onClick={() => fileInputRef.current?.click()} disabled={uploading} />
+          <IconButton icon={<Sticker size={16} />} label="GIFs and stickers" title="GIFs & Stickers" onClick={() => setGifPickerOpen(true)} />
           {activeDMChannelId && (
             <>
               <button

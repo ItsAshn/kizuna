@@ -413,25 +413,6 @@
     order: 3;
   }
 
-  .member-list__close-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    flex-shrink: 0;
-  }
-
-  .member-list__close-btn:active {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
   .member-list__group-header {
     padding: 8px 14px 4px;
   }

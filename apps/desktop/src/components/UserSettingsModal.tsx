@@ -8,6 +8,7 @@ import { clearCryptoState } from '../store/keyStore'
 import Modal from './ui/Modal'
 import ToggleSwitch from './ui/ToggleSwitch'
 import Tabs from './ui/Tabs'
+import Slider from './ui/Slider'
 import './UserSettingsModal.css'
 
 interface AudioDataPayload {
@@ -113,20 +114,19 @@ function SettingsSlider({
   disabled?: boolean
   hint?: string
 }) {
-  const pct = ((value - min) / (max - min)) * 100
   return (
     <div className="settings-slider-control">
       <div className="settings-slider-row">
         <span className="settings-slider-label">{label}</span>
-        <input
-          type="range"
+        <Slider
           min={min}
           max={max}
           value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="settings-slider"
-          style={{ '--slider-pct': `${pct}%` } as React.CSSProperties}
+          onChange={onChange}
+          fillFromStart
+          style={{ flex: 1 }}
           disabled={disabled}
+          ariaLabel={label}
         />
         <span className="settings-slider-value">{value}%</span>
       </div>

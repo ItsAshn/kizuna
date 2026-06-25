@@ -3,6 +3,7 @@ import { X, Megaphone, AtSign, MessageCircle, Phone } from 'lucide-react'
 import { useNotificationStore } from '../store/notificationStore'
 import { useChatStore } from '../store/chatStore'
 import type { NotificationItem } from '../store/notificationStore'
+import IconButton from './ui/IconButton'
 
 const typeIcons = {
   announce: Megaphone,
@@ -42,12 +43,12 @@ export default function NotificationToast({ notification }: Props) {
         <div className="notification-toast__title">{notification.title}</div>
         <div className="notification-toast__text">{notification.body}</div>
       </div>
-      <button
-        className="notification-toast__close"
+      <IconButton
+        size="sm"
+        icon={<X size={12} />}
+        label="Dismiss notification"
         onClick={(e) => { e.stopPropagation(); dismissNotification(notification.id) }}
-      >
-        <X size={12} />
-      </button>
+      />
     </>
   )
 

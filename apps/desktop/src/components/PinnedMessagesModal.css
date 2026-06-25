@@ -49,20 +49,6 @@
   padding: 1px 6px;
 }
 
-.pins-modal__close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: var(--space-1);
-  border-radius: var(--radius-sm);
-}
-
-.pins-modal__close:hover {
-  color: var(--text-primary);
-  background: var(--bg-tertiary);
-}
-
 .pins-modal__list {
   overflow-y: auto;
   padding: var(--space-2);
@@ -225,7 +211,6 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
-  .pins-modal__close,
   .pins-modal__item-unpin {
     min-width: 44px;
     min-height: 44px;

@@ -363,25 +363,6 @@
   align-items: center;
 }
 
-.voice-peer__volume input[type="range"] {
-  width: 100%;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: var(--border-color);
-  border-radius: 2px;
-  outline: none;
-}
-
-.voice-peer__volume input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 10px;
-  height: 10px;
-  border-radius: var(--radius-full);
-  background: var(--text-primary);
-  cursor: pointer;
-}
-
 /* ── Connection quality ─────────────────────────────────── */
 
 .voice-connection-bars {

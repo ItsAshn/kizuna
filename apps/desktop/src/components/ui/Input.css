@@ -1,0 +1,32 @@
+/* Wrapper around the global .input-field utility (see styles/global.css),
+   adding an optional label, error message, and error styling. Shared by
+   Input and Textarea. */
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.ui-field__label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.ui-field__error {
+  font-size: 0.75rem;
+  color: var(--error);
+}
+
+.ui-field--error .input-field,
+.ui-field--error .input-field:focus {
+  border-color: var(--error);
+}
+
+textarea.input-field {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+  line-height: 1.5;
+}

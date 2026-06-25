@@ -1104,21 +1104,6 @@
   background: var(--bg-primary);
 }
 
-.reaction-picker__close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 2px;
-  border-radius: 4px;
-  display: flex;
-}
-
-.reaction-picker__close:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
 .reaction-picker__emoji-grid {
   display: grid;
   grid-template-columns: repeat(8, 1fr);

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { fetchGifs, fetchStickerPacks } from '@kizuna/shared'
 import type { GifInfo } from '@kizuna/shared'
+import IconButton from './ui/IconButton'
 
 interface ReactionPickerProps {
   serverUrl: string
@@ -79,7 +80,7 @@ export default function ReactionPicker({ serverUrl, onSelect, onClose }: Reactio
               Stickers
             </button>
           </div>
-          <button className="reaction-picker__close" onClick={onClose}><X size={16} /></button>
+          <IconButton size="sm" icon={<X size={16} />} label="Close" onClick={onClose} />
         </div>
 
         {tab === 'emoji' && (

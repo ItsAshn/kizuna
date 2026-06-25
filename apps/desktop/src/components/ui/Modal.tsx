@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { X } from 'lucide-react'
+import IconButton from './IconButton'
 import { useMobile } from '../../hooks/useMobile'
 import { useDragToDismiss } from '../../hooks/useDragToDismiss'
 import './Modal.css'
@@ -124,9 +125,7 @@ export default function Modal({ open, onClose, title, children, footer, classNam
           onTouchEnd={isMobile ? dragHandlers.onTouchEnd : undefined}
         >
           <span className="modal__header-title" id={titleId}>{title}</span>
-          <button onClick={handleClose} className="modal__close-btn" aria-label="Close">
-            <X size={14} />
-          </button>
+          <IconButton onClick={handleClose} label="Close" size="sm" icon={<X size={14} />} />
         </div>
         <div className="modal__body">
           {children}

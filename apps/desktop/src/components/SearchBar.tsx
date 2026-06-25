@@ -3,6 +3,7 @@ import { searchMessages } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
 import { X, Search, Loader2, ChevronDown, Globe } from 'lucide-react'
 import type { Message } from '@kizuna/shared'
+import IconButton from './ui/IconButton'
 import './SearchBar.css'
 
 interface SearchBarProps {
@@ -103,18 +104,16 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
         />
         {loading && <Loader2 size={14} className="search-bar__spinner" />}
         {channelId && (
-          <button
-            className={`search-bar__scope-btn${serverwide ? ' search-bar__scope-btn--active' : ''}`}
-            onClick={() => setServerwide(v => !v)}
+          <IconButton
+            size="sm"
+            icon={<Globe size={14} />}
+            label="Toggle serverwide search"
             title={serverwide ? 'Searching all channels' : 'Search this channel only'}
-            aria-label="Toggle serverwide search"
-          >
-            <Globe size={14} />
-          </button>
+            active={serverwide}
+            onClick={() => setServerwide(v => !v)}
+          />
         )}
-        <button className="search-bar__close" onClick={onClose} aria-label="Close search">
-          <X size={14} />
-        </button>
+        <IconButton size="sm" icon={<X size={14} />} label="Close search" onClick={onClose} />
       </div>
       {query.length >= 2 && results.length > 0 && (
         <div className="search-bar__results">

@@ -3,6 +3,7 @@ import { MoreHorizontal, Pencil, X } from 'lucide-react'
 import Modal from './ui/Modal'
 import Tabs from './ui/Tabs'
 import ToggleSwitch from './ui/ToggleSwitch'
+import Slider from './ui/Slider'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
@@ -1212,7 +1213,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
                         <label className="server-menu__label">background blur</label>
                         <span className="server-menu__value-chip">{bgBlur}px</span>
                       </div>
-                      <input type="range" min="0" max="20" value={bgBlur} onChange={(e) => setBgBlur(Number(e.target.value))} className="server-menu__range" />
+                      <Slider min={0} max={20} value={bgBlur} onChange={setBgBlur} ariaLabel="Background blur" />
                     </div>
                   </div>
 

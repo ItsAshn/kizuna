@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from 'react'
 import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
 import { Monitor, X, GripHorizontal } from 'lucide-react'
+import IconButton from './ui/IconButton'
 import './ScreenShareOverlay.css'
 
 interface ScreenShareOverlayProps {
@@ -128,24 +129,26 @@ export default function ScreenShareOverlay({ videoElRef, stopScreenshare }: Scre
         </span>
         <div className="screenshare-overlay__actions">
           {isScreenSharing && (
-            <button
-              className="screenshare-overlay__btn screenshare-overlay__btn--close"
-              onClick={stopScreenshare}
+            <IconButton
+              size="sm"
+              variant="danger"
+              icon={<X size={16} />}
+              label="Stop sharing"
               title="Stop sharing"
-            >
-              <X size={16} />
-            </button>
+              onClick={stopScreenshare}
+            />
           )}
           {!isScreenSharing && (
-            <button
-              className="screenshare-overlay__btn screenshare-overlay__btn--close"
+            <IconButton
+              size="sm"
+              variant="danger"
+              icon={<X size={16} />}
+              label="Close"
+              title="Close"
               onClick={() => {
                 useCallStore.getState().clearScreenSharePeer()
               }}
-              title="Close"
-            >
-              <X size={16} />
-            </button>
+            />
           )}
         </div>
       </div>

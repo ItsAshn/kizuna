@@ -40,26 +40,6 @@
   color: var(--brand);
 }
 
-.camera-overlay__btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-}
-
-.camera-overlay__btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.camera-overlay__btn--close:hover {
-  color: var(--red);
-}
-
 .camera-overlay__body {
   position: relative;
   background: #000;
@@ -94,11 +74,5 @@
   .camera-overlay__header {
     padding: 10px 14px;
     cursor: default;
-  }
-
-  .camera-overlay__btn {
-    padding: 8px;
-    min-width: 44px;
-    min-height: 44px;
   }
 }
