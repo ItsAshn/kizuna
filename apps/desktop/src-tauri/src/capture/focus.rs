@@ -622,15 +622,19 @@ fn wlrctl_active_window() -> Option<WindowInfo> {
             let title = line
                 .split("title: ")
                 .nth(1)
-                .and_then(|s| s.split_whitespace().next())
-                .map(|s| s.trim_matches('"').to_string())
+                .and_then(|s| {
+                    let quoted = s.split('"').nth(1)?;
+                    Some(quoted.to_string())
+                })
                 .unwrap_or_default();
 
             let app_id = line
                 .split("app_id: ")
                 .nth(1)
-                .and_then(|s| s.split_whitespace().next())
-                .map(|s| s.trim_matches('"').to_string())
+                .and_then(|s| {
+                    let quoted = s.split('"').nth(1)?;
+                    Some(quoted.to_string())
+                })
                 .unwrap_or_default();
 
             if !title.is_empty() {
