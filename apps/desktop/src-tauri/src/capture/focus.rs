@@ -128,7 +128,8 @@ fn windows_active_window() -> Option<WindowInfo> {
 fn list_windows_windows() -> Vec<WindowInfo> {
     use std::collections::HashSet;
     use std::sync::Mutex;
-    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowTextW, IsWindowVisible};
 
     static WINDOWS: Mutex<Vec<WindowInfo>> = Mutex::new(Vec::new());
