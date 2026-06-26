@@ -5,6 +5,11 @@ import type { VoicePeer, ConnectionQuality, UserStatus, UserActivity } from '@ki
 
 export type VoiceInputMode = 'voice-activity' | 'push-to-talk';
 
+// High-level audio-processing preset. 'off' = raw mic, 'standard' = RNNoise
+// noise suppression with a gentle leveler (recommended), 'custom' = the user
+// drives the individual gate/suppression/AGC toggles directly.
+export type VoiceProcessingMode = 'off' | 'standard' | 'custom';
+
 interface VoiceState {
   activeVoiceChannelId: string | null;
   voicePeers: VoicePeer[];
@@ -19,6 +24,7 @@ interface VoiceState {
   userActivities: Record<string, UserActivity>;
   voiceInputMode: VoiceInputMode;
   pushToTalkKey: string;
+  voiceProcessingMode: VoiceProcessingMode;
   noiseSuppression: boolean;
   autoGainControl: boolean;
   echoCancellation: boolean;
@@ -55,6 +61,7 @@ interface VoiceState {
   setRouterRtpCapabilities: (caps: RtpCapabilities) => void;
   setVoiceInputMode: (mode: VoiceInputMode) => void;
   setPushToTalkKey: (key: string) => void;
+  setVoiceProcessingMode: (mode: VoiceProcessingMode) => void;
   setNoiseSuppression: (enabled: boolean) => void;
   setAutoGainControl: (enabled: boolean) => void;
   setEchoCancellation: (enabled: boolean) => void;
@@ -82,6 +89,7 @@ export const useVoiceStore = create<VoiceState>()(
       userActivities: {},
       voiceInputMode: 'voice-activity',
       pushToTalkKey: 'AltLeft',
+      voiceProcessingMode: 'standard',
       noiseSuppression: true,
       autoGainControl: true,
       echoCancellation: false,
@@ -152,6 +160,29 @@ export const useVoiceStore = create<VoiceState>()(
       setRouterRtpCapabilities: (routerRtpCapabilities) => set({ routerRtpCapabilities }),
       setVoiceInputMode: (voiceInputMode) => set({ voiceInputMode }),
       setPushToTalkKey: (pushToTalkKey) => set({ pushToTalkKey }),
+      setVoiceProcessingMode: (voiceProcessingMode) =>
+        set(() => {
+          // Selecting a preset applies its flag combination. 'custom' keeps
+          // whatever the user has toggled. echoCancellation is browser-only and
+          // left independent of the preset to avoid feedback surprises on web.
+          if (voiceProcessingMode === 'off') {
+            return {
+              voiceProcessingMode,
+              noiseSuppression: false,
+              noiseGateEnabled: false,
+              autoGainControl: false,
+            };
+          }
+          if (voiceProcessingMode === 'standard') {
+            return {
+              voiceProcessingMode,
+              noiseSuppression: true,
+              noiseGateEnabled: false,
+              autoGainControl: true,
+            };
+          }
+          return { voiceProcessingMode };
+        }),
       setNoiseSuppression: (noiseSuppression) => set({ noiseSuppression }),
       setAutoGainControl: (autoGainControl) => set({ autoGainControl }),
       setEchoCancellation: (echoCancellation) => set({ echoCancellation }),
@@ -170,6 +201,7 @@ export const useVoiceStore = create<VoiceState>()(
         serverVoiceBitrateKbps: state.serverVoiceBitrateKbps,
         voiceInputMode: state.voiceInputMode,
         pushToTalkKey: state.pushToTalkKey,
+        voiceProcessingMode: state.voiceProcessingMode,
         noiseSuppression: state.noiseSuppression,
         autoGainControl: state.autoGainControl,
         echoCancellation: state.echoCancellation,

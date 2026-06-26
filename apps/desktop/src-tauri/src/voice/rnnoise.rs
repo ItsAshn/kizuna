@@ -10,7 +10,6 @@ pub enum NoiseSuppressionMode {
 pub struct RnnoiseSuppressor {
     state: Box<DenoiseState<'static>>,
     enabled: bool,
-    strength: f32,
 }
 
 impl RnnoiseSuppressor {
@@ -18,16 +17,11 @@ impl RnnoiseSuppressor {
         Self {
             state: DenoiseState::new(),
             enabled: false,
-            strength: 1.0,
         }
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
-    }
-
-    pub fn set_strength(&mut self, strength: f32) {
-        self.strength = strength.clamp(0.0, 1.0);
     }
 
     pub fn reset(&mut self) {
@@ -37,6 +31,11 @@ impl RnnoiseSuppressor {
     /// Process a frame of samples (must be at 48kHz).
     /// RNNoise internally works on 480-sample (10ms) frames.
     /// This method processes each 480-sample chunk independently.
+    ///
+    /// The denoised output is written through at full strength. We deliberately
+    /// do NOT blend with the dry input: nnnoiseless's time-domain output lags its
+    /// input by ~10ms (one frame) because of overlap-add windowing, so a dry/wet
+    /// mix would comb-filter (flange) the voice — the artifact this used to cause.
     pub fn process_frame(&mut self, frame: &mut [f32]) {
         if !self.enabled || frame.is_empty() {
             return;
@@ -51,14 +50,8 @@ impl RnnoiseSuppressor {
             let mut output = [0.0f32; 480];
             self.state.process_frame(&mut output, &input);
 
-            if self.strength >= 0.999 {
-                for (c, &o) in chunk.iter_mut().zip(output.iter()) {
-                    *c = o / SCALE;
-                }
-            } else {
-                for (c, (&o, &s)) in chunk.iter_mut().zip(output.iter().zip(input.iter())) {
-                    *c = (o * self.strength + s * (1.0 - self.strength)) / SCALE;
-                }
+            for (c, &o) in chunk.iter_mut().zip(output.iter()) {
+                *c = o / SCALE;
             }
         }
     }

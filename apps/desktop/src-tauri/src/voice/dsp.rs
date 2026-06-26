@@ -574,8 +574,10 @@ impl AudioProcessor {
     }
 
     pub fn set_suppression_strength(&mut self, strength: f32) {
+        // Only the spectral (legacy) suppressor has a strength control. RNNoise
+        // runs at full strength — see RnnoiseSuppressor::process_frame for why a
+        // dry/wet blend is intentionally not applied there.
         self.spectral_gate.set_strength(strength);
-        self.rnnoise.set_strength(strength);
     }
 
     pub fn set_agc_enabled(&mut self, enabled: bool) {

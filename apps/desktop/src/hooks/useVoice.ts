@@ -736,13 +736,15 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
       // Step 8: start audio capture in Rust with DSP config
       const gateDb = -(noiseGateThreshold * 0.5) - 25 // 0..100 -> -25..-75 dB
-      const suppStrength = noiseSuppressionStrength / 100 // 0..100 -> 0.0..1.0
+      // RNNoise runs at full strength (a dry/wet blend would comb-filter the
+      // voice — see voice/rnnoise.rs). suppressionStrength only affects the
+      // legacy spectral suppressor, which the desktop path no longer selects.
       await invoke('voice_finish_join', {
         voiceBitrateKbps,
         gateEnabled: noiseGateEnabled,
         gateThresholdDb: gateDb,
         suppressionEnabled: noiseSuppression,
-        suppressionStrength: suppStrength,
+        suppressionStrength: 1.0,
         autoGainEnabled: autoGainControl,
         deviceName: audioInputDeviceId || null,
         outputDeviceId: audioOutputDeviceId || null,

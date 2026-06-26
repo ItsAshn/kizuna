@@ -190,12 +190,12 @@ export default function UserSettingsModal({ onClose }: Props) {
     audioOutputDeviceId, setAudioOutputDeviceId,
     voiceInputMode, setVoiceInputMode,
     pushToTalkKey, setPushToTalkKey,
+    voiceProcessingMode, setVoiceProcessingMode,
     noiseSuppression, setNoiseSuppression,
     autoGainControl, setAutoGainControl,
     echoCancellation, setEchoCancellation,
     noiseGateEnabled, setNoiseGateEnabled,
     noiseGateThreshold, setNoiseGateThreshold,
-    noiseSuppressionStrength, setNoiseSuppressionStrength,
     inputVolume, setInputVolume,
     outputVolume, setOutputVolume,
     liveAudioLevel, setLiveAudioLevel,
@@ -541,87 +541,118 @@ export default function UserSettingsModal({ onClose }: Props) {
           <div className="settings-card">
             <p className="settings-card-title">audio processing</p>
 
-            <div className="settings-processing-item">
-              <p className="settings-processing-item-title">noise gate</p>
-              <SettingsToggleRow
-                label="enable noise gate"
-                checked={noiseGateEnabled}
-                onChange={setNoiseGateEnabled}
-                ariaLabel="enable noise gate"
-              />
-              <div className="settings-mic-test">
+            <div
+              className="settings-mode-selector"
+              role="radiogroup"
+              aria-label="audio processing mode"
+            >
+              {([
+                { id: 'off', label: 'off', desc: 'raw mic — no processing' },
+                { id: 'standard', label: 'standard', desc: 'rnnoise suppression + auto leveler · recommended' },
+                { id: 'custom', label: 'custom', desc: 'tune each filter yourself' },
+              ] as const).map((m) => (
                 <button
-                  onClick={() => setMonitoring((m) => !m)}
-                  className="settings-btn"
+                  key={m.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={voiceProcessingMode === m.id}
+                  onClick={() => setVoiceProcessingMode(m.id)}
+                  className={`settings-mode-btn${voiceProcessingMode === m.id ? ' settings-mode-btn--active' : ''}`}
                 >
-                  {monitoring ? 'stop mic test' : 'test microphone'}
+                  <span className="settings-mode-btn-label">{m.label}</span>
+                  <span className="settings-mode-btn-desc">{m.desc}</span>
                 </button>
-                <div className="settings-meter-row">
-                  <div className="settings-meter-bar">
-                    <div
-                      className={`settings-meter-fill${meterLevel < noiseGateThreshold ? ' settings-meter-fill--low' : meterLevel < noiseGateThreshold * 1.5 ? ' settings-meter-fill--mid' : ' settings-meter-fill--high'}`}
-                      style={{ width: `${meterLevel}%` }}
-                    />
+              ))}
+            </div>
+
+            <div className="settings-mic-test">
+              <button
+                onClick={() => setMonitoring((m) => !m)}
+                className="settings-btn"
+              >
+                {monitoring ? 'stop mic test' : 'test microphone'}
+              </button>
+              <div className="settings-meter-row">
+                <div className="settings-meter-bar">
+                  <div
+                    className={`settings-meter-fill${meterLevel < 25 ? ' settings-meter-fill--low' : meterLevel < 55 ? ' settings-meter-fill--mid' : ' settings-meter-fill--high'}`}
+                    style={{ width: `${meterLevel}%` }}
+                  />
+                  {voiceProcessingMode === 'custom' && noiseGateEnabled && (
                     <div
                       className="settings-meter-threshold"
                       style={{ left: `${noiseGateThreshold}%` }}
                     />
-                  </div>
-                  <div className="settings-meter-hint">
-                    green bar = your current audio level — set the threshold above your background noise
-                  </div>
+                  )}
+                </div>
+                <div className="settings-meter-hint">
+                  green bar = your current mic level
                 </div>
               </div>
-              <SettingsSlider
-                label="threshold"
-                min={0}
-                max={100}
-                value={noiseGateThreshold}
-                onChange={setNoiseGateThreshold}
-                disabled={!noiseGateEnabled}
-              />
             </div>
 
-            <div className="settings-processing-item">
-              <p className="settings-processing-item-title">noise suppression</p>
-              <SettingsToggleRow
-                label="enable suppression"
-                checked={noiseSuppression}
-                onChange={setNoiseSuppression}
-                ariaLabel="enable noise suppression"
-              />
-              <SettingsSlider
-                label="strength"
-                min={0}
-                max={100}
-                value={noiseSuppressionStrength}
-                onChange={setNoiseSuppressionStrength}
-                disabled={!noiseSuppression}
-                hint="higher = more aggressive noise reduction. reduces steady background noise like fans, hum"
-              />
-            </div>
+            {voiceProcessingMode === 'standard' && (
+              <p className="settings-hint">
+                rnnoise (ai) noise suppression removes steady background noise like fans and hum, with a gentle auto-leveler. pick custom to fine-tune the gate, suppression, and gain yourself.
+              </p>
+            )}
 
-            <div className="settings-processing-item">
-              <p className="settings-processing-item-title">auto gain control</p>
-              <SettingsToggleRow
-                label="enable auto gain"
-                checked={autoGainControl}
-                onChange={setAutoGainControl}
-                ariaLabel="enable auto gain control"
-                hint="automatically normalizes your microphone volume to a consistent level"
-              />
-            </div>
+            {voiceProcessingMode === 'custom' && (
+              <>
+                <div className="settings-processing-item">
+                  <p className="settings-processing-item-title">noise suppression</p>
+                  <SettingsToggleRow
+                    label="enable suppression (rnnoise)"
+                    checked={noiseSuppression}
+                    onChange={setNoiseSuppression}
+                    ariaLabel="enable noise suppression"
+                    hint="ai-based removal of steady background noise like fans and hum. runs at full strength"
+                  />
+                </div>
 
-            <div className="settings-processing-item">
-              <p className="settings-processing-item-title">echo cancellation</p>
-              <SettingsToggleRow
-                label="enable echo cancellation"
-                checked={echoCancellation}
-                onChange={setEchoCancellation}
-                ariaLabel="enable echo cancellation"
-                hint="removes echo when using speakers instead of headphones. leaving this off prevents other apps' audio from being paused when you join a voice channel"
-              />
-            </div>
+                <div className="settings-processing-item">
+                  <p className="settings-processing-item-title">noise gate</p>
+                  <SettingsToggleRow
+                    label="enable noise gate"
+                    checked={noiseGateEnabled}
+                    onChange={setNoiseGateEnabled}
+                    ariaLabel="enable noise gate"
+                    hint="silences the mic below a volume threshold. usually unnecessary when suppression is on"
+                  />
+                  <SettingsSlider
+                    label="threshold"
+                    min={0}
+                    max={100}
+                    value={noiseGateThreshold}
+                    onChange={setNoiseGateThreshold}
+                    disabled={!noiseGateEnabled}
+                    hint="set the marker above your background noise level"
+                  />
+                </div>
+
+                <div className="settings-processing-item">
+                  <p className="settings-processing-item-title">auto gain control</p>
+                  <SettingsToggleRow
+                    label="enable auto gain"
+                    checked={autoGainControl}
+                    onChange={setAutoGainControl}
+                    ariaLabel="enable auto gain control"
+                    hint="automatically normalizes your microphone volume to a consistent level"
+                  />
+                </div>
+
+                <div className="settings-processing-item">
+                  <p className="settings-processing-item-title">echo cancellation</p>
+                  <SettingsToggleRow
+                    label="enable echo cancellation"
+                    checked={echoCancellation}
+                    onChange={setEchoCancellation}
+                    ariaLabel="enable echo cancellation"
+                    hint="removes echo when using speakers instead of headphones. leaving this off prevents other apps' audio from being paused when you join a voice channel"
+                  />
+                </div>
+              </>
+            )}
 
             <p className="settings-hint settings-processing-note">
               applied on next voice channel join
