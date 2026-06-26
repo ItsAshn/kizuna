@@ -36,6 +36,8 @@ interface VoiceState {
   liveAudioLevel: number;
   voiceChannelUsers: Record<string, { userId: string; username: string }[]>;
   peerVolumes: Record<string, number>;
+  /** Live remote webcam streams, keyed by peerId. Presence implies that peer's camera is on. */
+  peerCameraStreams: Record<string, MediaStream>;
   routerRtpCapabilities: RtpCapabilities | null;
 
   setActiveVoiceChannel: (channelId: string | null) => void;
@@ -58,6 +60,9 @@ interface VoiceState {
   addVoiceChannelUser: (channelId: string, user: { userId: string; username: string }) => void;
   removeVoiceChannelUser: (channelId: string, userId: string) => void;
   setPeerVolume: (peerId: string, volume: number) => void;
+  setPeerCameraStream: (peerId: string, stream: MediaStream) => void;
+  removePeerCameraStream: (peerId: string) => void;
+  clearPeerCameraStreams: () => void;
   setRouterRtpCapabilities: (caps: RtpCapabilities) => void;
   setVoiceInputMode: (mode: VoiceInputMode) => void;
   setPushToTalkKey: (key: string) => void;
@@ -101,6 +106,7 @@ export const useVoiceStore = create<VoiceState>()(
       liveAudioLevel: 0,
       voiceChannelUsers: {},
       peerVolumes: {},
+      peerCameraStreams: {},
       routerRtpCapabilities: null,
 
       setActiveVoiceChannel: (activeVoiceChannelId) => set({ activeVoiceChannelId }),
@@ -157,6 +163,16 @@ export const useVoiceStore = create<VoiceState>()(
         }),
       setPeerVolume: (peerId, volume) =>
         set((s) => ({ peerVolumes: { ...s.peerVolumes, [peerId]: volume } })),
+      setPeerCameraStream: (peerId, stream) =>
+        set((s) => ({ peerCameraStreams: { ...s.peerCameraStreams, [peerId]: stream } })),
+      removePeerCameraStream: (peerId) =>
+        set((s) => {
+          if (!s.peerCameraStreams[peerId]) return s;
+          const next = { ...s.peerCameraStreams };
+          delete next[peerId];
+          return { peerCameraStreams: next };
+        }),
+      clearPeerCameraStreams: () => set({ peerCameraStreams: {} }),
       setRouterRtpCapabilities: (routerRtpCapabilities) => set({ routerRtpCapabilities }),
       setVoiceInputMode: (voiceInputMode) => set({ voiceInputMode }),
       setPushToTalkKey: (pushToTalkKey) => set({ pushToTalkKey }),

@@ -101,12 +101,13 @@ export function useCamera(
           }, cb)
         })
 
-        sendTransport.on('produce', ({ kind, rtpParameters }, cb) => {
+        sendTransport.on('produce', ({ kind, rtpParameters, appData }, cb) => {
           socket.emit('voice:produce', {
             channelId,
             transportId: sendTransport.id,
             kind,
             rtpParameters,
+            source: (appData as { source?: 'camera' | 'screen' })?.source,
           }, cb)
         })
 
@@ -163,6 +164,7 @@ export function useCamera(
           codecOptions: {
             videoGoogleStartBitrate: 300,
           },
+          appData: { source: 'camera' },
         })
 
         cameraProducerRef.current = producer
@@ -192,6 +194,7 @@ export function useCamera(
           codecOptions: {
             videoGoogleStartBitrate: 300,
           },
+          appData: { source: 'camera' },
         })
 
         cameraProducerRef.current = producer

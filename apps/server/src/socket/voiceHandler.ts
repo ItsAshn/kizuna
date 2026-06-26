@@ -80,7 +80,7 @@ function getScreenSharer(channelId: string): { peerId: string; userId: string; u
   for (const peer of peers.values()) {
     if (peer.channelId !== channelId) continue
     for (const [, producer] of peer.producers) {
-      if (producer.kind === 'video') {
+      if (producer.kind === 'video' && producer.appData?.source !== 'camera') {
         return { peerId: peer.socketId, userId: peer.userId, username: peer.username }
       }
     }
@@ -165,15 +165,20 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         ).run(vpId, groupChannelId, userId, Math.floor(Date.now() / 1000))
       }
 
-      const channelPeers: { id: string; userId: string; username: string; speaking: boolean; muted: boolean }[] = []
+      const channelPeers: { id: string; userId: string; username: string; speaking: boolean; muted: boolean; hasCamera: boolean }[] = []
       for (const p of getPeersInChannel(channelId)) {
         if (p.socketId !== socket.id && p.announced) {
+          let hasCamera = false
+          for (const [, producer] of p.producers) {
+            if (producer.kind === 'video' && producer.appData?.source === 'camera') { hasCamera = true; break }
+          }
           channelPeers.push({
             id: p.socketId,
             userId: p.userId,
             username: p.username,
             speaking: false,
             muted: false,
+            hasCamera,
           })
         }
       }
@@ -298,11 +303,12 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('voice:produce', async ({ channelId, transportId, kind, rtpParameters }: {
+  socket.on('voice:produce', async ({ channelId, transportId, kind, rtpParameters, source }: {
     channelId: string
     transportId: string
     kind: 'audio' | 'video'
     rtpParameters: mediasoupTypes.RtpParameters
+    source?: 'camera' | 'screen'
   }, callback?: Function) => {
     try {
       const peer = peers.get(socket.id)
@@ -313,7 +319,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         return
       }
 
-      const producer = await produceOnTransport(transport, { kind, rtpParameters })
+      const producer = await produceOnTransport(transport, { kind, rtpParameters, source })
       peer.producers.set(producer.id, producer)
       vlog('produce', `created | socketId=${socket.id} | user=${peer.username} | kind=${kind} | producerId=${producer.id} | announced=${peer.announced}`)
 
@@ -341,11 +347,12 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('voice:consume', async ({ channelId: _channelId, peerId, rtpCapabilities, kind }: {
+  socket.on('voice:consume', async ({ channelId: _channelId, peerId, rtpCapabilities, kind, source }: {
     channelId: string
     peerId: string
     rtpCapabilities: mediasoupTypes.RtpCapabilities
     kind?: 'audio' | 'video'
+    source?: 'camera' | 'screen'
   }, callback?: Function) => {
     try {
       const requestingPeer = peers.get(socket.id)
@@ -377,13 +384,14 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       const targetKind = kind || 'audio'
       let producerId = null
       for (const [id, producer] of targetPeer.producers) {
-        if (producer.kind === targetKind) {
-          producerId = id
-          break
-        }
+        if (producer.kind !== targetKind) continue
+        // For video, disambiguate camera vs screenshare by source when requested.
+        if (targetKind === 'video' && source && producer.appData?.source !== source) continue
+        producerId = id
+        break
       }
       if (!producerId) {
-        vlog('consume', `rejected: no ${targetKind} producer | peerId=${peerId}`)
+        vlog('consume', `rejected: no ${targetKind}${source ? `/${source}` : ''} producer | peerId=${peerId}`)
         if (typeof callback === 'function') callback({ error: `Target peer has no ${targetKind} producer` })
         return
       }
@@ -488,9 +496,9 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       if (typeof callback === 'function') callback({ error: 'Someone else is already sharing' })
       return
     }
-    let hasVideo = false
+    let hasVideo = false // a screen-source video producer must already exist
     for (const [, producer] of peer.producers) {
-      if (producer.kind === 'video') { hasVideo = true; break }
+      if (producer.kind === 'video' && producer.appData?.source !== 'camera') { hasVideo = true; break }
     }
     if (!hasVideo) {
       if (typeof callback === 'function') callback({ error: 'No video producer found' })

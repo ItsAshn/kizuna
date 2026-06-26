@@ -1,7 +1,11 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
-import { MoreHorizontal, Pencil, X } from 'lucide-react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import {
+  MoreHorizontal, Pencil, X,
+  User, Bell, SlidersHorizontal, Users, Link2, Shield, Code, Image as ImageIcon,
+} from 'lucide-react'
 import Modal from './ui/Modal'
 import Tabs from './ui/Tabs'
+import SettingsLayout, { type SettingsNavGroup } from './ui/SettingsLayout'
 import ToggleSwitch from './ui/ToggleSwitch'
 import Slider from './ui/Slider'
 import { useServerStore } from '../store/serverStore'
@@ -82,16 +86,26 @@ function fileToDataUrl(file: File, maxSize = 512): Promise<string> {
   })
 }
 
-type AdminTab = 'settings' | 'members' | 'invites' | 'roles' | 'css' | 'gifs'
+type Section =
+  | 'profile'
+  | 'notifications'
+  | 'overview'
+  | 'members'
+  | 'invites'
+  | 'roles'
+  | 'css'
+  | 'gifs'
 
-const ADMIN_TABS: { key: AdminTab; label: string }[] = [
-  { key: 'settings', label: 'settings' },
-  { key: 'members', label: 'members' },
-  { key: 'invites', label: 'invites' },
-  { key: 'roles', label: 'roles' },
-  { key: 'css', label: 'css' },
-  { key: 'gifs', label: 'gifs' },
-]
+const SECTION_LABELS: Record<Section, string> = {
+  profile: 'profile',
+  notifications: 'notifications',
+  overview: 'overview',
+  members: 'members',
+  invites: 'invites',
+  roles: 'roles',
+  css: 'custom css',
+  gifs: 'gifs & stickers',
+}
 
 const GIF_TABS: { key: 'gif' | 'sticker'; label: string }[] = [
   { key: 'gif', label: 'gif' },
@@ -190,8 +204,8 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
   const bannerFileRef = useRef<HTMLInputElement>(null)
   const pendingBannerFile = useRef<File | null>(null)
 
-  // ─── Admin tab ───────────────────────────────────────
-  const [adminTab, setAdminTab] = useState<AdminTab>('settings')
+  // ─── Active settings section (left-nav selection) ────
+  const [section, setSection] = useState<Section>('profile')
 
   // ─── Server settings ─────────────────────────────────
   const [serverName, setServerName] = useState(session ? servers.find(s => s.id === session.serverId)?.name ?? '' : '')
@@ -247,7 +261,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
 
   useEffect(() => {
     const previewEl = document.getElementById('kizuna-custom-css-preview') as HTMLStyleElement | null
-    if (adminTab === 'css' && customCss) {
+    if (section === 'css' && customCss) {
       if (previewEl) {
         previewEl.textContent = customCss
       } else {
@@ -263,7 +277,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
       const el = document.getElementById('kizuna-custom-css-preview')
       if (el) el.remove()
     }
-  }, [adminTab, customCss])
+  }, [section, customCss])
 
   // auto-save voice bitrate on change (ref-based so it survives modal close)
   const voiceBitrateSaveTimerRef = useRef<ReturnType<typeof setTimeout>>()
@@ -399,19 +413,19 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
 
   useEffect(() => {
     if (!isAdmin || !serverUrl) return
-    if (adminTab === 'members') {
+    if (section === 'members') {
       setMembersLoading(true)
       fetchMembers(serverUrl).then(d => { if (mountedRef.current) setMembers(d) }).catch(console.error).finally(() => { if (mountedRef.current) setMembersLoading(false) })
       loadRoles()
-    } else if (adminTab === 'invites') {
+    } else if (section === 'invites') {
       loadInvites()
-    } else if (adminTab === 'roles') {
+    } else if (section === 'roles') {
       loadRoles()
-    } else if (adminTab === 'gifs') {
+    } else if (section === 'gifs') {
       loadGifs()
       loadTaggerStatus()
     }
-  }, [adminTab, isAdmin, serverUrl])
+  }, [section, isAdmin, serverUrl])
 
   async function loadInvites() {
     if (!serverUrl) return
@@ -1105,6 +1119,40 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
 
   const statusFor = (memberId: string): UserStatus => userStatuses[memberId] || 'offline'
 
+  // Left-nav groups: the "user" group is always shown; the "admin" group only
+  // appears for admins. Item keys map 1:1 to the `section` union.
+  const navGroups = useMemo<SettingsNavGroup[]>(() => {
+    const groups: SettingsNavGroup[] = [
+      {
+        label: 'user',
+        items: [
+          { key: 'profile', label: 'profile', icon: <User size={15} /> },
+          { key: 'notifications', label: 'notifications', icon: <Bell size={15} /> },
+        ],
+      },
+    ]
+    if (isAdmin) {
+      groups.push({
+        label: 'admin',
+        items: [
+          { key: 'overview', label: 'overview', icon: <SlidersHorizontal size={15} /> },
+          { key: 'members', label: 'members', icon: <Users size={15} /> },
+          { key: 'invites', label: 'invites', icon: <Link2 size={15} /> },
+          { key: 'roles', label: 'roles', icon: <Shield size={15} /> },
+          { key: 'css', label: 'custom css', icon: <Code size={15} /> },
+          { key: 'gifs', label: 'gifs & stickers', icon: <ImageIcon size={15} /> },
+        ],
+      })
+    }
+    return groups
+  }, [isAdmin])
+
+  const handleSectionChange = useCallback((key: string) => {
+    setSection(key as Section)
+    setInviteError(null)
+    setRoleError(null)
+  }, [])
+
   return (
     <>
     <Modal
@@ -1116,7 +1164,14 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
         <button onClick={handleClose} className="server-menu__done-btn">done</button>
       )}
     >
+      <SettingsLayout
+        groups={navGroups}
+        activeKey={section}
+        onChange={handleSectionChange}
+        activeLabel={SECTION_LABELS[section]}
+      >
         {/* Profile */}
+        {section === 'profile' && (
         <section>
           <p className="server-menu__section-title">your profile</p>
 
@@ -1190,27 +1245,18 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
               )}
             </div>
           </section>
+        )}
 
           {/* Notifications */}
-          <section style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
+          {section === 'notifications' && (
+          <section>
             <p className="server-menu__section-title">notifications</p>
             <NotificationSettings />
           </section>
+          )}
 
-          {/* Admin */}
-          {isAdmin && (
-            <section style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-              <p className="server-menu__section-title">admin</p>
-
-              <Tabs
-                tabs={ADMIN_TABS}
-                activeKey={adminTab}
-                onChange={(key) => { setAdminTab(key as AdminTab); setInviteError(null); setRoleError(null) }}
-                variant="pill"
-              />
-
-              {/* Settings tab */}
-              {adminTab === 'settings' && (
+              {/* Overview (server settings) */}
+              {section === 'overview' && (
                 <div className="server-menu__tab-content">
                   {infoLoading && <p className="server-menu__info-loading">loading server info...</p>}
 
@@ -1308,7 +1354,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
               )}
 
               {/* Members tab */}
-              {adminTab === 'members' && (
+              {section === 'members' && (
                 <div className="server-menu__tab-content">
                   <input
                     className="server-menu__member-search"
@@ -1536,7 +1582,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
               )}
 
               {/* Invites tab */}
-              {adminTab === 'invites' && (
+              {section === 'invites' && (
                 <div className="server-menu__tab-content">
                   <div className="server-menu__invite-create">
                     <p className="server-menu__section-title" style={{ marginBottom: '8px' }}>create invite</p>
@@ -1606,7 +1652,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
               )}
 
               {/* Roles tab */}
-              {adminTab === 'roles' && (
+              {section === 'roles' && (
                 <div className="server-menu__tab-content">
                   {!showCreateRole ? (
                     <button
@@ -1811,7 +1857,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
               )}
 
               {/* Custom CSS tab */}
-              {adminTab === 'css' && (
+              {section === 'css' && (
                 <div className="server-menu__tab-content">
                   <p className="server-menu__section-title" style={{ marginBottom: '4px' }}>custom css</p>
                   <p className="server-menu__css-hint">
@@ -1844,7 +1890,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
               )}
 
               {/* GIFs & Stickers tab */}
-              {adminTab === 'gifs' && (
+              {section === 'gifs' && (
                 <div className="server-menu__tab-content">
                   <p className="server-menu__section-title" style={{ marginBottom: '8px' }}>gifs & stickers</p>
 
@@ -2112,8 +2158,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
                   )}
                 </div>
               )}
-            </section>
-          )}
+      </SettingsLayout>
     </Modal>
 
     {/* Styled popup for naming a sticker pack during .zip import (replaces window.prompt) */}

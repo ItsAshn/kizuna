@@ -12,7 +12,7 @@ interface VoiceJoinResult {
   error?: string
   routerRtpCapabilities?: RtpCapabilities
   iceServers?: { urls: string; username?: string; credential?: string }[]
-  peers?: { id: string; userId: string; username: string }[]
+  peers?: { id: string; userId: string; username: string; hasCamera?: boolean }[]
   voiceBitrateKbps?: number
   screenSharePeer?: { peerId: string; username: string }
 }
@@ -263,6 +263,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const audioElemsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
   const videoConsumerRef = useRef<Consumer | null>(null)
   const videoElRef = useRef<HTMLVideoElement | null>(null)
+  const cameraConsumersRef = useRef<Map<string, Consumer>>(new Map())
   const channelIdRef = useRef<string | null>(null)
   const localSpeakingCleanupRef = useRef<(() => void) | null>(null)
   const remoteSpeakingCleanupsRef = useRef<Map<string, () => void>>(new Map())
@@ -284,6 +285,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const addVoicePeer = useVoiceStore((s) => s.addVoicePeer)
   const removeVoicePeer = useVoiceStore((s) => s.removeVoicePeer)
   const updateVoicePeer = useVoiceStore((s) => s.updateVoicePeer)
+  const setPeerCameraStream = useVoiceStore((s) => s.setPeerCameraStream)
+  const removePeerCameraStream = useVoiceStore((s) => s.removePeerCameraStream)
+  const clearPeerCameraStreams = useVoiceStore((s) => s.clearPeerCameraStreams)
   const isMuted = useVoiceStore((s) => s.isMuted)
   const setIsMuted = useVoiceStore((s) => s.setIsMuted)
   const setIsSpeaking = useVoiceStore((s) => s.setIsSpeaking)
@@ -454,6 +458,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
           channelId,
           peerId: sharerPeerId,
           kind: 'video',
+          source: 'screen',
           rtpCapabilities: device.rtpCapabilities,
         }, resolve),
       )
@@ -496,6 +501,52 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     }
     clearScreenSharePeer()
   }, [clearScreenSharePeer])
+
+  const consumeCamera = useCallback(async (
+    socket: Socket,
+    device: Device,
+    recvTransport: Transport,
+    peerId: string,
+    channelId: string,
+  ) => {
+    if (cameraConsumersRef.current.has(peerId)) return
+    try {
+      const params: Record<string, unknown> = await new Promise((resolve) =>
+        socket.emit('voice:consume', {
+          channelId,
+          peerId,
+          kind: 'video',
+          source: 'camera',
+          rtpCapabilities: device.rtpCapabilities,
+        }, resolve),
+      )
+      if (!params?.id) {
+        console.warn('Failed to consume camera from', peerId)
+        return
+      }
+
+      const consumer = await recvTransport.consume(params as Parameters<typeof recvTransport.consume>[0])
+      cameraConsumersRef.current.set(peerId, consumer)
+
+      await new Promise<void>((resolve) =>
+        socket.emit('voice:resumeConsumer', { channelId, consumerId: consumer.id }, () => resolve()),
+      )
+      await consumer.resume()
+
+      setPeerCameraStream(peerId, new MediaStream([consumer.track]))
+    } catch (err) {
+      console.error('Failed to consume camera:', err)
+    }
+  }, [setPeerCameraStream])
+
+  const stopCameraConsume = useCallback((peerId: string) => {
+    const consumer = cameraConsumersRef.current.get(peerId)
+    if (consumer) {
+      consumer.close()
+      cameraConsumersRef.current.delete(peerId)
+    }
+    removePeerCameraStream(peerId)
+  }, [removePeerCameraStream])
 
     const nativeVoiceUnlistenRef = useRef<(() => void) | null>(null)
   const nativeSpeakingUnlistenRef = useRef<(() => void) | null>(null)
@@ -940,9 +991,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       vlog('transport', 'send connect event')
       socket.emit('voice:connectTransport', { channelId, transportId: sendTransport.id, dtlsParameters }, cb)
     })
-    sendTransport.on('produce', ({ kind, rtpParameters }, cb) => {
-      vlog('transport', `send produce event kind=${kind}`)
-      socket.emit('voice:produce', { channelId, transportId: sendTransport.id, kind, rtpParameters }, cb)
+    sendTransport.on('produce', ({ kind, rtpParameters, appData }, cb) => {
+      const source = (appData as { source?: 'camera' | 'screen' })?.source
+      vlog('transport', `send produce event kind=${kind}${source ? ` source=${source}` : ''}`)
+      socket.emit('voice:produce', { channelId, transportId: sendTransport.id, kind, rtpParameters, source }, cb)
     })
 
     sendTransport.on('connectionstatechange', (state) => {
@@ -1032,6 +1084,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       const peerQInt = peerQualityIntervalsRef.current.get(peerId)
       if (peerQInt != null) clearInterval(peerQInt)
       peerQualityIntervalsRef.current.delete(peerId)
+      stopCameraConsume(peerId)
       removeVoicePeer(peerId)
     })
 
@@ -1045,6 +1098,14 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
 
     socket.on('screen:peerStopped', () => {
       stopScreenConsume()
+    })
+
+    socket.on('camera:peerStarted', async (data: { peerId: string; userId: string; username: string }) => {
+      await consumeCamera(socket, device, recvTransport, data.peerId, channelId)
+    })
+
+    socket.on('camera:peerStopped', ({ peerId }: { peerId: string }) => {
+      stopCameraConsume(peerId)
     })
 
     socket.on('voice:consumerClosed', ({ consumerId }: { consumerId: string }) => {

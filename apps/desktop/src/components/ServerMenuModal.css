@@ -5,11 +5,27 @@
 
 
 .server-menu {
-  width: 620px;
+  width: min(900px, 92vw);
+  height: min(640px, 86vh);
 }
 
+/* The two-pane SettingsLayout fills the modal body and owns its own scrolling
+   per-pane. The mobile bottom-sheet media query below resets the fixed height. */
+.server-menu .modal__body {
+  padding: 0;
+}
 
+@media (min-width: 768px) {
+  .server-menu .modal__body {
+    display: flex;
+    overflow: hidden;
+  }
 
+  .server-menu .settings-layout {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+}
 
 
 

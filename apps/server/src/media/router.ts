@@ -94,12 +94,12 @@ export async function connectTransport(
 
 export async function produceOnTransport(
   transport: mediasoupTypes.WebRtcTransport,
-  options: { kind: 'audio' | 'video'; rtpParameters: mediasoupTypes.RtpParameters },
+  options: { kind: 'audio' | 'video'; rtpParameters: mediasoupTypes.RtpParameters; source?: 'camera' | 'screen' },
 ): Promise<mediasoupTypes.Producer> {
   return transport.produce({
     kind: options.kind,
     rtpParameters: options.rtpParameters,
-    appData: {},
+    appData: options.source ? { source: options.source } : {},
   })
 }
 

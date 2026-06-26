@@ -94,8 +94,8 @@ export function useScreenshare(
         sendTransport.on('connect', ({ dtlsParameters }, cb) => {
           socket.emit('voice:connectTransport', { channelId, transportId: sendTransport!.id, dtlsParameters }, cb)
         })
-        sendTransport.on('produce', ({ kind, rtpParameters }, cb) => {
-          socket.emit('voice:produce', { channelId, transportId: sendTransport!.id, kind, rtpParameters }, cb)
+        sendTransport.on('produce', ({ kind, rtpParameters, appData }, cb) => {
+          socket.emit('voice:produce', { channelId, transportId: sendTransport!.id, kind, rtpParameters, source: (appData as { source?: 'camera' | 'screen' })?.source }, cb)
         })
 
         sendTransportRef.current = sendTransport
@@ -147,6 +147,7 @@ export function useScreenshare(
         codecOptions: {
           videoGoogleStartBitrate: 1000,
         },
+        appData: { source: 'screen' },
       })
       videoProducerRef.current = producer
 
