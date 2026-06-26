@@ -275,6 +275,7 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
   // Last names written to recent-activity history, so we only write on change.
   const lastRecentAppRef = useRef<string | null>(null)
   const lastRecentMediaRef = useRef<string | null>(null)
+  const trackedGameRef = useRef<{ processName: string; title: string } | null>(null)
 
   const emitActivity = useCallback(
     (activity: UserActivity | null) => {
@@ -296,6 +297,7 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
     lastEmittedRef.current = null
     stableWindowKeyRef.current = null
     windowFirstSeenRef.current = 0
+    trackedGameRef.current = null
   }, [socketRef])
 
   const resolveActivity = useCallback((): UserActivity | null => {
@@ -360,6 +362,12 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
                     details: !isGame ? info.process_name || undefined : undefined,
                     icon,
                   }
+                  if (isGame) {
+                    trackedGameRef.current = {
+                      processName: info.process_name,
+                      title: name,
+                    }
+                  }
                   if (!isGame && name !== lastRecentAppRef.current) {
                     addRecentAppActivity(name)
                     lastRecentAppRef.current = name
@@ -422,6 +430,26 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
         }
       }
 
+      // ── Tracked game persistence ──
+      if (trackedGameRef.current && (!bestActivity || bestActivity.type !== 'game')) {
+        try {
+          const invoke = await getInvoke()
+          const windows = await invoke<Array<{ process_name: string }>>('list_windows')
+          const procName = trackedGameRef.current.processName.toLowerCase()
+          const stillRunning = windows.some((w) => w.process_name.toLowerCase() === procName)
+          if (stillRunning) {
+            bestActivity = {
+              type: 'game',
+              name: trackedGameRef.current.title,
+            }
+          } else {
+            trackedGameRef.current = null
+          }
+        } catch {
+          trackedGameRef.current = null
+        }
+      }
+
       if (bestActivity && bestActivity.type === 'game') {
         emitActivity(bestActivity)
       } else if (musicActivity) {
@@ -468,6 +496,7 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
         lastEmittedRef.current = null
         stableWindowKeyRef.current = null
         windowFirstSeenRef.current = 0
+        trackedGameRef.current = null
         const customActivity = resolveActivity()
         if (customActivity) {
           emitActivity(customActivity)
