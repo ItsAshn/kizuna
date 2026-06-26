@@ -1,4 +1,6 @@
 use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 /// Icon data returned to the frontend, ready to use as an `<img>` src.
 #[derive(Clone, Debug, Serialize)]
@@ -9,32 +11,78 @@ pub struct IconData {
     pub height: u32,
 }
 
-/// Try to get the icon of the currently active window.
+/// Process-keyed icon cache. Reading an executable's icon is expensive, and an
+/// app's icon never changes while it is running, so we resolve it at most once
+/// per process. Negative results (`None`) are cached too, so apps x-win can't
+/// resolve aren't re-queried on every window switch.
+static ICON_CACHE: Mutex<Option<HashMap<String, Option<IconData>>>> = Mutex::new(None);
+
+/// Normalize a process name for comparison: lowercase, trimmed, `.exe` stripped.
+fn normalize_proc(name: &str) -> String {
+    name.trim()
+        .to_lowercase()
+        .strip_suffix(".exe")
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| name.trim().to_lowercase())
+}
+
+/// Try to get the icon for `process_name`, the process the caller has detected
+/// as foreground.
 ///
-/// Uses `x-win-rs` where available (Windows, macOS, GNOME/Linux).
-/// Falls back gracefully when x-win is absent or the platform is
-/// unsupported (Hyprland, Sway, etc.) — returns `None` with no error.
-pub fn get_active_app_icon() -> Option<IconData> {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        let window = x_win::get_active_window().ok()?;
-        if window.id == 0 || window.title.is_empty() {
-            return None;
-        }
-        let icon = x_win::get_window_icon(&window).ok()?;
-        if icon.data.is_empty() {
-            return None;
-        }
-        Some(IconData {
-            data: icon.data,
-            width: icon.width,
-            height: icon.height,
-        })
+/// Uses `x-win-rs` where available (Windows, macOS, GNOME/Linux). To avoid a
+/// race where a different window becomes active between the caller's detection
+/// and this call, we re-query the active window and only return its icon when it
+/// still matches `process_name`. Falls back gracefully (returns `None`) when
+/// x-win is unavailable or the platform is unsupported (Hyprland, Sway, etc.).
+pub fn get_app_icon(process_name: &str) -> Option<IconData> {
+    let key = normalize_proc(process_name);
+    if key.is_empty() {
+        return None;
     }
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        None
+
+    // Serve from cache (including cached negatives) first.
+    if let Ok(mut guard) = ICON_CACHE.lock() {
+        let cache = guard.get_or_insert_with(HashMap::new);
+        if let Some(cached) = cache.get(&key) {
+            return cached.clone();
+        }
     }
+
+    let resolved = resolve_app_icon(&key);
+
+    if let Ok(mut guard) = ICON_CACHE.lock() {
+        let cache = guard.get_or_insert_with(HashMap::new);
+        cache.insert(key, resolved.clone());
+    }
+
+    resolved
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn resolve_app_icon(key: &str) -> Option<IconData> {
+    let window = x_win::get_active_window().ok()?;
+    if window.id == 0 || window.title.is_empty() {
+        return None;
+    }
+    // Only trust the icon when the active window still matches the process the
+    // caller asked about — otherwise we'd cache the wrong app's icon.
+    if normalize_proc(&window.info.exec_name) != key {
+        return None;
+    }
+    let icon = x_win::get_window_icon(&window).ok()?;
+    if icon.data.is_empty() {
+        return None;
+    }
+    Some(IconData {
+        data: icon.data,
+        width: icon.width,
+        height: icon.height,
+    })
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn resolve_app_icon(_key: &str) -> Option<IconData> {
+    None
 }
 
 /// Try to get a list of all visible apps (with display names) from x-win.

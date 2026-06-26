@@ -185,6 +185,7 @@ export type Permission =
   | 'manage_channels'
   | 'manage_roles'
   | 'kick_members'
+  | 'ban_members'
   | 'manage_invites'
   | 'use_voice'
   | 'initiate_dm_calls';
@@ -381,6 +382,8 @@ export interface ServerInfo {
   customCss: string | null;
   voiceBitrateKbps: number;
   gifsEnabled: boolean;
+  profanityFilterEnabled: boolean;
+  blockedWords: string[];
 }
 
 export interface PublicServerEntry {
@@ -424,6 +427,22 @@ export interface ChannelMute {
   channel_id: string;
   /** Epoch milliseconds until muted (`null` = permanent). */
   muted_until: number | null;
+}
+
+/** Spam filter auto-mute event payload. */
+export interface SpamMute {
+  /** Reason for the mute. */
+  reason: string;
+  /** Epoch milliseconds when the mute expires. */
+  until: number;
+}
+
+/** Spam filter warning event payload. */
+export interface SpamWarning {
+  /** Category approaching the limit. */
+  category: 'rate' | 'channel_rate' | 'duplicate' | 'mention_spam';
+  /** Human-readable message. */
+  message: string;
 }
 
 /** URL embed/unfurl result. */

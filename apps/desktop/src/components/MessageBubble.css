@@ -203,6 +203,28 @@
   margin: 0;
 }
 
+.msg-bubble__spoiler {
+  background: var(--text-muted);
+  color: transparent;
+  border-radius: 4px;
+  padding: 0 2px;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.msg-bubble__spoiler * {
+  visibility: hidden;
+}
+
+.msg-bubble__spoiler--revealed {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.msg-bubble__spoiler--revealed * {
+  visibility: visible;
+}
+
 .msg-bubble__text p + p {
   margin-top: 18px;
 }

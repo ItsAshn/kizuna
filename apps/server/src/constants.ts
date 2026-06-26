@@ -32,6 +32,19 @@ export const RATE_LIMIT = {
   api: { max: 60, windowMs: 60_000 },
 } as const;
 
+export const SPAM_CONFIG = {
+  rateMax: 10,
+  rateWindowMs: 10_000,
+  channelRateMax: 8,
+  channelRateWindowMs: 10_000,
+  duplicateWindowMs: 30_000,
+  mentionMax: 5,
+  mentionWindowMs: 10_000,
+  violationResetMs: 300_000,
+  autoMuteDurationMs: 300_000,
+  maxViolations: 5,
+} as const;
+
 export const ALLOWED_UPLOAD_EXTENSIONS = [
   '.jpg',
   '.jpeg',

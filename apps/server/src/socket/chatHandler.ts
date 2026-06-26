@@ -2,7 +2,9 @@ import type { Server, Socket } from 'socket.io'
 import { v4 as uuidv4 } from 'uuid'
 import Database from 'better-sqlite3'
 import { getDb } from '../db'
-import { getUserPermissions, hasPermission, canWriteToChannel } from '../middleware/auth'
+import { getUserPermissions, hasPermission, canWriteToChannel, isUserAdmin } from '../middleware/auth'
+import { checkSpam } from '../services/spamFilter'
+import { checkMessageContent } from '../moderation'
 
 const stmtCache = new Map<string, Database.Statement>()
 function prep(sql: string): Database.Statement {
@@ -351,6 +353,18 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       return
     }
 
+    if (!isUserAdmin(userId)) {
+      const spamResult = checkSpam(userId, channelId, content)
+      if (!spamResult.allowed) {
+        return
+      }
+    }
+
+    if (!checkMessageContent(content.trim()).allowed) {
+      socket.emit('error', { code: 'BLOCKED', message: 'Message contains blocked content' })
+      return
+    }
+
     const db = getDb()
     const id = uuidv4()
     let replyUsername: string | null = null
@@ -401,6 +415,11 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     if (!checkSocketRateLimit(socket, 'message:edit', 20, 10_000)) return
     if (!messageId || !content?.trim() || !userId) return
     if (content.length > 4000) return
+
+    if (!checkMessageContent(content.trim()).allowed) {
+      socket.emit('error', { code: 'BLOCKED', message: 'Message contains blocked content' })
+      return
+    }
 
     const db = getDb()
     const existing = db.prepare('SELECT * FROM messages WHERE id = ? AND author_id = ?').get(messageId, userId) as any

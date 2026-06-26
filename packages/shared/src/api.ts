@@ -439,6 +439,8 @@ export async function updateServerSettings(
   background_blur?: number,
   customCss?: string | null,
   voiceBitrateKbps?: number,
+  profanityFilterEnabled?: boolean,
+  blockedWords?: string[],
 ): Promise<ServerInfo> {
   const body: Record<string, unknown> = {}
   if (name !== undefined) body.name = name
@@ -446,6 +448,8 @@ export async function updateServerSettings(
   if (background_blur !== undefined) body.background_blur = background_blur
   if (customCss !== undefined) body.custom_css = customCss
   if (voiceBitrateKbps !== undefined) body.voice_bitrate_kbps = voiceBitrateKbps
+  if (profanityFilterEnabled !== undefined) body.profanity_filter_enabled = profanityFilterEnabled
+  if (blockedWords !== undefined) body.blocked_words = blockedWords
   const res = await client(serverUrl).patch('/api/server/settings', body)
   return res.data as ServerInfo
 }
@@ -564,6 +568,21 @@ export async function removeMemberRole(
   roleId: string,
 ): Promise<void> {
   await client(serverUrl).delete(`/api/server/members/${userId}/roles/${roleId}`)
+}
+
+export async function banUser(
+  serverUrl: string,
+  userId: string,
+  reason?: string,
+): Promise<void> {
+  await client(serverUrl).post(`/api/bans/${userId}`, { reason: reason ?? null })
+}
+
+export async function unbanUser(
+  serverUrl: string,
+  userId: string,
+): Promise<void> {
+  await client(serverUrl).delete(`/api/bans/${userId}`)
 }
 
 // ─── Roles ────────────────────────────────────────────────
@@ -962,6 +981,23 @@ export async function uploadStickerPack(
   formData.append('pack_name', packName)
 
   const res = await client(serverUrl).post('/api/gifs/sticker-pack', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export async function uploadSticker(
+  serverUrl: string,
+  file: File,
+  packName: string,
+  displayName?: string,
+): Promise<GifInfo> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('pack_name', packName)
+  if (displayName) formData.append('display_name', displayName)
+
+  const res = await client(serverUrl).post('/api/gifs/sticker', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
   return res.data

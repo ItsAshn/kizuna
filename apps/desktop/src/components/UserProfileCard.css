@@ -70,35 +70,69 @@
 }
 
 .user-profile-card__activity {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
-  margin-top: 4px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.04));
+  text-align: left;
+}
+
+.user-profile-card__activity-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+}
+
+.user-profile-card__activity-icon--img {
+  background: none;
+}
+
+.user-profile-card__activity-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.user-profile-card__activity-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.user-profile-card__activity-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.7;
+}
+
+.user-profile-card__activity-name {
+  font-weight: 600;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.user-profile-card__activity-label {
-  flex-shrink: 0;
+.user-profile-card__activity-details,
+.user-profile-card__activity-state {
   opacity: 0.7;
-}
-
-.user-profile-card__activity-name {
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.user-profile-card__activity-details {
-  opacity: 0.6;
-}
-
-.user-profile-card__activity-details::before {
-  content: '\2014';
-  margin-right: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-profile-card__roles {

@@ -146,7 +146,7 @@ function highlightCodeBlocks(html: string): string {
 function renderMessageHtml(content: string, currentUsername?: string): string {
   if (!content) return ''
 
-  const html = content.replace(
+  const withMentions = content.replace(
     /@(everyone|here|[\w.-]+)/gi,
     (match) => {
       const tag = match.slice(1).toLowerCase()
@@ -155,6 +155,12 @@ function renderMessageHtml(content: string, currentUsername?: string): string {
       const cls = isMe ? 'msg-bubble__mention--self' : isGroup ? 'msg-bubble__mention--group' : 'msg-bubble__mention--user'
       return `<span class="${cls}">${match}</span>`
     }
+  )
+
+  // Discord-style spoilers: ||hidden text|| → click to reveal.
+  const html = withMentions.replace(
+    /\|\|([\s\S]+?)\|\|/g,
+    (_match, inner) => `<span class="msg-bubble__spoiler">${inner}</span>`,
   )
 
   const raw = marked.parse(html, { breaks: true, gfm: true }) as string
@@ -270,6 +276,11 @@ function MessageBubble({
   const displayName = message.display_name || message.username || 'Unknown'
   const { text, attachments } = useMemo(() => parseAttachments(message.content), [message.content])
   const renderedHtml = useMemo(() => renderMessageHtml(text, currentUsername), [text, currentUsername])
+
+  const handleSpoilerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const spoiler = (e.target as HTMLElement).closest('.msg-bubble__spoiler')
+    if (spoiler) spoiler.classList.toggle('msg-bubble__spoiler--revealed')
+  }
   const isMediaOnly = !text && attachments.length > 0
   const isStickerOnly = isMediaOnly && attachments.length > 0 && attachments.every(a => {
     const hasPrefix = /^(gif|sticker):/.test(a.filename)
@@ -518,7 +529,7 @@ function MessageBubble({
               onKeyDown={handleEditKeyDown}
             />
           ) : (
-            text && <div className="msg-bubble__text" dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+            text && <div className="msg-bubble__text" onClick={handleSpoilerClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} />
           )}
           {attachments.length > 0 && attachments.map((att, i) => (
             <AttachmentPreview key={i} url={att.url} filename={att.filename} serverUrl={serverUrl} isMediaOnly={isMediaOnly} onImageClick={onImageClick} />

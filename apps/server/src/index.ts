@@ -6,6 +6,7 @@ import { initDb, closeDb } from './db'
 import { createWorker, closeWorker } from './media'
 import { loadConfig, validateJwtSecret } from './config'
 import { setTaggingEnabled } from './media/tagGenerator'
+import { applyConfig } from './services/spamFilter'
 import { openPorts, upnpClient, getMappedPorts } from './services/upnp'
 import { resolvePublicAddress, startIpWatcher } from './services/publicAddress'
 import { startHeartbeat } from './heartbeat'
@@ -44,6 +45,17 @@ async function start(): Promise<void> {
 
   const config = loadConfig()
   validateJwtSecret(config)
+  applyConfig({
+    rateMax: config.SPAM_RATE_MAX,
+    rateWindowMs: config.SPAM_RATE_WINDOW_MS,
+    channelRateMax: config.SPAM_CHANNEL_RATE_MAX,
+    channelRateWindowMs: config.SPAM_CHANNEL_RATE_WINDOW_MS,
+    mentionMax: config.SPAM_MENTION_MAX,
+    mentionWindowMs: config.SPAM_MENTION_WINDOW_MS,
+    duplicateWindowMs: config.SPAM_DUPLICATE_WINDOW_MS,
+    autoMuteDurationMs: config.SPAM_AUTO_MUTE_DURATION_MS,
+    maxViolations: config.SPAM_MAX_VIOLATIONS,
+  })
   setTaggingEnabled(config.AUTO_TAGGING_ENABLED)
   if (config.AUTO_TAGGING_ENABLED) {
     console.log('[i] Auto-tagging is enabled. Call POST /api/gifs/load-tagger or use the Server Settings UI to load the CLIP model when ready.')

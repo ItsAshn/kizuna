@@ -5,7 +5,7 @@ import { useServerStore } from '../store/serverStore'
 import { useMobile, useTablet } from '../hooks/useMobile'
 import type { Member, CustomRole } from '@kizuna/shared'
 import { X } from 'lucide-react'
-import { Gamepad2, Headphones, Film, Monitor, Activity } from 'lucide-react'
+import { ActivityIcon, activitySummary } from '../utils/activity'
 import UserProfileCard from './UserProfileCard'
 import Skeleton from './Skeleton'
 import IconButton from './ui/IconButton'
@@ -160,9 +160,9 @@ export default function MemberList({ visible, onClose }: Props) {
         <div className="member-list__member-info">
           <div className="member-list__member-name">{member.display_name || member.username}</div>
           {activity ? (
-            <div className="member-list__member-activity" title={`${activity.type === 'music' ? 'Listening to' : activity.type === 'game' ? 'Playing' : activity.type === 'video' ? 'Watching' : activity.type === 'app' ? 'Using' : ''} ${activity.name}${activity.details ? ` - ${activity.details}` : ''}`}>
-              <span className="member-list__member-activity-icon">
-                {activity.type === 'game' ? <Gamepad2 size={11} /> : activity.type === 'music' ? <Headphones size={11} /> : activity.type === 'video' ? <Film size={11} /> : activity.type === 'app' ? <Monitor size={11} /> : <Activity size={11} />}
+            <div className="member-list__member-activity" title={activitySummary(activity)}>
+              <span className={`member-list__member-activity-icon${activity.icon ? ' member-list__member-activity-icon--img' : ''}`}>
+                <ActivityIcon activity={activity} size={11} className="member-list__member-activity-img" />
               </span>
               <span className="member-list__member-activity-text">{activity.name}</span>
             </div>

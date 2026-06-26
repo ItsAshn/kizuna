@@ -13,7 +13,10 @@ import { fetchMessages, fetchDMMessages, fetchGroupDMMessages, sendMessage, send
 import { encryptDM, decryptDM, isEncryptedContent, encryptGroupDM, decryptGroupDM, isGroupEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
 import { Lock, Paperclip, Send, ShieldCheck, ShieldAlert, Sticker, Phone, ChevronLeft, Users, Pin, MessageSquare, Mic, Square, Trash2, Search, Settings } from 'lucide-react'
-import type { Message, Member, DMChannelData, CustomRole, PinnedMessage } from '@kizuna/shared'
+import type { Message, Member, DMChannelData, CustomRole, PinnedMessage, ChatCommand } from '@kizuna/shared'
+import { CHAT_COMMANDS } from '@kizuna/shared'
+import { runChatCommand, userCanUseCommand } from '../lib/chatCommands'
+import { useNotificationStore } from '../store/notificationStore'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
 import Skeleton from './Skeleton'
@@ -133,6 +136,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const [pendingAttachmentId, setPendingAttachmentId] = useState<string | null>(null)
   const [atQuery, setAtQuery] = useState<string | null>(null)
   const [emojiQuery, setEmojiQuery] = useState<string | null>(null)
+  const [slashQuery, setSlashQuery] = useState<string | null>(null)
+  const [selectedSlashIndex, setSelectedSlashIndex] = useState(0)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [atIndex, setAtIndex] = useState(0)
   const [emojiIndex, setEmojiIndex] = useState(0)
@@ -500,6 +505,10 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     const emQuery = getEmojiQuery(val, cursor)
     setAtQuery(query)
     setEmojiQuery(emQuery)
+
+    const slash = activeChannelId && val.startsWith('/') && !val.slice(1).includes(' ') ? val.slice(1) : null
+    setSlashQuery(slash)
+    if (slash !== null) setSelectedSlashIndex(0)
     if (query !== null) {
       const before = val.slice(0, cursor)
       setAtIndex(before.lastIndexOf('@'))
@@ -551,6 +560,22 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     }
   }, [pendingMention])
 
+  const slashSuggestions = useMemo<ChatCommand[]>(() => {
+    if (slashQuery === null || !session) return []
+    const q = slashQuery.toLowerCase()
+    return CHAT_COMMANDS.filter(
+      (c) =>
+        (c.name.startsWith(q) || c.aliases?.some((a) => a.startsWith(q))) &&
+        userCanUseCommand(session.user, c),
+    )
+  }, [slashQuery, session])
+
+  const insertSlashCommand = (cmd: ChatCommand) => {
+    setInput(`/${cmd.name} `)
+    setSlashQuery(null)
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }
+
   const insertEmoji = (entry: typeof EMOJI_LIST[0]) => {
     const before = input.slice(0, emojiIndex)
     const after = input.slice(emojiIndex + 1 + (emojiQuery?.length ?? 0))
@@ -567,6 +592,12 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashSuggestions.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedSlashIndex((i) => (i + 1) % slashSuggestions.length); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedSlashIndex((i) => (i - 1 + slashSuggestions.length) % slashSuggestions.length); return }
+      if (e.key === 'Tab') { e.preventDefault(); insertSlashCommand(slashSuggestions[selectedSlashIndex] ?? slashSuggestions[0]); return }
+      if (e.key === 'Escape') { e.preventDefault(); setSlashQuery(null); return }
+    }
     if (emojiSuggestions.length > 0) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedEmojiIndex((i) => (i + 1) % emojiSuggestions.length); return }
       if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedEmojiIndex((i) => (i - 1 + emojiSuggestions.length) % emojiSuggestions.length); return }
@@ -587,6 +618,29 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
 
     if (pendingFile) { await handleUpload(); return }
 
+    // Slash commands only apply to regular text channels.
+    let commandContent: string | null = null
+    if (activeChannelId && input.trim().startsWith('/')) {
+      const result = await runChatCommand(input.trim(), {
+        serverUrl: session.url,
+        user: session.user,
+        members,
+        notify: (title, body) =>
+          useNotificationStore.getState().addNotification({ type: 'announce', title, body }),
+      })
+      if (result.kind === 'handled') {
+        setInput('')
+        setSendError(null)
+        setAtQuery(null)
+        setEmojiQuery(null)
+        if (inputRef.current) inputRef.current.style.height = 'auto'
+        return
+      }
+      if (result.kind === 'compose') {
+        commandContent = result.content
+      }
+    }
+
     const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
     if (!channelId) return
 
@@ -598,7 +652,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       let message: Message
       if (activeChannelId) {
         const attIds = pendingAttachmentId ? [pendingAttachmentId] : undefined
-        message = await sendMessage(session.url, activeChannelId, input.trim(), attIds, replyTo?.messageId)
+        message = await sendMessage(session.url, activeChannelId, commandContent ?? input.trim(), attIds, replyTo?.messageId)
         setPendingAttachmentId(null)
       } else if (activeDMChannelId) {
         const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
@@ -646,6 +700,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       }
       addMessage(message.channel_id || channelId, message)
       setInput('')
+      setSlashQuery(null)
       setReplyTo(null)
       setSendError(null)
       if ('vibrate' in navigator) navigator.vibrate(10)
@@ -1306,6 +1361,24 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       </div>
 
       <div className="chat-area__input-bar">
+        {slashSuggestions.length > 0 && (
+          <div className="chat-area__mention-suggestions chat-area__slash-suggestions">
+            {slashSuggestions.map((cmd, i) => (
+              <button
+                key={cmd.name}
+                onMouseDown={(e) => { e.preventDefault(); insertSlashCommand(cmd) }}
+                onMouseEnter={() => setSelectedSlashIndex(i)}
+                className={`chat-area__mention-suggestion ${i === selectedSlashIndex ? 'chat-area__mention-suggestion--selected' : ''}`}
+              >
+                <span className="chat-area__mention-prefix">/</span>
+                <span className="chat-area__slash-name">{cmd.name}</span>
+                {cmd.usage && <span className="chat-area__slash-usage">{cmd.usage}</span>}
+                <span className="chat-area__slash-desc">{cmd.description}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {suggestions.length > 0 && (
           <div className="chat-area__mention-suggestions">
             {suggestions.slice(0, MENTION_LIMIT).map((u, i) => {

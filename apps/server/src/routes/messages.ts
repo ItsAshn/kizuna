@@ -3,8 +3,10 @@ import { v4 as uuidv4 } from 'uuid'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, canWriteToChannel } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission, canWriteToChannel, isUserAdmin } from '../middleware/auth'
+import { checkSpam } from '../services/spamFilter'
 import { parseMentions, processMentions } from '../socket/chatHandler'
+import { checkMessageContent } from '../moderation'
 import type { AuthUser } from '../middleware/auth'
 function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
 
@@ -125,6 +127,17 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)
   if (content.length > 4000) return c.json({ error: 'Message too long (max 4000 chars)' }, 400)
 
+  if (!isUserAdmin(user.userId)) {
+    const spamResult = checkSpam(user.userId, channelId, content)
+    if (!spamResult.allowed) {
+      return c.json({ error: 'Message blocked by spam filter' }, 429)
+    }
+  }
+
+  if (!checkMessageContent(content.trim()).allowed) {
+    return c.json({ error: 'Message contains blocked content' }, 400)
+  }
+
   const db = getDb()
   const id = uuidv4()
 
@@ -221,6 +234,10 @@ messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
   const { content } = body
   if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)
   if (content.length > 4000) return c.json({ error: 'Message too long (max 4000 chars)' }, 400)
+
+  if (!checkMessageContent(content.trim()).allowed) {
+    return c.json({ error: 'Message contains blocked content' }, 400)
+  }
 
   const db = getDb()
   const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any

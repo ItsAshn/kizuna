@@ -31,6 +31,15 @@ const envSchema = z.object({
   MAX_PACK_SIZE: z.coerce.number().int().positive().default(15728640),
   MAX_BODY_SIZE: z.coerce.number().int().positive().default(1048576),
   GROUP_DM_MAX_MEMBERS: z.coerce.number().int().positive().default(10),
+  SPAM_RATE_MAX: z.coerce.number().int().positive().default(10).describe('Max messages per user per time window'),
+  SPAM_RATE_WINDOW_MS: z.coerce.number().int().positive().default(10000).describe('Global rate limit window in ms'),
+  SPAM_CHANNEL_RATE_MAX: z.coerce.number().int().positive().default(8).describe('Max messages per channel per time window'),
+  SPAM_CHANNEL_RATE_WINDOW_MS: z.coerce.number().int().positive().default(10000).describe('Channel rate limit window in ms'),
+  SPAM_DUPLICATE_WINDOW_MS: z.coerce.number().int().positive().default(30000).describe('Duplicate content detection window in ms'),
+  SPAM_MENTION_MAX: z.coerce.number().int().positive().default(5).describe('Max mentions per time window'),
+  SPAM_MENTION_WINDOW_MS: z.coerce.number().int().positive().default(10000).describe('Mention rate limit window in ms'),
+  SPAM_AUTO_MUTE_DURATION_MS: z.coerce.number().int().positive().default(300000).describe('Auto-mute duration in ms after exceeding violations'),
+  SPAM_MAX_VIOLATIONS: z.coerce.number().int().positive().default(5).describe('Violations before auto-mute'),
   AUTO_TAGGING_ENABLED: z.coerce.boolean().default(false).describe(
     'Enable AI-powered auto-tagging for uploaded GIFs. When enabled, a CLIP ViT-B/32 vision model ' +
     'is loaded on first use (~600MB disk download, cached). The model consumes ~1.2-1.5GB of ' +

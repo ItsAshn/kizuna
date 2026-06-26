@@ -5,7 +5,17 @@ import { useSettingsStore } from '../store/settingsStore'
 import { isTauri } from '../utils/platform'
 import type { UserActivity, UserActivityType } from '@kizuna/shared'
 
-const SWITCH_DELAY_MS = 30_000
+const SWITCH_DELAY_MS = 10_000
+
+// Lazily import the Tauri invoke fn once, instead of re-importing on every poll.
+type InvokeFn = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>
+let invokePromise: Promise<InvokeFn> | null = null
+function getInvoke(): Promise<InvokeFn> {
+  if (!invokePromise) {
+    invokePromise = import('@tauri-apps/api/core').then((m) => m.invoke as InvokeFn)
+  }
+  return invokePromise
+}
 
 const KNOWN_GAMES = new Set([
   'cs2.exe', 'csgo.exe', 'cs2',
@@ -244,10 +254,10 @@ function detectMediaActivity(metadata: {
   return activity
 }
 
-async function fetchAppIcon(): Promise<string | undefined> {
+async function fetchAppIcon(processName: string): Promise<string | undefined> {
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    const icon = await invoke<{ data: string } | null>('get_app_icon')
+    const invoke = await getInvoke()
+    const icon = await invoke<{ data: string } | null>('get_app_icon', { processName })
     return icon?.data
   } catch {
     return undefined
@@ -267,6 +277,9 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
   const stableWindowKeyRef = useRef<string | null>(null)
   const windowFirstSeenRef = useRef<number>(0)
   const iconCacheRef = useRef<Map<string, string>>(new Map())
+  // Last names written to recent-activity history, so we only write on change.
+  const lastRecentAppRef = useRef<string | null>(null)
+  const lastRecentMediaRef = useRef<string | null>(null)
 
   const emitActivity = useCallback(
     (activity: UserActivity | null) => {
@@ -323,7 +336,7 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
 
       if (shareAppActivity && isTauri()) {
         try {
-          const { invoke } = await import('@tauri-apps/api/core')
+          const invoke = await getInvoke()
           const info = await invoke<{ title: string; process_name: string } | null>(
             'get_active_window_info',
           )
@@ -343,24 +356,25 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
                   const name = isGame
                     ? info.title.trim()
                     : processDisplayName(info.process_name)
-                  const icon = isGame
-                    ? undefined
-                    : iconCacheRef.current.get(info.process_name)
+                  // Cached value may be '' (a cached "no icon" result).
+                  const cachedIcon = iconCacheRef.current.get(info.process_name)
+                  const icon = isGame ? undefined : cachedIcon || undefined
                   bestActivity = {
                     type,
                     name,
                     details: !isGame ? info.process_name || undefined : undefined,
                     icon,
                   }
-                  if (!isGame) addRecentAppActivity(name)
+                  if (!isGame && name !== lastRecentAppRef.current) {
+                    addRecentAppActivity(name)
+                    lastRecentAppRef.current = name
+                  }
 
-                  // Fetch icon in the background if not cached
-                  if (!isGame && !icon) {
+                  // Fetch icon in the background once per process (cache negatives too).
+                  if (!isGame && !iconCacheRef.current.has(info.process_name)) {
                     const proc = info.process_name
-                    fetchAppIcon().then((iconData) => {
-                      if (iconData) {
-                        iconCacheRef.current.set(proc, iconData)
-                      }
+                    fetchAppIcon(proc).then((iconData) => {
+                      iconCacheRef.current.set(proc, iconData || '')
                     })
                   }
                 }
@@ -381,7 +395,7 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
       if (shareMediaActivity) {
         if (isTauri()) {
           try {
-            const { invoke } = await import('@tauri-apps/api/core')
+            const invoke = await getInvoke()
             const np = await invoke<{
               title: string
               artist: string
@@ -391,7 +405,10 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
             if (np && np.status === 'Playing') {
               const activity = detectMediaActivity(np)
               if (activity) {
-                addRecentMediaActivity(activity.name)
+                if (activity.name !== lastRecentMediaRef.current) {
+                  addRecentMediaActivity(activity.name)
+                  lastRecentMediaRef.current = activity.name
+                }
                 musicActivity = activity
               }
             }

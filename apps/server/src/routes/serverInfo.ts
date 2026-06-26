@@ -129,6 +129,8 @@ function buildServerInfo() {
   const backgroundBlur = db.prepare("SELECT value FROM server_settings WHERE key = 'background_blur'").get() as { value: string } | undefined
   const customCss = db.prepare("SELECT value FROM server_settings WHERE key = 'custom_css'").get() as { value: string } | undefined
   const voiceBitrateRow = db.prepare("SELECT value FROM server_settings WHERE key = 'voice_bitrate_kbps'").get() as { value: string } | undefined
+  const profanityFilterRow = db.prepare("SELECT value FROM server_settings WHERE key = 'profanity_filter_enabled'").get() as { value: string } | undefined
+  const blockedWordsRow = db.prepare("SELECT value FROM server_settings WHERE key = 'blocked_words'").get() as { value: string } | undefined
 
   let hasBackground = false
   try {
@@ -153,6 +155,13 @@ function buildServerInfo() {
       return getEnvBitrate()
     })(),
     gifsEnabled: true,
+    profanityFilterEnabled: profanityFilterRow?.value === 'true',
+    blockedWords: (() => {
+      if (blockedWordsRow?.value) {
+        try { const arr = JSON.parse(blockedWordsRow.value); if (Array.isArray(arr)) return arr } catch { /* ignore */ }
+      }
+      return []
+    })(),
   }
 }
 
@@ -198,8 +207,8 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
   const user = getAuth(c)
   if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
-  const body = await c.req.json() as { name?: string; icon?: string | null; background_blur?: number; custom_css?: string | null; voice_bitrate_kbps?: number }
-  const { name, icon, background_blur, custom_css, voice_bitrate_kbps } = body
+  const body = await c.req.json() as { name?: string; icon?: string | null; background_blur?: number; custom_css?: string | null; voice_bitrate_kbps?: number; profanity_filter_enabled?: boolean; blocked_words?: string[] }
+  const { name, icon, background_blur, custom_css, voice_bitrate_kbps, profanity_filter_enabled, blocked_words } = body
   const db = getDb()
 
   if (name !== undefined) {
@@ -249,6 +258,20 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
     if (io) {
       io.emit('server:voiceBitrateChanged', { voiceBitrateKbps: kbps })
     }
+  }
+  if (profanity_filter_enabled !== undefined) {
+    db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('profanity_filter_enabled', ?)").run(String(!!profanity_filter_enabled))
+  }
+  if (blocked_words !== undefined) {
+    if (!Array.isArray(blocked_words)) {
+      return c.json({ error: 'blocked_words must be an array' }, 400)
+    }
+    for (const w of blocked_words) {
+      if (typeof w !== 'string') {
+        return c.json({ error: 'blocked_words must contain only strings' }, 400)
+      }
+    }
+    db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('blocked_words', ?)").run(JSON.stringify(blocked_words))
   }
 
   invalidateServerInfoCache()
@@ -510,7 +533,10 @@ serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, async (c)
 
 serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
   const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+  const userInfo = getUserPermissions(user.userId)
+  if (!userInfo || !hasPermission(userInfo, 'manage_roles')) {
+    return c.json({ error: 'You do not have permission to manage roles' }, 403)
+  }
 
   const targetUserId = c.req.param('userId') || ''
   if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
@@ -522,8 +548,11 @@ serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
   const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId)
   if (!member) return c.json({ error: 'Member not found' }, 404)
 
-  const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(roleId)
+  const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(roleId) as { is_admin?: number } | undefined
   if (!role) return c.json({ error: 'Role not found' }, 404)
+  if (role.is_admin && !isUserAdmin(user.userId)) {
+    return c.json({ error: 'Only an admin can assign an admin role' }, 403)
+  }
 
   db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(targetUserId, roleId)
   clearPermissionCache(targetUserId)
@@ -536,7 +565,10 @@ serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
 
 serverInfoRoutes.delete('/members/:userId/roles/:roleId', authMiddleware, (c) => {
   const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+  const userInfo = getUserPermissions(user.userId)
+  if (!userInfo || !hasPermission(userInfo, 'manage_roles')) {
+    return c.json({ error: 'You do not have permission to manage roles' }, 403)
+  }
 
   const targetUserId = c.req.param('userId') || ''
   const roleId = c.req.param('roleId') || ''
@@ -545,6 +577,10 @@ serverInfoRoutes.delete('/members/:userId/roles/:roleId', authMiddleware, (c) =>
   const db = getDb()
   if (roleId === 'admin-role' && isUserHost(targetUserId)) {
     return c.json({ error: 'Cannot remove admin role from the server host' }, 403)
+  }
+  const targetRole = db.prepare('SELECT is_admin FROM roles WHERE id = ?').get(roleId) as { is_admin?: number } | undefined
+  if (targetRole?.is_admin && !isUserAdmin(user.userId)) {
+    return c.json({ error: 'Only an admin can remove an admin role' }, 403)
   }
   db.prepare('DELETE FROM member_roles WHERE user_id = ? AND role_id = ?').run(targetUserId, roleId)
   clearPermissionCache(targetUserId)

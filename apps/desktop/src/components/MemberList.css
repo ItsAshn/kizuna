@@ -155,6 +155,18 @@
   color: var(--text-muted);
 }
 
+.member-list__member-activity-icon--img {
+  width: 14px;
+  height: 14px;
+}
+
+.member-list__member-activity-img {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  object-fit: contain;
+}
+
 .member-list__member-activity-text {
   overflow: hidden;
   text-overflow: ellipsis;

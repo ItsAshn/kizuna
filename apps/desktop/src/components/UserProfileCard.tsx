@@ -5,6 +5,7 @@ import { useVoiceStore } from '../store/voiceStore'
 import { useServerStore } from '../store/serverStore'
 import { getOrCreateDMChannel, getUserProfile } from '@kizuna/shared'
 import { MessageCircle, Clock, Calendar } from 'lucide-react'
+import { ActivityIcon, activityVerb } from '../utils/activity'
 import { hexToRgba } from '../utils/color'
 import { Avatar } from './ui'
 import type { Member } from '@kizuna/shared'
@@ -128,13 +129,19 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
           {statusText}
         </p>
         {activity && (
-          <p className="user-profile-card__activity">
-            <span className="user-profile-card__activity-label">
-              {activity.type === 'music' ? 'Listening to' : activity.type === 'game' ? 'Playing' : activity.type === 'video' ? 'Watching' : ''}
+          <div className="user-profile-card__activity">
+            <span className={`user-profile-card__activity-icon${activity.icon ? ' user-profile-card__activity-icon--img' : ''}`}>
+              <ActivityIcon activity={activity} size={20} className="user-profile-card__activity-img" />
             </span>
-            <span className="user-profile-card__activity-name">{activity.name}</span>
-            {activity.details && <span className="user-profile-card__activity-details">{activity.details}</span>}
-          </p>
+            <div className="user-profile-card__activity-body">
+              {activityVerb(activity.type) && (
+                <span className="user-profile-card__activity-label">{activityVerb(activity.type)}</span>
+              )}
+              <span className="user-profile-card__activity-name">{activity.name}</span>
+              {activity.details && <span className="user-profile-card__activity-details">{activity.details}</span>}
+              {activity.state && <span className="user-profile-card__activity-state">{activity.state}</span>}
+            </div>
+          </div>
         )}
       </div>
 

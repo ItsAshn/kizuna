@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { getDb } from '../db'
-import { authMiddleware, adminMiddleware } from '../middleware/auth'
+import { authMiddleware, adminMiddleware, hasPermissionForUser, getUserInfo, isUserAdmin } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 import { logAuditEvent } from '../routes/audit'
@@ -38,12 +38,22 @@ banRoutes.get('/', authMiddleware, adminMiddleware, (c) => {
 
 banRoutes.post('/:userId', authMiddleware, (c) => {
   const user = getAuth(c)
-  const targetUserId = c.req.param('userId')
+  const targetUserId = c.req.param('userId') || ''
   const db = getDb()
+
+  if (!hasPermissionForUser(user.userId, 'ban_members')) {
+    return c.json({ error: 'You do not have permission to ban members' }, 403)
+  }
+  if (targetUserId === user.userId) return c.json({ error: 'Cannot ban yourself' }, 400)
 
   const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId) as any
   if (!member) return c.json({ error: 'Member not found' }, 404)
   if (member.is_host) return c.json({ error: 'Cannot ban the host' }, 403)
+
+  const targetInfo = getUserInfo(targetUserId)
+  if (targetInfo && targetInfo.role === 'admin' && !isUserAdmin(user.userId)) {
+    return c.json({ error: 'Cannot ban an admin' }, 403)
+  }
 
   const existing = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(targetUserId) as any
   if (existing) return c.json({ error: 'User is already banned' }, 400)
@@ -64,10 +74,14 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
   return c.json({ success: true, id })
 })
 
-banRoutes.delete('/:userId', authMiddleware, adminMiddleware, (c) => {
+banRoutes.delete('/:userId', authMiddleware, (c) => {
   const user = getAuth(c)
   const targetUserId = c.req.param('userId')
   const db = getDb()
+
+  if (!hasPermissionForUser(user.userId, 'ban_members')) {
+    return c.json({ error: 'You do not have permission to manage bans' }, 403)
+  }
 
   const ban = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(targetUserId) as any
   if (!ban) return c.json({ error: 'Ban not found' }, 404)

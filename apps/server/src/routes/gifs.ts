@@ -99,6 +99,32 @@ async function saveFile(buffer: Buffer, originalFilename: string, allowedExts: s
   return { storedFilename, ext, size: buffer.length }
 }
 
+// Validate, store and index a single sticker image into a pack.
+// Returns the new gif id, or null if the data is too large or not an allowed sticker.
+async function storeSticker(
+  db: ReturnType<typeof getDb>,
+  opts: { data: Buffer; originalName: string; displayName: string; packName: string; uploadedBy: string }
+): Promise<string | null> {
+  const { data, originalName, displayName, packName, uploadedBy } = opts
+  if (data.length > MAX_GIF_SIZE) return null
+
+  const result = await saveFile(data, originalName, ALLOWED_STICKER_EXTS)
+  if (!result) return null
+
+  const id = uuidv4()
+  db.prepare(
+    `INSERT INTO gifs (id, type, display_name, category, tags, pack_name, stored_filename, original_filename, file_size, uploaded_by)
+     VALUES (?, 'sticker', ?, '', '', ?, ?, ?, ?, ?)`
+  ).run(id, displayName, packName, result.storedFilename, originalName, result.size, uploadedBy)
+
+  if (isTaggingEnabled()) {
+    generateAndStoreTags(db, id, data).catch(err =>
+      console.error('[gifs] Sticker auto-tagging failed:', err.message))
+  }
+
+  return id
+}
+
 // GET /api/gifs — list gifs/stickers with optional filters
 gifRoutes.get('/', authMiddleware, (c) => {
   const db = getDb()
@@ -379,61 +405,58 @@ gifRoutes.post('/sticker-pack', authMiddleware, async (c) => {
     if (!ALLOWED_STICKER_EXTS.includes(ext)) continue
 
     const data = entry.getData()
-    if (data.length > MAX_GIF_SIZE) continue
-    if (!verifyMagicBytes(data, ext)) continue
-
-    if (shouldProcessImage(name)) {
-      try {
-        const processed = await processImage(data, name)
-        const storedFilename = `${uuidv4()}${path.extname(processed.filename)}`
-        fs.writeFileSync(path.join(GIFS_DIR, storedFilename), processed.buffer)
-
-        if (processed.thumbBuffer) {
-          const thumbFilename = `${storedFilename}.thumb.webp`
-          fs.writeFileSync(path.join(GIFS_DIR, thumbFilename), processed.thumbBuffer)
-        }
-
-        const configEntry = packConfig?.stickers?.find(s => s.filename === entry.entryName)
-        const displayName = configEntry?.display_name || path.basename(name, ext)
-
-        const id = uuidv4()
-        db.prepare(
-          `INSERT INTO gifs (id, type, display_name, category, tags, pack_name, stored_filename, original_filename, file_size, uploaded_by)
-           VALUES (?, 'sticker', ?, '', '', ?, ?, ?, ?, ?)`
-        ).run(id, displayName, packName.trim(), storedFilename, name, processed.buffer.length, user.userId)
-        imported++
-
-        if (isTaggingEnabled()) {
-          generateAndStoreTags(db, id, processed.buffer as unknown as Buffer).catch(err =>
-            console.error('[gifs] Sticker auto-tagging failed:', err.message))
-        }
-
-        continue
-      } catch (imgErr: any) {
-        console.error('[gifs] Sticker processing failed, storing original:', imgErr.message)
-      }
-    }
-
-    const storedFilename = `${uuidv4()}${ext}`
-    fs.writeFileSync(path.join(GIFS_DIR, storedFilename), data)
-
     const configEntry = packConfig?.stickers?.find(s => s.filename === entry.entryName)
     const displayName = configEntry?.display_name || path.basename(name, ext)
 
-    const id = uuidv4()
-    db.prepare(
-      `INSERT INTO gifs (id, type, display_name, category, tags, pack_name, stored_filename, original_filename, file_size, uploaded_by)
-       VALUES (?, 'sticker', ?, '', '', ?, ?, ?, ?, ?)`
-    ).run(id, displayName, packName.trim(), storedFilename, name, data.length, user.userId)
-    imported++
-
-    if (isTaggingEnabled()) {
-      generateAndStoreTags(db, id, data).catch(err =>
-        console.error('[gifs] Sticker auto-tagging failed:', err.message))
-    }
+    const id = await storeSticker(db, {
+      data,
+      originalName: name,
+      displayName,
+      packName: packName.trim(),
+      uploadedBy: user.userId,
+    })
+    if (id) imported++
   }
 
   return c.json({ imported }, 201)
+})
+
+// POST /api/gifs/sticker — upload a single sticker into an existing or new pack (admin only)
+gifRoutes.post('/sticker', authMiddleware, async (c) => {
+  const user = getAuth(c)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+
+  const contentLength = parseInt(c.req.header('content-length') || '0', 10)
+  if (contentLength > MAX_GIF_SIZE) {
+    return c.json({ error: `File too large. Maximum size is ${MAX_GIF_SIZE} bytes` }, 413)
+  }
+
+  const formData = await c.req.formData()
+  const file = formData.get('file') as File | null
+  if (!file) return c.json({ error: 'No file provided' }, 400)
+
+  const packName = ((formData.get('pack_name') as string) || '').trim()
+  if (!packName) return c.json({ error: 'Pack name is required' }, 400)
+
+  const displayName = ((formData.get('display_name') as string) || path.basename(file.name, path.extname(file.name))).trim()
+
+  if (file.size > MAX_GIF_SIZE) {
+    return c.json({ error: `File too large. Maximum size is ${MAX_GIF_SIZE} bytes` }, 413)
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const db = getDb()
+  const id = await storeSticker(db, {
+    data: buffer,
+    originalName: file.name,
+    displayName,
+    packName,
+    uploadedBy: user.userId,
+  })
+  if (!id) return c.json({ error: 'Invalid file. Only .gif, .png and .webp stickers are allowed.' }, 415)
+
+  const row = db.prepare('SELECT * FROM gifs WHERE id = ?').get(id) as any
+  return c.json(gifRowToResponse(row), 201)
 })
 
 // POST /api/gifs/load-tagger — load the CLIP tagging model into memory (admin only)

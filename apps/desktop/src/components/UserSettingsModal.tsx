@@ -9,6 +9,10 @@ import Modal from './ui/Modal'
 import ToggleSwitch from './ui/ToggleSwitch'
 import Tabs from './ui/Tabs'
 import Slider from './ui/Slider'
+import Button from './ui/Button'
+import Input from './ui/Input'
+import { ActivityIcon } from '../utils/activity'
+import type { UserActivity } from '@kizuna/shared'
 import './UserSettingsModal.css'
 
 interface AudioDataPayload {
@@ -434,6 +438,82 @@ export default function UserSettingsModal({ onClose }: Props) {
     }
   }, [monitoring, audioInputDeviceId, startAudioMonitoring, setLiveAudioLevel])
 
+  // Renders the "currently sharing" preview + custom-activity controls shared by
+  // the app and media sections. Defined as a plain render helper (not a nested
+  // component) so the <Input> keeps focus across re-renders while typing.
+  const renderActivitySharing = (opts: {
+    kind: 'app' | 'media'
+    customActivity: string | null
+    setCustomActivity: (v: string | null) => void
+    customInput: string
+    setCustomInput: (v: string) => void
+  }) => {
+    const { kind, customActivity, setCustomActivity, customInput, setCustomInput } = opts
+    const userId = session?.user.id
+    const ownActivity = userId ? userActivities[userId] : undefined
+    const matchTypes = kind === 'app' ? ['game', 'app'] : ['music', 'video']
+    const current = ownActivity && matchTypes.includes(ownActivity.type) ? ownActivity : undefined
+    const previewActivity: UserActivity | null = current
+      ? current
+      : customActivity
+        ? { type: 'other', name: customActivity }
+        : null
+
+    const commit = (val: string) => setCustomActivity(val.trim() || null)
+
+    return (
+      <div className="settings-activity-card">
+        <div className="settings-activity-current">
+          <span className="settings-activity-current-label">currently sharing</span>
+          {previewActivity ? (
+            <div className="settings-activity-now">
+              <span className={`settings-activity-now-icon${previewActivity.icon ? ' settings-activity-now-icon--img' : ''}`}>
+                <ActivityIcon activity={previewActivity} size={16} className="settings-activity-now-img" />
+              </span>
+              <span className="settings-activity-now-name">{previewActivity.name}</span>
+              {!current && <span className="settings-activity-now-tag">custom</span>}
+            </div>
+          ) : (
+            <span className="settings-activity-empty">nothing detected</span>
+          )}
+        </div>
+
+        <div className="settings-activity-custom">
+          <Input
+            className="settings-activity-input"
+            placeholder="set a custom activity…"
+            value={customInput}
+            onChange={(e) => setCustomInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') commit(customInput) }}
+          />
+          <Button size="sm" onClick={() => commit(customInput)} disabled={!customInput.trim()}>set</Button>
+          {customActivity && (
+            <Button size="sm" variant="danger" onClick={() => { setCustomActivity(null); setCustomInput('') }}>clear</Button>
+          )}
+        </div>
+
+        {runningWindows.length > 0 && (
+          <div className="settings-activity-suggestions">
+            <span className="settings-activity-suggestions-label">running apps</span>
+            <div className="settings-activity-chips">
+              {runningWindows.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={`settings-activity-chip${customActivity === name ? ' settings-activity-chip--active' : ''}`}
+                  onClick={() => { setCustomInput(name); setCustomActivity(name) }}
+                  title={name}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const handleResetAudio = useCallback(() => {
     setAudioInputDeviceId(null)
     setAudioOutputDeviceId(null)
@@ -717,149 +797,21 @@ export default function UserSettingsModal({ onClose }: Props) {
               onChange={setShareMediaActivity}
             />
 
-            {shareAppActivity && (() => {
-              const userId = session?.user.id
-              const ownActivity = userId ? userActivities[userId] : undefined
-              const current = ownActivity && (ownActivity.type === 'game' || ownActivity.type === 'app')
-                ? ownActivity
-                : undefined
-              const displayText = current
-                ? `${current.type === 'game' ? '\u{1F3AE}' : '\u{1F4BB}'} ${current.name}${current.details ? ' \u2014 ' + current.details : ''}`
-                : customAppActivity
-                  ? `${customAppActivity} (custom)`
-                  : 'nothing detected'
+            {shareAppActivity && renderActivitySharing({
+              kind: 'app',
+              customActivity: customAppActivity,
+              setCustomActivity: setCustomAppActivity,
+              customInput: customAppInput,
+              setCustomInput: setCustomAppInput,
+            })}
 
-              return (
-                <div className="settings-activity-preview">
-                  <div className="settings-activity-preview-header">
-                    <span className="settings-activity-preview-label">
-                      currently sharing: {displayText}
-                    </span>
-                  </div>
-                  <div className="settings-activity-custom">
-                    <input
-                      className="settings-activity-input"
-                      placeholder="type custom activity..."
-                      value={customAppInput}
-                      onChange={(e) => setCustomAppInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setCustomAppActivity(customAppInput || null)
-                        }
-                      }}
-                    />
-                    <button
-                      className="settings-btn"
-                      onClick={() => setCustomAppActivity(customAppInput || null)}
-                      disabled={!customAppInput.trim()}
-                    >
-                      set
-                    </button>
-                    {customAppActivity && (
-                      <button
-                        className="settings-btn settings-btn--danger"
-                        onClick={() => { setCustomAppActivity(null); setCustomAppInput('') }}
-                      >
-                        clear
-                      </button>
-                    )}
-                  </div>
-                  {runningWindows.length > 0 && (
-                    <div className="settings-activity-suggestions">
-                      <span className="settings-activity-suggestions-label">running apps:</span>
-                      <select
-                        className="settings-activity-select"
-                        value=""
-                        onChange={(e) => {
-                          const val = e.target.value
-                          if (val) {
-                            setCustomAppInput(val)
-                            setCustomAppActivity(val)
-                          }
-                        }}
-                      >
-                        <option value="">— choose —</option>
-                        {runningWindows.map((name) => (
-                          <option key={name} value={name}>{name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
-
-            {shareMediaActivity && (() => {
-              const userId = session?.user.id
-              const ownActivity = userId ? userActivities[userId] : undefined
-              const current = ownActivity && (ownActivity.type === 'music' || ownActivity.type === 'video')
-                ? ownActivity
-                : undefined
-              const displayText = current
-                ? `${current.type === 'music' ? '\u{1F3B5}' : '\u{1F3AC}'} ${current.name}${current.details ? ' — ' + current.details : ''}`
-                : customMediaActivity
-                  ? `${customMediaActivity} (custom)`
-                  : 'nothing detected'
-
-              return (
-                <div className="settings-activity-preview">
-                  <div className="settings-activity-preview-header">
-                    <span className="settings-activity-preview-label">
-                      currently sharing: {displayText}
-                    </span>
-                  </div>
-                  <div className="settings-activity-custom">
-                    <input
-                      className="settings-activity-input"
-                      placeholder="type custom activity..."
-                      value={customMediaInput}
-                      onChange={(e) => setCustomMediaInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setCustomMediaActivity(customMediaInput || null)
-                        }
-                      }}
-                    />
-                    <button
-                      className="settings-btn"
-                      onClick={() => setCustomMediaActivity(customMediaInput || null)}
-                      disabled={!customMediaInput.trim()}
-                    >
-                      set
-                    </button>
-                    {customMediaActivity && (
-                      <button
-                        className="settings-btn settings-btn--danger"
-                        onClick={() => { setCustomMediaActivity(null); setCustomMediaInput('') }}
-                      >
-                        clear
-                      </button>
-                    )}
-                  </div>
-                  {runningWindows.length > 0 && (
-                    <div className="settings-activity-suggestions">
-                      <span className="settings-activity-suggestions-label">running apps:</span>
-                      <select
-                        className="settings-activity-select"
-                        value=""
-                        onChange={(e) => {
-                          const val = e.target.value
-                          if (val) {
-                            setCustomMediaInput(val)
-                            setCustomMediaActivity(val)
-                          }
-                        }}
-                      >
-                        <option value="">— choose —</option>
-                        {runningWindows.map((name) => (
-                          <option key={name} value={name}>{name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
+            {shareMediaActivity && renderActivitySharing({
+              kind: 'media',
+              customActivity: customMediaActivity,
+              setCustomActivity: setCustomMediaActivity,
+              customInput: customMediaInput,
+              setCustomInput: setCustomMediaInput,
+            })}
           </div>
         </div>
       )}

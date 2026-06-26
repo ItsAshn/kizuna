@@ -92,8 +92,8 @@ fn list_windows() -> Result<Vec<AppEntry>, String> {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn get_app_icon() -> Result<Option<capture::detection::IconData>, String> {
-    Ok(capture::detection::get_active_app_icon())
+fn get_app_icon(process_name: String) -> Result<Option<capture::detection::IconData>, String> {
+    Ok(capture::detection::get_app_icon(&process_name))
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

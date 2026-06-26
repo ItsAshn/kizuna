@@ -32,6 +32,7 @@ import {
   uploadGif,
   uploadGifPack,
   uploadStickerPack,
+  uploadSticker,
   fetchGifs,
   deleteGif,
   deleteStickerPack,
@@ -106,6 +107,7 @@ const ALL_PERMISSIONS: { key: Permission; label: string; desc: string }[] = [
   { key: 'manage_channels', label: 'channels', desc: 'Create, edit, and delete channels' },
   { key: 'manage_roles', label: 'roles', desc: 'Create, edit, delete, and assign roles' },
   { key: 'kick_members', label: 'kick', desc: 'Remove members from the server' },
+  { key: 'ban_members', label: 'ban', desc: 'Permanently ban members from the server' },
   { key: 'manage_invites', label: 'invites', desc: 'Create and revoke invite codes' },
   { key: 'use_voice', label: 'voice', desc: 'Join and speak in guild voice channels' },
   { key: 'initiate_dm_calls', label: 'dm call', desc: 'Start and accept DM voice calls' },
@@ -376,6 +378,20 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
   const gifFileRef = useRef<HTMLInputElement>(null)
   const gifPackFileRef = useRef<HTMLInputElement>(null)
   const stickerPackFileRef = useRef<HTMLInputElement>(null)
+  const singleStickerFileRef = useRef<HTMLInputElement>(null)
+  // Styled popup for naming a sticker pack when importing a .zip (replaces window.prompt)
+  const [packNameModal, setPackNameModal] = useState<{ open: boolean; file: File | null; name: string }>(
+    { open: false, file: null, name: '' },
+  )
+  // Styled popup for uploading a single sticker into an existing or new pack
+  const [stickerUpload, setStickerUpload] = useState<{
+    open: boolean
+    file: File | null
+    selectedPack: string // '' means "create a new pack"
+    newPackName: string
+    displayName: string
+    uploading: boolean
+  }>({ open: false, file: null, selectedPack: '', newPackName: '', displayName: '', uploading: false })
 
   function memberRoleCount(roleId: string): number {
     return members.filter(m => (m.custom_roles || []).some(r => r.id === roleId)).length
@@ -907,22 +923,60 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
     e.target.value = ''
   }
 
-  const handleStickerPackFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleStickerPackFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !serverUrl) return
-    const packName = prompt('Enter a name for this sticker pack:')
-    if (!packName?.trim()) return
+    setPackNameModal({ open: true, file, name: '' })
+    e.target.value = ''
+  }
+
+  const confirmStickerPackUpload = async () => {
+    const { file, name } = packNameModal
+    if (!file || !serverUrl || !name.trim()) return
     setGifUploading(true)
     setGifMsg(null)
     try {
-      const result = await uploadStickerPack(serverUrl, file, packName.trim())
+      const result = await uploadStickerPack(serverUrl, file, name.trim())
       setGifMsg(`imported ${result.imported} stickers`)
       loadGifs()
+      setPackNameModal({ open: false, file: null, name: '' })
     } catch (err) {
       setGifMsg(handleApiErr(err))
     }
     setGifUploading(false)
-    e.target.value = ''
+  }
+
+  const openStickerUpload = (pack?: string) => {
+    setStickerUpload({
+      open: true,
+      file: null,
+      selectedPack: pack ?? '',
+      newPackName: '',
+      displayName: '',
+      uploading: false,
+    })
+  }
+
+  const confirmStickerUpload = async () => {
+    if (!serverUrl) return
+    const packName = (stickerUpload.selectedPack || stickerUpload.newPackName).trim()
+    if (!stickerUpload.file || !packName) return
+    setStickerUpload((s) => ({ ...s, uploading: true }))
+    setGifMsg(null)
+    try {
+      await uploadSticker(
+        serverUrl,
+        stickerUpload.file,
+        packName,
+        stickerUpload.displayName.trim() || undefined,
+      )
+      setGifMsg('uploaded')
+      loadGifs()
+      setStickerUpload({ open: false, file: null, selectedPack: '', newPackName: '', displayName: '', uploading: false })
+    } catch (err) {
+      setGifMsg(handleApiErr(err))
+      setStickerUpload((s) => ({ ...s, uploading: false }))
+    }
   }
 
   const handleDeleteGif = async (id: string) => {
@@ -1052,6 +1106,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
   const statusFor = (memberId: string): UserStatus => userStatuses[memberId] || 'offline'
 
   return (
+    <>
     <Modal
       open
       onClose={onClose}
@@ -2000,6 +2055,16 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
                         <input ref={stickerPackFileRef} type="file" accept=".zip" style={{ display: 'none' }} onChange={handleStickerPackFile} />
                       </div>
 
+                      <p className="server-menu__section-title" style={{ marginBottom: '6px', fontSize: '11px' }}>add a single sticker</p>
+                      <div className="server-menu__gif-upload" style={{ marginBottom: '16px' }}>
+                        <p className="server-menu__css-hint" style={{ marginBottom: '8px' }}>
+                          Upload one .gif, .png, or .webp sticker into an existing pack or a brand-new one.
+                        </p>
+                        <button onClick={() => openStickerUpload()} disabled={gifUploading} className="server-menu__upload-btn">
+                          add sticker
+                        </button>
+                      </div>
+
                       {gifMsg && (
                         <span className={`server-menu__save-msg ${gifMsg === 'uploaded' || gifMsg.startsWith('imported') ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`} style={{ marginBottom: '8px', display: 'block' }}>
                           {gifMsg}
@@ -2021,14 +2086,24 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
                                 <span style={{ fontWeight: 600, fontSize: '13px' }}>{pack}</span>
                                 <span style={{ color: 'var(--text-muted)', fontSize: '11px', marginLeft: '8px' }}>{packCount} sticker{packCount !== 1 ? 's' : ''}</span>
                               </div>
-                              <button
-                                onClick={() => handleDeleteStickerPack(pack)}
-                                className="server-menu__gif-delete"
-                                style={{ position: 'static' }}
-                                title="Delete pack"
-                              >
-                                delete pack
-                              </button>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <button
+                                  onClick={() => openStickerUpload(pack)}
+                                  className="server-menu__upload-btn"
+                                  style={{ padding: '4px 10px', fontSize: '11px' }}
+                                  title={`Add a sticker to ${pack}`}
+                                >
+                                  + add
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteStickerPack(pack)}
+                                  className="server-menu__gif-delete"
+                                  style={{ position: 'static' }}
+                                  title="Delete pack"
+                                >
+                                  delete pack
+                                </button>
+                              </div>
                             </div>
                           )
                         })
@@ -2040,5 +2115,124 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
             </section>
           )}
     </Modal>
+
+    {/* Styled popup for naming a sticker pack during .zip import (replaces window.prompt) */}
+    <Modal
+      open={packNameModal.open}
+      onClose={() => setPackNameModal({ open: false, file: null, name: '' })}
+      title="// name sticker pack"
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          <button
+            className="server-menu__confirm-cancel"
+            onClick={() => setPackNameModal({ open: false, file: null, name: '' })}
+            disabled={gifUploading}
+          >
+            cancel
+          </button>
+          <button
+            className="server-menu__upload-btn"
+            onClick={confirmStickerPackUpload}
+            disabled={gifUploading || !packNameModal.name.trim()}
+          >
+            {gifUploading ? 'importing...' : 'import pack'}
+          </button>
+        </div>
+      }
+    >
+      <label className="server-menu__label">pack name</label>
+      <input
+        autoFocus
+        className="server-menu__input"
+        placeholder="e.g. Summer Stickers"
+        value={packNameModal.name}
+        maxLength={100}
+        onChange={(e) => setPackNameModal((s) => ({ ...s, name: e.target.value }))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && packNameModal.name.trim()) confirmStickerPackUpload()
+        }}
+      />
+    </Modal>
+
+    {/* Styled popup for uploading a single sticker into an existing or new pack */}
+    {(() => {
+      const existingPacks = [...new Set(gifsList.filter((g) => g.type === 'sticker' && g.pack_name).map((g) => g.pack_name!))]
+      const resolvedPack = (stickerUpload.selectedPack || stickerUpload.newPackName).trim()
+      const canSubmit = !!stickerUpload.file && !!resolvedPack && !stickerUpload.uploading
+      return (
+        <Modal
+          open={stickerUpload.open}
+          onClose={() => setStickerUpload((s) => ({ ...s, open: false }))}
+          title="// add sticker"
+          footer={
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                className="server-menu__confirm-cancel"
+                onClick={() => setStickerUpload((s) => ({ ...s, open: false }))}
+                disabled={stickerUpload.uploading}
+              >
+                cancel
+              </button>
+              <button className="server-menu__upload-btn" onClick={confirmStickerUpload} disabled={!canSubmit}>
+                {stickerUpload.uploading ? 'uploading...' : 'add sticker'}
+              </button>
+            </div>
+          }
+        >
+          <label className="server-menu__label">sticker file</label>
+          <div style={{ marginBottom: '12px' }}>
+            <button className="server-menu__upload-btn" onClick={() => singleStickerFileRef.current?.click()}>
+              {stickerUpload.file ? stickerUpload.file.name : 'choose .gif / .png / .webp'}
+            </button>
+            <input
+              ref={singleStickerFileRef}
+              type="file"
+              accept=".gif,.png,.webp"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null
+                setStickerUpload((s) => ({ ...s, file }))
+                e.target.value = ''
+              }}
+            />
+          </div>
+
+          <label className="server-menu__label">pack</label>
+          <select
+            className="server-menu__select"
+            value={stickerUpload.selectedPack}
+            onChange={(e) => setStickerUpload((s) => ({ ...s, selectedPack: e.target.value }))}
+            style={{ marginBottom: '8px' }}
+          >
+            <option value="">+ new pack…</option>
+            {existingPacks.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          {!stickerUpload.selectedPack && (
+            <input
+              className="server-menu__input"
+              placeholder="new pack name"
+              value={stickerUpload.newPackName}
+              maxLength={100}
+              onChange={(e) => setStickerUpload((s) => ({ ...s, newPackName: e.target.value }))}
+              style={{ marginBottom: '12px' }}
+            />
+          )}
+
+          <label className="server-menu__label">display name (optional)</label>
+          <input
+            className="server-menu__input"
+            placeholder="defaults to file name"
+            value={stickerUpload.displayName}
+            maxLength={100}
+            onChange={(e) => setStickerUpload((s) => ({ ...s, displayName: e.target.value }))}
+          />
+        </Modal>
+      )
+    })()}
+    </>
   )
 }
