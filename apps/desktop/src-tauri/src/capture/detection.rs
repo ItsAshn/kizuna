@@ -15,7 +15,7 @@ pub struct IconData {
 /// Falls back gracefully when x-win is absent or the platform is
 /// unsupported (Hyprland, Sway, etc.) — returns `None` with no error.
 pub fn get_active_app_icon() -> Option<IconData> {
-    #[cfg(feature = "x-win")]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let window = x_win::get_active_window().ok()?;
         if window.id == 0 || window.title.is_empty() {
@@ -31,7 +31,7 @@ pub fn get_active_app_icon() -> Option<IconData> {
             height: icon.height,
         })
     }
-    #[cfg(not(feature = "x-win"))]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         None
     }
@@ -41,7 +41,7 @@ pub fn get_active_app_icon() -> Option<IconData> {
 ///
 /// Falls back to the native `focus::list_windows()` when x-win is unavailable
 /// or returns no results.
-#[cfg(feature = "x-win")]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn list_apps_xwin() -> Option<Vec<AppEntry>> {
     let windows = x_win::get_open_windows().ok()?;
     if windows.is_empty() {
@@ -73,7 +73,7 @@ pub fn list_apps_xwin() -> Option<Vec<AppEntry>> {
     }
 }
 
-#[cfg(not(feature = "x-win"))]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub fn list_apps_xwin() -> Option<Vec<AppEntry>> {
     None
 }
