@@ -15,6 +15,8 @@ use capture::{CaptureSession, MonitorInfo, SessionType};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use capture::focus::WindowInfo;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+use capture::detection::AppEntry;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use voice::device::AudioDeviceInfo;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use voice::output::AudioOutput;
@@ -71,6 +73,27 @@ fn get_active_window_info() -> Result<Option<WindowInfo>, String> {
 #[tauri::command]
 fn get_now_playing() -> Result<Option<capture::nowplaying::NowPlaying>, String> {
     Ok(capture::nowplaying::get_now_playing())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn list_windows() -> Result<Vec<AppEntry>, String> {
+    let session = get_session_type();
+
+    if let Some(entries) = capture::detection::list_apps_xwin() {
+        return Ok(entries);
+    }
+
+    Ok(capture::focus::list_windows(session)
+        .into_iter()
+        .map(AppEntry::from)
+        .collect())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn get_app_icon() -> Result<Option<capture::detection::IconData>, String> {
+    Ok(capture::detection::get_active_app_icon())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -538,6 +561,8 @@ pub fn run() {
                     list_monitors,
                     get_active_window_info,
                     get_now_playing,
+                    list_windows,
+                    get_app_icon,
                     start_screen_capture,
                     stop_screen_capture,
                     camera_list_devices,

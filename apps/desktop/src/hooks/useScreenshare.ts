@@ -70,6 +70,7 @@ export function useScreenshare(
 
     if (!socket) return 'No socket connection'
     if (!isTauri()) return 'Screensharing only works in the Tauri desktop app'
+    if (typeof RTCPeerConnection === 'undefined') return 'WebRTC is not supported in this webview. On Linux, ensure webkit2gtk is built with WebRTC support.'
 
     if (!sendTransport) {
       try {

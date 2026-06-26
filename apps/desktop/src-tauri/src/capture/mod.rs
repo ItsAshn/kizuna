@@ -3,6 +3,7 @@ pub mod macos;
 pub mod media;
 pub mod nowplaying;
 pub mod focus;
+pub mod detection;
 #[cfg(target_os = "linux")]
 pub mod wayland;
 pub mod windows;

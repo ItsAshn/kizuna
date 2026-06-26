@@ -7,6 +7,7 @@ import type { ConnectionQuality } from '@kizuna/shared'
 import { Volume2, Mic, MicOff, PhoneOff, Monitor, MonitorOff, Video, VideoOff } from 'lucide-react'
 import MonitorPicker from './MonitorPicker'
 import Slider from './ui/Slider'
+import { useMobile } from '../hooks/useMobile'
 import { getVoiceLogLines } from '../hooks/useVoice'
 import './VoiceOverlay.css'
 
@@ -71,6 +72,7 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
   const [closing, setClosing] = useState(false)
   const [showMonitorPicker, setShowMonitorPicker] = useState(false)
   const [screenShareError, setScreenShareError] = useState<string | null>(null)
+  const isMobile = useMobile()
   useEffect(() => {
     if (activeVoiceChannelId) setClosing(false)
   }, [activeVoiceChannelId])
@@ -168,7 +170,7 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
         </span>
         {!voiceError && (
           <>
-            {!isDMCall && '__TAURI_INTERNALS__' in window && (
+            {!isDMCall && !isMobile && '__TAURI_INTERNALS__' in window && (
               <button
                 onClick={() => {
                   if (isScreenSharing) {

@@ -204,10 +204,8 @@ export default function UserSettingsModal({ onClose }: Props) {
     updateState, updateProgress, updateVersion, updateError,
     shareAppActivity, setShareAppActivity,
     customAppActivity, setCustomAppActivity,
-    recentAppActivities, removeRecentAppActivity,
     shareMediaActivity, setShareMediaActivity,
     customMediaActivity, setCustomMediaActivity,
-    recentMediaActivities, removeRecentMediaActivity,
   } = useSettingsStore()
   const userActivities = useVoiceStore((s) => s.userActivities)
   const session = useServerStore((s) => s.activeSession)
@@ -225,8 +223,26 @@ export default function UserSettingsModal({ onClose }: Props) {
   const [monitoring, setMonitoring] = useState(false)
   const [customAppInput, setCustomAppInput] = useState('')
   const [customMediaInput, setCustomMediaInput] = useState('')
+  const [runningWindows, setRunningWindows] = useState<string[]>([])
   const unmountedRef = useRef(false)
   const audioLevelCleanupRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    if (activeTab !== 'privacy' || !isTauri() || unmountedRef.current) return
+    let cancelled = false
+    import('@tauri-apps/api/core').then(({ invoke }) => {
+      invoke<{ title: string; process_name: string; display_name: string }[]>('list_windows')
+        .then((windows) => {
+          if (cancelled || unmountedRef.current) return
+          const names = windows
+            .map((w) => w.display_name || w.title)
+            .filter((t): t is string => !!t && t.trim().length > 0)
+          setRunningWindows([...new Set(names)])
+        })
+        .catch(() => {})
+    })
+    return () => { cancelled = true }
+  }, [activeTab])
 
   const meterLevel = Math.min(100, Math.round((liveAudioLevel / 40) * 100))
 
@@ -748,24 +764,25 @@ export default function UserSettingsModal({ onClose }: Props) {
                       </button>
                     )}
                   </div>
-                  {recentAppActivities.length > 0 && (
+                  {runningWindows.length > 0 && (
                     <div className="settings-activity-suggestions">
-                      <span className="settings-activity-suggestions-label">suggestions:</span>
-                      {recentAppActivities.map((name) => (
-                        <button
-                          key={name}
-                          className="settings-activity-chip"
-                          onClick={() => { setCustomAppInput(name); setCustomAppActivity(name) }}
-                        >
-                          {name}
-                          <span
-                            className="settings-activity-chip-remove"
-                            onClick={(e) => { e.stopPropagation(); removeRecentAppActivity(name) }}
-                          >
-                            &times;
-                          </span>
-                        </button>
-                      ))}
+                      <span className="settings-activity-suggestions-label">running apps:</span>
+                      <select
+                        className="settings-activity-select"
+                        value=""
+                        onChange={(e) => {
+                          const val = e.target.value
+                          if (val) {
+                            setCustomAppInput(val)
+                            setCustomAppActivity(val)
+                          }
+                        }}
+                      >
+                        <option value="">— choose —</option>
+                        {runningWindows.map((name) => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
                     </div>
                   )}
                 </div>
@@ -819,24 +836,25 @@ export default function UserSettingsModal({ onClose }: Props) {
                       </button>
                     )}
                   </div>
-                  {recentMediaActivities.length > 0 && (
+                  {runningWindows.length > 0 && (
                     <div className="settings-activity-suggestions">
-                      <span className="settings-activity-suggestions-label">suggestions:</span>
-                      {recentMediaActivities.map((name) => (
-                        <button
-                          key={name}
-                          className="settings-activity-chip"
-                          onClick={() => { setCustomMediaInput(name); setCustomMediaActivity(name) }}
-                        >
-                          {name}
-                          <span
-                            className="settings-activity-chip-remove"
-                            onClick={(e) => { e.stopPropagation(); removeRecentMediaActivity(name) }}
-                          >
-                            &times;
-                          </span>
-                        </button>
-                      ))}
+                      <span className="settings-activity-suggestions-label">running apps:</span>
+                      <select
+                        className="settings-activity-select"
+                        value=""
+                        onChange={(e) => {
+                          const val = e.target.value
+                          if (val) {
+                            setCustomMediaInput(val)
+                            setCustomMediaActivity(val)
+                          }
+                        }}
+                      >
+                        <option value="">— choose —</option>
+                        {runningWindows.map((name) => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
                     </div>
                   )}
                 </div>

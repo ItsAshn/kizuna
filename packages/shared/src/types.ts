@@ -25,6 +25,7 @@ export interface UserActivity {
   details?: string;
   state?: string;
   timestamps?: { start?: number };
+  icon?: string;
 }
 
 /** Shared fields between User and Member. */

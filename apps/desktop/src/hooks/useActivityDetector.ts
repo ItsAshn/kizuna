@@ -5,6 +5,8 @@ import { useSettingsStore } from '../store/settingsStore'
 import { isTauri } from '../utils/platform'
 import type { UserActivity, UserActivityType } from '@kizuna/shared'
 
+const SWITCH_DELAY_MS = 30_000
+
 const KNOWN_GAMES = new Set([
   'cs2.exe', 'csgo.exe', 'cs2',
   'valorant.exe', 'valorant',
@@ -31,7 +33,6 @@ const KNOWN_GAMES = new Set([
   'genshinimpact.exe', 'genshin impact',
   'steam', 'steam.exe',
   'discord.exe', 'discord',
-  'spotify.exe', 'spotify',
   'chrome.exe', 'google chrome',
   'firefox.exe', 'firefox',
   'code.exe', 'visual studio code',
@@ -84,6 +85,133 @@ const KNOWN_GAMES = new Set([
   'left 4 dead 2',
 ])
 
+const SUPPRESSED_APPS = new Set([
+  // ── Password managers / auth ─────────────────────────────
+  'keepassxc', 'keepass', 'keepass2', 'bitwarden', '1password',
+  'lastpass', 'dashlane', 'nordpass', 'authy', 'enpass',
+  'keeper', 'secrets', 'gopass',
+  'kwallet', 'kwalletmanager', 'kwalletmanager5', 'kwalletd', 'kwalletd5',
+  'seahorse', 'gnome-keyring', 'gnome-keyring-daemon', 'gnome-keyring-prompt',
+  'gnome-ssh-askpass', 'ksshaskpass',
+  'polkit-gnome-authentication-agent-1', 'polkit-kde-authentication-agent-1',
+  'lxpolkit', 'lxsession',
+
+  // ── Lock screens & login (system, not user apps) ─────────
+  'i3lock', 'swaylock', 'swaylock-effects', 'gtklock', 'hyprlock',
+  'kscreenlocker', 'kscreenlocker_greet', 'xscreensaver',
+  'gnome-screensaver', 'gnome-screensaver-dialog',
+  'lightdm', 'lightdm-gtk-greeter', 'gdm', 'gdm-password', 'gdm-session-worker',
+  'sddm', 'sddm-greeter', 'ly', 'greetd', 'loginwindow',
+  'lockapp.exe', 'logonui.exe', 'winlogon.exe', 'msgina.dll',
+  'screensaverengine',
+
+  // ── Desktop shell internals (not user apps) ──────────────
+  'plasmashell', 'kded5', 'gnome-shell',
+  'dwm.exe', 'desktop window manager',
+  'dock', 'notificationcenter', 'menuextras', 'systemuiserver',
+  'windowserver', 'controlcenter',
+  'shellexperiencehost.exe', 'startmenuexperiencehost.exe',
+  'textinputhost.exe', 'searchhost.exe', 'searchui.exe',
+
+  // ── Finance ──────────────────────────────────────────────
+  'gnucash', 'kmymoney', 'skrooge', 'homebank',
+  'moneymanagerex', 'quicken', 'quickbooks', 'moneydance', 'ynab',
+
+  // ── This app itself ──────────────────────────────────────
+  'kizuna', 'kizuna-desktop', 'com.kizuna.desktop',
+])
+
+const APP_DISPLAY_NAMES: Record<string, string> = {
+  // Browsers
+  'code': 'Visual Studio Code', 'code-oss': 'VS Code - OSS',
+  'code.exe': 'Visual Studio Code', 'code-oss.exe': 'VS Code - OSS',
+  'codium': 'VSCodium',
+  'sublime_text': 'Sublime Text', 'sublime_merge': 'Sublime Merge',
+  'atom': 'Atom',
+  // JetBrains
+  'jetbrains-idea': 'IntelliJ IDEA',
+  'idea64.exe': 'IntelliJ IDEA',
+  'jetbrains-studio': 'Android Studio',
+  'studio64.exe': 'Android Studio',
+  'jetbrains-pycharm': 'PyCharm',
+  'pycharm64.exe': 'PyCharm',
+  'jetbrains-webstorm': 'WebStorm',
+  'webstorm64.exe': 'WebStorm',
+  'jetbrains-goland': 'GoLand',
+  'goland64.exe': 'GoLand',
+  'jetbrains-clion': 'CLion',
+  'clion64.exe': 'CLion',
+  'jetbrains-phpstorm': 'PhpStorm',
+  'jetbrains-rider': 'Rider',
+  'jetbrains-rubymine': 'RubyMine',
+  'jetbrains-datagrip': 'DataGrip',
+  'jetbrains-fleet': 'Fleet',
+  'notepad++': 'Notepad++', 'notepad++.exe': 'Notepad++',
+  // Terminals
+  'cmd.exe': 'Command Prompt', 'cmd': 'Command Prompt',
+  'powershell.exe': 'PowerShell', 'powershell': 'PowerShell',
+  'pwsh.exe': 'PowerShell', 'pwsh': 'PowerShell',
+  'windowsterminal': 'Windows Terminal', 'windowsterminal.exe': 'Windows Terminal',
+  'wt.exe': 'Windows Terminal',
+  'terminal.app': 'Terminal', 'iterm2': 'iTerm2',
+  // File managers
+  'org.gnome.nautilus': 'Files',
+  'org.kde.dolphin': 'Dolphin',
+  'explorer.exe': 'File Explorer', 'explorer': 'File Explorer',
+  // Office
+  'libreoffice': 'LibreOffice',
+  'libreoffice-writer': 'LibreOffice Writer',
+  'libreoffice-calc': 'LibreOffice Calc',
+  'libreoffice-impress': 'LibreOffice Impress',
+  'soffice': 'LibreOffice',
+  'winword.exe': 'Microsoft Word',
+  'excel.exe': 'Microsoft Excel',
+  'powerpnt.exe': 'Microsoft PowerPoint',
+  'evince': 'Document Viewer',
+  // Graphics
+  'gimp-2.10': 'GIMP',
+  'photoshop.exe': 'Adobe Photoshop',
+  'illustrator.exe': 'Adobe Illustrator',
+  // Communication
+  'teams': 'Microsoft Teams', 'teams.exe': 'Microsoft Teams',
+  'skypeforlinux': 'Skype',
+  // Game launchers
+  'heroic': 'Heroic Games Launcher',
+  'epicgameslauncher.exe': 'Epic Games',
+  'ubisoftconnect.exe': 'Ubisoft Connect',
+  'battle.net': 'Battle.net', 'battle.net.exe': 'Battle.net',
+  // Dev tools
+  'git-gui': 'Git GUI', 'git-cola': 'Git Cola',
+  'mysql-workbench': 'MySQL Workbench',
+  'mongodb-compass': 'MongoDB Compass',
+  'virt-manager': 'Virtual Machine Manager',
+  'gnome-boxes': 'Boxes',
+  // Sys tools
+  'gnome-control-center': 'Settings',
+  'systemmonitor': 'System Monitor',
+  'gnome-system-monitor': 'System Monitor',
+  'taskmgr.exe': 'Task Manager', 'taskmgr': 'Task Manager',
+  'pavucontrol': 'Volume Control', 'pavucontrol-qt': 'Volume Control',
+} as const
+
+function isSuppressedApp(processName: string): boolean {
+  return SUPPRESSED_APPS.has(processName.toLowerCase())
+}
+
+function processDisplayName(processName: string): string {
+  const lower = processName.toLowerCase()
+  if (APP_DISPLAY_NAMES[lower]) {
+    return APP_DISPLAY_NAMES[lower]
+  }
+
+  return lower
+    .replace(/\.exe$/i, '')
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ') || lower
+}
+
 function isGameApp(appName: string, processName: string): boolean {
   const lower = (appName + ' ' + processName).toLowerCase()
   return [...KNOWN_GAMES].some((game) => lower.includes(game.toLowerCase()))
@@ -116,6 +244,16 @@ function detectMediaActivity(metadata: {
   return activity
 }
 
+async function fetchAppIcon(): Promise<string | undefined> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const icon = await invoke<{ data: string } | null>('get_app_icon')
+    return icon?.data
+  } catch {
+    return undefined
+  }
+}
+
 export function useActivityDetector(socketRef: React.MutableRefObject<Socket | null>) {
   const shareMediaActivity = useSettingsStore((s) => s.shareMediaActivity)
   const shareAppActivity = useSettingsStore((s) => s.shareAppActivity)
@@ -126,6 +264,9 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
 
   const lastEmittedRef = useRef<string | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const stableWindowKeyRef = useRef<string | null>(null)
+  const windowFirstSeenRef = useRef<number>(0)
+  const iconCacheRef = useRef<Map<string, string>>(new Map())
 
   const emitActivity = useCallback(
     (activity: UserActivity | null) => {
@@ -145,6 +286,8 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
       socket.emit('user:activity', { activity: null })
     }
     lastEmittedRef.current = null
+    stableWindowKeyRef.current = null
+    windowFirstSeenRef.current = 0
   }, [socketRef])
 
   const resolveActivity = useCallback((): UserActivity | null => {
@@ -176,6 +319,7 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
       }
 
       let bestActivity: UserActivity | null = null
+      let musicActivity: UserActivity | null = null
 
       if (shareAppActivity && isTauri()) {
         try {
@@ -184,25 +328,57 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
             'get_active_window_info',
           )
           if (info && info.title) {
-            const type: UserActivityType = isGameApp(info.title, info.process_name)
-              ? 'game'
-              : 'app'
-            const activity: UserActivity = {
-              type,
-              name: info.title,
-              details: info.process_name || undefined,
+            const isGame = isGameApp(info.title, info.process_name)
+
+            if (isSuppressedApp(info.process_name)) {
+              stableWindowKeyRef.current = null
+              windowFirstSeenRef.current = 0
+            } else {
+              const windowKey = info.process_name + '\x00' + info.title
+
+              if (windowKey === stableWindowKeyRef.current) {
+                const elapsed = Date.now() - windowFirstSeenRef.current
+                if (elapsed >= SWITCH_DELAY_MS) {
+                  const type: UserActivityType = isGame ? 'game' : 'app'
+                  const name = isGame
+                    ? info.title.trim()
+                    : processDisplayName(info.process_name)
+                  const icon = isGame
+                    ? undefined
+                    : iconCacheRef.current.get(info.process_name)
+                  bestActivity = {
+                    type,
+                    name,
+                    details: !isGame ? info.process_name || undefined : undefined,
+                    icon,
+                  }
+                  if (!isGame) addRecentAppActivity(name)
+
+                  // Fetch icon in the background if not cached
+                  if (!isGame && !icon) {
+                    const proc = info.process_name
+                    fetchAppIcon().then((iconData) => {
+                      if (iconData) {
+                        iconCacheRef.current.set(proc, iconData)
+                      }
+                    })
+                  }
+                }
+              } else {
+                stableWindowKeyRef.current = windowKey
+                windowFirstSeenRef.current = Date.now()
+              }
             }
-            addRecentAppActivity(info.title)
-            bestActivity = activity
+          } else {
+            stableWindowKeyRef.current = null
+            windowFirstSeenRef.current = 0
           }
         } catch (err) {
           console.warn('useActivityDetector: get_active_window_info failed', err)
         }
       }
 
-      if (!bestActivity && shareMediaActivity) {
-        // Prefer system media (MPRIS on Linux) so native players like Spotify
-        // are detected; fall back to the webview's own mediaSession.
+      if (shareMediaActivity) {
         if (isTauri()) {
           try {
             const { invoke } = await import('@tauri-apps/api/core')
@@ -216,7 +392,7 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
               const activity = detectMediaActivity(np)
               if (activity) {
                 addRecentMediaActivity(activity.name)
-                bestActivity = activity
+                musicActivity = activity
               }
             }
           } catch (err) {
@@ -224,17 +400,25 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
           }
         }
 
-        if (!bestActivity && 'mediaSession' in navigator) {
+        if (!musicActivity && 'mediaSession' in navigator) {
           const metadata = navigator.mediaSession.metadata
           const activity = detectMediaActivity(metadata)
           if (activity) {
             addRecentMediaActivity(activity.name)
-            bestActivity = activity
+            musicActivity = activity
           }
         }
       }
 
-      emitActivity(bestActivity)
+      if (bestActivity && bestActivity.type === 'game') {
+        emitActivity(bestActivity)
+      } else if (musicActivity) {
+        emitActivity(musicActivity)
+      } else if (bestActivity) {
+        emitActivity(bestActivity)
+      } else {
+        emitActivity(null)
+      }
     }
 
     tick()
@@ -270,6 +454,8 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
     const onConnect = () => {
       if (shareMediaActivity || shareAppActivity) {
         lastEmittedRef.current = null
+        stableWindowKeyRef.current = null
+        windowFirstSeenRef.current = 0
         const customActivity = resolveActivity()
         if (customActivity) {
           emitActivity(customActivity)
