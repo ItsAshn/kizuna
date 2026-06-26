@@ -14,6 +14,7 @@ import { createChannel, lockChannel, fetchRoles, setChannelMute, deleteChannelMu
 import type { CustomRole, Channel } from '@kizuna/shared'
 import { Lock, Unlock, BellOff, ChevronLeft, Ellipsis, Bell } from 'lucide-react'
 import UserStatusPicker from './UserStatusPicker'
+import { Avatar } from './ui'
 import ContextMenu from './ContextMenu'
 import ChannelSettingsModal from './ChannelSettingsModal'
 import CreateGroupDMModal from './CreateGroupDMModal'
@@ -418,11 +419,14 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
         <div className="sidebar__header">
           <div className="sidebar__user-row">
             <UserStatusPicker socketRef={socketRef}>
-              <div className="sidebar__user-avatar">
-                {session?.user.avatar ? (
-                  <img src={session.user.avatar} alt="" className="sidebar__user-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                ) : session?.user.display_name?.[0]?.toUpperCase()}
-              </div>
+              <Avatar
+                src={session?.user.avatar}
+                name={session?.user.display_name || session?.user.username}
+                size={32}
+                stickerId={session?.user.status_sticker_id}
+                serverUrl={session?.url}
+                bgColor="var(--brand)"
+              />
             </UserStatusPicker>
             <div className={`sidebar__user-info${showStatusLine ? '' : ' sidebar__user-info--centered'}`}>
               <p className="sidebar__user-displayname">{session?.user.display_name || session?.user.username}</p>

@@ -37,17 +37,6 @@
   opacity: 0.6;
 }
 
-.status-picker__sticker-badge {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  width: 20px;
-  height: 20px;
-  object-fit: contain;
-  z-index: 1;
-  pointer-events: none;
-}
-
 .status-picker__dropdown {
   position: fixed;
   background: var(--bg-secondary);

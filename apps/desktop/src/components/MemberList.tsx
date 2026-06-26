@@ -9,6 +9,7 @@ import { Gamepad2, Headphones, Film, Monitor, Activity } from 'lucide-react'
 import UserProfileCard from './UserProfileCard'
 import Skeleton from './Skeleton'
 import IconButton from './ui/IconButton'
+import { Avatar } from './ui'
 import './MemberList.css'
 
 interface Props {
@@ -147,43 +148,15 @@ export default function MemberList({ visible, onClose }: Props) {
         }}
         className={`member-list__member${offline ? ' member-list__member--offline' : ''}`}
       >
-        <div className="member-list__member-avatar-wrap">
-          <div
-            className={`member-list__member-avatar${!offline ? ` member-list__member-avatar--${status}` : ''}`}
-            style={{ backgroundColor: member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)') }}
-          >
-            {member.avatar ? (
-              <img src={member.avatar} alt="" className="member-list__member-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-            ) : (member.display_name || member.username)[0]?.toUpperCase()}
-          </div>
-          {stickerId && session && (
-            <img
-              src={`${session.url}/api/gifs/${stickerId}/thumb`}
-              alt=""
-              className="member-list__sticker-badge"
-              onMouseEnter={(e) => {
-                const img = e.currentTarget
-                if (img.dataset.thumbFailed !== '1') {
-                  img.src = `${session.url}/api/gifs/${stickerId}/file`
-                }
-              }}
-              onMouseLeave={(e) => {
-                const img = e.currentTarget
-                if (img.dataset.thumbFailed !== '1') {
-                  img.src = `${session.url}/api/gifs/${stickerId}/thumb`
-                }
-              }}
-              onError={(e) => {
-                const img = e.currentTarget as HTMLImageElement
-                if (img.src.includes('/thumb')) {
-                  img.dataset.thumbFailed = '1'
-                  img.src = `${session.url}/api/gifs/${stickerId}/file`
-                  img.onerror = () => { img.style.display = 'none' }
-                }
-              }}
-            />
-          )}
-        </div>
+        <Avatar
+          src={member.avatar}
+          name={member.display_name || member.username}
+          size={32}
+          status={offline ? undefined : status}
+          stickerId={stickerId}
+          serverUrl={session?.url}
+          bgColor={member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)')}
+        />
         <div className="member-list__member-info">
           <div className="member-list__member-name">{member.display_name || member.username}</div>
           {activity ? (

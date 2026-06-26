@@ -1,0 +1,86 @@
+.avatar {
+  --avatar-size: 32px;
+  --avatar-ring-width: 2px;
+  position: relative;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible; /* sticker badge spills past the circle */
+  color: var(--text-primary);
+  transition: box-shadow 0.2s ease;
+}
+
+/* The circular clip lives on a pseudo backdrop so the ring/sticker can sit outside it. */
+.avatar__img,
+.avatar__initial {
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.avatar__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar__initial {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: calc(var(--avatar-size) * 0.4);
+  line-height: 1;
+  text-transform: uppercase;
+  /* Subtle depth on the fallback so plain initials read as intentional. */
+  background-image: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.12));
+}
+
+/* Presence ring — colors mirror the legacy member-list rings. */
+.avatar--status-online { box-shadow: 0 0 0 var(--avatar-ring-width) var(--green); }
+.avatar--status-idle { box-shadow: 0 0 0 var(--avatar-ring-width) var(--yellow); }
+.avatar--status-busy { box-shadow: 0 0 0 var(--avatar-ring-width) var(--red); }
+.avatar--status-offline { box-shadow: 0 0 0 var(--avatar-ring-width) var(--gray); }
+.avatar--status-invisible { box-shadow: 0 0 0 var(--avatar-ring-width) var(--text-muted); }
+
+/* Separator border for avatars sitting over media (e.g. profile-card banner). */
+.avatar--frame {
+  border: 4px solid var(--bg-secondary);
+}
+
+.avatar__sticker {
+  position: absolute;
+  bottom: calc(var(--avatar-size) * -0.06);
+  right: calc(var(--avatar-size) * -0.06);
+  width: max(18px, calc(var(--avatar-size) * 0.6));
+  height: max(18px, calc(var(--avatar-size) * 0.6));
+  pointer-events: none;
+  z-index: 1;
+  transform-origin: bottom right;
+  transition: transform 0.15s ease;
+}
+
+/* Static first frame and animated overlay share the same box. */
+.avatar__sticker-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Animated overlay sits on top of the static frame while hovering. */
+.avatar__sticker-img--anim {
+  z-index: 1;
+}
+
+.avatar:hover .avatar__sticker {
+  transform: scale(1.08);
+}

@@ -201,7 +201,30 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
       }
 
       if (!bestActivity && shareMediaActivity) {
-        if ('mediaSession' in navigator) {
+        // Prefer system media (MPRIS on Linux) so native players like Spotify
+        // are detected; fall back to the webview's own mediaSession.
+        if (isTauri()) {
+          try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const np = await invoke<{
+              title: string
+              artist: string
+              album: string
+              status: string
+            } | null>('get_now_playing')
+            if (np && np.status === 'Playing') {
+              const activity = detectMediaActivity(np)
+              if (activity) {
+                addRecentMediaActivity(activity.name)
+                bestActivity = activity
+              }
+            }
+          } catch (err) {
+            console.warn('useActivityDetector: get_now_playing failed', err)
+          }
+        }
+
+        if (!bestActivity && 'mediaSession' in navigator) {
           const metadata = navigator.mediaSession.metadata
           const activity = detectMediaActivity(metadata)
           if (activity) {

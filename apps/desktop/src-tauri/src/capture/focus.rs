@@ -174,6 +174,13 @@ fn wayland_active_window() -> Option<WindowInfo> {
         return None;
     }
 
+    // Hyprland: use its native IPC (always available, no extra tools)
+    if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() || desktop.contains("Hyprland") {
+        if let Some(info) = hyprland_active_window() {
+            return Some(info);
+        }
+    }
+
     // wlroots-based (Hyprland, Sway, river): try wlrctl
     if let Some(info) = wlrctl_active_window() {
         return Some(info);
@@ -232,6 +239,36 @@ fn gdbus_eval(js: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+#[cfg(target_os = "linux")]
+fn hyprland_active_window() -> Option<WindowInfo> {
+    use std::process::Command;
+
+    let output = Command::new("hyprctl")
+        .args(["activewindow", "-j"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    let title = json.get("title")?.as_str().unwrap_or_default().to_string();
+    if title.is_empty() {
+        return None;
+    }
+    let class = json
+        .get("class")
+        .and_then(|c| c.as_str())
+        .unwrap_or_default()
+        .to_string();
+
+    Some(WindowInfo {
+        title,
+        process_name: class,
+    })
 }
 
 #[cfg(target_os = "linux")]

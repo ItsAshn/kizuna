@@ -20,6 +20,8 @@ import markdown from 'highlight.js/lib/languages/markdown'
 import type { Message } from '@kizuna/shared'
 import { reactToMessage, unreactToMessage } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
+import { useChatStore } from '../store/chatStore'
+import { Avatar } from './ui'
 import { useMobile } from '../hooks/useMobile'
 import { useHaptics } from '../hooks/useHaptics'
 import { useLongPress } from '../hooks/useLongPress'
@@ -276,6 +278,7 @@ function MessageBubble({
   })
   const time = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const session = useServerStore((s) => s.activeSession)
+  const authorStickerId = useChatStore((s) => s.members.find((m) => m.id === message.user_id)?.status_sticker_id)
 
   useEffect(() => {
     const show = isMobile ? mobileActionsVisible || pickerOpen : (hovered || pickerOpen || barHovered)
@@ -461,11 +464,15 @@ function MessageBubble({
   return (
     <div className={`msg-bubble__row ${isOwn ? 'msg-bubble__row--own' : ''} ${isGrouped ? 'msg-bubble__row--grouped' : ''} ${isMediaOnly ? 'msg-bubble__row--media-only' : ''}`}>
       {!isOwn && !isGrouped && (
-        <div className="msg-bubble__avatar">
-          {message.avatar ? (
-            <img src={message.avatar} alt="" className="msg-bubble__avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-          ) : displayName[0]?.toUpperCase()}
-        </div>
+        <Avatar
+          className="msg-bubble__avatar"
+          src={message.avatar}
+          name={displayName}
+          size={36}
+          bgColor="var(--bg-tertiary)"
+          stickerId={authorStickerId}
+          serverUrl={session?.url}
+        />
       )}
       {!isOwn && isGrouped && <div className="msg-bubble__avatar-spacer" />}
 

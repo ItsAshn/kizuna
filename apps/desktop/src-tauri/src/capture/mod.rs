@@ -1,6 +1,7 @@
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod media;
+pub mod nowplaying;
 pub mod focus;
 #[cfg(target_os = "linux")]
 pub mod wayland;

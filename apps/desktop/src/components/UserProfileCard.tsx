@@ -6,6 +6,7 @@ import { useServerStore } from '../store/serverStore'
 import { getOrCreateDMChannel, getUserProfile } from '@kizuna/shared'
 import { MessageCircle, Clock, Calendar } from 'lucide-react'
 import { hexToRgba } from '../utils/color'
+import { Avatar } from './ui'
 import type { Member } from '@kizuna/shared'
 import './UserProfileCard.css'
 
@@ -107,39 +108,16 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
     <div ref={ref} className="user-profile-card" style={{ position: 'fixed', top: pos?.top ?? 0, left: pos?.left ?? 0, visibility: pos ? 'visible' : 'hidden' }}>
       <div className="user-profile-card__banner" style={member.banner ? { backgroundImage: `url(${member.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { backgroundColor: member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)') }} />
       <div className="user-profile-card__avatar-wrap">
-        <div className="user-profile-card__avatar" style={{ backgroundColor: member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)') }}>
-          {member.avatar ? (
-            <img src={member.avatar} alt="" className="user-profile-card__avatar-img" />
-          ) : displayName[0]?.toUpperCase()}
-        </div>
-        {statusStickerId && session && (
-          <img
-            src={`${session.url}/api/gifs/${statusStickerId}/thumb`}
-            alt=""
-            className="user-profile-card__sticker-badge"
-            onMouseEnter={(e) => {
-              const img = e.currentTarget
-              if (img.dataset.thumbFailed !== '1') {
-                img.src = `${session.url}/api/gifs/${statusStickerId}/file`
-              }
-            }}
-            onMouseLeave={(e) => {
-              const img = e.currentTarget
-              if (img.dataset.thumbFailed !== '1') {
-                img.src = `${session.url}/api/gifs/${statusStickerId}/thumb`
-              }
-            }}
-            onError={(e) => {
-              const img = e.currentTarget as HTMLImageElement
-              if (img.src.includes('/thumb')) {
-                img.dataset.thumbFailed = '1'
-                img.src = `${session.url}/api/gifs/${statusStickerId}/file`
-                img.onerror = () => { img.style.display = 'none' }
-              }
-            }}
-          />
-        )}
-        <span className={`user-profile-card__status user-profile-card__status--${status}`} />
+        <Avatar
+          src={member.avatar}
+          name={displayName}
+          size={64}
+          frame
+          status={status}
+          stickerId={statusStickerId}
+          serverUrl={session?.url}
+          bgColor={member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)')}
+        />
       </div>
 
       <div className="user-profile-card__info">

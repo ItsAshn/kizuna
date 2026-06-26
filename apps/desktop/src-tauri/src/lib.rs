@@ -69,6 +69,12 @@ fn get_active_window_info() -> Result<Option<WindowInfo>, String> {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
+fn get_now_playing() -> Result<Option<capture::nowplaying::NowPlaying>, String> {
+    Ok(capture::nowplaying::get_now_playing())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
 fn start_screen_capture(
     app: tauri::AppHandle,
     monitor_index: usize,
@@ -531,6 +537,7 @@ pub fn run() {
                     greet,
                     list_monitors,
                     get_active_window_info,
+                    get_now_playing,
                     start_screen_capture,
                     stop_screen_capture,
                     camera_list_devices,

@@ -136,34 +136,8 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
       onClick={handleToggle}
       title={hasCustomStatus ? `Sticker + ${statusText || ''}` : currentStatus}
     >
+      {/* The sticker badge is rendered by the Avatar child (ui/Avatar). */}
       {children}
-      {statusStickerId && session && (
-        <img
-          src={`${session.url}/api/gifs/${statusStickerId}/thumb`}
-          alt=""
-          className="status-picker__sticker-badge"
-          onMouseEnter={(e) => {
-            const img = e.currentTarget
-            if (img.dataset.thumbFailed !== '1') {
-              img.src = `${session.url}/api/gifs/${statusStickerId}/file`
-            }
-          }}
-          onMouseLeave={(e) => {
-            const img = e.currentTarget
-            if (img.dataset.thumbFailed !== '1') {
-              img.src = `${session.url}/api/gifs/${statusStickerId}/thumb`
-            }
-          }}
-          onError={(e) => {
-            const img = e.currentTarget as HTMLImageElement
-            if (img.src.includes('/thumb')) {
-              img.dataset.thumbFailed = '1'
-              img.src = `${session.url}/api/gifs/${statusStickerId}/file`
-              img.onerror = () => { img.style.display = 'none' }
-            }
-          }}
-        />
-      )}
       {open && createPortal(
         <div className="status-picker__dropdown" style={{ top: coords.top, left: coords.left, position: 'fixed' }}>
           {STATUS_OPTIONS.map((opt) => (
