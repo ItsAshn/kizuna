@@ -3,12 +3,26 @@
    ══════════════════════════════════════════════════════════════ */
 
 .settings-modal {
-  width: 560px;
+  width: min(900px, 92vw);
+  height: min(640px, 86vh);
 }
 
-.settings-modal .tabs--underline {
-  margin-top: 0;
-  margin-bottom: var(--space-4);
+/* The two-pane SettingsLayout fills the modal body and owns its own scrolling
+   per-pane. The mobile bottom-sheet media query below resets the fixed height. */
+.settings-modal .modal__body {
+  padding: 0;
+}
+
+@media (min-width: 768px) {
+  .settings-modal .modal__body {
+    display: flex;
+    overflow: hidden;
+  }
+
+  .settings-modal .settings-layout {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
 }
 
 /* ── Tab content ───────────────────────────────────────────── */
@@ -548,17 +562,13 @@
   .settings-modal {
     width: calc(100vw - 16px);
     max-width: 520px;
+    height: auto;
     max-height: calc(100vh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
     align-self: center;
-  }
-
-  .settings-modal .tabs--underline .tabs__tab {
-    min-height: 40px;
-    font-size: 14px;
   }
 
   .settings-card-title {

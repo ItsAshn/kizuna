@@ -22,6 +22,7 @@ import MemberList from '../components/MemberList'
 import VoiceOverlay from '../components/VoiceOverlay'
 import ScreenShareOverlay from '../components/ScreenShareOverlay'
 import CameraPreviewOverlay from '../components/CameraPreviewOverlay'
+import VoiceChannelView from '../components/VoiceChannelView'
 import ServerMenuModal from '../components/ServerMenuModal'
 import SetupWizard from '../components/SetupWizard'
 import LoginDialog from '../components/LoginDialog'
@@ -58,6 +59,8 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const setActiveChannel = useChatStore((s) => s.setActiveChannel)
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
   const setActiveGroupDMChannel = useChatStore((s) => s.setActiveGroupDMChannel)
+  const viewedVoiceChannelId = useChatStore((s) => s.viewedVoiceChannelId)
+  const setViewedVoiceChannel = useChatStore((s) => s.setViewedVoiceChannel)
   const members = useChatStore((s) => s.members)
   const channels = useChatStore((s) => s.channels)
   const dmChannels = useChatStore((s) => s.dmChannels)
@@ -110,6 +113,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     | { type: 'channel'; channelId: string }
     | { type: 'dm'; dmChannelId: string }
     | { type: 'group-dm'; groupDmId: string }
+    | { type: 'voice'; channelId: string }
 
   const [activeTab, setActiveTab] = useState(0)
   const [navStack, setNavStack] = useState<NavEntry[]>([])
@@ -121,6 +125,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     else if (entry.type === 'channel') setActiveChannel(entry.channelId)
     else if (entry.type === 'dm') setActiveDMChannel(entry.dmChannelId)
     else if (entry.type === 'group-dm') setActiveGroupDMChannel(entry.groupDmId)
+    else if (entry.type === 'voice') setViewedVoiceChannel(entry.channelId)
     setNavStack(prev => [...prev, entry])
     setTimeout(() => setIsPushAnim(false), 300)
   }
@@ -133,6 +138,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
       setActiveChannel(null)
       setActiveDMChannel(null)
       setActiveGroupDMChannel(null)
+      setViewedVoiceChannel(null)
     }
     setNavStack(newStack)
   }
@@ -150,6 +156,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
     setActiveChannel(null)
     setActiveDMChannel(null)
     setActiveGroupDMChannel(null)
+    setViewedVoiceChannel(null)
   }
 
   // Unified back action: peel off transient overlays (thread, member list)
@@ -216,6 +223,11 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   }, [serverMentionCounts])
 
   const chatOpen = !!(activeChannelId || activeDMChannelId || activeGroupDMChannelId)
+  // While the voice stage is the active view for the connected call, it adopts
+  // the single shared screenshare <video> element, so the floating overlay must
+  // yield (otherwise the element would be double-mounted / yanked between them).
+  const voiceStageVisible = isMobile ? topEntry?.type === 'voice' : !!viewedVoiceChannelId
+  const stageOwnsScreenshare = voiceStageVisible && !!viewedVoiceChannelId && viewedVoiceChannelId === activeVoiceChannelId
 
   const channelNavList = useMemo(() => {
     const list: { id: string; type: 'channel' | 'dm' | 'group-dm' }[] = [
@@ -587,6 +599,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           socketRef={socketRef}
           onOpenMenu={() => setShowMenu(true)}
           onBackToServers={popView}
+          onOpenVoiceStage={(channelId) => pushView({ type: 'voice', channelId })}
           onOpenChat={() => {
             const state = useChatStore.getState()
             if (state.activeChannelId) {
@@ -597,6 +610,23 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
               pushView({ type: 'group-dm', groupDmId: state.activeGroupDMChannelId })
             }
           }}
+        />
+      )
+    }
+
+    if (topEntry.type === 'voice') {
+      return (
+        <VoiceChannelView
+          channelId={topEntry.channelId}
+          joinVoice={joinVoice}
+          leaveVoice={leaveVoice}
+          toggleMute={toggleMute}
+          toggleCamera={toggleCamera}
+          startScreenshare={startScreenshare}
+          stopScreenshare={stopScreenshare}
+          isCameraOn={isCameraOn}
+          cameraStreamRef={cameraStreamRef}
+          videoElRef={videoElRef}
         />
       )
     }
@@ -670,7 +700,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
             dmUnreadCount={dmUnreadTotal}
           />
           <MemberList visible={showMembers} onClose={() => setShowMembers(false)} />
-      <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
+      {!stageOwnsScreenshare && <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />}
       <CameraPreviewOverlay
         cameraStreamRef={cameraStreamRef}
         isCameraOn={isCameraOn}
@@ -733,23 +763,38 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
             leaveVoice={leaveVoice}
             socketRef={socketRef}
             onOpenMenu={() => setShowMenu(true)}
-          />
-          <VoiceOverlay
-            leaveVoice={leaveVoice}
-            toggleMute={toggleMute}
-            socketRef={socketRef}
-            startScreenshare={startScreenshare}
-            stopScreenshare={stopScreenshare}
-            dmCallOtherUsername={dmCallOtherUsername}
-            toggleCamera={toggleCamera}
-            isCameraOn={isCameraOn}
+            voicePanel={
+              <VoiceOverlay
+                leaveVoice={leaveVoice}
+                toggleMute={toggleMute}
+                socketRef={socketRef}
+                startScreenshare={startScreenshare}
+                stopScreenshare={stopScreenshare}
+                dmCallOtherUsername={dmCallOtherUsername}
+                toggleCamera={toggleCamera}
+                isCameraOn={isCameraOn}
+              />
+            }
           />
         </div>
       </div>
       <div className="chat-main">
         <UpdateBanner />
         <div className="chat-main__content">
-          {chatOpen ? (
+          {viewedVoiceChannelId ? (
+            <VoiceChannelView
+              channelId={viewedVoiceChannelId}
+              joinVoice={joinVoice}
+              leaveVoice={leaveVoice}
+              toggleMute={toggleMute}
+              toggleCamera={toggleCamera}
+              startScreenshare={startScreenshare}
+              stopScreenshare={stopScreenshare}
+              isCameraOn={isCameraOn}
+              cameraStreamRef={cameraStreamRef}
+              videoElRef={videoElRef}
+            />
+          ) : chatOpen ? (
             <ChatArea
               socketRef={socketRef}
               onStartDMCall={startDMCall}
@@ -778,7 +823,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         </div>
       </div>
       <MemberList visible={showMembers} onClose={() => setShowMembers(false)} />
-      <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
+      {!stageOwnsScreenshare && <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />}
       <ThreadPanel channelId={activeChannelId!} />
       <NotificationContainer />
     </div>

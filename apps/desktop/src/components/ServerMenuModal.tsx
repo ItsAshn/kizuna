@@ -207,6 +207,11 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
   // ─── Active settings section (left-nav selection) ────
   const [section, setSection] = useState<Section>('profile')
 
+  // Selector hooks must run on every render (not inside a section branch),
+  // otherwise switching tabs changes the hook count and React throws.
+  const serverBackgroundEnabled = useSettingsStore(s => s.serverBackgroundEnabled)
+  const customCssEnabled = useSettingsStore(s => s.customCssEnabled)
+
   // ─── Server settings ─────────────────────────────────
   const [serverName, setServerName] = useState(session ? servers.find(s => s.id === session.serverId)?.name ?? '' : '')
   const [serverIconPreview, setServerIconPreview] = useState<string | null>(
@@ -1221,7 +1226,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
             <div className="server-menu__toggle-row">
               <label className="server-menu__label" style={{ margin: 0 }}>show server background</label>
               <ToggleSwitch
-                checked={useSettingsStore(s => s.serverBackgroundEnabled)}
+                checked={serverBackgroundEnabled}
                 onChange={(checked) => useSettingsStore.getState().setServerBackgroundEnabled(checked)}
                 ariaLabel="show server background"
               />
@@ -1229,7 +1234,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
             <div className="server-menu__toggle-row">
               <label className="server-menu__label" style={{ margin: 0 }}>enable custom css</label>
               <ToggleSwitch
-                checked={useSettingsStore(s => s.customCssEnabled)}
+                checked={customCssEnabled}
                 onChange={(checked) => useSettingsStore.getState().setCustomCssEnabled(checked)}
                 ariaLabel="enable custom css"
               />

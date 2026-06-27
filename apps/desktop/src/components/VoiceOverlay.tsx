@@ -4,7 +4,7 @@ import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
 import type { ConnectionQuality } from '@kizuna/shared'
-import { Volume2, Mic, MicOff, PhoneOff, Monitor, MonitorOff, Video, VideoOff } from 'lucide-react'
+import { Mic, MicOff, PhoneOff, Monitor, MonitorOff, Video, VideoOff, Signal, ChevronRight } from 'lucide-react'
 import MonitorPicker from './MonitorPicker'
 import Slider from './ui/Slider'
 import { useMobile } from '../hooks/useMobile'
@@ -22,30 +22,82 @@ interface VoiceOverlayProps {
   isCameraOn?: boolean
 }
 
-function ConnectionQualityBars({ quality }: { quality: ConnectionQuality | null | undefined }) {
-  const barCount =
-    quality === 'good' ? 3
-    : quality === 'fair' ? 2
-    : quality === 'poor' ? 1
-    : 0
-  const colorClass =
-    quality === 'good' ? 'voice-connection-bar--good'
-    : quality === 'fair' ? 'voice-connection-bar--fair'
-    : quality === 'poor' ? 'voice-connection-bar--poor'
-    : ''
-  const heights = ['voice-connection-bar--h-sm', 'voice-connection-bar--h-md', 'voice-connection-bar--h-lg']
+function qualityLabel(quality: ConnectionQuality | null | undefined) {
+  return quality ? `Connection: ${quality}` : 'Measuring connection…'
+}
+
+interface PeerRowProps {
+  initial: string
+  name: string
+  speaking: boolean
+  muted: boolean
+  quality: ConnectionQuality | null | undefined
+  self?: boolean
+  /** When provided, the row is expandable to reveal a volume slider. */
+  volume?: number
+  onVolumeChange?: (value: number) => void
+}
+
+function PeerRow({ initial, name, speaking, muted, quality, self, volume, onVolumeChange }: PeerRowProps) {
+  const [expanded, setExpanded] = useState(false)
+  const interactive = !self && volume !== undefined && !!onVolumeChange
+
+  const avatarClass =
+    'voice-row__avatar'
+    + (speaking ? ' voice-row__avatar--speaking' : '')
+    + (muted ? ' voice-row__avatar--muted' : '')
+    + (self ? ' voice-row__avatar--self' : '')
+
   return (
-    <span
-      className="voice-connection-bars"
-      title={quality ? `Connection: ${quality}` : 'Measuring connection...'}
-    >
-      {heights.map((h, i) => (
-        <span
-          key={i}
-          className={`voice-connection-bar ${h} ${i < barCount ? colorClass : ''}`}
-        />
-      ))}
-    </span>
+    <div className={`voice-row${expanded ? ' voice-row--expanded' : ''}`}>
+      <div
+        className={`voice-row__main${interactive ? ' voice-row__main--interactive' : ''}`}
+        onClick={interactive ? () => setExpanded((v) => !v) : undefined}
+        role={interactive ? 'button' : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        title={interactive ? `${name} — click to adjust volume` : name}
+      >
+        <div className="voice-row__avatar-wrap">
+          <div className={avatarClass}>
+            <span>{initial}</span>
+          </div>
+          {speaking && <span className="voice-row__speaking-pip" />}
+        </div>
+
+        <span className={`voice-row__name${speaking ? ' voice-row__name--speaking' : ''}`}>
+          {name}
+          {self && <span className="voice-row__you-tag">you</span>}
+        </span>
+
+        <span className="voice-row__status">
+          {muted ? (
+            <MicOff className="voice-row__status-icon voice-row__status-icon--muted" />
+          ) : (
+            <span
+              className={`voice-row__quality-dot voice-row__quality-dot--${quality ?? 'unknown'}`}
+              title={qualityLabel(quality)}
+            />
+          )}
+          {interactive && (
+            <ChevronRight className={`voice-row__chevron${expanded ? ' voice-row__chevron--open' : ''}`} />
+          )}
+        </span>
+      </div>
+
+      {interactive && expanded && (
+        <div className="voice-row__volume" onClick={(e) => e.stopPropagation()}>
+          <Slider
+            size="sm"
+            min={0}
+            max={200}
+            value={volume!}
+            onChange={(value) => onVolumeChange!(value)}
+            ariaLabel={`Volume for ${name}`}
+          />
+          <span className="voice-row__volume-value">{volume}%</span>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -59,7 +111,6 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
     isMuted,
     isSpeaking,
     localConnectionQuality,
-    serverVoiceBitrateKbps,
     voiceError,
     setVoiceError,
     peerVolumes,
@@ -85,7 +136,7 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
           setVoiceError(null)
           leaveVoice()
           setClosing(false)
-        }, 250)
+        }, 220)
       }
     }
     window.addEventListener('keydown', handleKey)
@@ -98,11 +149,11 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
       setVoiceError(null)
       leaveVoice()
       setClosing(false)
-    }, 250)
+    }, 220)
   }, [leaveVoice, setVoiceError])
 
-  // Publish the call sheet's height so the mobile chat column can reserve
-  // space for it (it's a fixed bottom sheet there) and not hide the composer.
+  // Publish the panel's height so the mobile chat column can reserve space for
+  // it (it's a fixed bottom sheet there) and not hide the composer.
   const overlayRef = useRef<HTMLDivElement | null>(null)
   const overlayShown = !!(activeVoiceChannelId || voiceError || closing)
   useEffect(() => {
@@ -127,14 +178,14 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
   const channel = channels.find(c => c.id === activeVoiceChannelId)
   const isDMCall = !!dmCallOtherUsername
   const headerName = isDMCall ? dmCallOtherUsername : (channel?.name || 'Voice Channel')
-  const headerIcon = isDMCall ? (dmCallOtherUsername?.[0]?.toUpperCase()) : ''
+  const peerCount = voicePeers.length + 1
 
   const handleRetry = () => {
     setVoiceError(null)
   }
 
   return (
-    <div ref={overlayRef} className={`voice-overlay${closing ? ' voice-overlay--closing' : ''}`}>
+    <div ref={overlayRef} className={`voice-overlay${closing ? ' voice-overlay--closing' : ''}${voiceError ? ' voice-overlay--error' : ''}`}>
       {voiceError && (
         <div className="voice-error">
           <div className="voice-error__label">Voice Error</div>
@@ -154,22 +205,61 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
         </div>
       )}
 
-      <div className="voice-header">
-        {isDMCall ? (
-          <div className="voice-peer__avatar voice-peer__avatar--dmcall">
-            {headerIcon}
+      {!voiceError && (
+        <>
+          <div className="voice-header">
+            <Signal className="voice-header__signal" />
+            <div className="voice-header__title">
+              <span className="voice-header__status">{isDMCall ? 'In Call' : 'Voice Connected'}</span>
+              <span className="voice-header__channel" title={headerName ?? undefined}>
+                {headerName}
+              </span>
+            </div>
+            <span className="voice-header__count" title={`${peerCount} in call`}>{peerCount}</span>
           </div>
-        ) : (
-          <Volume2 className="icon-xs voice-header__icon" />
-        )}
-        <span className="voice-header__name">
-          {headerName}
-        </span>
-        <span className={`voice-header__status ${voiceError ? 'voice-header__status--error' : ''}`}>
-          {voiceError ? 'error' : 'connected'}
-        </span>
-        {!voiceError && (
-          <>
+
+          <div className="voice-peers">
+            <PeerRow
+              initial={isDMCall ? 'Y' : (channel?.name?.[0]?.toUpperCase() ?? 'Y')}
+              name="You"
+              speaking={isSpeaking && !isMuted}
+              muted={isMuted}
+              quality={localConnectionQuality}
+              self
+            />
+            {voicePeers.map((peer) => (
+              <PeerRow
+                key={peer.id}
+                initial={peer.username?.[0]?.toUpperCase() ?? '?'}
+                name={peer.username}
+                speaking={peer.speaking && !peer.muted}
+                muted={peer.muted}
+                quality={peer.connectionQuality}
+                volume={peerVolumes[peer.id] ?? 100}
+                onVolumeChange={(value) => setPeerVolume(peer.id, value)}
+              />
+            ))}
+          </div>
+
+          {screenShareError && (
+            <div className="voice-inline-error">
+              <span>{screenShareError}</span>
+              <button onClick={() => setScreenShareError(null)} className="voice-inline-error__dismiss">
+                dismiss
+              </button>
+            </div>
+          )}
+
+          <div className="voice-controls">
+            <button
+              onClick={toggleMute}
+              className={`voice-ctrl ${isMuted ? 'voice-ctrl--danger-active' : ''}`}
+              title={isMuted ? 'Unmute' : 'Mute'}
+              aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+            >
+              {isMuted ? <MicOff className="icon-xs" /> : <Mic className="icon-xs" />}
+            </button>
+
             {!isDMCall && !isMobile && '__TAURI_INTERNALS__' in window && (
               <button
                 onClick={() => {
@@ -182,49 +272,35 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
                     setShowMonitorPicker(true)
                   }
                 }}
-                className={`voice-header__btn ${isScreenSharing ? 'voice-header__btn--screenshare-active' : 'voice-header__btn--screenshare'}`}
+                className={`voice-ctrl ${isScreenSharing ? 'voice-ctrl--brand-active' : ''}`}
                 title={isScreenSharing ? 'Stop sharing' : screenSharePeerId ? 'Someone else is sharing' : 'Share screen'}
                 disabled={!!screenSharePeerId && !isScreenSharing}
               >
                 {isScreenSharing ? <MonitorOff className="icon-xs" /> : <Monitor className="icon-xs" />}
               </button>
             )}
-            <button
-              onClick={toggleMute}
-              className={`voice-header__btn ${isMuted ? 'voice-header__btn--unmute' : 'voice-header__btn--mute'}`}
-              title={isMuted ? 'Unmute' : 'Mute'}
-              aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
-            >
-              {isMuted ? <MicOff className="icon-xs" /> : <Mic className="icon-xs" />}
-            </button>
+
             {toggleCamera && (
               <button
                 onClick={() => toggleCamera(activeVoiceChannelId!)}
-                className={`voice-header__btn ${isCameraOn ? 'voice-header__btn--camera-active' : 'voice-header__btn--camera'}`}
+                className={`voice-ctrl ${isCameraOn ? 'voice-ctrl--brand-active' : ''}`}
                 title={isCameraOn ? 'Turn off camera' : 'Turn on camera'}
                 aria-label={isCameraOn ? 'Turn off camera' : 'Turn on camera'}
               >
                 {isCameraOn ? <Video className="icon-xs" /> : <VideoOff className="icon-xs" />}
               </button>
             )}
+
             <button
               onClick={handleLeave}
-              className="voice-header__btn voice-header__btn--leave"
-              title="Leave"
+              className="voice-ctrl voice-ctrl--leave"
+              title="Leave call"
+              aria-label="Leave call"
             >
               <PhoneOff className="icon-xs" />
             </button>
-          </>
-        )}
-      </div>
-
-      {screenShareError && (
-        <div className="voice-error" style={{ marginTop: 0, borderTop: 'none' }}>
-          <p className="voice-error__message">{screenShareError}</p>
-          <button onClick={() => setScreenShareError(null)} className="voice-error__btn voice-error__btn--retry" style={{ marginTop: 4 }}>
-            dismiss
-          </button>
-        </div>
+          </div>
+        </>
       )}
 
       {showMonitorPicker && (
@@ -237,77 +313,6 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
           }}
           onCancel={() => setShowMonitorPicker(false)}
         />
-      )}
-
-      <div className="voice-body">
-        {!voiceError && (
-          <div className="voice-peer">
-            <div className="voice-peer__avatar-wrap">
-              {isSpeaking && !isMuted && (
-                <span className="voice-peer__speaking-ring" />
-              )}
-              <div className={`voice-peer__avatar ${
-                isMuted ? 'voice-peer__avatar--muted'
-                  : isSpeaking ? 'voice-peer__avatar--speaking'
-                  : 'voice-peer__avatar--idle'
-              }`}>
-                <span>
-                  {(channel?.name || 'You')[0]?.toUpperCase()}
-                </span>
-              </div>
-            </div>
-            <span className={`voice-peer__name ${
-              isSpeaking && !isMuted ? 'voice-peer__name--speaking' : 'voice-peer__name--default'
-            }`}>
-              You
-            </span>
-            <ConnectionQualityBars quality={localConnectionQuality} />
-            <span className="voice-peer__mute-label">{isMuted ? 'Muted' : ''}</span>
-          </div>
-        )}
-
-        {!voiceError &&
-          voicePeers.map((peer) => (
-            <div key={peer.id} className="voice-peer">
-              <div className="voice-peer__avatar-wrap">
-                {peer.speaking && !peer.muted && (
-                  <span className="voice-peer__speaking-ring" />
-                )}
-                <div className={`voice-peer__avatar ${
-                  peer.muted ? 'voice-peer__avatar--peer-muted'
-                    : peer.speaking ? 'voice-peer__avatar--peer-speaking'
-                    : 'voice-peer__avatar--peer-idle'
-                }`}>
-                  <span>{peer.username?.[0]?.toUpperCase()}</span>
-                </div>
-              </div>
-              <span className={`voice-peer__name ${
-                peer.speaking && !peer.muted ? 'voice-peer__name--peer-speaking' : 'voice-peer__name--peer'
-              }`}>
-                {peer.username}
-              </span>
-              <ConnectionQualityBars quality={peer.connectionQuality} />
-              <div className="voice-peer__volume">
-                <Slider
-                  size="sm"
-                  min={0}
-                  max={200}
-                  value={peerVolumes[peer.id] ?? 100}
-                  onChange={(value) => setPeerVolume(peer.id, value)}
-                  ariaLabel={`Volume for ${peer.username}`}
-                />
-              </div>
-              {peer.muted && (
-                <span className="voice-peer__peer-muted">Muted</span>
-              )}
-            </div>
-          ))}
-      </div>
-
-      {!voiceError && (
-        <div className="voice-footer">
-          <span>{serverVoiceBitrateKbps} kbps</span>
-        </div>
       )}
     </div>
   )

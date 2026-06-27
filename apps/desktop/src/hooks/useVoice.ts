@@ -348,6 +348,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     consumersRef.current.clear()
     videoConsumerRef.current?.close()
     videoConsumerRef.current = null
+    cameraConsumersRef.current.forEach((c) => c.close())
+    cameraConsumersRef.current.clear()
+    clearPeerCameraStreams()
     if (videoElRef.current) {
       videoElRef.current.pause()
       videoElRef.current.srcObject = null
@@ -375,7 +378,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setLocalConnectionQuality(null)
     setLiveAudioLevel(0)
     clearScreenSharePeer()
-  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, clearScreenSharePeer])
+  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, clearScreenSharePeer, clearPeerCameraStreams])
 
   const consumePeer = useCallback(async (
     socket: Socket,
@@ -1138,6 +1141,12 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       await consumeScreenShare(socket, device, recvTransport, peerId, channelId, username)
     }
 
+    for (const peer of joinResult.peers || []) {
+      if (peer.hasCamera) {
+        await consumeCamera(socket, device, recvTransport, peer.id, channelId)
+      }
+    }
+
     const voiceBitrateKbps = joinResult.voiceBitrateKbps ?? 64
     serverBitrateRef.current = voiceBitrateKbps
     setServerVoiceBitrateKbps(voiceBitrateKbps)
@@ -1202,6 +1211,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     setLocalConnectionQuality, serverVoiceBitrateKbps, setServerVoiceBitrateKbps,
     audioInputDeviceId, audioOutputDeviceId, setVoiceError, consumePeer,
     consumeScreenShare, stopScreenConsume, setScreenSharePeer,
+    consumeCamera, stopCameraConsume,
     voiceInputMode,
     pushToTalkKey, noiseSuppression, autoGainControl, echoCancellation,
     noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
@@ -1417,6 +1427,8 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       socket.off('voice:peerSpeaking')
       socket.off('screen:peerStarted')
       socket.off('screen:peerStopped')
+      socket.off('camera:peerStarted')
+      socket.off('camera:peerStopped')
       socket.off('voice:consumerClosed')
       stopScreenConsume()
       if (channelId?.startsWith('dm:')) {

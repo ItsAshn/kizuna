@@ -135,6 +135,7 @@ export const useServerStore = create<ServerState>()(
         if (!activeSession) return
         try {
           const user = await getMe(activeSession.url)
+          if (!user) return
           set((state) => {
             const session = { ...activeSession, user }
             return {
@@ -155,6 +156,16 @@ export const useServerStore = create<ServerState>()(
         activeServerId: state.activeServerId,
         activeSession: state.activeSession,
       }),
+      merge: (persisted, current) => {
+        const merged = { ...current, ...(persisted as Partial<ServerState>) }
+        // A persisted session with no user is corrupt: consumers guard `session`
+        // being null but assume `session.user` exists, so a userless session
+        // crashes the whole tree. Treat it as no active session instead.
+        if (merged.activeSession && !merged.activeSession.user) {
+          merged.activeSession = null
+        }
+        return merged
+      },
       onRehydrateStorage: () => {
         return (state) => {
           if (state?.activeSession) {

@@ -17,6 +17,10 @@ interface ChatState {
   activeChannelId: string | null;
   activeDMChannelId: string | null;
   activeGroupDMChannelId: string | null;
+  /** Voice channel whose "stage" view fills the main area. Independent of the
+   *  connected call (voiceStore.activeVoiceChannelId) so you can browse text
+   *  channels mid-call. Mutually exclusive with the active text/DM/group views. */
+  viewedVoiceChannelId: string | null;
   unreadCounts: Record<string, number>;
   mentionCounts: Record<string, number>;
   serverMentionCounts: Record<string, number>;
@@ -49,6 +53,7 @@ interface ChatState {
   setActiveChannel: (channelId: string | null) => void;
   setActiveDMChannel: (channelId: string | null) => void;
   setActiveGroupDMChannel: (channelId: string | null) => void;
+  setViewedVoiceChannel: (channelId: string | null) => void;
   setUnreadCounts: (counts: Record<string, number>) => void;
   setMentionCounts: (counts: Record<string, number>) => void;
   incrementServerMentionCount: (serverId: string) => void;
@@ -85,6 +90,7 @@ export const useChatStore = create<ChatState>()(
       activeChannelId: null,
       activeDMChannelId: null,
       activeGroupDMChannelId: null,
+      viewedVoiceChannelId: null,
       unreadCounts: {},
       mentionCounts: {},
       serverMentionCounts: {},
@@ -201,9 +207,10 @@ export const useChatStore = create<ChatState>()(
       setActiveThreadId: (activeThreadId) => set({ activeThreadId, threadPanelVisible: activeThreadId !== null ? true : undefined }),
       setThreadPanelVisible: (threadPanelVisible) => set({ threadPanelVisible }),
       setMembers: (members) => set({ members }),
-      setActiveChannel: (activeChannelId) => set({ activeChannelId, activeDMChannelId: null, activeGroupDMChannelId: null }),
-      setActiveDMChannel: (activeDMChannelId) => set({ activeDMChannelId, activeChannelId: null, activeGroupDMChannelId: null }),
-      setActiveGroupDMChannel: (activeGroupDMChannelId) => set({ activeGroupDMChannelId, activeChannelId: null, activeDMChannelId: null }),
+      setActiveChannel: (activeChannelId) => set({ activeChannelId, activeDMChannelId: null, activeGroupDMChannelId: null, viewedVoiceChannelId: null }),
+      setActiveDMChannel: (activeDMChannelId) => set({ activeDMChannelId, activeChannelId: null, activeGroupDMChannelId: null, viewedVoiceChannelId: null }),
+      setActiveGroupDMChannel: (activeGroupDMChannelId) => set({ activeGroupDMChannelId, activeChannelId: null, activeDMChannelId: null, viewedVoiceChannelId: null }),
+      setViewedVoiceChannel: (viewedVoiceChannelId) => set({ viewedVoiceChannelId, activeChannelId: null, activeDMChannelId: null, activeGroupDMChannelId: null }),
       setUnreadCounts: (unreadCounts) => set({ unreadCounts }),
       setMentionCounts: (mentionCounts) => set({ mentionCounts }),
       incrementServerMentionCount: (serverId) =>
@@ -292,6 +299,7 @@ export const useChatStore = create<ChatState>()(
           activeChannelId: null,
           activeDMChannelId: null,
           activeGroupDMChannelId: null,
+          viewedVoiceChannelId: null,
           typingUsers: {},
           channelMutes: {},
           hasMoreMessages: {},

@@ -27,8 +27,8 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
   const [open, setOpen] = useState(false)
   const [coords, setCoords] = useState({ top: 0, left: 0 })
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const [statusText, setStatusText] = useState(session?.user.status_text || '')
-  const [statusStickerId, setStatusStickerId] = useState(session?.user.status_sticker_id || '')
+  const [statusText, setStatusText] = useState(session?.user?.status_text || '')
+  const [statusStickerId, setStatusStickerId] = useState(session?.user?.status_sticker_id || '')
   const [showStickerPicker, setShowStickerPicker] = useState(false)
 
   const [stickerPacks, setStickerPacks] = useState<string[]>([])
@@ -36,7 +36,7 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
   const [stickers, setStickers] = useState<GifInfo[]>([])
   const [loadingStickers, setLoadingStickers] = useState(false)
 
-  const userId = session?.user.id
+  const userId = session?.user?.id
   const currentStatus: UserStatus = userId ? (userStatuses[userId] || 'online') : 'online'
 
   const updateCoords = useCallback(() => {
@@ -51,7 +51,7 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
       setStatusText(session.user.status_text || '')
       setStatusStickerId(session.user.status_sticker_id || '')
     }
-  }, [session?.user.status_text, session?.user.status_sticker_id])
+  }, [session?.user?.status_text, session?.user?.status_sticker_id])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -127,7 +127,7 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
   }
 
   const hasCustomStatus = statusText || statusStickerId
-  const isDirty = statusText !== (session?.user.status_text || '') || statusStickerId !== (session?.user.status_sticker_id || '')
+  const isDirty = statusText !== (session?.user?.status_text || '') || statusStickerId !== (session?.user?.status_sticker_id || '')
 
   return (
     <div

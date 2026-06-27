@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { Mic, Eye, Database, Download } from 'lucide-react'
 import { useVoiceStore, type VoiceInputMode } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useServerStore } from '../store/serverStore'
@@ -7,7 +8,7 @@ import { isTauri, isMobileTauri } from '../utils/platform'
 import { clearCryptoState } from '../store/keyStore'
 import Modal from './ui/Modal'
 import ToggleSwitch from './ui/ToggleSwitch'
-import Tabs from './ui/Tabs'
+import SettingsLayout, { type SettingsNavGroup } from './ui/SettingsLayout'
 import Slider from './ui/Slider'
 import Button from './ui/Button'
 import Input from './ui/Input'
@@ -38,12 +39,12 @@ const INPUT_MODES: { value: VoiceInputMode; label: string; desc: string }[] = [
   { value: 'push-to-talk', label: 'push to talk', desc: 'hold a key to transmit' },
 ]
 
-const TABS = [
-  { key: 'voice', label: 'voice' },
-  ...(isTauri() ? [{ key: 'privacy', label: 'privacy' }] : []),
-  { key: 'data', label: 'data' },
-  ...(isTauri() ? [{ key: 'updates', label: 'updates' }] : []),
-]
+const SECTION_LABELS: Record<string, string> = {
+  voice: 'voice',
+  privacy: 'privacy',
+  data: 'data',
+  updates: 'updates',
+}
 
 function keyCodeToLabel(code: string): string {
   const map: Record<string, string> = {
@@ -230,6 +231,24 @@ export default function UserSettingsModal({ onClose }: Props) {
   const [runningWindows, setRunningWindows] = useState<string[]>([])
   const unmountedRef = useRef(false)
   const audioLevelCleanupRef = useRef<(() => void) | null>(null)
+
+  const navGroups = useMemo<SettingsNavGroup[]>(() => {
+    const tauri = isTauri()
+    return [
+      {
+        label: 'media',
+        items: [{ key: 'voice', label: 'voice', icon: <Mic size={15} /> }],
+      },
+      {
+        label: 'app',
+        items: [
+          ...(tauri ? [{ key: 'privacy', label: 'privacy', icon: <Eye size={15} /> }] : []),
+          { key: 'data', label: 'data', icon: <Database size={15} /> },
+          ...(tauri ? [{ key: 'updates', label: 'updates', icon: <Download size={15} /> }] : []),
+        ],
+      },
+    ]
+  }, [])
 
   useEffect(() => {
     if (activeTab !== 'privacy' || !isTauri() || unmountedRef.current) return
@@ -538,18 +557,23 @@ export default function UserSettingsModal({ onClose }: Props) {
         <button onClick={handleClose} className="settings-modal__done-btn">done</button>
       )}
     >
-      {permissionDenied && (
-        <p className="settings-permission-warning">
-          microphone permission denied — device labels unavailable
-        </p>
-      )}
-
-      <Tabs tabs={TABS} activeKey={activeTab} onChange={setActiveTab} variant="underline" />
+      <SettingsLayout
+        groups={navGroups}
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        activeLabel={SECTION_LABELS[activeTab]}
+      >
 
       {/* ── Voice ─────────────────────────────────────────── */}
 
       {activeTab === 'voice' && (
         <div className="settings-tab-content">
+
+          {permissionDenied && (
+            <p className="settings-permission-warning">
+              microphone permission denied — device labels unavailable
+            </p>
+          )}
 
           {/* Audio devices */}
           <div className="settings-card">
@@ -883,6 +907,7 @@ export default function UserSettingsModal({ onClose }: Props) {
           </div>
         </div>
       )}
+      </SettingsLayout>
     </Modal>
   )
 }

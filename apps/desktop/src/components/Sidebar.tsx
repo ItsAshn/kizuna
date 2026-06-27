@@ -27,9 +27,12 @@ interface SidebarProps {
   onOpenMenu: () => void
   onBackToServers?: () => void
   onOpenChat?: () => void
+  onOpenVoiceStage?: (channelId: string) => void
+  /** Rendered just above the sidebar footer (the voice-connected panel). */
+  voicePanel?: React.ReactNode
 }
 
-export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, onBackToServers, onOpenChat }: SidebarProps) {
+export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, onBackToServers, onOpenChat, onOpenVoiceStage, voicePanel }: SidebarProps) {
   const navigate = useNavigate()
   const isMobile = useMobile()
   const sidebarRef = useRef<HTMLDivElement>(null)
@@ -43,7 +46,7 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
     categories,
     dmChannels, groupDMChannels, activeChannelId, activeDMChannelId, activeGroupDMChannelId,
     unreadCounts, mentionCounts,
-    setActiveChannel, setActiveDMChannel, setActiveGroupDMChannel, setChannels,
+    setActiveChannel, setActiveDMChannel, setActiveGroupDMChannel, setViewedVoiceChannel, setChannels,
     channelMutes,
     members,
   } = useChatStore()
@@ -288,10 +291,13 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
             if (isText) {
               setActiveChannel(ch.id); setLockMenuChannelId(null); onOpenChat?.()
             } else {
-              (async () => {
-                if (activeVoiceChannelId === ch.id) { await leaveVoice(); haptics.medium() }
-                else { if (activeVoiceChannelId) await leaveVoice(); joinVoice(ch.id); haptics.success() }
-              })()
+              setViewedVoiceChannel(ch.id); setLockMenuChannelId(null); onOpenVoiceStage?.(ch.id)
+              if (activeVoiceChannelId !== ch.id) {
+                (async () => {
+                  if (activeVoiceChannelId) await leaveVoice()
+                  joinVoice(ch.id); haptics.success()
+                })()
+              }
             }
           }}
           onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
@@ -385,8 +391,8 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
 
   const activeServer = servers.find(s => s.id === session?.serverId)
 
-  const hasOwnStatus = !!(session?.user.status_text || (session?.user.status_emoji && !session?.user.status_sticker_id))
-  const hasActivity = !(session?.user.status_text || session?.user.status_emoji || session?.user.status_sticker_id) && isTauri() && (shareMediaActivity || shareAppActivity) && session?.user.id && userActivities[session.user.id]
+  const hasOwnStatus = !!(session?.user?.status_text || (session?.user?.status_emoji && !session?.user?.status_sticker_id))
+  const hasActivity = !(session?.user?.status_text || session?.user?.status_emoji || session?.user?.status_sticker_id) && isTauri() && (shareMediaActivity || shareAppActivity) && session?.user?.id && userActivities[session.user.id]
   const showStatusLine = hasOwnStatus || hasActivity
 
   return (
@@ -420,21 +426,21 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
           <div className="sidebar__user-row">
             <UserStatusPicker socketRef={socketRef}>
               <Avatar
-                src={session?.user.avatar}
-                name={session?.user.display_name || session?.user.username}
+                src={session?.user?.avatar}
+                name={session?.user?.display_name || session?.user?.username}
                 size={32}
-                stickerId={session?.user.status_sticker_id}
+                stickerId={session?.user?.status_sticker_id}
                 serverUrl={session?.url}
                 bgColor="var(--brand)"
               />
             </UserStatusPicker>
             <div className={`sidebar__user-info${showStatusLine ? '' : ' sidebar__user-info--centered'}`}>
-              <p className="sidebar__user-displayname">{session?.user.display_name || session?.user.username}</p>
-              <p className="sidebar__user-subtitle">@{session?.user.username}{isAdmin ? ' · admin' : ''}</p>
+              <p className="sidebar__user-displayname">{session?.user?.display_name || session?.user?.username}</p>
+              <p className="sidebar__user-subtitle">@{session?.user?.username}{isAdmin ? ' · admin' : ''}</p>
               {showStatusLine && (
                 <p className="sidebar__user-status">
-                  {session?.user.status_emoji && !session?.user.status_sticker_id && <span className="sidebar__user-status-emoji">{session.user.status_emoji}</span>}
-                  {session?.user.status_text && <span className="sidebar__user-status-text">{session.user.status_text}</span>}
+                  {session?.user?.status_emoji && !session?.user?.status_sticker_id && <span className="sidebar__user-status-emoji">{session.user.status_emoji}</span>}
+                  {session?.user?.status_text && <span className="sidebar__user-status-text">{session.user.status_text}</span>}
                   {hasActivity && (
                     <>
                       {userActivities[session.user.id].type === 'game' ? '\u{1F3AE}' : userActivities[session.user.id].type === 'music' ? '\u{1F3B5}' : userActivities[session.user.id].type === 'video' ? '\u25B6' : userActivities[session.user.id].type === 'app' ? '\u{1F4BB}' : '\u25B6'} {userActivities[session.user.id].name}
@@ -611,6 +617,8 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
           </div>
         )}
       </div>
+
+      {voicePanel}
 
       <div className="sidebar__footer">
         {showDisconnectConfirm ? (
