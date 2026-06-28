@@ -9,13 +9,6 @@
   You host the server, you own the data.
 </p>
 
-<p align="center">
-  <a href="https://github.com/ItsAshn/kizuna/releases"><img src="https://img.shields.io/github/package-json/v/ItsAshn/kizuna?style=flat-square&label=version" alt="Version" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/ItsAshn/kizuna?style=flat-square" alt="License" /></a>
-  <a href="https://github.com/ItsAshn/kizuna/pkgs/container/kizuna"><img src="https://img.shields.io/github/v/release/ItsAshn/kizuna?logo=docker&style=flat-square&label=docker" alt="Docker" /></a>
-  <a href="https://github.com/ItsAshn/kizuna/issues"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square" alt="PRs Welcome" /></a>
-</p>
-
 > [!IMPORTANT]
 > Voice channels rely on WebRTC, which may have limited support on mobile browsers and some Linux configurations. If you run into issues, please [open a GitHub issue](https://github.com/ItsAshn/kizuna/issues/new) or reach out — your feedback helps improve cross-platform support.
 
