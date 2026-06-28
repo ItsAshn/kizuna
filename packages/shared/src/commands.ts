@@ -43,6 +43,7 @@ export const CHAT_COMMANDS: ChatCommand[] = [
   { name: 'roll', kind: 'compose', permission: 'send_messages', usage: '[NdM]', description: 'Roll dice (default 1d20)' },
   { name: 'flip', kind: 'compose', permission: 'send_messages', description: 'Flip a coin' },
   { name: '8ball', kind: 'compose', permission: 'send_messages', usage: '<question>', description: 'Ask the magic 8-ball' },
+  { name: 'poll', kind: 'action', permission: 'send_messages', usage: '<question> | <option1> | <option2> [| ...]', description: 'Create a poll' },
 ]
 
 export function findChatCommand(name: string): ChatCommand | undefined {

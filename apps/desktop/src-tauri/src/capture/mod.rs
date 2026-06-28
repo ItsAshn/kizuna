@@ -10,6 +10,7 @@ pub mod windows;
 #[cfg(not(target_os = "windows"))]
 pub mod x11;
 pub mod camera;
+pub mod app_info;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

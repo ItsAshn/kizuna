@@ -1,0 +1,39 @@
+.media-gallery__empty {
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding: 32px 0;
+  text-align: center;
+}
+
+.media-gallery__grid {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  max-height: 65vh;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.media-gallery__item {
+  aspect-ratio: 1;
+  background: var(--bg-tertiary);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.media-gallery__item:hover {
+  opacity: 0.85;
+  transform: scale(1.02);
+}
+
+.media-gallery__media {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}

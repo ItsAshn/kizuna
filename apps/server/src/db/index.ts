@@ -630,6 +630,43 @@ function runMigrations(database: Database.Database): void {
       player_count INTEGER NOT NULL DEFAULT 0,
       last_heartbeat INTEGER NOT NULL
     )` },
+    { name: 'polls_tables', sql: `
+      CREATE TABLE IF NOT EXISTS polls (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+        message_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        allow_multiple INTEGER NOT NULL DEFAULT 0,
+        closes_at INTEGER DEFAULT NULL,
+        created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE TABLE IF NOT EXISTS poll_options (
+        id TEXT PRIMARY KEY,
+        poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+        label TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS poll_votes (
+        id TEXT PRIMARY KEY,
+        poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+        option_id TEXT NOT NULL REFERENCES poll_options(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        UNIQUE(poll_id, user_id, option_id)
+      );
+    ` },
+    { name: 'webhooks_table', sql: `
+      CREATE TABLE IF NOT EXISTS webhooks (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        avatar TEXT DEFAULT NULL,
+        created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+    ` },
   ]
 
   const insertStmt = database.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)')

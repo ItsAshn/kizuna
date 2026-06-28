@@ -45,14 +45,122 @@ import {
   loadTagger,
   unloadTagger,
   getTaggerStatus,
+  fetchWebhooks,
+  createWebhook,
+  deleteWebhook,
 } from '@kizuna/shared'
-import type { Member, CustomRole, Permission, UserStatus, GifInfo, TaggerStatus, InviteCode } from '@kizuna/shared'
+import type { Member, CustomRole, Permission, UserStatus, GifInfo, TaggerStatus, InviteCode, ServerSession } from '@kizuna/shared'
 import { hexToRgba } from '../utils/color'
 import './ServerMenuModal.css'
 
 interface Props {
   onClose: () => void
   onBackgroundChanged?: () => void
+}
+
+function WebhooksSection() {
+  const session = useServerStore((s) => s.activeSession)
+  const [webhooks, setWebhooks] = useState<{ id: string; name: string; created_at: number }[]>([])
+  const [channels, setChannels] = useState<{ id: string; name: string }[]>([])
+  const [newName, setNewName] = useState('')
+  const [newChannelId, setNewChannelId] = useState('')
+  const [createdToken, setCreatedToken] = useState<{ token: string; name: string } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const ch = useChatStore.getState().channels.filter((c: { id: string; name: string; type: string }) => c.type === 'text')
+    setChannels(ch)
+    if (ch[0]) setNewChannelId(ch[0].id)
+  }, [])
+
+  useEffect(() => {
+    if (!newChannelId || !session) return
+    fetchWebhooks(session.url, newChannelId).then((r) => setWebhooks(r.webhooks)).catch(() => {})
+  }, [newChannelId, session])
+
+  const handleCreate = async () => {
+    if (!newName.trim() || !newChannelId || !session) return
+    setLoading(true); setError('')
+    try {
+      const res = await createWebhook(session.url, newChannelId, newName.trim())
+      setWebhooks((prev) => [...prev, { id: res.webhook.id, name: res.webhook.name, created_at: Date.now() / 1000 }])
+      setCreatedToken({ token: res.webhook.token, name: res.webhook.name })
+      setNewName('')
+    } catch (err) { setError(handleApiErr(err)) } finally { setLoading(false) }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!session) return
+    try {
+      await deleteWebhook(session.url, id)
+      setWebhooks((prev) => prev.filter((w) => w.id !== id))
+      if (createdToken) setCreatedToken(null)
+    } catch (err) { setError(handleApiErr(err)) }
+  }
+
+  const webhookUrl = (token: string) => `${session?.url ?? ''}/api/webhooks/incoming/${token}`
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <h3 style={{ margin: 0 }}>Webhooks</h3>
+      <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0 }}>
+        Incoming webhooks let external services (CI/CD, GitHub, etc.) post messages to a channel via a unique URL.
+      </p>
+
+      {createdToken && (
+        <div style={{ background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <strong style={{ color: 'var(--success)', fontSize: '13px' }}>Webhook created — copy your URL now, it won&apos;t be shown again.</strong>
+          <code style={{ background: 'var(--bg-secondary)', borderRadius: '4px', fontSize: '12px', padding: '8px', wordBreak: 'break-all' }}>
+            {webhookUrl(createdToken.token)}
+          </code>
+          <button className="server-menu__btn" onClick={() => navigator.clipboard.writeText(webhookUrl(createdToken!.token))}>
+            Copy URL
+          </button>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <select
+          className="server-menu__input"
+          value={newChannelId}
+          onChange={(e) => setNewChannelId(e.target.value)}
+          style={{ flex: '1', minWidth: '120px' }}
+        >
+          {channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
+        </select>
+        <input
+          className="server-menu__input"
+          placeholder="Webhook name"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          style={{ flex: '2', minWidth: '140px' }}
+        />
+        <button className="server-menu__btn" onClick={handleCreate} disabled={loading || !newName.trim()}>
+          Create
+        </button>
+      </div>
+
+      {error && <p style={{ color: 'var(--error)', fontSize: '13px' }}>{error}</p>}
+
+      {webhooks.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {webhooks.map((wh) => (
+            <div key={wh.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', padding: '8px 12px' }}>
+              <span style={{ flex: 1, fontSize: '13px' }}>{wh.name}</span>
+              <button className="server-menu__btn server-menu__btn--danger" onClick={() => handleDelete(wh.id)} style={{ padding: '4px 10px', fontSize: '12px' }}>
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {webhooks.length === 0 && (
+        <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No webhooks yet for this channel.</p>
+      )}
+    </div>
+  )
 }
 
 function handleApiErr(err: unknown): string {
@@ -95,6 +203,7 @@ type Section =
   | 'roles'
   | 'css'
   | 'gifs'
+  | 'webhooks'
 
 const SECTION_LABELS: Record<Section, string> = {
   profile: 'profile',
@@ -105,6 +214,7 @@ const SECTION_LABELS: Record<Section, string> = {
   roles: 'roles',
   css: 'custom css',
   gifs: 'gifs & stickers',
+  webhooks: 'webhooks',
 }
 
 const GIF_TABS: { key: 'gif' | 'sticker'; label: string }[] = [
@@ -146,7 +256,7 @@ function NotificationSettings() {
   const current = settings[serverId] || { level: 'all' as const, suppressEveryone: false }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px', paddingBottom: '8px' }}>
+    <>
       <div className="server-menu__field">
         <label className="server-menu__label">server notification level</label>
         <select
@@ -175,7 +285,7 @@ function NotificationSettings() {
           ariaLabel="notification sounds"
         />
       </div>
-    </div>
+    </>
   )
 }
 
@@ -1146,6 +1256,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
           { key: 'roles', label: 'roles', icon: <Shield size={15} /> },
           { key: 'css', label: 'custom css', icon: <Code size={15} /> },
           { key: 'gifs', label: 'gifs & stickers', icon: <ImageIcon size={15} /> },
+          { key: 'webhooks', label: 'webhooks', icon: <Link2 size={15} /> },
         ],
       })
     }
@@ -1177,8 +1288,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
       >
         {/* Profile */}
         {section === 'profile' && (
-        <section>
-          <p className="server-menu__section-title">your profile</p>
+        <section className="server-menu__section">
 
             <div className="server-menu__profile-preview">
               <div className="server-menu__profile-banner" onClick={() => bannerFileRef.current?.click()} title="change banner">
@@ -1219,26 +1329,34 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
             <input ref={profileFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFile} />
             <input ref={bannerFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerFile} />
 
-            <div className="server-menu__field" style={{ marginTop: '16px' }}>
-              <label className="server-menu__label">display name</label>
-              <input className="server-menu__input" maxLength={100} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="display name" />
+            <div className="server-menu__settings-group" style={{ marginTop: '16px' }}>
+              <p className="server-menu__settings-group-title">identity</p>
+              <div className="server-menu__field">
+                <label className="server-menu__label">display name</label>
+                <input className="server-menu__input" maxLength={100} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="display name" />
+              </div>
             </div>
-            <div className="server-menu__toggle-row">
-              <label className="server-menu__label" style={{ margin: 0 }}>show server background</label>
-              <ToggleSwitch
-                checked={serverBackgroundEnabled}
-                onChange={(checked) => useSettingsStore.getState().setServerBackgroundEnabled(checked)}
-                ariaLabel="show server background"
-              />
+
+            <div className="server-menu__settings-group">
+              <p className="server-menu__settings-group-title">display</p>
+              <div className="server-menu__toggle-row" style={{ marginTop: 0 }}>
+                <label className="server-menu__label" style={{ margin: 0 }}>show server background</label>
+                <ToggleSwitch
+                  checked={serverBackgroundEnabled}
+                  onChange={(checked) => useSettingsStore.getState().setServerBackgroundEnabled(checked)}
+                  ariaLabel="show server background"
+                />
+              </div>
+              <div className="server-menu__toggle-row">
+                <label className="server-menu__label" style={{ margin: 0 }}>enable custom css</label>
+                <ToggleSwitch
+                  checked={customCssEnabled}
+                  onChange={(checked) => useSettingsStore.getState().setCustomCssEnabled(checked)}
+                  ariaLabel="enable custom css"
+                />
+              </div>
             </div>
-            <div className="server-menu__toggle-row">
-              <label className="server-menu__label" style={{ margin: 0 }}>enable custom css</label>
-              <ToggleSwitch
-                checked={customCssEnabled}
-                onChange={(checked) => useSettingsStore.getState().setCustomCssEnabled(checked)}
-                ariaLabel="enable custom css"
-              />
-            </div>
+
             <div className="server-menu__save-row">
               <button onClick={handleSaveProfile} disabled={profileSaving} className="server-menu__save-btn">
                 {profileSaving ? '...' : 'save profile'}
@@ -1254,15 +1372,17 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
 
           {/* Notifications */}
           {section === 'notifications' && (
-          <section>
-            <p className="server-menu__section-title">notifications</p>
-            <NotificationSettings />
+          <section className="server-menu__section">
+            <div className="server-menu__settings-group">
+              <p className="server-menu__settings-group-title">notifications</p>
+              <NotificationSettings />
+            </div>
           </section>
           )}
 
               {/* Overview (server settings) */}
               {section === 'overview' && (
-                <div className="server-menu__tab-content">
+                <div className="server-menu__section">
                   {infoLoading && <p className="server-menu__info-loading">loading server info...</p>}
 
                   {/* Identity */}
@@ -1305,10 +1425,10 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
                         </div>
                         <div className="server-menu__bg-actions">
                           <button onClick={() => bgFileRef.current?.click()} disabled={bgUploading} className="server-menu__upload-btn">
-                            {bgUploading ? 'uploading...' : bgHasImage ? 'change background' : 'upload background'}
+                            {bgUploading ? 'uploading...' : bgHasImage ? 'change' : 'upload background'}
                           </button>
                           {bgHasImage && (
-                            <button onClick={handleRemoveBg} className="server-menu__remove-btn">remove background</button>
+                            <button onClick={handleRemoveBg} className="server-menu__remove-btn">remove</button>
                           )}
                         </div>
                         <input ref={bgFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgFile} />
@@ -1360,7 +1480,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
 
               {/* Members tab */}
               {section === 'members' && (
-                <div className="server-menu__tab-content">
+                <div className="server-menu__section">
                   <input
                     className="server-menu__member-search"
                     placeholder={`Search members (${filteredMembers.length})...`}
@@ -1588,7 +1708,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
 
               {/* Invites tab */}
               {section === 'invites' && (
-                <div className="server-menu__tab-content">
+                <div className="server-menu__section">
                   <div className="server-menu__invite-create">
                     <p className="server-menu__section-title" style={{ marginBottom: '8px' }}>create invite</p>
                     <div className="server-menu__invite-row">
@@ -1658,7 +1778,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
 
               {/* Roles tab */}
               {section === 'roles' && (
-                <div className="server-menu__tab-content">
+                <div className="server-menu__section">
                   {!showCreateRole ? (
                     <button
                       onClick={() => setShowCreateRole(true)}
@@ -1863,41 +1983,39 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
 
               {/* Custom CSS tab */}
               {section === 'css' && (
-                <div className="server-menu__tab-content">
-                  <p className="server-menu__section-title" style={{ marginBottom: '4px' }}>custom css</p>
-                  <p className="server-menu__css-hint">
-                    Override CSS variables to theme your server. Changes preview live below.
+                <section className="server-menu__section--grow">
+                  <p className="server-menu__css-hint" style={{ marginBottom: '8px' }}>
+                    Override CSS variables to theme your server. Changes preview live.
                   </p>
-                  <textarea
-                    className="server-menu__css-editor"
-                    value={customCss}
-                    onChange={(e) => setCustomCss(e.target.value.slice(0, 50000))}
-                    maxLength={50000}
-                    placeholder={`/* Kizuna Custom CSS — override any variable below */\n:root {\n  /* Backgrounds */\n  --bg-primary: #0a0a0a;\n  --bg-secondary: #111111;\n  --bg-tertiary: #1a1a1a;\n  --bg-hover: #262626;\n  --bg-active: #2d2d2d;\n\n  /* Text */\n  --text-primary: #ffffff;\n  --text-secondary: #a0a0a0;\n  --text-muted: #6b6b6b;\n\n  /* Borders */\n  --border-color: #2a2a2a;\n\n  /* Brand / Accent */\n  --brand: #4c6ef5;\n  --brand-hover: #4263eb;\n  --brand-dim: rgba(76, 110, 245, 0.15);\n  --accent-color: #6366f1;\n\n  /* Semantic colors */\n  --red: #ff4d4d;\n  --red-hover: #ff3333;\n  --red-dim: rgba(255, 77, 77, 0.15);\n  --red-dim-border: rgba(255, 77, 77, 0.30);\n  --green: #40c057;\n  --green-dim: rgba(64, 192, 87, 0.15);\n  --green-dim-border: rgba(64, 192, 87, 0.20);\n  --yellow: #fab005;\n\n  /* Border radius */\n  --radius-sm: 8px;\n  --radius-md: 12px;\n  --radius-lg: 16px;\n  --radius-xl: 24px;\n  --radius-full: 9999px;\n\n  /* Font */\n  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;\n}`}
-                    spellCheck={false}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                    <span className={`server-menu__css-char-count${customCss.length > 45000 ? ' server-menu__css-char-count--warn' : ''}${customCss.length >= 50000 ? ' server-menu__css-char-count--over' : ''}`}>
-                      {customCss.length} / 50000
-                    </span>
-                  </div>
-                  <div className="server-menu__save-row">
-                    <button onClick={handleSaveCustomCss} disabled={customCssSaving || customCss.length > 50000} className="server-menu__save-btn">
-                      {customCssSaving ? '...' : 'save css'}
-                    </button>
-                    {customCssMsg && (
-                      <span className={`server-menu__save-msg ${customCssMsg === 'saved' ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`}>
-                        {customCssMsg}
+                  <div className="server-menu__css-body">
+                    <textarea
+                      className="server-menu__css-editor"
+                      value={customCss}
+                      onChange={(e) => setCustomCss(e.target.value.slice(0, 50000))}
+                      maxLength={50000}
+                      placeholder={`/* Kizuna Custom CSS — override any variable below */\n:root {\n  /* Backgrounds */\n  --bg-primary: #0a0a0a;\n  --bg-secondary: #111111;\n  --bg-tertiary: #1a1a1a;\n  --bg-hover: #262626;\n  --bg-active: #2d2d2d;\n\n  /* Text */\n  --text-primary: #ffffff;\n  --text-secondary: #a0a0a0;\n  --text-muted: #6b6b6b;\n\n  /* Borders */\n  --border-color: #2a2a2a;\n\n  /* Brand / Accent */\n  --brand: #4c6ef5;\n  --brand-hover: #4263eb;\n  --brand-dim: rgba(76, 110, 245, 0.15);\n  --accent-color: #6366f1;\n\n  /* Semantic colors */\n  --red: #ff4d4d;\n  --red-hover: #ff3333;\n  --red-dim: rgba(255, 77, 77, 0.15);\n  --red-dim-border: rgba(255, 77, 77, 0.30);\n  --green: #40c057;\n  --green-dim: rgba(64, 192, 87, 0.15);\n  --green-dim-border: rgba(64, 192, 87, 0.20);\n  --yellow: #fab005;\n\n  /* Border radius */\n  --radius-sm: 8px;\n  --radius-md: 12px;\n  --radius-lg: 16px;\n  --radius-xl: 24px;\n  --radius-full: 9999px;\n\n  /* Font */\n  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;\n}`}
+                      spellCheck={false}
+                    />
+                    <div className="server-menu__save-row" style={{ marginTop: 0 }}>
+                      <button onClick={handleSaveCustomCss} disabled={customCssSaving || customCss.length > 50000} className="server-menu__save-btn">
+                        {customCssSaving ? '...' : 'save css'}
+                      </button>
+                      <span className={`server-menu__css-char-count${customCss.length > 45000 ? ' server-menu__css-char-count--warn' : ''}${customCss.length >= 50000 ? ' server-menu__css-char-count--over' : ''}`}>
+                        {customCss.length.toLocaleString()} / 50,000
                       </span>
-                    )}
+                      {customCssMsg && (
+                        <span className={`server-menu__save-msg ${customCssMsg === 'saved' ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`}>
+                          {customCssMsg}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
+                </section>
               )}
 
               {/* GIFs & Stickers tab */}
               {section === 'gifs' && (
-                <div className="server-menu__tab-content">
-                  <p className="server-menu__section-title" style={{ marginBottom: '8px' }}>gifs & stickers</p>
+                <div className="server-menu__section">
 
                   <div className="server-menu__tab-bar" style={{ marginBottom: '12px' }}>
                     <Tabs
@@ -2283,6 +2401,10 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
         </Modal>
       )
     })()}
+
+      {section === 'webhooks' && (
+        <WebhooksSection />
+      )}
     </>
   )
 }

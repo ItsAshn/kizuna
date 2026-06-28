@@ -18,7 +18,7 @@ import go from 'highlight.js/lib/languages/go'
 import yaml from 'highlight.js/lib/languages/yaml'
 import markdown from 'highlight.js/lib/languages/markdown'
 import type { Message } from '@kizuna/shared'
-import { reactToMessage, unreactToMessage } from '@kizuna/shared'
+import { reactToMessage, unreactToMessage, votePoll } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { Avatar } from './ui'
@@ -74,6 +74,8 @@ interface MessageBubbleProps {
   isPinned?: boolean
   onCreateThread?: (messageId: string, name: string) => void
   onImageClick?: (imageUrl: string, filename: string) => void
+  isSelected?: boolean
+  onSelect?: (messageId: string) => void
 }
 
 function isImageUrl(url: string): boolean {
@@ -222,6 +224,63 @@ function AttachmentPreview({ url, filename, serverUrl, isMediaOnly, onImageClick
   )
 }
 
+interface PollOption { id: string; label: string; position: number; vote_count?: number }
+interface PollData { __poll__: true; pollId: string; question: string; options: PollOption[] }
+
+function PollCard({ data, serverUrl, userId }: { data: PollData; serverUrl: string; userId: string }) {
+  const [options, setOptions] = useState<PollOption[]>(data.options)
+  const [votedIds, setVotedIds] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(false)
+  const totalVotes = options.reduce((s, o) => s + (o.vote_count ?? 0), 0)
+
+  const handleVote = async (optionId: string) => {
+    if (loading || !serverUrl) return
+    setLoading(true)
+    try {
+      const res = await votePoll(serverUrl, data.pollId, optionId)
+      setOptions(res.options)
+      setVotedIds(new Set(res.userVoteIds))
+    } catch { /* ignore */ } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="msg-bubble__poll">
+      <div className="msg-bubble__poll-question">{data.question}</div>
+      <div className="msg-bubble__poll-options">
+        {options.map((opt) => {
+          const pct = totalVotes > 0 ? Math.round(((opt.vote_count ?? 0) / totalVotes) * 100) : 0
+          const voted = votedIds.has(opt.id)
+          return (
+            <button
+              key={opt.id}
+              className={`msg-bubble__poll-option${voted ? ' msg-bubble__poll-option--voted' : ''}`}
+              onClick={() => handleVote(opt.id)}
+              disabled={loading}
+              aria-label={`Vote for ${opt.label} (${opt.vote_count ?? 0} votes)`}
+            >
+              <div className="msg-bubble__poll-bar" style={{ width: `${pct}%` }} />
+              <span className="msg-bubble__poll-label">{opt.label}</span>
+              <span className="msg-bubble__poll-pct">{pct}%</span>
+            </button>
+          )
+        })}
+      </div>
+      <div className="msg-bubble__poll-footer">{totalVotes} vote{totalVotes !== 1 ? 's' : ''}</div>
+    </div>
+  )
+}
+
+function parsePoll(content: string): PollData | null {
+  if (!content.startsWith('{"__poll__"')) return null
+  try {
+    const d = JSON.parse(content)
+    if (d.__poll__ && d.pollId && d.question && Array.isArray(d.options)) return d as PollData
+  } catch { /* not json */ }
+  return null
+}
+
 function MessageBubble({
   message,
   isOwn,
@@ -238,6 +297,8 @@ function MessageBubble({
   isPinned,
   onCreateThread,
   onImageClick,
+  isSelected = false,
+  onSelect,
 }: MessageBubbleProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [hovered, setHovered] = useState(false)
@@ -473,7 +534,10 @@ function MessageBubble({
   }
 
   return (
-    <div className={`msg-bubble__row ${isOwn ? 'msg-bubble__row--own' : ''} ${isGrouped ? 'msg-bubble__row--grouped' : ''} ${isMediaOnly ? 'msg-bubble__row--media-only' : ''}`}>
+    <div
+      className={`msg-bubble__row ${isOwn ? 'msg-bubble__row--own' : ''} ${isGrouped ? 'msg-bubble__row--grouped' : ''} ${isMediaOnly ? 'msg-bubble__row--media-only' : ''} ${isSelected ? 'msg-bubble__row--selected' : ''}`}
+      onClick={(e) => { if (e.shiftKey && onSelect) { e.preventDefault(); onSelect(message.id) } }}
+    >
       {!isOwn && !isGrouped && (
         <Avatar
           className="msg-bubble__avatar"
@@ -529,7 +593,11 @@ function MessageBubble({
               onKeyDown={handleEditKeyDown}
             />
           ) : (
-            text && <div className="msg-bubble__text" onClick={handleSpoilerClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+            (() => {
+              const poll = parsePoll(message.content)
+              if (poll) return <PollCard data={poll} serverUrl={session?.url ?? ''} userId={session?.user.id ?? ''} />
+              return text ? <div className="msg-bubble__text" onClick={handleSpoilerClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} /> : null
+            })()
           )}
           {attachments.length > 0 && attachments.map((att, i) => (
             <AttachmentPreview key={i} url={att.url} filename={att.filename} serverUrl={serverUrl} isMediaOnly={isMediaOnly} onImageClick={onImageClick} />

@@ -595,6 +595,10 @@ export function useSocket(): MutableRefObject<Socket | null> {
       }
     })
 
+    socket.on('poll:update', (data: { pollId: string; options: { id: string; label: string; position: number; vote_count: number }[]; totalVotes: number }) => {
+      useChatStore.getState().updatePollInMessages(data.pollId, data.options)
+    })
+
     const heartbeatInterval = setInterval(() => {
       if (socket.connected) {
         socket.emit('presence:heartbeat')

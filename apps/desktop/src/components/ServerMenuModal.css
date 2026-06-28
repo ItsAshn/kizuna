@@ -5,8 +5,8 @@
 
 
 .server-menu {
-  width: min(900px, 92vw);
-  height: min(640px, 86vh);
+  width: min(920px, 92vw);
+  height: min(700px, 88vh);
 }
 
 /* The two-pane SettingsLayout fills the modal body and owns its own scrolling
@@ -363,8 +363,12 @@
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 14px;
+  padding: 14px 16px;
   margin-bottom: 12px;
+}
+
+.server-menu__settings-group:last-child {
+  margin-bottom: 0;
 }
 
 .server-menu__settings-group-title {
@@ -374,17 +378,27 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-family: var(--font-mono);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border-color);
+}
+
+/* First toggle-row in a settings group should not add extra top margin */
+.server-menu__settings-group .server-menu__toggle-row:first-of-type {
+  margin-top: 0;
+}
+
+.server-menu__settings-group .server-menu__field:first-child {
+  margin-top: 0;
 }
 
 .server-menu__save-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 14px;
-  padding-bottom: 8px;
+  margin-top: 16px;
+  padding-bottom: 2px;
+  flex-shrink: 0;
 }
 
 .server-menu__hint {
@@ -921,27 +935,45 @@
   background: var(--brand-dim);
 }
 
-/* Tab content */
+/* Section containers — all sections fill the content pane consistently */
 
+.server-menu__section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Sections that should grow to fill available height (CSS editor, GIF grid) */
+.server-menu__section--grow {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Legacy tab-content wrapper used by some sections — normalize to match section spacing */
 .server-menu__tab-content {
-  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* Background image */
 .server-menu__bg-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .server-menu__bg-preview {
-  width: 80px;
-  height: 52px;
+  width: 100%;
+  height: 96px;
   border-radius: var(--radius-sm);
   background-size: cover;
   background-position: center;
   border: 1px solid var(--border-color);
-  flex-shrink: 0;
 }
 
 .server-menu__bg-preview--empty {
@@ -949,20 +981,22 @@
   align-items: center;
   justify-content: center;
   background: var(--bg-hover);
+  border-style: dashed;
 }
 
 .server-menu__bg-preview-placeholder {
-  font-size: 8px;
+  font-size: 9px;
   font-family: var(--font-mono);
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 
 .server-menu__bg-actions {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
 }
 
 /* Label with inline value chip */
@@ -1008,9 +1042,18 @@
 
 /* Custom CSS editor */
 
+.server-menu__css-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 8px;
+}
+
 .server-menu__css-editor {
   width: 100%;
-  min-height: 280px;
+  flex: 1 1 auto;
+  min-height: 180px;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
@@ -1019,10 +1062,11 @@
   font-size: 11px;
   font-family: var(--font-mono);
   line-height: 1.6;
-  resize: vertical;
+  resize: none;
   outline: none;
   tab-size: 2;
   transition: border-color 0.15s ease;
+  box-sizing: border-box;
 }
 
 .server-menu__css-editor:focus {
@@ -1739,8 +1783,7 @@
   .server-menu {
     width: calc(100vw - 16px);
     max-width: 480px;
-    height: auto;
-    max-height: calc(100vh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);

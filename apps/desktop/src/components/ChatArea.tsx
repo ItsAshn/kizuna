@@ -9,10 +9,10 @@ import { useCallStore } from '../store/callStore'
 import { useMobile } from '../hooks/useMobile'
 import { useSwipeBack } from '../hooks/useSwipeBack'
 import { useKeyboard } from '../hooks/useKeyboard'
-import { fetchMessages, fetchDMMessages, fetchGroupDMMessages, sendMessage, sendDMMessage, sendGroupDMMessage, deleteMessage, editMessage, deleteDMMessage, deleteGroupDMMessage, editDMMessage, editGroupDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles, pinMessage, unpinMessage, fetchPinnedMessages, createThread } from '@kizuna/shared'
+import { fetchMessages, fetchDMMessages, fetchGroupDMMessages, sendMessage, sendDMMessage, sendGroupDMMessage, deleteMessage, editMessage, deleteDMMessage, deleteGroupDMMessage, editDMMessage, editGroupDMMessage, uploadAttachment, fetchChannelPermissions, getUserPublicKey, fetchRoles, pinMessage, unpinMessage, fetchPinnedMessages, createThread, createPoll } from '@kizuna/shared'
 import { encryptDM, decryptDM, isEncryptedContent, encryptGroupDM, decryptGroupDM, isGroupEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import { Lock, Paperclip, Send, ShieldCheck, ShieldAlert, Sticker, Phone, ChevronLeft, Users, Pin, MessageSquare, Mic, Square, Trash2, Search, Settings } from 'lucide-react'
+import { Lock, Paperclip, Send, ShieldCheck, ShieldAlert, Sticker, Phone, ChevronLeft, Users, Pin, MessageSquare, Mic, Square, Trash2, Search, Settings, Image as ImageIcon } from 'lucide-react'
 import type { Message, Member, DMChannelData, CustomRole, PinnedMessage, ChatCommand } from '@kizuna/shared'
 import { CHAT_COMMANDS } from '@kizuna/shared'
 import { runChatCommand, userCanUseCommand } from '../lib/chatCommands'
@@ -26,6 +26,7 @@ import PinnedMessagesModal from './PinnedMessagesModal'
 import EnvStatus from './EnvStatus'
 import GroupDMSettingsModal from './GroupDMSettingsModal'
 import IconButton from './ui/IconButton'
+import MediaGallery from './MediaGallery'
 import './ChatArea.css'
 
 interface ChatAreaProps {
@@ -117,6 +118,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const loadMoreErrors = useChatStore((s) => s.loadMoreErrors)
   const pendingMention = useChatStore((s) => s.pendingMention)
   const setPendingMention = useChatStore((s) => s.setPendingMention)
+  const channelDrafts = useChatStore((s) => s.channelDrafts)
+  const setChannelDraft = useChatStore((s) => s.setChannelDraft)
   const pinnedMessages = useChatStore((s) => s.pinnedMessages)
   const setPinned = useChatStore((s) => s.setPinnedMessages)
   const setActiveChannel = useChatStore((s) => s.setActiveChannel)
@@ -145,6 +148,10 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const [selectedEmojiIndex, setSelectedEmojiIndex] = useState(0)
   const [replyTo, setReplyTo] = useState<{ messageId: string; username: string; content: string } | null>(null)
   const [pinsOpen, setPinsOpen] = useState(false)
+  const [mediaGalleryOpen, setMediaGalleryOpen] = useState(false)
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [formatSel, setFormatSel] = useState<{ start: number; end: number } | null>(null)
   const [recording, setRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -160,6 +167,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [atBottom, setAtBottom] = useState(true)
   const lastCountAtBottom = useRef(0)
+  const prevChannelKeyRef = useRef<string | null>(null)
   const [lightboxImages, setLightboxImages] = useState<{ url: string; filename: string }[] | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const [showSearch, setShowSearch] = useState(false)
@@ -412,6 +420,29 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     }
   }, [activeGroupDMChannelId, tryDecryptGroupDM])
 
+  // Draft persistence: save when leaving a channel, restore when entering
+  useEffect(() => {
+    const currentKey = activeChannelId || activeDMChannelId || activeGroupDMChannelId || null
+    const prevKey = prevChannelKeyRef.current
+    if (prevKey !== currentKey) {
+      if (prevKey !== null) {
+        const currentInput = inputRef.current?.value ?? ''
+        useChatStore.getState().setChannelDraft(prevKey, currentInput)
+      }
+      if (currentKey !== null) {
+        const draft = useChatStore.getState().channelDrafts[currentKey] || ''
+        setInput(draft)
+        requestAnimationFrame(() => {
+          if (inputRef.current) {
+            inputRef.current.style.height = 'auto'
+            if (draft) inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 160)}px`
+          }
+        })
+      }
+      prevChannelKeyRef.current = currentKey
+    }
+  }, [activeChannelId, activeDMChannelId, activeGroupDMChannelId])
+
   useEffect(() => {
     if (!activeGroupDMChannelId) return
     const store = useChatStore.getState()
@@ -613,6 +644,20 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
+  const applyFormat = (prefix: string, suffix = prefix) => {
+    const ta = inputRef.current
+    if (!ta || !formatSel) return
+    const { start, end } = formatSel
+    const newValue = input.slice(0, start) + prefix + input.slice(start, end) + suffix + input.slice(end)
+    setInput(newValue)
+    setFormatSel(null)
+    requestAnimationFrame(() => {
+      ta.focus()
+      ta.selectionStart = start + prefix.length
+      ta.selectionEnd = end + prefix.length
+    })
+  }
+
   const handleSend = async () => {
     if ((!input.trim() && !pendingFile) || !session) return
 
@@ -638,6 +683,27 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       }
       if (result.kind === 'compose') {
         commandContent = result.content
+      }
+
+      // /poll is handled here because it needs channelId from component scope
+      const trimmedInput = input.trim()
+      if (trimmedInput.startsWith('/poll ') && activeChannelId) {
+        const pollArgs = trimmedInput.slice(6)
+        const parts = pollArgs.split('|').map((s: string) => s.trim()).filter(Boolean)
+        if (parts.length < 3) {
+          setSendError('Usage: /poll <question> | <option1> | <option2> [| more options...]')
+          return
+        }
+        const [question, ...options] = parts
+        try {
+          await createPoll(session.url, activeChannelId, question, options)
+          setInput('')
+          setSendError(null)
+          if (inputRef.current) inputRef.current.style.height = 'auto'
+        } catch (err: unknown) {
+          setSendError((err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ?? 'Failed to create poll')
+        }
+        return
       }
     }
 
@@ -826,6 +892,28 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
       }
     } catch (err) { console.error('Failed to delete message:', err) }
   }, [session, activeChannelId, activeDMChannelId, activeGroupDMChannelId])
+
+  const handleBulkDelete = useCallback(async () => {
+    if (!session || selectedMessages.size === 0 || !activeChannelId) return
+    setBulkDeleting(true)
+    try {
+      for (const id of selectedMessages) {
+        await deleteMessage(session.url, id)
+      }
+      setSelectedMessages(new Set())
+    } catch (err) { console.error('Bulk delete failed:', err) } finally {
+      setBulkDeleting(false)
+    }
+  }, [session, selectedMessages, activeChannelId])
+
+  const toggleMessageSelection = useCallback((messageId: string) => {
+    setSelectedMessages((prev) => {
+      const next = new Set(prev)
+      if (next.has(messageId)) next.delete(messageId)
+      else next.add(messageId)
+      return next
+    })
+  }, [])
 
   const startRecording = useCallback(async () => {
     try {
@@ -1139,6 +1227,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
           isGrouped={isGrouped}
           currentUsername={session?.user.username}
           canDelete={messageCanDelete}
+          isSelected={selectedMessages.has(msg.id)}
+          onSelect={toggleMessageSelection}
           onDelete={handleDeleteMessage}
           canEdit={isOwn}
           onEdit={handleEditMessage}
@@ -1175,6 +1265,28 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             <span className="chat-area__drop-overlay-icon">&#x2913;</span>
             <span className="chat-area__drop-overlay-text">Drop files to upload</span>
           </div>
+        </div>
+      )}
+      {selectedMessages.size > 0 && (
+        <div className="chat-area__bulk-bar">
+          <span>{selectedMessages.size} selected</span>
+          {canDeleteAny && activeChannelId && (
+            <button
+              className="chat-area__bulk-bar-delete"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+              aria-label={`Delete ${selectedMessages.size} selected messages`}
+            >
+              {bulkDeleting ? 'Deleting...' : `Delete ${selectedMessages.size}`}
+            </button>
+          )}
+          <button
+            className="chat-area__bulk-bar-cancel"
+            onClick={() => setSelectedMessages(new Set())}
+            aria-label="Cancel selection"
+          >
+            Cancel
+          </button>
         </div>
       )}
       <div className="chat-area__header">
@@ -1263,6 +1375,15 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
               onClick={() => setPinsOpen(true)}
             />
           )}
+          {(activeChannelId || activeDMChannelId || activeGroupDMChannelId) && (
+            <IconButton
+              icon={<ImageIcon className="icon-sm" />}
+              label="Media gallery"
+              title="Media"
+              active={mediaGalleryOpen}
+              onClick={() => setMediaGalleryOpen(true)}
+            />
+          )}
           {activeChannelId && (
             <IconButton
               icon={<MessageSquare className="icon-sm" />}
@@ -1342,19 +1463,22 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             />
           )}
         </div>
-        {!atBottom && displayMessages.length > lastCountAtBottom.current && (
+        {!atBottom && (
           <button
             className="chat-area__scroll-bottom"
             onClick={() => { virtuosoRef.current?.scrollToIndex(displayMessages.length - 1); lastCountAtBottom.current = displayMessages.length }}
-            title="Scroll to bottom"
+            title="Jump to bottom"
           >
             ↓ {(() => {
               if (newMessagesRef.current) {
                 const newIdx = displayMessages.findIndex(m => m.id === newMessagesRef.current)
-                const count = newIdx >= 0 ? displayMessages.length - newIdx : (displayMessages.length - lastCountAtBottom.current)
-                if (count > 0) return `${count} new message${count > 1 ? 's' : ''}`
+                const count = newIdx >= 0 ? displayMessages.length - newIdx : Math.max(0, displayMessages.length - lastCountAtBottom.current)
+                if (count > 0) return `${count} new`
+              } else {
+                const newCount = Math.max(0, displayMessages.length - lastCountAtBottom.current)
+                if (newCount > 0) return `${newCount} new`
               }
-              return 'New messages'
+              return null
             })()}
           </button>
         )}
@@ -1495,6 +1619,17 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
               )}
             </>
           )}
+          {formatSel && (
+            <div className="chat-area__format-toolbar" onMouseDown={(e) => e.preventDefault()}>
+              <button onClick={() => applyFormat('**')} title="Bold" aria-label="Bold"><strong>B</strong></button>
+              <button onClick={() => applyFormat('*')} title="Italic" aria-label="Italic"><em>I</em></button>
+              <button onClick={() => applyFormat('__')} title="Underline" aria-label="Underline"><u>U</u></button>
+              <button onClick={() => applyFormat('`')} title="Inline code" aria-label="Code">{'`'}</button>
+              <button onClick={() => applyFormat('~~')} title="Strikethrough" aria-label="Strikethrough">~~</button>
+              <button onClick={() => applyFormat('||')} title="Spoiler" aria-label="Spoiler">||</button>
+              <button onClick={() => applyFormat('> ', '')} title="Quote" aria-label="Quote">&gt;</button>
+            </div>
+          )}
           <textarea
             ref={inputRef}
             className={`chat-area__input ${cantWrite ? 'chat-area__input--locked' : ''}`}
@@ -1504,6 +1639,17 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
+            onSelect={() => {
+              const ta = inputRef.current
+              if (!ta) return
+              const { selectionStart, selectionEnd } = ta
+              if (selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd) {
+                setFormatSel({ start: selectionStart, end: selectionEnd })
+              } else {
+                setFormatSel(null)
+              }
+            }}
+            onBlur={() => setFormatSel(null)}
             maxLength={inputMaxLen}
             disabled={cantWrite}
             aria-label={`Message ${activeDMChannelId ? activeDM?.other_display_name || 'direct messages' : activeChannel?.name || 'channel'}`}
@@ -1558,6 +1704,17 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
         <GroupDMSettingsModal
           groupDM={activeGroupDM}
           onClose={() => setShowGroupDMSettings(false)}
+        />
+      )}
+
+      {mediaGalleryOpen && (
+        <MediaGallery
+          images={lightboxImageMap.images}
+          onOpen={(i) => {
+            setLightboxImages(lightboxImageMap.images)
+            setLightboxIndex(i)
+          }}
+          onClose={() => setMediaGalleryOpen(false)}
         />
       )}
     </div>

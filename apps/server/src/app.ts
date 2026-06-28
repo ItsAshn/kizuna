@@ -30,6 +30,8 @@ import threadsRoutes from './routes/threads';
 import categoryRoutes from './routes/categories';
 import embedRoutes from './routes/embeds';
 import registryRoutes from './routes/registry';
+import pollsRoutes from './routes/polls';
+import webhooksRoutes from './routes/webhooks';
 import { authLimiter, messageLimiter, uploadLimiter, apiLimiter } from './middleware/rateLimiter';
 
 const log = createLogger('app');
@@ -142,6 +144,10 @@ export function createApp(httpPort: number) {
 
   app.use('/api/registry/*', apiLimiter);
   app.route('/api/registry', registryRoutes);
+
+  app.use('/api/*', apiLimiter);
+  app.route('/api', pollsRoutes);
+  app.route('/api', webhooksRoutes);
 
   app.onError((err, c) => {
     log.error('Unhandled error:', err.message || err);

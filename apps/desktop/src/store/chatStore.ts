@@ -31,6 +31,7 @@ interface ChatState {
   loadingMoreMessages: Record<string, boolean>;
   loadMoreErrors: Record<string, string | null>;
   pendingMention: string | null;
+  channelDrafts: Record<string, string>;
 
   setChannels: (channels: Channel[]) => void;
   setCategories: (categories: { id: string; name: string; position: number }[]) => void;
@@ -71,6 +72,8 @@ interface ChatState {
   updateMessageReactions: (channelId: string, messageId: string, reactions: MessageReaction[]) => void;
   clearServerData: () => void;
   setPendingMention: (username: string | null) => void;
+  setChannelDraft: (channelId: string, draft: string) => void;
+  updatePollInMessages: (pollId: string, options: { id: string; label: string; position: number; vote_count: number }[]) => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -101,6 +104,7 @@ export const useChatStore = create<ChatState>()(
       loadingMoreMessages: {},
       loadMoreErrors: {},
       pendingMention: null,
+      channelDrafts: {},
 
       setChannels: (channels) => set({ channels }),
       setCategories: (categories) => set({ categories }),
@@ -310,6 +314,24 @@ export const useChatStore = create<ChatState>()(
           pendingMention: null,
         }),
       setPendingMention: (pendingMention) => set({ pendingMention }),
+      setChannelDraft: (channelId, draft) => set((state) => ({
+        channelDrafts: { ...state.channelDrafts, [channelId]: draft },
+      })),
+      updatePollInMessages: (pollId, options) => set((state) => {
+        const updated: typeof state.messages = {}
+        for (const [channelId, msgs] of Object.entries(state.messages)) {
+          updated[channelId] = msgs.map((m) => {
+            try {
+              const parsed = JSON.parse(m.content)
+              if (parsed.__poll__ && parsed.pollId === pollId) {
+                return { ...m, content: JSON.stringify({ ...parsed, options }) }
+              }
+            } catch { /* not json */ }
+            return m
+          })
+        }
+        return { messages: { ...state.messages, ...updated } }
+      }),
     }),
     {
       name: 'kizuna-chat-v1',
@@ -317,6 +339,7 @@ export const useChatStore = create<ChatState>()(
         unreadCounts: state.unreadCounts,
         mentionCounts: state.mentionCounts,
         serverMentionCounts: state.serverMentionCounts,
+        channelDrafts: state.channelDrafts,
       }),
     },
   ),

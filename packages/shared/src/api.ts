@@ -1220,3 +1220,56 @@ export async function deleteThread(
 ): Promise<void> {
   await client(serverUrl).delete(`/api/threads/${channelId}/${threadId}`)
 }
+
+// Polls
+export async function createPoll(
+  serverUrl: string,
+  channelId: string,
+  question: string,
+  options: string[],
+): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] }; message: any }> {
+  const res = await client(serverUrl).post(`/api/channels/${channelId}/polls`, { question, options })
+  return res.data
+}
+
+export async function fetchPoll(
+  serverUrl: string,
+  pollId: string,
+): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number; vote_count: number }[]; userVoteIds: string[] } }> {
+  const res = await client(serverUrl).get(`/api/polls/${pollId}`)
+  return res.data
+}
+
+export async function votePoll(
+  serverUrl: string,
+  pollId: string,
+  optionId: string,
+): Promise<{ options: { id: string; label: string; position: number; vote_count: number }[]; userVoteIds: string[] }> {
+  const res = await client(serverUrl).post(`/api/polls/${pollId}/vote`, { optionId })
+  return res.data
+}
+
+// Webhooks
+export async function createWebhook(
+  serverUrl: string,
+  channelId: string,
+  name: string,
+): Promise<{ webhook: { id: string; channelId: string; name: string; token: string } }> {
+  const res = await client(serverUrl).post(`/api/channels/${channelId}/webhooks`, { name })
+  return res.data
+}
+
+export async function fetchWebhooks(
+  serverUrl: string,
+  channelId: string,
+): Promise<{ webhooks: { id: string; name: string; created_at: number }[] }> {
+  const res = await client(serverUrl).get(`/api/channels/${channelId}/webhooks`)
+  return res.data
+}
+
+export async function deleteWebhook(
+  serverUrl: string,
+  webhookId: string,
+): Promise<void> {
+  await client(serverUrl).delete(`/api/webhooks/${webhookId}`)
+}

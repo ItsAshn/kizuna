@@ -50,7 +50,18 @@ export default function ContextMenu({ x, y, sections, onClose, title }: ContextM
       }
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') { onClose(); return }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        const items = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])
+        if (!items.length) return
+        const focused = document.activeElement as HTMLButtonElement
+        const idx = items.indexOf(focused)
+        const next = e.key === 'ArrowDown'
+          ? items[(idx + 1) % items.length]
+          : items[(idx - 1 + items.length) % items.length]
+        next?.focus()
+      }
     }
     document.addEventListener('mousedown', handleClick, true)
     window.addEventListener('keydown', handleKey)
@@ -82,6 +93,7 @@ export default function ContextMenu({ x, y, sections, onClose, title }: ContextM
             <button
               key={item.label}
               role="menuitem"
+              tabIndex={item.disabled ? -1 : 0}
               className={`context-menu__item${item.danger ? ' context-menu__item--danger' : ''}${item.disabled ? ' context-menu__item--disabled' : ''}`}
               onClick={() => {
                 if (!item.disabled) {
