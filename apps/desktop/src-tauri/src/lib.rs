@@ -16,6 +16,7 @@ use capture::{CaptureSession, MonitorInfo, SessionType};
 use capture::focus::WindowInfo;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use capture::detection::AppEntry;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use capture::app_info::ActiveWindowDetails;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use voice::device::AudioDeviceInfo;
