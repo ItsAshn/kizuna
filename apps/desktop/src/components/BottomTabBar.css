@@ -9,6 +9,18 @@
   border-top: 1px solid var(--border-color);
   flex-shrink: 0;
   z-index: 10;
+  position: relative;
+}
+
+/* Sliding active indicator */
+.bottom-tab-bar__indicator {
+  position: absolute;
+  top: 0;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent-color);
+  transition: left 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: left, width;
 }
 
 .bottom-tab-bar__tab {
@@ -26,24 +38,39 @@
   font-weight: 600;
   cursor: pointer;
   position: relative;
-  transition: color 0.15s ease;
+  transition: color 0.2s ease;
   -webkit-tap-highlight-color: transparent;
   padding: 4px 0 0 0;
   min-height: 0;
+}
+
+.bottom-tab-bar__tab:active {
+  opacity: 0.7;
 }
 
 .bottom-tab-bar__tab--active {
   color: var(--accent-color);
 }
 
+/* Spring icon bounce on active tab */
 .bottom-tab-bar__icon {
   width: 22px;
   height: 22px;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.bottom-tab-bar__tab--active .bottom-tab-bar__icon {
+  transform: scale(1.12);
 }
 
 .bottom-tab-bar__label {
   font-size: 10px;
   font-weight: 600;
+  transition: opacity 0.2s ease;
+}
+
+.bottom-tab-bar__tab:not(.bottom-tab-bar__tab--active) .bottom-tab-bar__label {
+  opacity: 0.7;
 }
 
 .bottom-tab-bar__badge {
@@ -63,4 +90,10 @@
   padding: 0 5px;
   line-height: 1;
   pointer-events: none;
+  animation: badgePulse 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes badgePulse {
+  from { transform: scale(0.5); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
