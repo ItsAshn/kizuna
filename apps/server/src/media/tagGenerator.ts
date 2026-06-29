@@ -5,10 +5,13 @@ import os from 'node:os'
 import fs from 'node:fs'
 import { v4 as uuidv4 } from 'uuid'
 import { TAG_CANDIDATES } from './tagCandidates'
+import Database from 'better-sqlite3'
 
 env.allowLocalModels = false
 
-let taggerPromise: Promise<any> | null = null
+type TaggerFn = (path: string, candidates: string[]) => Promise<Array<{ label: string; score: number }>>
+
+let taggerPromise: Promise<TaggerFn> | null = null
 let modelLoaded = false
 let _taggingEnabled = false
 
@@ -26,10 +29,10 @@ export async function loadTagger(): Promise<void> {
   if (!taggerPromise) {
     console.log('[tagGenerator] Loading CLIP ViT-B/32 model (~600MB download, ~1.2-1.5GB RAM)...')
     taggerPromise = pipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32')
-      .then((p: any) => {
+      .then((p) => {
         modelLoaded = true
         console.log('[tagGenerator] CLIP model loaded successfully')
-        return p
+        return p as TaggerFn
       })
       .catch((err: Error) => {
         console.error('[tagGenerator] Failed to load CLIP model:', err.message)
@@ -54,7 +57,7 @@ export function getTaggerStatus(): { loaded: boolean; loading: boolean } {
   }
 }
 
-async function getTagger(): Promise<any> {
+async function getTagger(): Promise<TaggerFn> {
   if (!taggerPromise) throw new Error('Tagging model is not loaded. Call POST /api/gifs/load-tagger first.')
   return taggerPromise
 }
@@ -102,7 +105,7 @@ export async function generateTags(
 }
 
 export async function generateAndStoreTags(
-  db: any,
+  db: Database.Database,
   gifId: string,
   imageBuffer: Buffer,
 ): Promise<void> {
@@ -118,8 +121,8 @@ export async function generateAndStoreTags(
       const tagsStr = formatTags(suggested)
       db.prepare('UPDATE gifs SET suggested_tags = ? WHERE id = ?').run(tagsStr, gifId)
     }
-  } catch (err: any) {
-    console.error('[tagGenerator] Auto-tagging failed:', err.message)
+  } catch (err: unknown) {
+    console.error('[tagGenerator] Auto-tagging failed:', err instanceof Error ? err.message : err)
   }
 }
 

@@ -31,7 +31,7 @@ auditRoutes.get('/', authMiddleware, adminMiddleware, (c) => {
     LEFT JOIN users u ON a.actor_id = u.id
   `
   const conditions: string[] = []
-  const params: any[] = []
+  const params: unknown[] = []
 
   if (action) {
     conditions.push('a.action = ?')
@@ -49,7 +49,7 @@ auditRoutes.get('/', authMiddleware, adminMiddleware, (c) => {
   query += ' ORDER BY a.created_at DESC LIMIT ?'
   params.push(limit)
 
-  const rows = db.prepare(query).all(...params) as any[]
+  const rows = db.prepare(query).all(...params) as { id: string; action: string; actor_id: string; actor_username: string | null; actor_display_name: string | null; target_id: string | null; details: string | null; created_at: number }[]
 
   const logs = rows.map(r => ({
     id: r.id,
@@ -66,6 +66,39 @@ auditRoutes.get('/', authMiddleware, adminMiddleware, (c) => {
 
   return c.json({ logs, hasMore })
 })
+
+auditRoutes.delete('/', authMiddleware, adminMiddleware, (c) => {
+  const db = getDb()
+  const user = c.get('auth' as never) as { userId: string }
+
+  logAuditEvent(db, 'audit_logs_cleared', user.userId)
+
+  db.prepare('DELETE FROM audit_logs').run()
+
+  return c.json({ ok: true })
+})
+
+const AUDIT_LOG_RETENTION_DAYS = parseInt(process.env.AUDIT_LOG_RETENTION_DAYS || '30', 10)
+
+export function startAuditLogCleanup(): void {
+  if (AUDIT_LOG_RETENTION_DAYS <= 0) return
+
+  const run = () => {
+    try {
+      const db = getDb()
+      const cutoff = Math.floor(Date.now() / 1000) - AUDIT_LOG_RETENTION_DAYS * 86400
+      const deleted = db.prepare('DELETE FROM audit_logs WHERE created_at < ?').run(cutoff)
+      if (deleted.changes > 0) {
+        console.log(`[audit] Cleaned up ${deleted.changes} log entries older than ${AUDIT_LOG_RETENTION_DAYS} days`)
+      }
+    } catch (err: unknown) {
+      console.error('[audit] Cleanup error:', err instanceof Error ? err.message : err)
+    }
+  }
+
+  run()
+  setInterval(run, 3600_000).unref()
+}
 
 export default auditRoutes
 export { auditRoutes }

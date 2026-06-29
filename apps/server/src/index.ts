@@ -11,6 +11,8 @@ import { openPorts, upnpClient, getMappedPorts } from './services/upnp'
 import { resolvePublicAddress, startIpWatcher } from './services/publicAddress'
 import { startHeartbeat } from './heartbeat'
 import { startRegistryCleanup } from './routes/registry'
+import { startAuditLogCleanup } from './routes/audit'
+import { startOrphanCleanup } from './routes/attachments'
 import { getServerInfo } from './routes/serverInfo'
 
 function printBanner(): void {
@@ -66,10 +68,14 @@ async function start(): Promise<void> {
   try {
     initDb()
     console.log('[✓] Database initialized')
-  } catch (err: any) {
-    console.error('[!] Failed to initialize database:', err.message)
+  } catch (err: unknown) {
+    console.error('[!] Failed to initialize database:', err instanceof Error ? err.message : err)
     process.exit(1)
   }
+
+  startAuditLogCleanup()
+  startOrphanCleanup()
+  console.log('[i] Scheduled cleanup jobs started')
 
   console.log(`[i] Configuring network (UPnP: ${process.env.UPNP_ENABLED !== 'false' ? 'enabled' : 'disabled'})...`)
   await openPorts({ httpPort: PORT, rtcMinPort: RTC_MIN, rtcMaxPort: RTC_MAX })
@@ -78,8 +84,8 @@ async function start(): Promise<void> {
   try {
     await resolvePublicAddress()
     console.log(`[✓] Public address: ${process.env.PUBLIC_ADDRESS || 'auto-detected'}`)
-  } catch (err: any) {
-    console.warn(`[!] Could not resolve public address: ${err.message}`)
+  } catch (err: unknown) {
+    console.warn(`[!] Could not resolve public address: ${err instanceof Error ? err.message : err}`)
   }
   startIpWatcher()
 
@@ -87,8 +93,8 @@ async function start(): Promise<void> {
   try {
     await createWorker()
     console.log('[✓] Media worker started')
-  } catch (err: any) {
-    console.error('[!] Failed to start mediasoup worker:', err.message)
+  } catch (err: unknown) {
+    console.error('[!] Failed to start mediasoup worker:', err instanceof Error ? err.message : err)
   }
 
   const { server: _server, io } = createApp(PORT)

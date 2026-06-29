@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid'
 import Database from 'better-sqlite3'
 import { getDb } from '../db'
 import { getUserPermissions, hasPermission, canWriteToChannel, isUserAdmin } from '../middleware/auth'
+import path from 'node:path'
+import fs from 'node:fs'
 import { checkSpam } from '../services/spamFilter'
 import { checkMessageContent } from '../moderation'
 
@@ -88,6 +90,31 @@ interface MentionResult {
   target: string | null;
 }
 
+interface ProcessMentionsMessage {
+  id: string
+  channel_id: string
+  author_id?: string
+  user_id?: string
+  author_username?: string
+  username?: string
+  content: string
+}
+
+interface MessageRow {
+  id: string
+  channel_id: string
+  author_id: string
+  author_username: string
+  content: string
+  created_at: number
+  reply_to_message_id: string | null
+  reply_to_username: string | null
+  reply_to_content: string | null
+  edited_at: number | null
+  display_name: string | null
+  avatar: string | null
+}
+
   type UserStatus = 'online' | 'idle' | 'busy' | 'offline' | 'invisible'
 
 interface UserActivity {
@@ -129,7 +156,7 @@ export function parseMentions(content: string): MentionResult[] {
   return results
 }
 
-export function processMentions(io: Server, message: any, mentions: MentionResult[]): void {
+export function processMentions(io: Server, message: ProcessMentionsMessage, mentions: MentionResult[]): void {
   if (!mentions.length) return
   const db = getDb()
 
@@ -205,18 +232,18 @@ export function processMentions(io: Server, message: any, mentions: MentionResul
 }
 
 function getSocketUserId(socket: Socket): string {
-  return socket.data.userId || (socket as any).userId
+  return socket.data.userId || ''
 }
 
 function getSocketUsername(socket: Socket): string {
-  return socket.data.username || (socket as any).username || 'unknown'
+  return socket.data.username || 'unknown'
 }
 
 export function getMessageInfo(
   db: ReturnType<typeof getDb>,
   messageId: string,
 ): { channel_id: string; isDM: boolean; isGroupDM?: boolean; participants?: { user1_id: string; user2_id: string }; groupMembers?: string[] } | null {
-  const msg = db.prepare('SELECT channel_id FROM messages WHERE id = ?').get(messageId) as any;
+  const msg = db.prepare('SELECT channel_id FROM messages WHERE id = ?').get(messageId) as { channel_id: string } | undefined;
   if (msg) return { channel_id: msg.channel_id, isDM: false };
 
   const dm = db
@@ -226,7 +253,7 @@ export function getMessageInfo(
        JOIN dm_channels dc ON dc.id = dm.channel_id
        WHERE dm.id = ?`,
     )
-    .get(messageId) as any;
+    .get(messageId) as { channel_id: string; user1_id: string; user2_id: string } | undefined;
   if (dm)
     return {
       channel_id: dm.channel_id,
@@ -240,7 +267,7 @@ export function getMessageInfo(
        FROM group_dm_messages gdm
        WHERE gdm.id = ?`,
     )
-    .get(messageId) as any;
+    .get(messageId) as { channel_id: string } | undefined;
   if (gdm) {
     const gm = db.prepare(
       'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
@@ -308,7 +335,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       socket.join(`user:${userId}`)
       socket.join(`dm:${userId}`)
       socket.join(`group-dm:${userId}`)
-      ;(socket as any).userId = userId
+      socket.data.userId = userId
     }
   })
 
@@ -326,7 +353,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
   socket.on('channel:join', (channelId: string) => {
     socket.join(channelId)
-    ;(socket as any).currentChannel = channelId
+    socket.data.currentChannel = channelId
   })
 
   socket.on('channel:leave', (channelId: string) => {
@@ -370,7 +397,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     let replyUsername: string | null = null
     let replyContent: string | null = null
     if (replyToMessageId) {
-      const replyMsg = db.prepare('SELECT author_username, content FROM messages WHERE id = ? AND channel_id = ?').get(replyToMessageId, channelId) as any
+      const replyMsg = db.prepare('SELECT author_username, content FROM messages WHERE id = ? AND channel_id = ?').get(replyToMessageId, channelId) as { author_username: string; content: string } | undefined
       if (replyMsg) {
         replyUsername = replyMsg.author_username
         replyContent = replyMsg.content
@@ -386,7 +413,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
        FROM messages m
        LEFT JOIN users u ON m.author_id = u.id
        WHERE m.id = ?`
-    ).get(id) as any
+    ).get(id) as MessageRow
 
     const message = {
       id: row.id,
@@ -422,7 +449,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     }
 
     const db = getDb()
-    const existing = db.prepare('SELECT * FROM messages WHERE id = ? AND author_id = ?').get(messageId, userId) as any
+    const existing = db.prepare('SELECT * FROM messages WHERE id = ? AND author_id = ?').get(messageId, userId) as { channel_id: string; content: string } | undefined
     if (!existing) {
       socket.emit('error', { code: 'FORBIDDEN', message: 'Cannot edit this message' })
       return
@@ -441,7 +468,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
        FROM messages m
        LEFT JOIN users u ON m.author_id = u.id
        WHERE m.id = ?`
-    ).get(messageId) as any
+    ).get(messageId) as MessageRow
 
     const updated = {
       id: row.id,
@@ -461,7 +488,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
   socket.on('message:delete', ({ messageId }: { messageId: string }) => {
     if (!userId) return
     const db = getDb()
-    const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
+    const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as { channel_id: string; author_id: string } | undefined
     if (!message) return
 
     const userPerms = getUserPermissions(userId)
@@ -470,6 +497,11 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       return
     }
 
+    const attachments = db.prepare('SELECT * FROM attachments WHERE message_id = ?').all(messageId) as { url: string }[]
+    for (const att of attachments) {
+      const filepath = path.join(process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads'), path.basename(att.url))
+      try { fs.unlinkSync(filepath) } catch { }
+    }
     db.prepare('DELETE FROM mentions WHERE message_id = ?').run(messageId)
     db.prepare('DELETE FROM attachments WHERE message_id = ?').run(messageId)
     db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
@@ -515,7 +547,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
        ON CONFLICT(user_id, channel_id) DO UPDATE SET last_read_at = excluded.last_read_at`
     ).run(userId, channelId, now)
 
-    const channel = prep('SELECT user1_id, user2_id FROM dm_channels WHERE id = ?').get(channelId) as any
+    const channel = prep('SELECT user1_id, user2_id FROM dm_channels WHERE id = ?').get(channelId) as { user1_id: string; user2_id: string } | undefined
     if (channel) {
       const otherUserId = channel.user1_id === userId ? channel.user2_id : channel.user1_id
       socket.to(`user:${otherUserId}`).emit('dm:read', { channelId, readBy: userId, readAt: now * 1000 })
@@ -559,7 +591,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
     db.prepare('UPDATE group_dm_channels SET last_message_at = ? WHERE id = ?').run(now, channelId)
 
-    const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as any
+    const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as { display_name: string | null; avatar: string | null } | undefined
     const message = {
       id,
       channel_id: channelId,
@@ -594,7 +626,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     const gdm = db.prepare(`
       SELECT gdm.* FROM group_dm_messages gdm
       WHERE gdm.id = ? AND gdm.from_id = ?
-    `).get(messageId, userId) as any
+    `).get(messageId, userId) as { id: string; channel_id: string; from_id: string; from_username: string; content: string; encrypted: number; created_at: number } | undefined
     if (!gdm) {
       socket.emit('error', { code: 'FORBIDDEN', message: 'Cannot edit this message' })
       return
@@ -603,7 +635,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     const now = Math.floor(Date.now() / 1000)
     db.prepare('UPDATE group_dm_messages SET content = ?, edited_at = ? WHERE id = ?').run(content.trim(), now, messageId)
 
-    const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as any
+    const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as { display_name: string | null; avatar: string | null } | undefined
     const edited = {
       id: gdm.id,
       channel_id: gdm.channel_id,
@@ -632,7 +664,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     const gdm = db.prepare(`
       SELECT gdm.* FROM group_dm_messages gdm
       WHERE gdm.id = ? AND gdm.from_id = ?
-    `).get(messageId, userId) as any
+    `).get(messageId, userId) as { channel_id: string } | undefined
     if (!gdm) return
 
     db.prepare('DELETE FROM message_reactions WHERE message_id = ?').run(messageId)
@@ -721,12 +753,12 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     const [user1Id, user2Id] = [userId, toUserId].sort()
     let channel = db.prepare(
       'SELECT * FROM dm_channels WHERE user1_id = ? AND user2_id = ?'
-    ).get(user1Id, user2Id) as any
+    ).get(user1Id, user2Id) as { id: string } | undefined
 
     if (!channel) {
       const channelId = uuidv4()
       db.prepare('INSERT OR IGNORE INTO dm_channels (id, user1_id, user2_id) VALUES (?, ?, ?)').run(channelId, user1Id, user2Id)
-      channel = db.prepare('SELECT * FROM dm_channels WHERE user1_id = ? AND user2_id = ?').get(user1Id, user2Id) as any
+      channel = db.prepare('SELECT * FROM dm_channels WHERE user1_id = ? AND user2_id = ?').get(user1Id, user2Id) as { id: string } | undefined
       channel = { id: channelId }
     }
 
@@ -738,7 +770,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
     db.prepare('UPDATE dm_channels SET last_message_at = ? WHERE id = ?').run(now, channel.id)
 
-    const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as any
+    const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as { display_name: string | null; avatar: string | null } | undefined
 
     const dm = {
       id,
@@ -769,7 +801,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       FROM direct_messages dm
       JOIN dm_channels dc ON dc.id = dm.channel_id
       WHERE dm.id = ? AND dm.from_id = ?
-    `).get(messageId, userId) as any
+    `).get(messageId, userId) as { id: string; channel_id: string; from_id: string; from_username: string; content: string; encrypted: number; created_at: number; user1_id: string; user2_id: string } | undefined
     if (!dm) {
       socket.emit('error', { code: 'FORBIDDEN', message: 'Cannot edit this message' })
       return
@@ -778,7 +810,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     const now = Math.floor(Date.now() / 1000)
     db.prepare('UPDATE direct_messages SET content = ?, edited_at = ? WHERE id = ?').run(content.trim(), now, messageId)
 
-    const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as any
+    const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as { display_name: string | null; avatar: string | null } | undefined
     const edited = {
       id: dm.id,
       channel_id: dm.channel_id,
@@ -805,7 +837,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       FROM direct_messages dm
       JOIN dm_channels dc ON dc.id = dm.channel_id
       WHERE dm.id = ? AND dm.from_id = ?
-    `).get(messageId, userId) as any
+    `).get(messageId, userId) as { channel_id: string; user1_id: string; user2_id: string } | undefined
     if (!dm) return
 
     db.prepare('DELETE FROM message_reactions WHERE message_id = ?').run(messageId)
@@ -831,7 +863,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     const db = getDb()
     const dmChannel = db.prepare(
       'SELECT * FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)'
-    ).get(dmChannelId, userId, userId) as any
+    ).get(dmChannelId, userId, userId) as { id: string; user1_id: string; user2_id: string } | undefined
     if (!dmChannel) {
       if (typeof callback === 'function') callback({ error: 'DM channel not found' })
       return
@@ -844,7 +876,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
       return
     }
     const calleeId = dmChannel.user1_id === userId ? dmChannel.user2_id : dmChannel.user1_id
-    const calleeRow = db.prepare('SELECT username FROM users WHERE id = ?').get(calleeId) as any
+    const calleeRow = db.prepare('SELECT username FROM users WHERE id = ?').get(calleeId) as { username: string } | undefined
     const calleeUsername = calleeRow?.username || 'Unknown'
 
     dmCalls.set(dmChannelId, {
@@ -1094,8 +1126,8 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
 
   socket.on('user:joined', () => {
     if (!userId) return
-    ;(socket as any).userId = userId
-    ;(socket as any).username = username
+    socket.data.userId = userId
+    socket.data.username = username
 
     const now = Math.floor(Date.now() / 1000)
     try {
@@ -1150,7 +1182,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
         db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, userId)
       } catch { /* ignore */ }
     }
-    const textPayload: any = { userId }
+    const textPayload: Record<string, unknown> = { userId }
     if (status !== undefined) textPayload.status = status
     if (status_text !== undefined) textPayload.status_text = status_text
     if (status_emoji !== undefined) textPayload.status_emoji = status_emoji
@@ -1161,7 +1193,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     } else if (prevStatus === 'invisible' && status && status !== 'invisible') {
       io.emit('user:online', { userId, username, status })
       if (status_text !== undefined || status_emoji !== undefined || status_sticker_id !== undefined) {
-        const extra: any = { userId }
+        const extra: Record<string, unknown> = { userId }
         if (status_text !== undefined) extra.status_text = status_text
         if (status_emoji !== undefined) extra.status_emoji = status_emoji
         if (status_sticker_id !== undefined) extra.status_sticker_id = status_sticker_id
@@ -1287,13 +1319,13 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     const existing = db.prepare('SELECT id FROM pinned_messages WHERE channel_id = ? AND message_id = ?').get(channelId, messageId)
     if (existing) return
 
-    const count = db.prepare('SELECT COUNT(*) as count FROM pinned_messages WHERE channel_id = ?').get(channelId) as any
+    const count = db.prepare('SELECT COUNT(*) as count FROM pinned_messages WHERE channel_id = ?').get(channelId) as { count: number }
     if (count.count >= 50) return
 
     const pinId = uuidv4()
     db.prepare('INSERT INTO pinned_messages (id, channel_id, message_id, pinned_by) VALUES (?, ?, ?, ?)').run(pinId, channelId, messageId, userId)
 
-    const msg = db.prepare('SELECT content, author_id, author_username FROM messages WHERE id = ?').get(messageId) as any
+    const msg = db.prepare('SELECT content, author_id, author_username FROM messages WHERE id = ?').get(messageId) as { content: string; author_id: string; author_username: string } | undefined
     const pin = {
       id: pinId,
       messageId,

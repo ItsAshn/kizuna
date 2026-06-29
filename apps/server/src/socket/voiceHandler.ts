@@ -5,6 +5,8 @@ import type { types as mediasoupTypes } from 'mediasoup'
 import { getDb } from '../db'
 import { getUserPermissions, hasPermission } from '../middleware/auth'
 
+type TransportWithDirection = mediasoupTypes.Transport & { _direction?: string }
+
 function vts(): string {
   return new Date().toISOString().split('T')[1]?.slice(0, 12) ?? ''
 }
@@ -43,7 +45,7 @@ export interface PeerInfo {
   username: string
   channelId: string
   router: mediasoupTypes.Router
-  transports: Map<string, any>
+  transports: Map<string, TransportWithDirection>
   producers: Map<string, mediasoupTypes.Producer>
   consumers: Map<string, mediasoupTypes.Consumer>
   announced: boolean
@@ -197,9 +199,9 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
           voiceBitrateKbps,
         })
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       verr('join', 'error', err)
-      if (typeof callback === 'function') callback({ error: err.message })
+      if (typeof callback === 'function') callback({ error: err instanceof Error ? err.message : String(err) })
     }
   })
 
@@ -217,8 +219,6 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       }
 
       const transport = await createTransport(peer.router);
-      (transport as any)._direction = direction
-      peer.transports.set(transport.id, transport as any)
 
       const bitrateKbps = getServerVoiceBitrateKbps()
       if (direction === 'send') {
@@ -226,6 +226,8 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
           verr('createTransport', `setMaxIncomingBitrate failed`, e)
         })
       }
+      peer.transports.set(transport.id, transport as TransportWithDirection);
+      (transport as TransportWithDirection)._direction = direction
 
       vlog('createTransport', `created | socketId=${socket.id} | dir=${direction} | transportId=${transport.id} | bitrate=${bitrateKbps}kbps | ms=${Date.now() - t0}`)
 
@@ -245,9 +247,9 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
           dtlsParameters: transport.dtlsParameters,
         })
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       verr('createTransport', `failed | socketId=${socket.id} | dir=${direction}`, err)
-      if (typeof callback === 'function') callback({ error: err.message })
+      if (typeof callback === 'function') callback({ error: err instanceof Error ? err.message : String(err) })
     }
   })
 
@@ -262,10 +264,10 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       }
 
       const transport = await peer.router.createDirectTransport({
-        maxMessageSize: 262144,
-      } as any);
-      (transport as any)._direction = 'recv'
-      peer.transports.set(transport.id, transport)
+        maxSendMessageSize: 262144,
+      });
+      peer.transports.set(transport.id, transport as TransportWithDirection);
+      (transport as TransportWithDirection)._direction = 'recv'
 
       transport.on('rtcp', () => {})
 
@@ -274,9 +276,9 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       if (typeof callback === 'function') {
         callback({ id: transport.id })
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       verr('createDirectTransport', `failed | socketId=${socket.id}`, err)
-      if (typeof callback === 'function') callback({ error: err.message })
+      if (typeof callback === 'function') callback({ error: err instanceof Error ? err.message : String(err) })
     }
   })
 
@@ -293,13 +295,13 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         if (typeof callback === 'function') callback({ error: 'Transport not found' })
         return
       }
-      const dir = (transport as any)._direction || '?'
-      await connectTransport(transport, dtlsParameters)
+      const dir = (transport as TransportWithDirection)._direction || '?'
+      await connectTransport(transport as mediasoupTypes.WebRtcTransport, dtlsParameters)
       vlog('connectTransport', `ok | socketId=${socket.id} | dir=${dir} | transportId=${transportId}`)
       if (typeof callback === 'function') callback({ ok: true })
-    } catch (err: any) {
+    } catch (err: unknown) {
       verr('connectTransport', `failed | transportId=${transportId}`, err)
-      if (typeof callback === 'function') callback({ error: err.message })
+      if (typeof callback === 'function') callback({ error: err instanceof Error ? err.message : String(err) })
     }
   })
 
@@ -319,7 +321,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         return
       }
 
-      const producer = await produceOnTransport(transport, { kind, rtpParameters, source })
+      const producer = await produceOnTransport(transport as mediasoupTypes.WebRtcTransport, { kind, rtpParameters, source })
       peer.producers.set(producer.id, producer)
       vlog('produce', `created | socketId=${socket.id} | user=${peer.username} | kind=${kind} | producerId=${producer.id} | announced=${peer.announced}`)
 
@@ -341,9 +343,9 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       }
 
       if (typeof callback === 'function') callback({ id: producer.id })
-    } catch (err: any) {
+    } catch (err: unknown) {
       verr('produce', `failed | socketId=${socket.id}`, err)
-      if (typeof callback === 'function') callback({ error: err.message })
+      if (typeof callback === 'function') callback({ error: err instanceof Error ? err.message : String(err) })
     }
   })
 
@@ -363,7 +365,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
 
       let recvTransport = null
       for (const [, t] of requestingPeer.transports) {
-        if ((t as any)._direction === 'recv') {
+        if ((t as TransportWithDirection)._direction === 'recv') {
           recvTransport = t
           break
         }
@@ -443,9 +445,9 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
           paused: consumer.producerPaused,
         })
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       verr('consume', `failed | peerId=${peerId}`, err)
-      if (typeof callback === 'function') callback({ error: err.message })
+      if (typeof callback === 'function') callback({ error: err instanceof Error ? err.message : String(err) })
     }
   })
 
@@ -463,7 +465,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         vlog('resumeConsumer', `not found | socketId=${socket.id} | consumerId=${consumerId}`)
       }
       if (typeof callback === 'function') callback()
-    } catch (err: any) {
+    } catch (err: unknown) {
       verr('resumeConsumer', `failed | consumerId=${consumerId}`, err)
       if (typeof callback === 'function') callback()
     }

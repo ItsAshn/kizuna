@@ -1,13 +1,19 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission, getUserChannelPermissions, getUserChannelPermission } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
-function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
+
+interface IOServer {
+  emit(event: string, data: unknown): void
+}
+
+function getAuth(c: Context): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const channelRoutes = new Hono()
 
-function mapChannel(row: any) {
+function mapChannel(row: Record<string, unknown>) {
   return {
     id: row.id,
     name: row.name,
@@ -31,7 +37,7 @@ channelRoutes.get('/', authMiddleware, (c) => {
     LEFT JOIN roles r ON c.write_role_id = r.id
     LEFT JOIN channel_categories cc ON c.category_id = cc.id
     ORDER BY c.position ASC
-  `).all() as any[]
+  `).all() as Record<string, unknown>[]
   return c.json({ channels: channels.map(mapChannel) })
 })
 
@@ -55,10 +61,10 @@ channelRoutes.post('/', authMiddleware, async (c) => {
   const isLocked = locked ? 1 : 0
   db.prepare('INSERT INTO channels (id, name, type, topic, position, locked, write_role_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, slug, type, topic || null, position, isLocked, write_role_id || null)
 
-  const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(id) as any
+  const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(id) as Record<string, unknown>
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) io.emit('channel:created', mapChannel(channel))
   } catch { /* best-effort */ }
 
@@ -86,7 +92,7 @@ channelRoutes.patch('/reorder', authMiddleware, async (c) => {
   tx()
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) io.emit('channel:reordered', { order })
   } catch { /* best-effort */ }
 
@@ -101,14 +107,14 @@ channelRoutes.patch('/:id', authMiddleware, async (c) => {
     return c.json({ error: 'Forbidden' }, 403)
   }
   const db = getDb()
-  const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(c.req.param('id')) as any
+  const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(c.req.param('id')) as Record<string, unknown>
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
 
   const body = await c.req.json() as { name?: string; topic?: string | null; locked?: boolean; write_role_id?: string | null }
   const { name, topic, locked, write_role_id } = body
 
   const dbFields: string[] = []
-  const dbValues: any[] = []
+  const dbValues: unknown[] = []
 
   if (name !== undefined) {
     dbFields.push('name = ?')
@@ -132,10 +138,10 @@ channelRoutes.patch('/:id', authMiddleware, async (c) => {
     db.prepare(`UPDATE channels SET ${dbFields.join(', ')} WHERE id = ?`).run(...dbValues)
   }
 
-  const updated = db.prepare('SELECT * FROM channels WHERE id = ?').get(c.req.param('id')) as any
+  const updated = db.prepare('SELECT * FROM channels WHERE id = ?').get(c.req.param('id')) as Record<string, unknown>
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) io.emit('channel:updated', mapChannel(updated))
   } catch { /* best-effort */ }
 
@@ -159,7 +165,7 @@ channelRoutes.delete('/:id', authMiddleware, (c) => {
   db.prepare('DELETE FROM channels WHERE id = ?').run(id)
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) io.emit('channel:deleted', { id })
   } catch { /* best-effort */ }
 
@@ -198,16 +204,16 @@ channelRoutes.get('/:id/overrides', authMiddleware, (c) => {
     JOIN roles r ON cro.role_id = r.id
     WHERE cro.channel_id = ?
     ORDER BY r.position ASC
-  `).all(channelId) as any[]
+  `).all(channelId) as Record<string, unknown>[]
 
-  const result = overrides.map((o: any) => ({
+  const result = overrides.map((o: Record<string, unknown>) => ({
     channel_id: o.channel_id,
     role_id: o.role_id,
     role_name: o.role_name,
     role_color: o.role_color,
     role_position: o.role_position,
-    allow_permissions: (() => { try { return JSON.parse(o.allow_permissions || '{}') } catch { return {} } })(),
-    deny_permissions: (() => { try { return JSON.parse(o.deny_permissions || '{}') } catch { return {} } })(),
+    allow_permissions: (() => { try { return JSON.parse((o.allow_permissions as string) || '{}') } catch { return {} } })(),
+    deny_permissions: (() => { try { return JSON.parse((o.deny_permissions as string) || '{}') } catch { return {} } })(),
   }))
   return c.json({ overrides: result })
 })
@@ -242,7 +248,7 @@ channelRoutes.put('/:id/overrides/:roleId', authMiddleware, async (c) => {
   )
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) io.emit('channel:updated', { id: channelId })
   } catch {}
 
@@ -264,7 +270,7 @@ channelRoutes.delete('/:id/overrides/:roleId', authMiddleware, (c) => {
   ).run(channelId, roleId)
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) io.emit('channel:updated', { id: channelId })
   } catch {}
 

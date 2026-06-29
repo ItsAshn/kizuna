@@ -5,9 +5,10 @@ import fs from 'node:fs'
 import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission, isUserAdmin } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
+import type { Context } from 'hono'
 import { uploadLimiter } from '../middleware/rateLimiter'
 import { processImage, shouldProcessImage } from '../media/imageProcessor'
-function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
+function getAuth(c: Context): AuthUser { return c.get('auth') }
 
 const attachmentRoutes = new Hono()
 
@@ -113,8 +114,8 @@ attachmentRoutes.post('/:channelId', uploadLimiter as never, authMiddleware, asy
         const processed = await processImage(buffer, file.name)
         storedBuffer = processed.buffer
         storedFilename = `${uuidv4()}${path.extname(processed.filename)}`
-      } catch (imgErr: any) {
-        console.error('[attachments] Image processing failed, storing original:', imgErr.message)
+      } catch (imgErr: unknown) {
+        console.error('[attachments] Image processing failed, storing original:', imgErr instanceof Error ? imgErr.message : imgErr)
       }
     }
 
@@ -127,7 +128,7 @@ attachmentRoutes.post('/:channelId', uploadLimiter as never, authMiddleware, asy
       'INSERT INTO attachments (id, message_id, filename, url, size, content_type) VALUES (?, ?, ?, ?, ?, ?)'
     ).run(id, null, file.name, `/api/attachments/file/${storedFilename}`, storedBuffer.length, getContentType(storedFilename))
 
-    const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as any
+    const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as { id: string; message_id: string | null; filename: string; url: string; size: number; content_type: string | null; created_at: number }
     return c.json({
       attachment: {
         id: attachment.id,
@@ -139,8 +140,8 @@ attachmentRoutes.post('/:channelId', uploadLimiter as never, authMiddleware, asy
         created_at: attachment.created_at * 1000,
       },
     }, 201)
-  } catch (err: any) {
-    console.error('[attachments] Upload failed:', err.message || err)
+  } catch (err: unknown) {
+    console.error('[attachments] Upload failed:', err instanceof Error ? err.message : err)
     return c.json({ error: 'Upload failed' }, 500)
   }
 })
@@ -149,7 +150,7 @@ attachmentRoutes.post('/:channelId', uploadLimiter as never, authMiddleware, asy
 attachmentRoutes.get('/message/:messageId', authMiddleware, (c) => {
   const messageId = c.req.param('messageId')
   const db = getDb()
-  const attachments = db.prepare('SELECT * FROM attachments WHERE message_id = ?').all(messageId) as any[]
+  const attachments = db.prepare('SELECT * FROM attachments WHERE message_id = ?').all(messageId) as { id: string; message_id: string | null; filename: string; url: string; size: number; content_type: string | null; created_at: number }[]
   const result = attachments.map((a) => ({
     id: a.id,
     message_id: a.message_id,
@@ -202,7 +203,7 @@ attachmentRoutes.get('/file/:filename', (c) => {
 attachmentRoutes.delete('/:id', authMiddleware, (c) => {
   const user = getAuth(c)
   const db = getDb()
-  const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(c.req.param('id')) as any
+  const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(c.req.param('id')) as { id: string; message_id: string | null; filename: string; url: string; size: number; content_type: string | null; created_at: number } | undefined
   if (!attachment) return c.json({ error: 'Attachment not found' }, 404)
 
   if (!attachment.message_id) {
@@ -222,5 +223,43 @@ attachmentRoutes.delete('/:id', authMiddleware, (c) => {
   db.prepare('DELETE FROM attachments WHERE id = ?').run(c.req.param('id'))
   return c.json({ ok: true })
 })
+
+export function startOrphanCleanup(): void {
+  const run = () => {
+    try {
+      const db = getDb()
+      const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
+
+      const filenames = (db.prepare('SELECT url FROM attachments').all() as { url: string }[]).map(r => path.basename(r.url))
+      const knownFiles = new Set(filenames)
+
+      let deletedCount = 0
+      let freedBytes = 0
+      let entries: fs.Dirent[] = []
+      try {
+        entries = fs.readdirSync(uploadsDir, { withFileTypes: true })
+      } catch {}
+
+      for (const entry of entries) {
+        if (!entry.isFile() || knownFiles.has(entry.name)) continue
+        const filepath = path.join(uploadsDir, entry.name)
+        try {
+          freedBytes += fs.statSync(filepath).size
+          fs.unlinkSync(filepath)
+          deletedCount++
+        } catch {}
+      }
+
+      if (deletedCount > 0) {
+        console.log(`[attachments] Cleaned up ${deletedCount} orphan files (${(freedBytes / 1024 / 1024).toFixed(1)} MB)`)
+      }
+    } catch (err: unknown) {
+      console.error('[attachments] Orphan cleanup error:', err instanceof Error ? err.message : err)
+    }
+  }
+
+  run()
+  setInterval(run, 6 * 3600_000).unref()
+}
 
 export default attachmentRoutes

@@ -55,8 +55,8 @@ export async function openPorts(options: {
       })
     }
     console.log(`[UPnP] Mapped UDP ${options.rtcMinPort}-${options.rtcMaxPort}`)
-  } catch (err: any) {
-    console.warn(`[i] UPnP not available: ${err.message}`)
+  } catch (err: unknown) {
+    console.warn(`[i] UPnP not available: ${err instanceof Error ? err.message : String(err)}`)
   }
 
   return { effectiveRtcMin: options.rtcMinPort, effectiveRtcMax: options.rtcMaxPort }

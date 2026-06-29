@@ -5,11 +5,13 @@ import bcrypt from 'bcryptjs'
 import { getDb } from '../db'
 import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getUserPermissions, getJwtSecret, assignDefaultRoles } from '../middleware/auth'
 import type { AuthUser, JwtPayload } from '../middleware/auth'
+import type { Context } from 'hono'
+import type { Server as IoServer } from 'socket.io'
 import { generateChallenge, verifyPoW } from '../middleware/pow'
 import { sensitiveAuthLimiter } from '../middleware/rateLimiter'
 import { getMemberById } from '../routes/serverInfo'
 import jwt from 'jsonwebtoken'
-function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
+function getAuth(c: Context): AuthUser { return c.get('auth') }
 
 const authRoutes = new Hono()
 
@@ -97,7 +99,7 @@ authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
     'Set-Cookie',
     `kizuna_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
   )
-  try { const io: any = c.get('io' as never); if (io) io.emit('member:added', getMemberById(id)) } catch {}
+  try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:added', getMemberById(id)) } catch {}
 
   return c.json(
       {
@@ -107,8 +109,8 @@ authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
       },
       201,
     )
-  } catch (err: any) {
-    if (err.message?.includes('UNIQUE')) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message?.includes('UNIQUE')) {
       return c.json({ error: 'Username already taken on this server' }, 409)
     }
     console.error(err)
@@ -126,7 +128,7 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
   const db = getDb()
   const user = db
     .prepare('SELECT * FROM users WHERE username = ?')
-    .get(username.toLowerCase().trim()) as any
+    .get(username.toLowerCase().trim()) as { id: string; username: string; display_name: string; avatar: string | null; banner: string | null; password_hash: string; public_key: string | null; key_salt: string | null; created_at: number } | undefined
 
   if (!user) {
     return c.json({ error: 'Invalid credentials' }, 401)
@@ -137,7 +139,7 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
     return c.json({ error: 'Invalid credentials' }, 401)
   }
 
-  const ban = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(user.id) as any
+  const ban = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(user.id) as { id: string } | undefined
   if (ban) {
     return c.json({ error: 'You are banned from this server' }, 403)
   }
@@ -163,7 +165,7 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
     if (!member) {
       member = { role: 'member', is_host: 0 }
     }
-    try { const io: any = c.get('io' as never); if (io) io.emit('member:added', getMemberById(user.id)) } catch {}
+    try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:added', getMemberById(user.id)) } catch {}
   }
 
   const tokenId = uuidv4()
@@ -215,7 +217,7 @@ authRoutes.patch('/me/status', authMiddleware, async (c) => {
 
   const db = getDb()
   const updates: string[] = []
-  const values: any[] = []
+  const values: unknown[] = []
 
   if (status_text !== undefined) {
     const trimmed = status_text !== null ? status_text.trim().slice(0, 128) : null
@@ -251,7 +253,7 @@ authRoutes.patch('/me/status', authMiddleware, async (c) => {
   db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values)
 
   try {
-    const io: any = c.get('io' as never)
+    const io = c.get('io' as never) as IoServer | undefined
     if (io) {
       io.emit('user:status', {
         userId: auth.userId,
@@ -321,13 +323,13 @@ authRoutes.get('/users', authMiddleware, (c) => {
        ORDER BY u.username
        LIMIT ? OFFSET ?`,
     )
-    .all(limit, offset) as any[]
+    .all(limit, offset) as { id: string; username: string; display_name: string; avatar: string | null; banner: string | null; public_key: string | null; last_seen_at: number | null; status_text: string | null; status_emoji: string | null; status_sticker_id: string | null; reset_requested_at: number | null; is_host: number }[]
 
   if (users.length === 0) {
     return c.json({ users: [], total, offset, limit })
   }
 
-  const userIds = users.map((u: any) => u.id)
+  const userIds = users.map((u) => u.id)
   const placeholders = userIds.map(() => '?').join(',')
 
   const memberRoles = db.prepare(`
@@ -375,7 +377,7 @@ authRoutes.get('/users', authMiddleware, (c) => {
     }
   }
 
-  const formatted = users.map((u: any) => {
+  const formatted = users.map((u) => {
     const userRoles = rolesByUser[u.id] || []
     const isAdmin = userRoles.some(r => r.is_admin)
     const highestRole = userRoles.length > 0 ? userRoles[userRoles.length - 1] : null

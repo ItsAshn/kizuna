@@ -1,9 +1,12 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { getDb } from '../db'
 import { authMiddleware } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
+import type { AuthUser } from '../types'
+import type { Server as IoServer } from 'socket.io'
 
-function getAuth(c: any): { userId: string; username: string } { return c.get('auth' as never) }
+function getAuth(c: Context): AuthUser { return c.get('auth') }
 
 const pollsRouter = new Hono()
 pollsRouter.use('*', authMiddleware)
@@ -44,7 +47,16 @@ pollsRouter.post('/channels/:channelId/polls', async (c) => {
   const fullContent = JSON.stringify({ __poll__: true, pollId, question, options: dbOptions })
   db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(fullContent, messageId)
 
-  const messageRow = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
+  const messageRow = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as {
+    id: string
+    channel_id: string
+    user_id: string
+    content: string
+    author_username: string
+    author_display_name: string
+    author_avatar: string | null
+    created_at: number
+  }
   const message = {
     id: messageRow.id,
     channel_id: messageRow.channel_id,
@@ -62,8 +74,8 @@ pollsRouter.post('/channels/:channelId/polls', async (c) => {
     attachments: [],
   }
 
-  const io: any = c.get('io' as never)
-  io?.to(channelId).emit('message:new', message)
+  const io = c.get('io' as never) as IoServer | undefined
+  io?.to(channelId).emit('message:new', message as never)
 
   return c.json({ poll: { id: pollId, question, options: dbOptions }, message })
 })
@@ -74,7 +86,10 @@ pollsRouter.get('/polls/:pollId', async (c) => {
   const { pollId } = c.req.param()
   const { userId } = getAuth(c)
 
-  const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId) as any
+  const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId) as {
+    id: string; channel_id: string; message_id: string; question: string
+    created_by: string; created_at: number; closes_at: number | null; allow_multiple: number
+  } | undefined
   if (!poll) return c.json({ error: 'not found' }, 404)
 
   const options = db.prepare(`
@@ -100,7 +115,10 @@ pollsRouter.post('/polls/:pollId/vote', async (c) => {
   const body = await c.req.json().catch(() => null)
   if (!body?.optionId) return c.json({ error: 'optionId required' }, 400)
 
-  const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId) as any
+  const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId) as {
+    id: string; channel_id: string; message_id: string; question: string
+    created_by: string; created_at: number; closes_at: number | null; allow_multiple: number
+  } | undefined
   if (!poll) return c.json({ error: 'not found' }, 404)
   if (poll.closes_at && poll.closes_at < Math.floor(Date.now() / 1000)) {
     return c.json({ error: 'poll is closed' }, 400)
@@ -130,8 +148,8 @@ pollsRouter.post('/polls/:pollId/vote', async (c) => {
 
   const userVotes = db.prepare('SELECT option_id FROM poll_votes WHERE poll_id = ? AND user_id = ?').all(pollId, userId) as { option_id: string }[]
 
-  const io: any = c.get('io' as never)
-  io?.to(poll.channel_id).emit('poll:update', { pollId, options, totalVotes: options.reduce((s, o) => s + o.vote_count, 0) })
+  const io = c.get('io' as never) as IoServer | undefined
+  io?.to(poll.channel_id).emit('poll:update', { pollId, options, totalVotes: options.reduce((s, o) => s + o.vote_count, 0) } as never)
 
   return c.json({ options, userVoteIds: userVotes.map(v => v.option_id) })
 })

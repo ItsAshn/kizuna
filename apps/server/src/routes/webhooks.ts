@@ -3,8 +3,11 @@ import { getDb } from '../db'
 import { authMiddleware } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 import crypto from 'crypto'
+import type { Context } from 'hono'
+import type { AuthUser } from '../types'
+import type { Server as IoServer } from 'socket.io'
 
-function getAuth(c: any): { userId: string; username: string } { return c.get('auth' as never) }
+function getAuth(c: Context): AuthUser { return c.get('auth') }
 
 const webhooksRouter = new Hono()
 
@@ -38,7 +41,7 @@ authedRouter.delete('/webhooks/:webhookId', async (c) => {
   const db = getDb()
   const { webhookId } = c.req.param()
   const { userId } = getAuth(c)
-  const webhook = db.prepare('SELECT * FROM webhooks WHERE id = ?').get(webhookId) as any
+  const webhook = db.prepare('SELECT * FROM webhooks WHERE id = ?').get(webhookId) as { created_by: string } | undefined
   if (!webhook) return c.json({ error: 'not found' }, 404)
   if (webhook.created_by !== userId) {
     const admin = db.prepare('SELECT role FROM members WHERE user_id = ? AND role = ?').get(userId, 'admin')
@@ -52,7 +55,10 @@ authedRouter.delete('/webhooks/:webhookId', async (c) => {
 webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
   const db = getDb()
   const { token } = c.req.param()
-  const webhook = db.prepare('SELECT * FROM webhooks WHERE token = ?').get(token) as any
+  const webhook = db.prepare('SELECT * FROM webhooks WHERE token = ?').get(token) as {
+    id: string; channel_id: string; name: string; token: string;
+    avatar: string | null; created_by: string; created_at: number
+  } | undefined
   if (!webhook) return c.json({ error: 'invalid token' }, 401)
 
   const body = await c.req.json().catch(() => null)
@@ -80,8 +86,8 @@ webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
     reactions: [], attachments: [],
   }
 
-  const io: any = c.get('io' as never)
-  io?.to(webhook.channel_id).emit('message:new', message)
+  const io = c.get('io' as never) as IoServer | undefined
+  io?.to(webhook.channel_id).emit('message:new', message as never)
 
   return c.json({ ok: true, messageId })
 })

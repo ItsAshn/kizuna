@@ -1,9 +1,15 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { getDb } from '../db'
 import { authMiddleware } from '../middleware/auth'
 
 interface AuthUser { userId: string; username: string; role: string }
-function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
+
+interface IOServer {
+  emit(event: string, data: unknown): void
+  to(room: string): IOServer
+}
+function getAuth(c: Context): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const mutesRoutes = new Hono()
 
@@ -39,7 +45,7 @@ mutesRoutes.put('/:channelId', authMiddleware, async (c) => {
      ON CONFLICT(user_id, channel_id) DO UPDATE SET muted_until = excluded.muted_until`
   ).run(userId, channelId, mutedUntil)
 
-  const io: any = c.get('io' as never)
+  const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
   if (io) {
     io.to(`user:${userId}`).emit('channel:mute', {
       channel_id: channelId,
@@ -62,7 +68,7 @@ mutesRoutes.delete('/:channelId', authMiddleware, async (c) => {
   const db = getDb()
   db.prepare('DELETE FROM channel_mutes WHERE user_id = ? AND channel_id = ?').run(userId, channelId)
 
-  const io: any = c.get('io' as never)
+  const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
   if (io) {
     io.to(`user:${userId}`).emit('channel:unmute', { channel_id: channelId })
   }

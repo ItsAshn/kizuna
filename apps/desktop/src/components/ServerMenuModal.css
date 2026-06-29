@@ -283,6 +283,40 @@
   color: var(--red);
 }
 
+.server-menu__btn {
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.server-menu__btn:hover:not(:disabled) {
+  border-color: var(--brand);
+  color: var(--text-primary);
+  background: var(--bg-active);
+}
+
+.server-menu__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.server-menu__btn--danger {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.server-menu__btn--danger:hover:not(:disabled) {
+  background: var(--red);
+  color: #fff;
+}
+
 /* Tab bar */
 
 

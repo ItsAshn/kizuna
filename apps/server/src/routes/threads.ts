@@ -2,8 +2,11 @@ import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
+import type { Context } from 'hono'
+import type { AuthUser } from '../types'
+import type { Server as IoServer } from 'socket.io'
 
-function getAuth(c: any): { userId: string; username: string } { return c.get('auth' as never) }
+function getAuth(c: Context): AuthUser { return c.get('auth') }
 
 const threadsRoutes = new Hono()
 
@@ -12,7 +15,10 @@ threadsRoutes.get('/:channelId', authMiddleware, (c) => {
   const db = getDb()
   const rows = db.prepare(
     'SELECT * FROM threads WHERE channel_id = ? ORDER BY last_message_at DESC'
-  ).all(channelId) as any[]
+  ).all(channelId) as {
+    id: string; channel_id: string; name: string; creator_id: string;
+    created_at: number; message_count: number; last_message_at: number
+  }[]
 
   const threads = rows.map((r) => ({
     id: r.id,
@@ -29,10 +35,10 @@ threadsRoutes.get('/:channelId', authMiddleware, (c) => {
 
 threadsRoutes.post('/:channelId', authMiddleware, async (c) => {
   const user = getAuth(c)
-  const channelId = c.req.param('channelId')
+  const channelId = c.req.param('channelId')!
   const db = getDb()
 
-  let body: any
+  let body: { name?: string; message_id?: string } | undefined
   try { body = await c.req.json() } catch { return c.json({ error: 'Invalid JSON' }, 400) }
 
   const name = (body?.name || 'Thread').slice(0, 100)
@@ -49,7 +55,7 @@ threadsRoutes.post('/:channelId', authMiddleware, async (c) => {
     db.prepare('UPDATE threads SET message_count = message_count + 1 WHERE id = ?').run(id)
   }
 
-  const io: any = c.get('io' as never)
+  const io = c.get('io' as never) as IoServer | undefined
   if (io) {
     io.to(channelId).emit('thread:created', {
       id,
@@ -67,13 +73,13 @@ threadsRoutes.post('/:channelId', authMiddleware, async (c) => {
 
 threadsRoutes.delete('/:channelId/:threadId', authMiddleware, (c) => {
   const user = getAuth(c)
-  const channelId = c.req.param('channelId')
-  const threadId = c.req.param('threadId')
+  const channelId = c.req.param('channelId')!
+  const threadId = c.req.param('threadId')!
   const db = getDb()
 
   const thread = db.prepare(
     'SELECT * FROM threads WHERE id = ? AND channel_id = ?'
-  ).get(threadId, channelId) as any
+  ).get(threadId, channelId) as { creator_id: string } | undefined
 
   if (!thread) return c.json({ error: 'Thread not found' }, 404)
 
@@ -88,9 +94,9 @@ threadsRoutes.delete('/:channelId/:threadId', authMiddleware, (c) => {
   db.prepare('DELETE FROM threads WHERE id = ?').run(threadId)
 
   try {
-    const io: any = c.get('io' as never)
+    const io = c.get('io' as never) as IoServer | undefined
     if (io) {
-      io.to(channelId).emit('thread:deleted', { id: threadId, channel_id: channelId })
+      io.to(channelId).emit('thread:deleted', { id: threadId, channel_id: channelId } as never)
     }
   } catch { /* best-effort */ }
 
@@ -103,21 +109,27 @@ threadsRoutes.get('/:channelId/:threadId/messages', authMiddleware, (c) => {
   const before = c.req.query('before')
 
   const db = getDb()
-  let rows: any[]
+  let rows: {
+    id: string; channel_id: string; author_id: string; author_username: string;
+    display_name: string | null; avatar: string | null; content: string;
+    created_at: number; edited_at: number | null;
+    reply_to_message_id: string | null; reply_to_username: string | null;
+    reply_to_content: string | null; thread_id: string | null
+  }[]
   if (before) {
     rows = db.prepare(
       `SELECT m.*, u.display_name, u.avatar FROM messages m
        LEFT JOIN users u ON m.author_id = u.id
        WHERE m.thread_id = ? AND m.rowid < (SELECT rowid FROM messages WHERE id = ?)
        ORDER BY m.created_at DESC LIMIT ?`
-    ).all(threadId, before, limit) as any[]
+    ).all(threadId, before, limit) as typeof rows
   } else {
     rows = db.prepare(
       `SELECT m.*, u.display_name, u.avatar FROM messages m
        LEFT JOIN users u ON m.author_id = u.id
        WHERE m.thread_id = ?
        ORDER BY m.created_at DESC LIMIT ?`
-    ).all(threadId, limit) as any[]
+    ).all(threadId, limit) as typeof rows
   }
 
   const messages = rows.reverse().map((r) => ({
@@ -143,10 +155,10 @@ threadsRoutes.get('/:channelId/:threadId/messages', authMiddleware, (c) => {
 
 threadsRoutes.post('/:channelId/:threadId/messages', authMiddleware, async (c) => {
   const user = getAuth(c)
-  const channelId = c.req.param('channelId')
-  const threadId = c.req.param('threadId')
+  const channelId = c.req.param('channelId')!
+  const threadId = c.req.param('threadId')!
 
-  let body: any
+  let body: { content?: string } | undefined
   try { body = await c.req.json() } catch { return c.json({ error: 'Invalid JSON' }, 400) }
 
   const content = body?.content?.trim()
@@ -179,9 +191,9 @@ threadsRoutes.post('/:channelId/:threadId/messages', authMiddleware, async (c) =
     thread_id: threadId,
   }
 
-  const io: any = c.get('io' as never)
+  const io = c.get('io' as never) as IoServer | undefined
   if (io) {
-    io.to(threadId).emit('thread:message:new', message)
+    io.to(threadId).emit('thread:message:new', message as never)
   }
 
   return c.json({ message })

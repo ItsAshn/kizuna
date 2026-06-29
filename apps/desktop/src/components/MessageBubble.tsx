@@ -227,7 +227,7 @@ function AttachmentPreview({ url, filename, serverUrl, isMediaOnly, onImageClick
 interface PollOption { id: string; label: string; position: number; vote_count?: number }
 interface PollData { __poll__: true; pollId: string; question: string; options: PollOption[] }
 
-function PollCard({ data, serverUrl, userId }: { data: PollData; serverUrl: string; userId: string }) {
+function PollCard({ data, serverUrl, userId: _userId }: { data: PollData; serverUrl: string; userId: string }) {
   const [options, setOptions] = useState<PollOption[]>(data.options)
   const [votedIds, setVotedIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)

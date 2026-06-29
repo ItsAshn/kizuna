@@ -4,11 +4,13 @@ import { randomBytes } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import path from 'node:path'
 import fs from 'node:fs'
-import { getDb } from '../db'
+import { getDb, getDbPath } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin, isUserHost, assignDefaultRoles, clearPermissionCache } from '../middleware/auth'
 import { getAllPeers } from '../socket/voiceHandler'
 import type { AuthUser } from '../middleware/auth'
-function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
+import type { Context } from 'hono'
+import type { Server as IoServer } from 'socket.io'
+function getAuth(c: Context): AuthUser { return c.get('auth') }
 
 export function getMemberById(userId: string) {
   const db = getDb()
@@ -17,7 +19,14 @@ export function getMemberById(userId: string) {
     FROM users u
     LEFT JOIN server_members sm ON sm.user_id = u.id
     WHERE u.id = ?
-  `).get(userId) as any
+  `).get(userId) as {
+    id: string; username: string; display_name: string | null;
+    avatar: string | null; banner: string | null; public_key: string | null;
+    last_seen_at: number | null; reset_requested_at: number | null;
+    status_text: string | null; status_emoji: string | null;
+    status_sticker_id: string | null; created_at: number;
+    is_host: number; joined_at: number | null; custom_role_id: string | null
+  } | undefined
   if (!user) return null
 
   const memberRoles = db.prepare(`
@@ -254,7 +263,7 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
         transport.setMaxIncomingBitrate(bps).catch(() => {})
       }
     }
-    const io: any = c.get('io' as never)
+    const io = c.get('io' as never) as IoServer | undefined
     if (io) {
       io.emit('server:voiceBitrateChanged', { voiceBitrateKbps: kbps })
     }
@@ -289,7 +298,7 @@ serverInfoRoutes.post('/announce', authMiddleware, async (c) => {
   }
 
   try {
-    const io: any = c.get('io' as never)
+    const io = c.get('io' as never) as IoServer | undefined
     if (!io) return c.json({ error: 'Socket.IO not available' }, 500)
     io.to('__notifications__').emit('server:announce', { title, body: announceBody })
     return c.json({ ok: true })
@@ -327,7 +336,10 @@ serverInfoRoutes.post('/invites', authMiddleware, async (c) => {
     'INSERT INTO invite_codes (code, created_by, max_uses, uses, expires_at) VALUES (?, ?, ?, 0, ?)'
   ).run(code, user.userId, max, expiresAt)
 
-  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as any
+  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as {
+    code: string; created_by: string; max_uses: number | null;
+    uses: number; expires_at: number | null; created_at: number
+  }
   return c.json({
     code: invite.code,
     created_by: invite.created_by,
@@ -350,8 +362,11 @@ serverInfoRoutes.get('/invites', authMiddleware, (c) => {
     `SELECT * FROM invite_codes
      WHERE (expires_at IS NULL OR expires_at > ?)
        AND (max_uses IS NULL OR uses < max_uses)
-     ORDER BY created_at DESC`
-  ).all(now) as any[]
+      ORDER BY created_at DESC`
+  ).all(now) as {
+    code: string; created_by: string; max_uses: number | null;
+    uses: number; expires_at: number | null; created_at: number
+  }[]
   const result = invites.map((inv) => ({
     code: inv.code,
     created_by: inv.created_by,
@@ -381,7 +396,10 @@ serverInfoRoutes.post('/join/:code', async (c) => {
   const code = (c.req.param('code') || '').toUpperCase()
   const db = getDb()
 
-  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as any
+  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as {
+    code: string; created_by: string; max_uses: number | null;
+    uses: number; expires_at: number | null; created_at: number
+  } | undefined
   if (!invite) return c.json({ error: 'Invalid invite code' }, 404)
 
   if (invite.expires_at !== null && invite.expires_at * 1000 < Date.now()) {
@@ -413,7 +431,7 @@ serverInfoRoutes.post('/join/:code', async (c) => {
 
     db.prepare('INSERT OR REPLACE INTO server_members (user_id, role) VALUES (?, ?)').run(userId, 'member')
     assignDefaultRoles(userId)
-    try { const io: any = c.get('io' as never); if (io) io.emit('member:added', getMemberById(userId)) } catch {}
+    try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:added', getMemberById(userId)) } catch {}
     return c.json({ ok: true, alreadyMember: false })
   }
 
@@ -424,7 +442,7 @@ serverInfoRoutes.post('/join/:code', async (c) => {
 serverInfoRoutes.get('/resolve/:code', (c) => {
   const code = (c.req.param('code') || '').toUpperCase()
   const db = getDb()
-  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as any
+  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as { code: string } | undefined
   if (!invite) return c.json({ error: 'Invalid invite code' }, 404)
 
   try {
@@ -468,7 +486,7 @@ serverInfoRoutes.patch('/members/:userId/role', authMiddleware, async (c) => {
 
   const updatedMember = getMemberById(targetUserId)
   if (updatedMember) {
-    try { const io: any = c.get('io' as never); if (io) io.emit('member:updated', updatedMember) } catch {}
+    try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:updated', updatedMember) } catch {}
   }
 
   clearPermissionCache(targetUserId)
@@ -500,7 +518,7 @@ serverInfoRoutes.delete('/members/:userId', authMiddleware, (c) => {
 
   db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
   clearPermissionCache(targetUserId)
-  try { const io: any = c.get('io' as never); if (io) io.emit('member:removed', { userId: targetUserId }) } catch {}
+  try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:removed', { userId: targetUserId }) } catch {}
   return c.json({ ok: true })
 })
 
@@ -526,7 +544,7 @@ serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, async (c)
   clearPermissionCache(targetUserId)
   const updatedMember = getMemberById(targetUserId)
   if (updatedMember) {
-    try { const io: any = c.get('io' as never); if (io) io.emit('member:updated', updatedMember) } catch {}
+    try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:updated', updatedMember) } catch {}
   }
   return c.json({ ok: true })
 })
@@ -558,7 +576,7 @@ serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
   clearPermissionCache(targetUserId)
   const updatedMember = getMemberById(targetUserId)
   if (updatedMember) {
-    try { const io: any = c.get('io' as never); if (io) io.emit('member:updated', updatedMember) } catch {}
+    try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:updated', updatedMember) } catch {}
   }
   return c.json({ ok: true })
 })
@@ -586,7 +604,7 @@ serverInfoRoutes.delete('/members/:userId/roles/:roleId', authMiddleware, (c) =>
   clearPermissionCache(targetUserId)
   const updatedMember = getMemberById(targetUserId)
   if (updatedMember) {
-    try { const io: any = c.get('io' as never); if (io) io.emit('member:updated', updatedMember) } catch {}
+    try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:updated', updatedMember) } catch {}
   }
   return c.json({ ok: true })
 })
@@ -705,6 +723,89 @@ serverInfoRoutes.delete('/background', authMiddleware, (c) => {
 
   invalidateServerInfoCache()
   return c.json({ ok: true })
+})
+
+// GET /storage — storage stats (admin only)
+serverInfoRoutes.get('/storage', authMiddleware, (c) => {
+  const user = getAuth(c)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+
+  const db = getDb()
+  const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
+  const GIFS_DIR = process.env.GIFS_DIR || path.join(UPLOADS_DIR, 'gifs')
+
+  const attachmentStats = db.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as total_size FROM attachments').get() as { count: number; total_size: number }
+  const auditLogCount = (db.prepare('SELECT COUNT(*) as count FROM audit_logs').get() as { count: number }).count
+  const gifCount = (db.prepare('SELECT COUNT(*) as count FROM gifs').get() as { count: number }).count
+
+  const filenames = (db.prepare('SELECT url FROM attachments').all() as { url: string }[]).map(r => path.basename(r.url))
+  const knownFiles = new Set(filenames)
+
+  let orphanCount = 0
+  let orphanSize = 0
+  try {
+    const entries = fs.readdirSync(UPLOADS_DIR, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.isFile() && !knownFiles.has(entry.name)) {
+        orphanCount++
+        try { orphanSize += fs.statSync(path.join(UPLOADS_DIR, entry.name)).size } catch {}
+      }
+    }
+  } catch {}
+
+  let dbSize = 0
+  try {
+    dbSize = fs.statSync(getDbPath()).size
+  } catch {}
+
+  let gifDirSize = 0
+  try {
+    const gifEntries = fs.readdirSync(GIFS_DIR, { withFileTypes: true })
+    for (const entry of gifEntries) {
+      if (entry.isFile()) {
+        try { gifDirSize += fs.statSync(path.join(GIFS_DIR, entry.name)).size } catch {}
+      }
+    }
+  } catch {}
+
+  return c.json({
+    attachments: { count: attachmentStats.count, totalSize: attachmentStats.total_size },
+    gifs: { count: gifCount, totalSize: gifDirSize },
+    auditLogs: { count: auditLogCount },
+    orphans: { count: orphanCount, totalSize: orphanSize },
+    dbSize,
+  })
+})
+
+// POST /cleanup/orphans — delete orphaned attachment files (admin only)
+serverInfoRoutes.post('/cleanup/orphans', authMiddleware, (c) => {
+  const user = getAuth(c)
+  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+
+  const db = getDb()
+  const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
+
+  const filenames = (db.prepare('SELECT url FROM attachments').all() as { url: string }[]).map(r => path.basename(r.url))
+  const knownFiles = new Set(filenames)
+
+  let deletedCount = 0
+  let freedBytes = 0
+  try {
+    const entries = fs.readdirSync(UPLOADS_DIR, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isFile() || knownFiles.has(entry.name)) continue
+      const filepath = path.join(UPLOADS_DIR, entry.name)
+      try {
+        freedBytes += fs.statSync(filepath).size
+        fs.unlinkSync(filepath)
+        deletedCount++
+      } catch {}
+    }
+  } catch {
+    return c.json({ error: 'Failed to scan uploads directory' }, 500)
+  }
+
+  return c.json({ ok: true, deletedCount, freedBytes })
 })
 
 export default serverInfoRoutes

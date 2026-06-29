@@ -8,29 +8,53 @@ import { checkSpam } from '../services/spamFilter'
 import { parseMentions, processMentions } from '../socket/chatHandler'
 import { checkMessageContent } from '../moderation'
 import type { AuthUser } from '../middleware/auth'
-function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
+import type { Context } from 'hono'
+import type { Server as IOServer } from 'socket.io'
+import type Database from 'better-sqlite3'
+
+interface ReactionRow {
+  message_id: string
+  reaction_key: string
+  reaction_type: string
+  user_id: string
+  username: string
+}
+
+interface ReactionGroup {
+  _key?: string
+  reaction_key: string
+  reaction_type: string
+  count: number
+  users: Array<{ user_id: string; username: string }>
+}
+
+interface AttachmentRow {
+  url: string
+}
+
+function getAuth(c: Context): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const messageRoutes = new Hono()
 
-function mapMessage(row: any) {
+function mapMessage(row: Record<string, unknown>) {
   return {
-    id: row.id,
-    channel_id: row.channel_id,
-    user_id: row.author_id,
-    username: row.author_username,
-    display_name: row.display_name || row.author_username,
-    avatar: row.avatar || undefined,
-    content: row.content,
-    edited_at: row.edited_at ? row.edited_at * 1000 : null,
-    created_at: row.created_at * 1000,
-    reactions: row.reactions ? JSON.parse(row.reactions) : [],
-    reply_to_message_id: row.reply_to_message_id || null,
-    reply_to_username: row.reply_to_username || null,
-    reply_to_content: row.reply_to_content || null,
+    id: row.id as string,
+    channel_id: row.channel_id as string,
+    user_id: row.author_id as string,
+    username: row.author_username as string,
+    display_name: (row.display_name as string | null) || (row.author_username as string),
+    avatar: (row.avatar as string | null | undefined) || undefined,
+    content: row.content as string,
+    edited_at: row.edited_at ? (row.edited_at as number) * 1000 : null,
+    created_at: (row.created_at as number) * 1000,
+    reactions: row.reactions ? JSON.parse(row.reactions as string) : [],
+    reply_to_message_id: (row.reply_to_message_id as string) || null,
+    reply_to_username: (row.reply_to_username as string) || null,
+    reply_to_content: (row.reply_to_content as string) || null,
   }
 }
 
-function fetchReactionsForMessages(db: any, messageIds: string[]): Record<string, any[]> {
+function fetchReactionsForMessages(db: Database.Database, messageIds: string[]): Record<string, ReactionGroup[]> {
   if (messageIds.length === 0) return {}
   const placeholders = messageIds.map(() => '?').join(',')
   const rows = db.prepare(`
@@ -39,9 +63,9 @@ function fetchReactionsForMessages(db: any, messageIds: string[]): Record<string
     LEFT JOIN users u ON mr.user_id = u.id
     WHERE mr.message_id IN (${placeholders})
     ORDER BY mr.created_at
-  `).all(...messageIds) as any[]
+  `).all(...messageIds) as ReactionRow[]
 
-  const map: Record<string, any[]> = {}
+  const map: Record<string, ReactionGroup[]> = {}
   for (const r of rows) {
     if (!map[r.message_id]) map[r.message_id] = []
     const msgReactions = map[r.message_id]!
@@ -86,15 +110,15 @@ messageRoutes.get('/:channelId', authMiddleware, (c) => {
     LEFT JOIN users u ON m.author_id = u.id
     WHERE m.channel_id = ?`
 
-  let rows: any[]
+  let rows: Record<string, unknown>[]
   if (before) {
     const anchor = db.prepare('SELECT created_at FROM messages WHERE id = ?').get(before) as { created_at: number } | undefined
     rows = anchor
-      ? db.prepare(`${SELECT} AND m.created_at < ? ORDER BY m.created_at DESC LIMIT ?`).all(channelId, anchor.created_at, limit) as any[]
+      ? db.prepare(`${SELECT} AND m.created_at < ? ORDER BY m.created_at DESC LIMIT ?`).all(channelId, anchor.created_at, limit) as Record<string, unknown>[]
       : []
     rows = rows.reverse()
   } else {
-    rows = db.prepare(`${SELECT} ORDER BY m.created_at DESC LIMIT ?`).all(channelId, limit) as any[]
+    rows = db.prepare(`${SELECT} ORDER BY m.created_at DESC LIMIT ?`).all(channelId, limit) as Record<string, unknown>[]
     rows = rows.reverse()
   }
 
@@ -144,7 +168,7 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   let replyUsername: string | null = null
   let replyContent: string | null = null
   if (reply_to_message_id) {
-    const replyMsg = db.prepare('SELECT author_username, content FROM messages WHERE id = ? AND channel_id = ?').get(reply_to_message_id, channelId) as any
+    const replyMsg = db.prepare('SELECT author_username, content FROM messages WHERE id = ? AND channel_id = ?').get(reply_to_message_id, channelId) as { author_username: string; content: string } | undefined
     if (replyMsg) {
       replyUsername = replyMsg.author_username
       replyContent = replyMsg.content
@@ -166,13 +190,13 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
     FROM messages m
     LEFT JOIN users u ON m.author_id = u.id
     WHERE m.id = ?
-  `).get(id) as any
+  `).get(id) as Record<string, unknown>
 
   const message = mapMessage(row)
   message.reactions = []
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) {
       io.to(channelId).to('__notifications__').emit('message:new', message)
     }
@@ -180,8 +204,14 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
 
   const mentions = parseMentions(content.trim())
   try {
-    const io: any = c.get('io' as never)
-    if (io) processMentions(io, { ...row, author_id: row.author_id, author_username: row.author_username }, mentions)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+    if (io) processMentions(io, {
+      id: row.id as string,
+      channel_id: row.channel_id as string,
+      author_id: row.author_id as string,
+      author_username: row.author_username as string,
+      content: row.content as string,
+    }, mentions)
   } catch { /* best-effort */ }
 
   return c.json({ message }, 201)
@@ -194,7 +224,7 @@ messageRoutes.delete('/:messageId', authMiddleware, (c) => {
   const messageId = c.req.param('messageId')
   const db = getDb()
 
-  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
+  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as Record<string, unknown> | undefined
   if (!message) return c.json({ error: 'Message not found' }, 404)
 
   if (message.author_id !== user.userId) {
@@ -204,7 +234,7 @@ messageRoutes.delete('/:messageId', authMiddleware, (c) => {
   }
 
   const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
-  const attachments = db.prepare('SELECT * FROM attachments WHERE message_id = ?').all(messageId) as any[]
+  const attachments = db.prepare('SELECT * FROM attachments WHERE message_id = ?').all(messageId) as AttachmentRow[]
   for (const att of attachments) {
     const filepath = path.join(uploadsDir, path.basename(att.url))
     try { fs.unlinkSync(filepath) } catch { /* file may not exist */ }
@@ -216,9 +246,9 @@ messageRoutes.delete('/:messageId', authMiddleware, (c) => {
   db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) {
-      io.to(message.channel_id).to('__notifications__').emit('message:delete', { id: messageId, channel_id: message.channel_id })
+      io.to(message.channel_id as string).to('__notifications__').emit('message:delete', { id: messageId, channel_id: message.channel_id as string })
     }
   } catch { /* best-effort */ }
 
@@ -240,14 +270,14 @@ messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
   }
 
   const db = getDb()
-  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
+  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as Record<string, unknown> | undefined
   if (!message) return c.json({ error: 'Message not found' }, 404)
   if (message.author_id !== user.userId) return c.json({ error: 'Forbidden' }, 403)
 
   const now = Math.floor(Date.now() / 1000)
   db.prepare(
     'INSERT INTO message_edits (id, message_id, old_content, edited_by, edited_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(uuidv4(), messageId, message.content, user.userId, now)
+  ).run(uuidv4(), messageId, message.content as string, user.userId, now)
   db.prepare('UPDATE messages SET content = ?, edited_at = ?, updated_at = ? WHERE id = ?').run(content.trim(), now, now, messageId)
 
   const row = db.prepare(`
@@ -255,15 +285,15 @@ messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
     FROM messages m
     LEFT JOIN users u ON m.author_id = u.id
     WHERE m.id = ?
-  `).get(messageId) as any
+  `).get(messageId) as Record<string, unknown>
 
   const result = mapMessage(row)
   result.reactions = fetchReactionsForMessages(db, [messageId])[messageId] || []
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) {
-      io.to(message.channel_id).to('__notifications__').emit('message:edit', result)
+      io.to(message.channel_id as string).to('__notifications__').emit('message:edit', result)
     }
   } catch { /* best-effort */ }
 

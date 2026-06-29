@@ -2,8 +2,9 @@ import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
-import type { AuthUser } from '../middleware/auth'
-function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
+import type { Context } from 'hono'
+import type { AuthUser } from '../types'
+function getAuth(c: Context): AuthUser { return c.get('auth') }
 
 const roleRoutes = new Hono()
 
@@ -15,7 +16,11 @@ roleRoutes.get('/', authMiddleware, (c) => {
     return c.json({ error: 'Forbidden' }, 403)
   }
   const db = getDb()
-  const roles = db.prepare('SELECT * FROM roles ORDER BY position ASC').all() as any[]
+  const roles = db.prepare('SELECT * FROM roles ORDER BY position ASC').all() as {
+    id: string; name: string; color: string; permissions: string;
+    is_admin: number; position: number; hoist: number; mentionable: number;
+    default_on_join: number; created_at: number
+  }[]
   const result = roles.map((r) => ({
     ...r,
     permissions: JSON.parse(r.permissions || '{}'),
@@ -60,7 +65,11 @@ roleRoutes.post('/', authMiddleware, async (c) => {
     'INSERT INTO roles (id, name, color, permissions, position, hoist, mentionable, default_on_join) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(id, name.trim(), color || '#5865f2', JSON.stringify(permissions || {}), pos, hoist ? 1 : 0, mentionable ? 1 : 0, default_on_join ? 1 : 0)
 
-  const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(id) as any
+  const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(id) as {
+    id: string; name: string; color: string; permissions: string;
+    is_admin: number; position: number; hoist: number; mentionable: number;
+    default_on_join: number; created_at: number
+  }
   return c.json({
     role: {
       ...role,
@@ -97,7 +106,10 @@ roleRoutes.patch('/:id', authMiddleware, async (c) => {
   }
   const { name, color, permissions, position, hoist, mentionable, default_on_join } = body
 
-  const existingRow = existing as any
+  const existingRow = existing as {
+    name: string; color: string; permissions: string; position: number;
+    hoist: number; mentionable: number; default_on_join: number
+  }
   const updatedPermissions = permissions !== undefined
     ? JSON.stringify(permissions)
     : existingRow.permissions
@@ -117,7 +129,11 @@ roleRoutes.patch('/:id', authMiddleware, async (c) => {
     id,
   )
 
-  const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(id) as any
+  const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(id) as {
+    id: string; name: string; color: string; permissions: string;
+    is_admin: number; position: number; hoist: number; mentionable: number;
+    default_on_join: number; created_at: number
+  }
   return c.json({
     role: {
       ...role,
@@ -140,7 +156,7 @@ roleRoutes.delete('/:id', authMiddleware, (c) => {
   }
   const id = c.req.param('id')
   const db = getDb()
-  const existing = db.prepare('SELECT * FROM roles WHERE id = ?').get(id) as any
+  const existing = db.prepare('SELECT * FROM roles WHERE id = ?').get(id) as { is_admin: number } | undefined
   if (!existing) return c.json({ error: 'Role not found' }, 404)
   if (existing.is_admin === 1) return c.json({ error: 'Cannot delete the admin role' }, 403)
   db.prepare('UPDATE server_members SET custom_role_id = NULL WHERE custom_role_id = ?').run(id)

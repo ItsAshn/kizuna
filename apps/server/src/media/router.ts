@@ -136,7 +136,7 @@ export async function consumeOnTransport(
     })
 
     return consumer
-  } catch (err: any) {
+  } catch (err: unknown) {
     rerr(`consumeOnTransport failed | producerId=${producerId} | kind=${kind}`, err)
     return null
   }

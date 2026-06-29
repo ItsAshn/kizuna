@@ -675,8 +675,8 @@ function runMigrations(database: Database.Database): void {
     if (applied.has(name)) continue
     try {
       database.exec(sql)
-    } catch (err: any) {
-      const msg = err.message || ''
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : ''
       if (msg.includes('duplicate column') || msg.includes('already exists') || msg.includes('UNIQUE constraint failed')) {
         insertStmt.run(name)
         applied.add(name)

@@ -85,12 +85,29 @@ searchRoutes.get('/', authMiddleware, (c) => {
       ${channelFilter}
       ORDER BY f.rowid DESC
       LIMIT ?
-    `).all(...params) as any[]
+    `).all(...params) as {
+    source: string
+    message_id: string
+    fts_rowid: number
+    id: string
+    channel_id: string
+    author_id: string
+    author_username: string
+    content: string
+    created_at: number
+    display_name: string | null
+    avatar: string | null
+    channel_name: string | null
+  }[]
 
     const hasMore = rows.length > limit
     if (hasMore) rows.pop()
 
-    const results = rows.map((r: any) => ({
+    const results = rows.map((r: {
+    source: string; id: string; channel_id: string; author_id: string;
+    author_username: string; display_name: string | null; avatar: string | null;
+    content: string; created_at: number; channel_name: string | null
+  }) => ({
       message: {
         id: r.id,
         channel_id: r.channel_id,

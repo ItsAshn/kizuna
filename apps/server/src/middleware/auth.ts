@@ -153,8 +153,8 @@ export function getUserPermissions(userId: string): { role: string; permissions:
       db.prepare('INSERT OR IGNORE INTO server_members (user_id, role) VALUES (?, ?)').run(userId, 'member')
       assignDefaultRoles(userId)
       member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
-    } catch (err: any) {
-      console.error(`[auth] Failed to auto-insert user ${userId} into server_members:`, err.message)
+    } catch (err: unknown) {
+      console.error(`[auth] Failed to auto-insert user ${userId} into server_members:`, err instanceof Error ? err.message : err)
     }
     if (!member) return null
   }
@@ -214,8 +214,8 @@ export function getUserPermissions(userId: string): { role: string; permissions:
         }
       } catch { /* skip malformed JSON */ }
     }
-  } catch (err: any) {
-    console.error(`[auth] Failed to query role permissions for user ${userId}:`, err.message)
+  } catch (err: unknown) {
+    console.error(`[auth] Failed to query role permissions for user ${userId}:`, err instanceof Error ? err.message : err)
   }
 
   const result = { role: 'member' as const, permissions }

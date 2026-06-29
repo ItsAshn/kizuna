@@ -1,29 +1,61 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
+import type Database from 'better-sqlite3'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
 import { authMiddleware, adminMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
-function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
+
+interface IOServer {
+  to(room: string): { emit(event: string, data: unknown): void }
+  emit(event: string, data: unknown): void
+}
+
+interface GroupDMChannelRow {
+  id: string
+  name: string
+  owner_id: string
+  avatar: string | null
+  last_message_at: number | null
+  created_at: number
+}
+
+interface GroupDMMessageWithOwner {
+  id: string
+  channel_id: string
+  from_id: string
+  from_username: string
+  content: string
+  encrypted: number
+  edited_at: number | null
+  created_at: number
+  reply_to_message_id: string | null
+  reply_to_username: string | null
+  reply_to_content: string | null
+  owner_id: string
+}
+
+function getAuth(c: Context): AuthUser { return c.get('auth' as never) as AuthUser }
 
 function getMaxMembers(): number {
   return parseInt(process.env.GROUP_DM_MAX_MEMBERS || '10', 10) || 10
 }
 
-function formatGroupDMChannel(db: any, channel: any) {
+function formatGroupDMChannel(db: Database.Database, channel: GroupDMChannelRow) {
   const members = db.prepare(`
     SELECT u.id as user_id, u.username, u.display_name, u.avatar, u.public_key, gm.joined_at
     FROM group_dm_members gm
     JOIN users u ON u.id = gm.user_id
     WHERE gm.channel_id = ?
     ORDER BY gm.joined_at ASC
-  `).all(channel.id) as any[]
+  `).all(channel.id) as { user_id: string; username: string; display_name: string; avatar: string | null; public_key: string | null; joined_at: number }[]
 
   return {
     id: channel.id,
     name: channel.name,
     owner_id: channel.owner_id,
     avatar: channel.avatar || null,
-    members: members.map((m: any) => ({
+    members: members.map((m) => ({
       user_id: m.user_id,
       username: m.username,
       display_name: m.display_name || m.username,
@@ -36,7 +68,7 @@ function formatGroupDMChannel(db: any, channel: any) {
   }
 }
 
-function isGroupDMMember(db: any, channelId: string, userId: string): boolean {
+function isGroupDMMember(db: Database.Database, channelId: string, userId: string): boolean {
   const row = db.prepare(
     'SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?'
   ).get(channelId, userId)
@@ -54,9 +86,9 @@ groupDmRoutes.get('/', authMiddleware, (c) => {
     JOIN group_dm_members gdm ON gdm.channel_id = gdc.id
     WHERE gdm.user_id = ?
     ORDER BY gdc.last_message_at DESC
-  `).all(user.userId) as any[]
+  `).all(user.userId) as GroupDMChannelRow[]
 
-  const result = channels.map((ch: any) => formatGroupDMChannel(db, ch))
+  const result = channels.map((ch) => formatGroupDMChannel(db, ch))
   return c.json({ channels: result })
 })
 
@@ -105,11 +137,11 @@ groupDmRoutes.post('/', authMiddleware, async (c) => {
     insertMember.run(id, memberId, now)
   }
 
-  const channel = db.prepare('SELECT * FROM group_dm_channels WHERE id = ?').get(id) as any
+  const channel = db.prepare('SELECT * FROM group_dm_channels WHERE id = ?').get(id) as GroupDMChannelRow
   const formatted = formatGroupDMChannel(db, channel)
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) {
       for (const memberId of uniqueIds) {
         io.to(`group-dm:${memberId}`).emit('group-dm:channel-created', formatted)
@@ -126,7 +158,7 @@ groupDmRoutes.get('/:channelId', authMiddleware, (c) => {
   const channelId = c.req.param('channelId')!
   const db = getDb()
 
-  const channel = db.prepare('SELECT * FROM group_dm_channels WHERE id = ?').get(channelId) as any
+  const channel = db.prepare('SELECT * FROM group_dm_channels WHERE id = ?').get(channelId) as GroupDMChannelRow | undefined
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
   if (!isGroupDMMember(db, channelId, user.userId)) {
     return c.json({ error: 'Not a member' }, 403)
@@ -142,7 +174,7 @@ groupDmRoutes.patch('/:channelId', authMiddleware, async (c) => {
   const body = await c.req.json() as { name?: string; avatar?: string | null }
   const db = getDb()
 
-  const channel = db.prepare('SELECT * FROM group_dm_channels WHERE id = ?').get(channelId) as any
+  const channel = db.prepare('SELECT * FROM group_dm_channels WHERE id = ?').get(channelId) as GroupDMChannelRow | undefined
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
   if (channel.owner_id !== user.userId) {
     return c.json({ error: 'Only the owner can update the group' }, 403)
@@ -156,11 +188,11 @@ groupDmRoutes.patch('/:channelId', authMiddleware, async (c) => {
     db.prepare('UPDATE group_dm_channels SET avatar = ? WHERE id = ?').run(body.avatar || null, channelId)
   }
 
-  const updated = db.prepare('SELECT * FROM group_dm_channels WHERE id = ?').get(channelId) as any
+  const updated = db.prepare('SELECT * FROM group_dm_channels WHERE id = ?').get(channelId) as GroupDMChannelRow
   const formatted = formatGroupDMChannel(db, updated)
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) {
       const members = db.prepare(
         'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
@@ -186,7 +218,7 @@ groupDmRoutes.get('/:channelId/messages', authMiddleware, (c) => {
     return c.json({ error: 'Not a member' }, 403)
   }
 
-  let rows: any[]
+  let rows: { id: string; channel_id: string; from_id: string; from_username: string; content: string; encrypted: number; edited_at: number | null; created_at: number; reply_to_message_id: string | null; reply_to_username: string | null; reply_to_content: string | null; display_name: string | null; avatar: string | null; public_key: string | null }[]
   if (before) {
     const anchor = db.prepare('SELECT created_at FROM group_dm_messages WHERE id = ?').get(before) as { created_at: number } | undefined
     rows = anchor
@@ -195,7 +227,7 @@ groupDmRoutes.get('/:channelId/messages', authMiddleware, (c) => {
           LEFT JOIN users u ON gdm.from_id = u.id
           WHERE gdm.channel_id = ? AND gdm.created_at < ?
           ORDER BY gdm.created_at DESC LIMIT ?
-        `).all(channelId, anchor.created_at, limit) as any[]
+        `).all(channelId, anchor.created_at, limit) as { id: string; channel_id: string; from_id: string; from_username: string; content: string; encrypted: number; edited_at: number | null; created_at: number; reply_to_message_id: string | null; reply_to_username: string | null; reply_to_content: string | null; display_name: string | null; avatar: string | null; public_key: string | null }[]
       : []
     rows = rows.reverse()
   } else {
@@ -204,13 +236,13 @@ groupDmRoutes.get('/:channelId/messages', authMiddleware, (c) => {
       LEFT JOIN users u ON gdm.from_id = u.id
       WHERE gdm.channel_id = ?
       ORDER BY gdm.created_at DESC LIMIT ?
-    `).all(channelId, limit) as any[]
+    `).all(channelId, limit) as { id: string; channel_id: string; from_id: string; from_username: string; content: string; encrypted: number; edited_at: number | null; created_at: number; reply_to_message_id: string | null; reply_to_username: string | null; reply_to_content: string | null; display_name: string | null; avatar: string | null; public_key: string | null }[]
     rows = rows.reverse()
   }
 
   const hasMore = rows.length === limit
 
-  const messages = rows.map((row: any) => ({
+  const messages = rows.map((row) => ({
     id: row.id,
     channel_id: channelId,
     user_id: row.from_id,
@@ -261,7 +293,7 @@ groupDmRoutes.post('/:channelId/messages', authMiddleware, async (c) => {
 
   db.prepare('UPDATE group_dm_channels SET last_message_at = ? WHERE id = ?').run(now, channelId)
 
-  const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(user.userId) as any
+  const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(user.userId) as { display_name: string | null; avatar: string | null } | undefined
   const message = {
     id,
     channel_id: channelId,
@@ -275,7 +307,7 @@ groupDmRoutes.post('/:channelId/messages', authMiddleware, async (c) => {
   }
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) {
       const members = db.prepare(
         'SELECT user_id FROM group_dm_members WHERE channel_id = ? AND user_id != ?'
@@ -301,7 +333,7 @@ groupDmRoutes.delete('/messages/:messageId', authMiddleware, (c) => {
     FROM group_dm_messages gdm
     JOIN group_dm_channels gdc ON gdc.id = gdm.channel_id
     WHERE gdm.id = ?
-  `).get(messageId) as any
+  `).get(messageId) as GroupDMMessageWithOwner | undefined
   if (!gdm) return c.json({ error: 'Message not found' }, 404)
   if (gdm.from_id !== user.userId) return c.json({ error: 'Forbidden' }, 403)
 
@@ -309,7 +341,7 @@ groupDmRoutes.delete('/messages/:messageId', authMiddleware, (c) => {
   db.prepare('DELETE FROM group_dm_messages WHERE id = ?').run(messageId)
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) {
       const members = db.prepare(
         'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
@@ -339,14 +371,14 @@ groupDmRoutes.patch('/messages/:messageId', authMiddleware, async (c) => {
     FROM group_dm_messages gdm
     JOIN group_dm_channels gdc ON gdc.id = gdm.channel_id
     WHERE gdm.id = ?
-  `).get(messageId) as any
+  `).get(messageId) as GroupDMMessageWithOwner | undefined
   if (!gdm) return c.json({ error: 'Message not found' }, 404)
   if (gdm.from_id !== user.userId) return c.json({ error: 'Forbidden' }, 403)
 
   const now = Math.floor(Date.now() / 1000)
   db.prepare('UPDATE group_dm_messages SET content = ?, edited_at = ? WHERE id = ?').run(content.trim(), now, messageId)
 
-  const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(user.userId) as any
+  const userRow = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(user.userId) as { display_name: string | null; avatar: string | null } | undefined
   const updated = {
     id: gdm.id,
     channel_id: gdm.channel_id,
@@ -361,7 +393,7 @@ groupDmRoutes.patch('/messages/:messageId', authMiddleware, async (c) => {
   }
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) {
       const members = db.prepare(
         'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
@@ -384,7 +416,7 @@ groupDmRoutes.post('/:channelId/members', authMiddleware, async (c) => {
   if (!userId) return c.json({ error: 'User ID is required' }, 400)
 
   const db = getDb()
-  const channel = db.prepare('SELECT * FROM group_dm_channels WHERE id = ?').get(channelId) as any
+  const channel = db.prepare('SELECT * FROM group_dm_channels WHERE id = ?').get(channelId) as GroupDMChannelRow | undefined
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
   if (channel.owner_id !== user.userId) {
     return c.json({ error: 'Only the owner can add members' }, 403)
@@ -409,7 +441,7 @@ groupDmRoutes.post('/:channelId/members', authMiddleware, async (c) => {
   const formatted = formatGroupDMChannel(db, channel)
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) {
       const members = db.prepare(
         'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
@@ -430,7 +462,7 @@ groupDmRoutes.delete('/:channelId/members/:userId', authMiddleware, (c) => {
   const targetUserId = c.req.param('userId')
   const db = getDb()
 
-  const channel = db.prepare('SELECT * FROM group_dm_channels WHERE id = ?').get(channelId) as any
+  const channel = db.prepare('SELECT * FROM group_dm_channels WHERE id = ?').get(channelId) as GroupDMChannelRow | undefined
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
 
   const isSelf = targetUserId === user.userId
@@ -454,7 +486,7 @@ groupDmRoutes.delete('/:channelId/members/:userId', authMiddleware, (c) => {
     db.prepare('DELETE FROM group_dm_channels WHERE id = ?').run(channelId)
 
     try {
-      const io: any = c.get('io' as never)
+      const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
       if (io) {
         for (const m of allMembers) {
           io.to(`group-dm:${m.user_id}`).emit('group-dm:channel-deleted', { channel_id: channelId })
@@ -474,7 +506,7 @@ groupDmRoutes.delete('/:channelId/members/:userId', authMiddleware, (c) => {
   db.prepare('DELETE FROM group_dm_members WHERE channel_id = ? AND user_id = ?').run(channelId, targetUserId)
 
   try {
-    const io: any = c.get('io' as never)
+    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
     if (io) {
       io.to(`group-dm:${targetUserId}`).emit('group-dm:member-removed', { channel_id: channelId, user_id: targetUserId })
 

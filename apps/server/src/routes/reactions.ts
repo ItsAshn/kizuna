@@ -2,14 +2,17 @@ import { Hono } from 'hono'
 import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
-function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
+import type { Context } from 'hono'
+import type Database from 'better-sqlite3'
+import type { Server as IoServer } from 'socket.io'
+function getAuth(c: Context): AuthUser { return c.get('auth') }
 
 const reactionRoutes = new Hono()
 
 const DEFAULT_EMOJIS = ['👍', '❤️', '😆', '😮', '😢']
 
-function getMessageInfo(db: any, messageId: string): { channel_id: string; isDM: boolean; participants?: { user1_id: string; user2_id: string } } | null {
-  const msg = db.prepare('SELECT channel_id FROM messages WHERE id = ?').get(messageId) as any
+function getMessageInfo(db: Database.Database, messageId: string): { channel_id: string; isDM: boolean; participants?: { user1_id: string; user2_id: string } } | null {
+  const msg = db.prepare('SELECT channel_id FROM messages WHERE id = ?').get(messageId) as { channel_id: string } | undefined
   if (msg) return { channel_id: msg.channel_id, isDM: false }
 
   const dm = db.prepare(`
@@ -17,22 +20,22 @@ function getMessageInfo(db: any, messageId: string): { channel_id: string; isDM:
     FROM direct_messages dm
     JOIN dm_channels dc ON dc.id = dm.channel_id
     WHERE dm.id = ?
-  `).get(messageId) as any
+  `).get(messageId) as { channel_id: string; user1_id: string; user2_id: string } | undefined
   if (dm) return { channel_id: dm.channel_id, isDM: true, participants: { user1_id: dm.user1_id, user2_id: dm.user2_id } }
 
   return null
 }
 
-function getReactionsForMessage(db: any, messageId: string): any[] {
+function getReactionsForMessage(db: Database.Database, messageId: string): { reaction_key: string; reaction_type: string; count: number; users: { user_id: string; username: string }[] }[] {
   const rows = db.prepare(`
     SELECT mr.reaction_key, mr.reaction_type, mr.user_id, u.username
     FROM message_reactions mr
     LEFT JOIN users u ON mr.user_id = u.id
     WHERE mr.message_id = ?
     ORDER BY mr.created_at
-  `).all(messageId) as any[]
+  `).all(messageId) as { reaction_key: string; reaction_type: string; user_id: string; username: string }[]
 
-  const reactions: any[] = []
+  const reactions: { reaction_key: string; reaction_type: string; count: number; users: { user_id: string; username: string }[] }[] = []
   for (const r of rows) {
     const existing = reactions.find(e => e.reaction_key === r.reaction_key && e.reaction_type === r.reaction_type)
     if (existing) {
@@ -50,7 +53,7 @@ function getReactionsForMessage(db: any, messageId: string): any[] {
   return reactions
 }
 
-function findReaction(db: any, messageId: string, userId: string, reactionKey: string): any {
+function findReaction(db: Database.Database, messageId: string, userId: string, reactionKey: string): unknown {
   return db.prepare(
     'SELECT * FROM message_reactions WHERE message_id = ? AND user_id = ? AND reaction_key = ?'
   ).get(messageId, userId, reactionKey)
@@ -87,7 +90,7 @@ reactionRoutes.post('/:messageId', authMiddleware, async (c) => {
   const reactions = getReactionsForMessage(db, messageId)
 
   try {
-    const io: any = c.get('io' as never)
+    const io = c.get('io' as never) as IoServer | undefined
     if (io) {
       const payload = {
         messageId,
@@ -95,10 +98,10 @@ reactionRoutes.post('/:messageId', authMiddleware, async (c) => {
         reaction: { reaction_key, reaction_type: type, userId: user.userId, username: user.username },
       }
       if (msgInfo.isDM && msgInfo.participants) {
-        io.to(`dm:${msgInfo.participants.user1_id}`).emit('message:react:add', payload)
-        io.to(`dm:${msgInfo.participants.user2_id}`).emit('message:react:add', payload)
+        io.to(`dm:${msgInfo.participants.user1_id}`).emit('message:react:add', payload as never)
+        io.to(`dm:${msgInfo.participants.user2_id}`).emit('message:react:add', payload as never)
       } else {
-        io.to(msgInfo.channel_id).emit('message:react:add', payload)
+        io.to(msgInfo.channel_id).emit('message:react:add', payload as never)
       }
     }
   } catch {}
@@ -127,7 +130,7 @@ reactionRoutes.delete('/:messageId/:reactionKey', authMiddleware, (c) => {
   const reactions = getReactionsForMessage(db, messageId)
 
   try {
-    const io: any = c.get('io' as never)
+    const io = c.get('io' as never) as IoServer | undefined
     if (io) {
       const payload = {
         messageId,
@@ -136,10 +139,10 @@ reactionRoutes.delete('/:messageId/:reactionKey', authMiddleware, (c) => {
         userId: user.userId,
       }
       if (msgInfo.isDM && msgInfo.participants) {
-        io.to(`dm:${msgInfo.participants.user1_id}`).emit('message:react:remove', payload)
-        io.to(`dm:${msgInfo.participants.user2_id}`).emit('message:react:remove', payload)
+        io.to(`dm:${msgInfo.participants.user1_id}`).emit('message:react:remove', payload as never)
+        io.to(`dm:${msgInfo.participants.user2_id}`).emit('message:react:remove', payload as never)
       } else {
-        io.to(msgInfo.channel_id).emit('message:react:remove', payload)
+        io.to(msgInfo.channel_id).emit('message:react:remove', payload as never)
       }
     }
   } catch {}

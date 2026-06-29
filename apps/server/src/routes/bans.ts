@@ -1,11 +1,16 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { getDb } from '../db'
 import { authMiddleware, adminMiddleware, hasPermissionForUser, getUserInfo, isUserAdmin } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 import { logAuditEvent } from '../routes/audit'
 
-function getAuth(c: any): AuthUser { return c.get('auth' as never) as AuthUser }
+interface IOServer {
+  emit(event: string, data: unknown): void
+}
+
+function getAuth(c: Context): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const banRoutes = new Hono()
 
@@ -20,7 +25,7 @@ banRoutes.get('/', authMiddleware, adminMiddleware, (c) => {
     LEFT JOIN users ub ON b.banned_by = ub.id
     ORDER BY b.created_at DESC
     LIMIT ?
-  `).all(limit) as any[]
+  `).all(limit) as Record<string, unknown>[]
 
   const bans = rows.map(r => ({
     id: r.id,
@@ -30,7 +35,7 @@ banRoutes.get('/', authMiddleware, adminMiddleware, (c) => {
     bannedUsername: r.banned_username || 'Unknown',
     bannedDisplayName: r.banned_display_name || 'Unknown',
     bannerUsername: r.banner_username || 'Unknown',
-    createdAt: r.created_at * 1000,
+    createdAt: (r.created_at as number) * 1000,
   }))
 
   return c.json({ bans })
@@ -46,7 +51,7 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
   }
   if (targetUserId === user.userId) return c.json({ error: 'Cannot ban yourself' }, 400)
 
-  const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId) as any
+  const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId) as Record<string, unknown> | undefined
   if (!member) return c.json({ error: 'Member not found' }, 404)
   if (member.is_host) return c.json({ error: 'Cannot ban the host' }, 403)
 
@@ -55,19 +60,19 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
     return c.json({ error: 'Cannot ban an admin' }, 403)
   }
 
-  const existing = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(targetUserId) as any
+  const existing = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(targetUserId) as Record<string, unknown> | undefined
   if (existing) return c.json({ error: 'User is already banned' }, 400)
 
   let reason = null
   try {
-    const body = c.req.json() as any
+    const body = c.req.json() as unknown as Record<string, unknown>
     reason = body?.reason || null
   } catch {}
 
   const id = uuidv4()
   db.prepare('INSERT INTO bans (id, user_id, banned_by, reason) VALUES (?, ?, ?, ?)').run(id, targetUserId, user.userId, reason)
   db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
-  try { const io: any = c.get('io' as never); if (io) io.emit('member:removed', { userId: targetUserId }) } catch {}
+  try { const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined; if (io) io.emit('member:removed', { userId: targetUserId }) } catch {}
 
   logAuditEvent(db, 'member_ban', user.userId, targetUserId, JSON.stringify({ reason }))
 
@@ -83,7 +88,7 @@ banRoutes.delete('/:userId', authMiddleware, (c) => {
     return c.json({ error: 'You do not have permission to manage bans' }, 403)
   }
 
-  const ban = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(targetUserId) as any
+  const ban = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(targetUserId) as Record<string, unknown> | undefined
   if (!ban) return c.json({ error: 'Ban not found' }, 404)
 
   db.prepare('DELETE FROM bans WHERE user_id = ?').run(targetUserId)

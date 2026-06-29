@@ -1227,7 +1227,7 @@ export async function createPoll(
   channelId: string,
   question: string,
   options: string[],
-): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] }; message: any }> {
+): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] }; message: Message }> {
   const res = await client(serverUrl).post(`/api/channels/${channelId}/polls`, { question, options })
   return res.data
 }
@@ -1272,4 +1272,32 @@ export async function deleteWebhook(
   webhookId: string,
 ): Promise<void> {
   await client(serverUrl).delete(`/api/webhooks/${webhookId}`)
+}
+
+// ─── Storage & Cleanup ──────────────────────────────────────
+
+export async function fetchStorageStats(
+  serverUrl: string,
+): Promise<{
+  attachments: { count: number; totalSize: number }
+  gifs: { count: number; totalSize: number }
+  auditLogs: { count: number }
+  orphans: { count: number; totalSize: number }
+  dbSize: number
+}> {
+  const res = await client(serverUrl).get('/api/server/storage')
+  return res.data
+}
+
+export async function clearAuditLogs(
+  serverUrl: string,
+): Promise<void> {
+  await client(serverUrl).delete('/api/audit')
+}
+
+export async function cleanupOrphanFiles(
+  serverUrl: string,
+): Promise<{ deletedCount: number; freedBytes: number }> {
+  const res = await client(serverUrl).post('/api/server/cleanup/orphans')
+  return res.data
 }

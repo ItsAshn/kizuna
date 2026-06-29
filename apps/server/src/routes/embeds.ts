@@ -6,16 +6,16 @@ const embedRoutes = new Hono()
 
 embedRoutes.post('/unfurl', authMiddleware, async (c) => {
   const db = getDb()
-  let body: any
-  try { body = await c.req.json() } catch { return c.json({ error: 'Invalid body' }, 400) }
+  let body: { urls?: string[] }
+  try { body = await c.req.json() as { urls?: string[] } } catch { return c.json({ error: 'Invalid body' }, 400) }
 
   const urls: string[] = body?.urls || []
   if (!urls.length) return c.json({ embeds: [] })
 
-  const results: Record<string, any> = {}
+  const results: Record<string, { title: string | null; description: string | null; image: string | null; siteName: string | null; favicon: string | null }> = {}
 
   for (const url of urls) {
-    const cached = db.prepare('SELECT * FROM link_embeds WHERE url = ? AND fetched_at > ?').get(url, Math.floor(Date.now() / 1000) - 86400) as any
+    const cached = db.prepare('SELECT * FROM link_embeds WHERE url = ? AND fetched_at > ?').get(url, Math.floor(Date.now() / 1000) - 86400) as { title: string | null; description: string | null; image: string | null; site_name: string | null; favicon: string | null } | undefined
     if (cached) {
       results[url] = {
         title: cached.title,
@@ -34,7 +34,7 @@ embedRoutes.post('/unfurl', authMiddleware, async (c) => {
           `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${ytMatch[1]}`)}&format=json`
         )
         if (oembedRes.ok) {
-          const oembed = await oembedRes.json() as any
+          const oembed = await oembedRes.json() as { title?: string; thumbnail_url?: string }
           const title = oembed.title || null
           const image = oembed.thumbnail_url || null
 
