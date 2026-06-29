@@ -105,64 +105,74 @@ function WebhooksSection() {
   const webhookUrl = (token: string) => `${session?.url ?? ''}/api/webhooks/incoming/${token}`
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <h3 style={{ margin: 0 }}>Webhooks</h3>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0 }}>
-        Incoming webhooks let external services (CI/CD, GitHub, etc.) post messages to a channel via a unique URL.
-      </p>
+    <>
+      <div className="server-menu__settings-group">
+        <p className="server-menu__settings-group-title">create webhook</p>
+        <p className="server-menu__css-hint" style={{ marginBottom: '12px' }}>
+          Incoming webhooks let external services (CI/CD, GitHub, etc.) post messages to a channel via a unique URL.
+        </p>
 
-      {createdToken && (
-        <div style={{ background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <strong style={{ color: 'var(--success)', fontSize: '13px' }}>Webhook created — copy your URL now, it won&apos;t be shown again.</strong>
-          <code style={{ background: 'var(--bg-secondary)', borderRadius: '4px', fontSize: '12px', padding: '8px', wordBreak: 'break-all' }}>
-            {webhookUrl(createdToken.token)}
-          </code>
-          <button className="server-menu__btn" onClick={() => navigator.clipboard.writeText(webhookUrl(createdToken!.token))}>
-            Copy URL
-          </button>
+        {createdToken && (
+          <div className="server-menu__webhook-created">
+            <p className="server-menu__webhook-created-heading">webhook created — copy your URL now, it won&apos;t be shown again.</p>
+            <code className="server-menu__webhook-created-code">
+              {webhookUrl(createdToken.token)}
+            </code>
+            <button className="server-menu__save-btn" onClick={() => navigator.clipboard.writeText(webhookUrl(createdToken!.token))}>
+              copy url
+            </button>
+          </div>
+        )}
+
+        <div className="server-menu__field">
+          <label className="server-menu__label">channel</label>
+          <select
+            className="server-menu__select"
+            value={newChannelId}
+            onChange={(e) => setNewChannelId(e.target.value)}
+          >
+            {channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
+          </select>
         </div>
-      )}
+        <div className="server-menu__field">
+          <label className="server-menu__label">name</label>
+          <input
+            className="server-menu__input"
+            placeholder="webhook name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+          />
+        </div>
 
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        <select
-          className="server-menu__input"
-          value={newChannelId}
-          onChange={(e) => setNewChannelId(e.target.value)}
-          style={{ flex: '1', minWidth: '120px' }}
-        >
-          {channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
-        </select>
-        <input
-          className="server-menu__input"
-          placeholder="Webhook name"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          style={{ flex: '2', minWidth: '140px' }}
-        />
-        <button className="server-menu__btn" onClick={handleCreate} disabled={loading || !newName.trim()}>
-          Create
-        </button>
+        <div className="server-menu__save-row" style={{ marginTop: '8px' }}>
+          <button className="server-menu__save-btn" onClick={handleCreate} disabled={loading || !newName.trim()}>
+            {loading ? 'creating...' : 'create webhook'}
+          </button>
+          {error && (
+            <span className="server-menu__save-msg server-menu__save-msg--err">{error}</span>
+          )}
+        </div>
       </div>
 
-      {error && <p style={{ color: 'var(--error)', fontSize: '13px' }}>{error}</p>}
-
-      {webhooks.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {webhooks.map((wh) => (
-            <div key={wh.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', padding: '8px 12px' }}>
-              <span style={{ flex: 1, fontSize: '13px' }}>{wh.name}</span>
-              <button className="server-menu__btn server-menu__btn--danger" onClick={() => handleDelete(wh.id)} style={{ padding: '4px 10px', fontSize: '12px' }}>
-                Delete
-              </button>
+      <p className="server-menu__section-title">webhooks ({webhooks.length})</p>
+      {webhooks.length > 0 ? (
+        webhooks.map((wh) => (
+          <div key={wh.id} className="server-menu__webhook-item">
+            <div className="server-menu__webhook-item-info">
+              <span className="server-menu__webhook-item-name">{wh.name}</span>
+              <span className="server-menu__webhook-item-channel">
+                #{channels.find((c) => c.id === newChannelId)?.name ?? 'unknown'}
+              </span>
             </div>
-          ))}
-        </div>
+            <button className="server-menu__btn server-menu__btn--danger" onClick={() => handleDelete(wh.id)}>
+              delete
+            </button>
+          </div>
+        ))
+      ) : (
+        <p className="server-menu__loading">no webhooks configured</p>
       )}
-
-      {webhooks.length === 0 && (
-        <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No webhooks yet for this channel.</p>
-      )}
-    </div>
+    </>
   )
 }
 
@@ -2534,11 +2544,15 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
     })()}
 
       {section === 'webhooks' && (
-        <WebhooksSection />
+        <div className="server-menu__section">
+          <WebhooksSection />
+        </div>
       )}
 
       {section === 'logs' && (
-        <LogsSection />
+        <div className="server-menu__section">
+          <LogsSection />
+        </div>
       )}
     </>
   )
