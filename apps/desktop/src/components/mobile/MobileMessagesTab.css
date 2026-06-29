@@ -1,0 +1,64 @@
+.mobile-messages-tab__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+  flex-shrink: 0;
+}
+
+.mobile-messages-tab__body {
+  position: relative;
+}
+
+/* Pull-to-refresh indicator */
+.mobile-messages-tab__pull-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  will-change: height, opacity;
+}
+
+.mobile-messages-tab__pull-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.mobile-messages-tab__pull-spinner--spinning {
+  animation: pullSpinnerSpin 0.8s linear infinite;
+}
+
+@keyframes pullSpinnerSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* DM item enhancements */
+.mobile-dm-item {
+  transition: transform 0.15s ease;
+}
+
+.mobile-dm-item:active {
+  transform: scale(0.98);
+}
+
+.mobile-dm-item--unread {
+  background: var(--bg-tertiary);
+}
+
+.mobile-dm-item--unread .mobile-dm-item__name {
+  color: var(--text-primary);
+}
+
+.mobile-dm-item__avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+}

@@ -1,0 +1,41 @@
+/* MobileShell-specific styles that override or enhance the mobile chat layout */
+
+/* Spring push animation override */
+@keyframes mobilePushSpringIn {
+  0% {
+    transform: translateX(30%);
+    opacity: 0;
+  }
+  60% {
+    transform: translateX(-2%);
+    opacity: 1;
+  }
+  80% {
+    transform: translateX(0.5%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.mobile-content__view--push {
+  animation: mobilePushSpringIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Tab transition - crossfade when switching tabs */
+@keyframes mobileTabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mobile-content__view:not(.mobile-content__view--push) {
+  animation: mobileTabFadeIn 0.2s ease-out;
+}
