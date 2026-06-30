@@ -2422,6 +2422,20 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
                   )}
                 </div>
               )}
+
+              {/* Webhooks */}
+              {section === 'webhooks' && (
+                <div className="server-menu__section">
+                  <WebhooksSection />
+                </div>
+              )}
+
+              {/* Logs & Data */}
+              {section === 'logs' && (
+                <div className="server-menu__section">
+                  <LogsSection />
+                </div>
+              )}
       </SettingsLayout>
     </Modal>
 
@@ -2543,17 +2557,6 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
       )
     })()}
 
-      {section === 'webhooks' && (
-        <div className="server-menu__section">
-          <WebhooksSection />
-        </div>
-      )}
-
-      {section === 'logs' && (
-        <div className="server-menu__section">
-          <LogsSection />
-        </div>
-      )}
     </>
   )
 }

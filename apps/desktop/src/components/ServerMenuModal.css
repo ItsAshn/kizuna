@@ -1571,9 +1571,8 @@
 }
 
 .server-menu__gif-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  column-count: 3;
+  column-gap: 6px;
 }
 
 .server-menu__gif-item {
@@ -1581,6 +1580,8 @@
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
+  break-inside: avoid;
+  margin-bottom: 6px;
 }
 
 .server-menu__gif-thumb {

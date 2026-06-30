@@ -539,7 +539,7 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
     setAtQuery(query)
     setEmojiQuery(emQuery)
 
-    const slash = activeChannelId && val.startsWith('/') && !val.slice(1).includes(' ') ? val.slice(1) : null
+    const slash = (activeChannelId || activeDMChannelId || activeGroupDMChannelId) && val.startsWith('/') && !val.slice(1).includes(' ') ? val.slice(1) : null
     setSlashQuery(slash)
     if (slash !== null) setSelectedSlashIndex(0)
     if (query !== null) {
@@ -665,9 +665,8 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
 
     if (pendingFile) { await handleUpload(); return }
 
-    // Slash commands only apply to regular text channels.
     let commandContent: string | null = null
-    if (activeChannelId && input.trim().startsWith('/')) {
+    if (input.trim().startsWith('/')) {
       const result = await runChatCommand(input.trim(), {
         serverUrl: session.url,
         user: session.user,
@@ -729,15 +728,15 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
         let content: string
         let encrypted = false
         if (otherPubKey && secKey) {
-          const enc = encryptDM(input.trim(), otherPubKey, secKey)
+          const enc = encryptDM(commandContent ?? input.trim(), otherPubKey, secKey)
           content = JSON.stringify(enc)
           encrypted = true
         } else {
-          content = input.trim()
+          content = commandContent ?? input.trim()
         }
         message = await sendDMMessage(session.url, activeDMChannelId, content, encrypted)
         if (encrypted) {
-          message = { ...message, content: input.trim() }
+          message = { ...message, content: commandContent ?? input.trim() }
         }
       } else if (activeGroupDMChannelId) {
         const secKey = getSecretKey()
@@ -750,18 +749,18 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
             if (member.public_key) memberKeys.set(member.user_id, member.public_key)
           }
           if (memberKeys.size > 0) {
-            const enc = encryptGroupDM(input.trim(), memberKeys, secKey)
+            const enc = encryptGroupDM(commandContent ?? input.trim(), memberKeys, secKey)
             content = JSON.stringify(enc)
             encrypted = true
           } else {
-            content = input.trim()
+            content = commandContent ?? input.trim()
           }
         } else {
-          content = input.trim()
+          content = commandContent ?? input.trim()
         }
         message = await sendGroupDMMessage(session.url, activeGroupDMChannelId, content, encrypted)
         if (encrypted) {
-          message = { ...message, content: input.trim() }
+          message = { ...message, content: commandContent ?? input.trim() }
         }
       } else {
         return
