@@ -9,10 +9,9 @@ import type { Server as IoServer } from 'socket.io'
 function getAuth(c: Context): AuthUser { return c.get('auth') }
 
 const pollsRouter = new Hono()
-pollsRouter.use('*', authMiddleware)
 
 // Create a poll in a channel
-pollsRouter.post('/channels/:channelId/polls', async (c) => {
+pollsRouter.post('/channels/:channelId/polls', authMiddleware, async (c) => {
   const db = getDb()
   const { channelId } = c.req.param()
   const { userId, username } = getAuth(c)
@@ -81,7 +80,7 @@ pollsRouter.post('/channels/:channelId/polls', async (c) => {
 })
 
 // Get poll with vote counts
-pollsRouter.get('/polls/:pollId', async (c) => {
+pollsRouter.get('/polls/:pollId', authMiddleware, async (c) => {
   const db = getDb()
   const { pollId } = c.req.param()
   const { userId } = getAuth(c)
@@ -108,7 +107,7 @@ pollsRouter.get('/polls/:pollId', async (c) => {
 })
 
 // Vote on a poll
-pollsRouter.post('/polls/:pollId/vote', async (c) => {
+pollsRouter.post('/polls/:pollId/vote', authMiddleware, async (c) => {
   const db = getDb()
   const { pollId } = c.req.param()
   const { userId } = getAuth(c)
