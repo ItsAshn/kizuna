@@ -41,15 +41,22 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
   const session = useServerStore((s) => s.activeSession)
   const servers = useServerStore((s) => s.servers)
   const setActiveSession = useServerStore((s) => s.setActiveSession)
-  const {
-    channels,
-    categories,
-    dmChannels, groupDMChannels, activeChannelId, activeDMChannelId, activeGroupDMChannelId,
-    unreadCounts, mentionCounts,
-    setActiveChannel, setActiveDMChannel, setActiveGroupDMChannel, setViewedVoiceChannel, setChannels,
-    channelMutes,
-    members,
-  } = useChatStore()
+  const channels = useChatStore((s) => s.channels)
+  const categories = useChatStore((s) => s.categories)
+  const dmChannels = useChatStore((s) => s.dmChannels)
+  const groupDMChannels = useChatStore((s) => s.groupDMChannels)
+  const activeChannelId = useChatStore((s) => s.activeChannelId)
+  const activeDMChannelId = useChatStore((s) => s.activeDMChannelId)
+  const activeGroupDMChannelId = useChatStore((s) => s.activeGroupDMChannelId)
+  const unreadCounts = useChatStore((s) => s.unreadCounts)
+  const mentionCounts = useChatStore((s) => s.mentionCounts)
+  const channelMutes = useChatStore((s) => s.channelMutes)
+  const members = useChatStore((s) => s.members)
+  const setActiveChannel = useChatStore((s) => s.setActiveChannel)
+  const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
+  const setActiveGroupDMChannel = useChatStore((s) => s.setActiveGroupDMChannel)
+  const setViewedVoiceChannel = useChatStore((s) => s.setViewedVoiceChannel)
+  const setChannels = useChatStore((s) => s.setChannels)
   const {
     activeVoiceChannelId,
     voiceChannelUsers,

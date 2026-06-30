@@ -286,9 +286,13 @@ groupDmRoutes.post('/:channelId/messages', authMiddleware, async (c) => {
   ).run(id, channelId, user.userId, user.username, content.trim(), encrypted ? 1 : 0, now)
 
   if (attachment_ids && attachment_ids.length > 0) {
-    for (const attId of attachment_ids) {
-      db.prepare('UPDATE attachments SET message_id = ? WHERE id = ? AND message_id IS NULL').run(id, attId)
-    }
+    const updateStmt = db.prepare('UPDATE attachments SET message_id = ? WHERE id = ? AND message_id IS NULL')
+    const tx = db.transaction(() => {
+      for (const attId of attachment_ids) {
+        updateStmt.run(id, attId)
+      }
+    })
+    tx()
   }
 
   db.prepare('UPDATE group_dm_channels SET last_message_at = ? WHERE id = ?').run(now, channelId)

@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { FaWindows, FaLinux, FaApple, FaGithub, FaDocker } from 'react-icons/fa'
-import { MessageCircle, Mic, Monitor, Lock, Code, Download, ExternalLink, ArrowRight, Server } from 'lucide-react'
+import { MessageCircle, Mic, Monitor, Lock, Code, Download, ExternalLink, ArrowRight, Server, Apple, Container, Terminal, GitBranch } from 'lucide-react'
 import ServerBrowser from '../components/ServerBrowser'
 import './Landing.css'
 
@@ -159,21 +158,21 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
               className={`landing-download__tab ${installTab === 'linux' ? 'landing-download__tab--active' : ''}`}
               onClick={() => setInstallTab('linux')}
             >
-              <FaLinux size={13} />
+              <Terminal size={13} />
               <span>Linux</span>
             </button>
             <button
               className={`landing-download__tab ${installTab === 'macos' ? 'landing-download__tab--active' : ''}`}
               onClick={() => setInstallTab('macos')}
             >
-              <FaApple size={13} />
+              <Apple size={13} />
               <span>macOS</span>
             </button>
             <button
               className={`landing-download__tab ${installTab === 'windows' ? 'landing-download__tab--active' : ''}`}
               onClick={() => setInstallTab('windows')}
             >
-              <FaWindows size={13} />
+              <Monitor size={13} />
               <span>Windows</span>
             </button>
           </div>
@@ -198,7 +197,7 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
           rel="noopener noreferrer"
           className="landing-download__gh-link"
         >
-          <FaGithub size={14} />
+          <GitBranch size={14} />
           View all releases on GitHub
           <ExternalLink size={12} />
         </a>
@@ -210,7 +209,7 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
         <div className="landing-selfhost__card">
           <div className="landing-selfhost__code">
             <div className="landing-selfhost__code-header">
-              <FaDocker size={14} />
+              <Container size={14} />
               <span>docker compose</span>
             </div>
             <pre className="landing-selfhost__pre"><code>{DOCKER_COMPOSE}</code></pre>
@@ -224,7 +223,7 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
         </div>
         <div className="landing-selfhost__more">
           <a href="https://github.com/ItsAshn/kizuna" target="_blank" rel="noopener noreferrer" className="landing-selfhost__link">
-            <FaGithub size={14} />
+            <GitBranch size={14} />
             Full documentation on GitHub
             <ExternalLink size={12} />
           </a>
@@ -239,7 +238,7 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
           </div>
           <div className="landing-footer__links">
             <a href="https://github.com/ItsAshn/kizuna" target="_blank" rel="noopener noreferrer">
-              <FaGithub size={18} />
+              <GitBranch size={18} />
             </a>
           </div>
         </div>

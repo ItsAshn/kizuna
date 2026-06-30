@@ -98,6 +98,8 @@ function formatDateSeparator(date: Date): string {
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+const EMPTY_MSGS: Message[] = []
+
 export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBackToSidebar, onToggleMembers, membersOpen, onOpenEnvWizard }: ChatAreaProps) {
   const session = useServerStore((s) => s.activeSession)
   const isMobile = useMobile()
@@ -108,9 +110,9 @@ export default function ChatArea({ socketRef, onStartDMCall, onEndDMCall, onBack
   const activeChannelId = useChatStore((s) => s.activeChannelId)
   const activeDMChannelId = useChatStore((s) => s.activeDMChannelId)
   const activeGroupDMChannelId = useChatStore((s) => s.activeGroupDMChannelId)
-  const channelMessages = useChatStore((s) => (activeChannelId ? s.messages[activeChannelId] : undefined) ?? [])
-  const dmMessages = useChatStore((s) => (activeDMChannelId ? s.messages[activeDMChannelId] : undefined) ?? [])
-  const groupDMMessages = useChatStore((s) => (activeGroupDMChannelId ? s.messages[activeGroupDMChannelId] : undefined) ?? [])
+  const channelMessages = useChatStore((s) => (activeChannelId ? s.messages[activeChannelId] : undefined) ?? EMPTY_MSGS)
+  const dmMessages = useChatStore((s) => (activeDMChannelId ? s.messages[activeDMChannelId] : undefined) ?? EMPTY_MSGS)
+  const groupDMMessages = useChatStore((s) => (activeGroupDMChannelId ? s.messages[activeGroupDMChannelId] : undefined) ?? EMPTY_MSGS)
   const addMessage = useChatStore((s) => s.addMessage)
   const typingUsers = useChatStore((s) => s.typingUsers)
   const hasMoreMessages = useChatStore((s) => s.hasMoreMessages)

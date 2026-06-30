@@ -78,24 +78,34 @@ async function start(): Promise<void> {
   console.log('[i] Scheduled cleanup jobs started')
 
   console.log(`[i] Configuring network (UPnP: ${process.env.UPNP_ENABLED !== 'false' ? 'enabled' : 'disabled'})...`)
-  await openPorts({ httpPort: PORT, rtcMinPort: RTC_MIN, rtcMaxPort: RTC_MAX })
-
   console.log('[i] Resolving public address...')
-  try {
-    await resolvePublicAddress()
-    console.log(`[✓] Public address: ${process.env.PUBLIC_ADDRESS || 'auto-detected'}`)
-  } catch (err: unknown) {
-    console.warn(`[!] Could not resolve public address: ${err instanceof Error ? err.message : err}`)
-  }
-  startIpWatcher()
-
   console.log('[i] Starting voice server...')
-  try {
-    await createWorker()
-    console.log('[✓] Media worker started')
-  } catch (err: unknown) {
-    console.error('[!] Failed to start mediasoup worker:', err instanceof Error ? err.message : err)
+
+  const [_, _publicAddress, _worker] = await Promise.allSettled([
+    openPorts({ httpPort: PORT, rtcMinPort: RTC_MIN, rtcMaxPort: RTC_MAX }),
+    resolvePublicAddress(),
+    createWorker(),
+  ])
+
+  if (_.status === 'fulfilled') {
+    console.log('[✓] Network ports configured')
+  } else {
+    console.warn('[!] Network port configuration failed:', _.reason instanceof Error ? _.reason.message : _.reason)
   }
+
+  if (_publicAddress.status === 'fulfilled') {
+    console.log(`[✓] Public address: ${process.env.PUBLIC_ADDRESS || 'auto-detected'}`)
+  } else {
+    console.warn(`[!] Could not resolve public address: ${_publicAddress.reason instanceof Error ? _publicAddress.reason.message : _publicAddress.reason}`)
+  }
+
+  if (_worker.status === 'fulfilled') {
+    console.log('[✓] Media worker started')
+  } else {
+    console.error('[!] Failed to start mediasoup worker:', _worker.reason instanceof Error ? _worker.reason.message : _worker.reason)
+  }
+
+  startIpWatcher()
 
   const { server: _server, io } = createApp(PORT)
 

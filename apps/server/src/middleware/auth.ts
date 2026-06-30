@@ -40,18 +40,7 @@ function cacheSet<T>(map: Map<string, CacheEntry<T>>, key: string, value: T): vo
   map.set(key, { value, at: Date.now() })
 }
 
-setInterval(() => {
-  const now = Date.now()
-  for (const [key, entry] of adminCache) {
-    if (now - entry.at > PERM_CACHE_TTL) adminCache.delete(key)
-  }
-  for (const [key, entry] of hostCache) {
-    if (now - entry.at > PERM_CACHE_TTL) hostCache.delete(key)
-  }
-  for (const [key, entry] of permsCache) {
-    if (now - entry.at > PERM_CACHE_TTL) permsCache.delete(key)
-  }
-}, 60_000).unref()
+
 
 export function clearPermissionCache(userId?: string): void {
   if (userId) {
@@ -315,6 +304,47 @@ export function getUserChannelPermission(userId: string, channelId: string, perm
       if (deny[permission] === true) resolved = false
       if (allow[permission] === true) resolved = true
     } catch { /* skip malformed JSON */ }
+  }
+
+  return resolved
+}
+
+export function getResolvedChannelPermissions(userId: string, channelId: string, permissions: string[]): Record<string, boolean> {
+  if (isUserAdmin(userId)) {
+    const resolved: Record<string, boolean> = {}
+    for (const p of permissions) resolved[p] = true
+    return resolved
+  }
+
+  const basePerms = getUserPermissions(userId)
+  if (!basePerms) {
+    const resolved: Record<string, boolean> = {}
+    for (const p of permissions) resolved[p] = false
+    return resolved
+  }
+
+  const db = getDb()
+  const overrides = db.prepare(`
+    SELECT cro.allow_permissions, cro.deny_permissions
+    FROM channel_role_overrides cro
+    JOIN member_roles mr ON mr.role_id = cro.role_id AND mr.user_id = ?
+    JOIN roles r ON r.id = cro.role_id
+    WHERE cro.channel_id = ?
+    ORDER BY r.position ASC
+  `).all(userId, channelId) as { allow_permissions: string; deny_permissions: string }[]
+
+  const resolved: Record<string, boolean> = {}
+  for (const permission of permissions) {
+    let value = basePerms.permissions[permission] === true
+    for (const override of overrides) {
+      try {
+        const allow = JSON.parse(override.allow_permissions || '{}')
+        const deny = JSON.parse(override.deny_permissions || '{}')
+        if (deny[permission] === true) value = false
+        if (allow[permission] === true) value = true
+      } catch { /* skip malformed JSON */ }
+    }
+    resolved[permission] = value
   }
 
   return resolved

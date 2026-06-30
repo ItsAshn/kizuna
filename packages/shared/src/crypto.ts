@@ -32,16 +32,6 @@ function ensurePRNG(): void {
   prngInitialized = true
 }
 
-export function generateKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Array; publicKeyString: string } {
-  ensurePRNG()
-  const kp = nacl.box.keyPair()
-  return {
-    publicKey: kp.publicKey,
-    secretKey: kp.secretKey,
-    publicKeyString: encodeBase64(kp.publicKey),
-  }
-}
-
 export async function deriveKeyPair(
   password: string,
   salt: Uint8Array,
@@ -143,24 +133,7 @@ export function isGroupEncryptedContent(content: string): GroupEncryptedMessage 
   return null
 }
 
-export function encryptPrivateKey(secretKey: Uint8Array, passwordKey: Uint8Array): string {
-  ensurePRNG()
-  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)
-  const ciphertext = nacl.secretbox(secretKey, nonce, passwordKey)
-  if (!ciphertext) throw new Error('Private key encryption failed')
-  return JSON.stringify({ k: encodeBase64(ciphertext), n: encodeBase64(nonce) })
-}
-
-export function decryptPrivateKey(encrypted: string, passwordKey: Uint8Array): Uint8Array {
-  const { k, n } = JSON.parse(encrypted)
-  const ciphertext = decodeBase64(k)
-  const nonce = decodeBase64(n)
-  const decrypted = nacl.secretbox.open(ciphertext, nonce, passwordKey)
-  if (!decrypted) throw new Error('Private key decryption failed')
-  return decrypted
-}
-
-export async function deriveKey(password: string, salt: Uint8Array): Promise<Uint8Array> {
+async function deriveKey(password: string, salt: Uint8Array): Promise<Uint8Array> {
   const enc = new TextEncoder()
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
@@ -182,6 +155,6 @@ export async function deriveKey(password: string, salt: Uint8Array): Promise<Uin
   return new Uint8Array(bits)
 }
 
-export function encodeUTF8(bytes: Uint8Array): string {
+function encodeUTF8(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes)
 }

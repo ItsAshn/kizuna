@@ -9,7 +9,6 @@ import type {
   Permission,
   DMChannelData,
   GroupDMChannelData,
-  GroupDMVoiceStats,
   FileAttachment,
   ServerInfo,
   PoWChallenge,
@@ -144,12 +143,6 @@ export async function refreshToken(
   } catch {
     return null
   }
-}
-
-export async function logout(
-  serverUrl: string,
-): Promise<void> {
-  await client(serverUrl).post('/api/auth/logout')
 }
 
 export async function getMe(serverUrl: string): Promise<User> {
@@ -544,16 +537,6 @@ export async function kickMember(
   await client(serverUrl).delete(`/api/server/members/${userId}`)
 }
 
-export async function assignCustomRole(
-  serverUrl: string,
-  userId: string,
-  roleId: string | null,
-): Promise<void> {
-  if (roleId) {
-    await client(serverUrl).post(`/api/server/members/${userId}/roles`, { roleId })
-  }
-}
-
 export async function addMemberRole(
   serverUrl: string,
   userId: string,
@@ -824,16 +807,6 @@ export async function removeGroupDMMember(
   await client(serverUrl).delete(`/api/group-dms/${channelId}/members/${userId}`)
 }
 
-export async function getGroupDMVoiceStats(
-  serverUrl: string,
-  period?: '24h' | '7d' | '30d',
-): Promise<GroupDMVoiceStats> {
-  const params: Record<string, string> = {}
-  if (period) params.period = period
-  const res = await client(serverUrl).get('/api/admin/group-dms/stats', { params })
-  return res.data.stats ?? res.data
-}
-
 // ─── Attachments ──────────────────────────────────────────
 
 export async function uploadAttachment(
@@ -1045,15 +1018,6 @@ export async function getTaggerStatus(
   serverUrl: string,
 ): Promise<TaggerStatus> {
   const res = await client(serverUrl).get('/api/gifs/tagger-status')
-  return res.data
-}
-
-export async function confirmGifTags(
-  serverUrl: string,
-  gifId: string,
-  accepted: string[],
-): Promise<GifInfo> {
-  const res = await client(serverUrl).post(`/api/gifs/${gifId}/confirm-tags`, { accepted })
   return res.data
 }
 

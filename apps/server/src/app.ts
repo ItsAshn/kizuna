@@ -40,7 +40,7 @@ export function createApp(httpPort: number) {
   const app = new Hono<HonoEnv>();
 
   const corsOrigin = process.env.CORS_ORIGIN || '*';
-  app.use('*', cors({ origin: corsOrigin, credentials: true }));
+  app.use('*', cors({ origin: corsOrigin, credentials: corsOrigin !== '*' }));
 
   app.use('*', compress());
 
@@ -75,13 +75,6 @@ export function createApp(httpPort: number) {
     if (contentLength > maxBodySize) {
       return c.json({ error: 'Request body too large' }, 413);
     }
-    await next();
-  });
-
-  let ioInstance: IoServer | null = null;
-
-  app.use('*', async (c, next) => {
-    c.set('io', ioInstance!);
     await next();
   });
 
@@ -169,6 +162,13 @@ export function createApp(httpPort: number) {
     cors: { origin: corsOrigin, methods: ['GET', 'POST'] },
   });
 
+  const ioInstance: IoServer = io;
+
+  app.use('*', async (c, next) => {
+    c.set('io', ioInstance);
+    await next();
+  });
+
   io.use((socket, next) => {
     let token: string | undefined;
 
@@ -203,8 +203,6 @@ export function createApp(httpPort: number) {
       next(new Error('Invalid or expired token'));
     }
   });
-
-  ioInstance = io;
 
   io.on('connection', (socket) => {
     registerChatHandlers(io, socket);

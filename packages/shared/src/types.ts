@@ -101,7 +101,7 @@ export interface Message {
 
 export type ReactionType = 'emoji' | 'sticker';
 
-export interface ReactionUser {
+interface ReactionUser {
   user_id: string;
   username: string;
 }
@@ -115,14 +115,6 @@ export interface MessageReaction {
   count: number;
   /** Users who reacted. */
   users: ReactionUser[];
-}
-
-export interface MessageEdit {
-  id: string;
-  message_id: string;
-  old_content: string;
-  edited_by: string;
-  edited_at: number;
 }
 
 export interface PinnedMessage {
@@ -223,54 +215,6 @@ export interface VoicePeer {
   connectionQuality?: ConnectionQuality;
 }
 
-/** WebRTC RTP capabilities (codec negotiation). */
-export interface RtpCapabilities {
-  codecs?: Array<{
-    mimeType: string;
-    kind: 'audio' | 'video';
-    clockRate: number;
-    channels?: number;
-    parameters?: Record<string, unknown>;
-    rtcpFeedback?: Array<{
-      type: string;
-      parameter?: string;
-    }>;
-  }>;
-  headerExtensions?: Array<{
-    kind: 'audio' | 'video';
-    uri: string;
-    preferredId: number;
-    preferredEncrypt?: boolean;
-    direction?: 'sendrecv' | 'recvonly' | 'sendonly' | 'inactive';
-  }>;
-}
-
-/** ICE (STUN/TURN) server configuration. */
-export interface IceServer {
-  urls: string;
-  username?: string;
-  credential?: string;
-}
-
-/** Response from the server when joining a voice channel. */
-export interface VoiceJoinResponse {
-  rtpCapabilities?: RtpCapabilities;
-  routerRtpCapabilities?: RtpCapabilities;
-  peers?: VoicePeer[];
-  iceServers?: IceServer[];
-  error?: string;
-}
-
-export interface VoiceError {
-  type:
-    | 'permission_denied'
-    | 'device_not_found'
-    | 'device_in_use'
-    | 'transport_failed'
-    | 'unknown';
-  message: string;
-}
-
 /** An invite code for joining a server. */
 export interface InviteCode {
   code: string;
@@ -304,7 +248,7 @@ export interface DMChannelData {
 }
 
 /** A member of a group DM channel. */
-export interface GroupDMMember {
+interface GroupDMMember {
   user_id: string;
   username: string;
   display_name: string;
@@ -329,38 +273,10 @@ export interface FileAttachment {
   id: string;
   message_id: string | null;
   filename: string;
-  /** Full URL to download the attachment. */
   url: string;
-  /** File size in bytes. */
   size: number;
   content_type?: string;
   created_at: number;
-}
-
-/** Mention entry in a message. */
-export interface Mention {
-  id: string;
-  message_id: string;
-  channel_id: string;
-  author_id: string;
-  author_username: string;
-  mentioned_user_id: string | null;
-  mention_type: 'everyone' | 'here' | 'user' | 'role';
-  content: string;
-  /** Whether the mention has been read (0 or 1). */
-  read: number;
-  created_at: number;
-}
-
-export interface UnreadCount {
-  channel_id: string;
-  count: number;
-}
-
-export interface ScreenSharePeer {
-  peerId: string;
-  userId: string;
-  username: string;
 }
 
 export interface MonitorInfo {
@@ -429,22 +345,6 @@ export interface ChannelMute {
   muted_until: number | null;
 }
 
-/** Spam filter auto-mute event payload. */
-export interface SpamMute {
-  /** Reason for the mute. */
-  reason: string;
-  /** Epoch milliseconds when the mute expires. */
-  until: number;
-}
-
-/** Spam filter warning event payload. */
-export interface SpamWarning {
-  /** Category approaching the limit. */
-  category: 'rate' | 'channel_rate' | 'duplicate' | 'mention_spam';
-  /** Human-readable message. */
-  message: string;
-}
-
 /** URL embed/unfurl result. */
 export interface LinkEmbed {
   url: string;
@@ -453,17 +353,6 @@ export interface LinkEmbed {
   image?: string;
   site_name?: string;
   favicon?: string;
-}
-
-/** Admin analytics for group DM voice usage. */
-export interface GroupDMVoiceStats {
-  total_channels: number;
-  total_members: number;
-  active_voice_sessions: number;
-  voice_minutes_24h: number;
-  voice_minutes_7d: number;
-  voice_minutes_30d: number;
-  top_users_by_voice: { user_id: string; username: string; display_name: string; minutes: number }[];
 }
 
 export interface TaggerStatus {

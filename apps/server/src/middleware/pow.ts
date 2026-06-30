@@ -29,7 +29,8 @@ export function generateChallenge(): PoWChallenge {
     expiresAt: Date.now() + CHALLENGE_TTL_MS,
   };
   if (challenges.size >= MAX_STORE_SIZE) {
-    challenges.clear();
+    const oldestKeys = Array.from(challenges.keys()).slice(0, Math.floor(MAX_STORE_SIZE * 0.1))
+    for (const k of oldestKeys) challenges.delete(k)
   }
   challenges.set(challenge, entry);
   return entry;

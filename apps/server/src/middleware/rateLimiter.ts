@@ -33,7 +33,8 @@ function rateLimiter(maxRequests: number, windowMs: number) {
 
     if (!entry || entry.resetAt <= now) {
       if (store.size >= MAX_STORE_SIZE) {
-        store.clear();
+        const oldestKeys = Array.from(store.keys()).slice(0, Math.floor(MAX_STORE_SIZE * 0.1))
+        for (const k of oldestKeys) store.delete(k)
       }
       store.set(key, { count: 1, resetAt: now + windowMs });
       await next();

@@ -52,35 +52,60 @@ export interface PeerInfo {
 }
 
 const peers = new Map<string, PeerInfo>()
+const channelPeers = new Map<string, Set<string>>()
 const socketRtpEnabled = new Set<string>()
+
+let cachedVoiceBitrate: number | null = null
+let voiceBitrateCacheAt = 0
+const VOICE_BITRATE_CACHE_TTL = 30_000
+
+export function clearVoiceBitrateCache(): void {
+  voiceBitrateCacheAt = 0
+  cachedVoiceBitrate = null
+}
 
 export function getAllPeers(): PeerInfo[] {
   return Array.from(peers.values())
 }
 
 function getServerVoiceBitrateKbps(): number {
+  const now = Date.now()
+  if (cachedVoiceBitrate !== null && now - voiceBitrateCacheAt < VOICE_BITRATE_CACHE_TTL) {
+    return cachedVoiceBitrate
+  }
   const db = getDb()
   const row = db.prepare("SELECT value FROM server_settings WHERE key = 'voice_bitrate_kbps'").get() as { value: string } | undefined
+  let bitrate = 64
   if (row?.value) {
     const parsed = parseInt(row.value, 10)
-    if (!isNaN(parsed) && parsed >= 8 && parsed <= 512) return parsed
+    if (!isNaN(parsed) && parsed >= 8 && parsed <= 512) bitrate = parsed
   }
-  const envBitrate = parseInt(process.env.AUDIO_BITRATE_KBPS || '', 10)
-  if (!isNaN(envBitrate) && envBitrate >= 8 && envBitrate <= 512) return envBitrate
-  return 64
+  if (!row?.value) {
+    const envBitrate = parseInt(process.env.AUDIO_BITRATE_KBPS || '', 10)
+    if (!isNaN(envBitrate) && envBitrate >= 8 && envBitrate <= 512) bitrate = envBitrate
+  }
+  cachedVoiceBitrate = bitrate
+  voiceBitrateCacheAt = now
+  return bitrate
 }
 
 export function getPeersInChannel(channelId: string): PeerInfo[] {
+  const socketIds = channelPeers.get(channelId)
+  if (!socketIds) return []
   const result: PeerInfo[] = []
-  for (const peer of peers.values()) {
-    if (peer.channelId === channelId) result.push(peer)
+  for (const sid of socketIds) {
+    const peer = peers.get(sid)
+    if (peer) result.push(peer)
   }
   return result
 }
 
 function getScreenSharer(channelId: string): { peerId: string; userId: string; username: string } | null {
-  for (const peer of peers.values()) {
-    if (peer.channelId !== channelId) continue
+  const socketIds = channelPeers.get(channelId)
+  if (!socketIds) return null
+  for (const sid of socketIds) {
+    const peer = peers.get(sid)
+    if (!peer) continue
     for (const [, producer] of peer.producers) {
       if (producer.kind === 'video' && producer.appData?.source !== 'camera') {
         return { peerId: peer.socketId, userId: peer.userId, username: peer.username }
@@ -158,6 +183,8 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         announced: false,
       }
       peers.set(socket.id, peer)
+      if (!channelPeers.has(channelId)) channelPeers.set(channelId, new Set())
+      channelPeers.get(channelId)!.add(socket.id)
 
       if (channelId.startsWith('group-dm:')) {
         const groupChannelId = channelId.slice(9)
@@ -167,14 +194,14 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         ).run(vpId, groupChannelId, userId, Math.floor(Date.now() / 1000))
       }
 
-      const channelPeers: { id: string; userId: string; username: string; speaking: boolean; muted: boolean; hasCamera: boolean }[] = []
+      const existingPeers: { id: string; userId: string; username: string; speaking: boolean; muted: boolean; hasCamera: boolean }[] = []
       for (const p of getPeersInChannel(channelId)) {
         if (p.socketId !== socket.id && p.announced) {
           let hasCamera = false
           for (const [, producer] of p.producers) {
             if (producer.kind === 'video' && producer.appData?.source === 'camera') { hasCamera = true; break }
           }
-          channelPeers.push({
+          existingPeers.push({
             id: p.socketId,
             userId: p.userId,
             username: p.username,
@@ -188,12 +215,12 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       const iceServers = getIceServers()
       const screenSharePeer = getScreenSharer(channelId)
       const voiceBitrateKbps = getServerVoiceBitrateKbps()
-      vlog('join', `success | socketId=${socket.id} | username=${username} | channelPeers=${channelPeers.length} | iceServers=${iceServers.length} | screenShare=${!!screenSharePeer} | voiceBitrate=${voiceBitrateKbps}kbps | ms=${Date.now() - joinTs}`)
+      vlog('join', `success | socketId=${socket.id} | username=${username} | channelPeers=${existingPeers.length} | iceServers=${iceServers.length} | screenShare=${!!screenSharePeer} | voiceBitrate=${voiceBitrateKbps}kbps | ms=${Date.now() - joinTs}`)
 
       if (typeof callback === 'function') {
         callback({
           routerRtpCapabilities: router.rtpCapabilities,
-          peers: channelPeers,
+          peers: existingPeers,
           iceServers,
           screenSharePeer,
           voiceBitrateKbps,
@@ -632,6 +659,7 @@ function cleanupPeer(socketId: string, channelId: string, io: Server): void {
   peer.transports.forEach((t) => { try { t.close() } catch {} })
 
   peers.delete(socketId)
+  channelPeers.get(channelId)?.delete(socketId)
 
   const sock = io.sockets.sockets.get(socketId)
   if (sock) sock.leave(channelId)
@@ -655,11 +683,9 @@ function cleanupPeer(socketId: string, channelId: string, io: Server): void {
     } catch { /* ignore */ }
   }
 
-  const remainingInChannel = [...peers.values()].filter(p => p.channelId === channelId).length
-  if (remainingInChannel === 0) {
+  if ((channelPeers.get(channelId)?.size ?? 0) === 0) {
     setTimeout(() => {
-      const stillEmpty = [...peers.values()].filter(p => p.channelId === channelId).length === 0
-      if (stillEmpty) {
+      if ((channelPeers.get(channelId)?.size ?? 0) === 0) {
         vlog('cleanup', `closing router for empty channel ${channelId}`)
         closeRouter(channelId)
       }

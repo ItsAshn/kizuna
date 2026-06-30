@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { randomBytes } from 'node:crypto'
-import bcrypt from 'bcryptjs'
+import bcrypt from 'bcrypt'
 import { getDb } from '../db'
 import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getUserPermissions, getJwtSecret, assignDefaultRoles } from '../middleware/auth'
 import type { AuthUser, JwtPayload } from '../middleware/auth'

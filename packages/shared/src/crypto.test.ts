@@ -1,34 +1,27 @@
 import { describe, it, expect } from 'vitest';
+import nacl from 'tweetnacl';
+import { encodeBase64 } from 'tweetnacl-util';
 import {
-  generateKeyPair,
   encryptDM,
   decryptDM,
   isEncryptedContent,
   type EncryptedMessage,
 } from './crypto';
 
+function generateTestKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Array; publicKeyString: string } {
+  const kp = nacl.box.keyPair();
+  return {
+    publicKey: kp.publicKey,
+    secretKey: kp.secretKey,
+    publicKeyString: encodeBase64(kp.publicKey),
+  };
+}
+
 describe('crypto', () => {
-  describe('generateKeyPair', () => {
-    it('generates a key pair with valid public and secret keys', () => {
-      const kp = generateKeyPair();
-      expect(kp.publicKey).toBeInstanceOf(Uint8Array);
-      expect(kp.secretKey).toBeInstanceOf(Uint8Array);
-      expect(kp.publicKey.length).toBe(32);
-      expect(kp.secretKey.length).toBe(32);
-      expect(typeof kp.publicKeyString).toBe('string');
-    });
-
-    it('generates unique key pairs each time', () => {
-      const kp1 = generateKeyPair();
-      const kp2 = generateKeyPair();
-      expect(kp1.publicKeyString).not.toBe(kp2.publicKeyString);
-    });
-  });
-
   describe('encryptDM / decryptDM', () => {
     it('encrypts and decrypts a message correctly', () => {
-      const alice = generateKeyPair();
-      const bob = generateKeyPair();
+      const alice = generateTestKeyPair();
+      const bob = generateTestKeyPair();
 
       const plaintext = 'Hello, Bob!';
       const encrypted = encryptDM(plaintext, bob.publicKeyString, alice.secretKey);
@@ -42,9 +35,9 @@ describe('crypto', () => {
     });
 
     it('fails to decrypt with wrong key', () => {
-      const alice = generateKeyPair();
-      const bob = generateKeyPair();
-      const eve = generateKeyPair();
+      const alice = generateTestKeyPair();
+      const bob = generateTestKeyPair();
+      const eve = generateTestKeyPair();
 
       const encrypted = encryptDM('secret', bob.publicKeyString, alice.secretKey);
 
@@ -52,7 +45,7 @@ describe('crypto', () => {
     });
 
     it('throws on encryption failure with invalid public key', () => {
-      const alice = generateKeyPair();
+      const alice = generateTestKeyPair();
       expect(() => encryptDM('test', 'invalid-base64', alice.secretKey)).toThrow();
     });
   });

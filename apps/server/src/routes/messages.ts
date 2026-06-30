@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'node:path'
-import fs from 'node:fs'
+import fs from 'node:fs/promises'
 import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission, canWriteToChannel, isUserAdmin } from '../middleware/auth'
 import { checkSpam } from '../services/spamFilter'
@@ -180,9 +180,13 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   ).run(id, channelId, user.userId, user.username, content.trim(), reply_to_message_id || null, replyUsername, replyContent)
 
   if (attachment_ids && attachment_ids.length > 0) {
-    for (const attId of attachment_ids) {
-      db.prepare('UPDATE attachments SET message_id = ? WHERE id = ? AND message_id IS NULL').run(id, attId)
-    }
+    const updateStmt = db.prepare('UPDATE attachments SET message_id = ? WHERE id = ? AND message_id IS NULL')
+    const tx = db.transaction(() => {
+      for (const attId of attachment_ids) {
+        updateStmt.run(id, attId)
+      }
+    })
+    tx()
   }
 
   const row = db.prepare(`
@@ -218,7 +222,7 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
 })
 
 // DELETE /messages/:messageId — delete message
-messageRoutes.delete('/:messageId', authMiddleware, (c) => {
+messageRoutes.delete('/:messageId', authMiddleware, async (c) => {
   const user = getAuth(c)
   const userPerms = getUserPermissions(user.userId)
   const messageId = c.req.param('messageId')
@@ -235,10 +239,10 @@ messageRoutes.delete('/:messageId', authMiddleware, (c) => {
 
   const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
   const attachments = db.prepare('SELECT * FROM attachments WHERE message_id = ?').all(messageId) as AttachmentRow[]
-  for (const att of attachments) {
+  await Promise.all(attachments.map(async (att) => {
     const filepath = path.join(uploadsDir, path.basename(att.url))
-    try { fs.unlinkSync(filepath) } catch { /* file may not exist */ }
-  }
+    try { await fs.unlink(filepath) } catch { /* file may not exist */ }
+  }))
 
   db.prepare('DELETE FROM attachments WHERE message_id = ?').run(messageId)
   db.prepare('DELETE FROM mentions WHERE message_id = ?').run(messageId)

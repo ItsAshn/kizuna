@@ -27,7 +27,8 @@ function checkSocketRateLimit(socket: Socket, event: string, max: number, window
   const entry = socketRateLimits.get(key)
   if (!entry || entry.resetAt <= now) {
     if (socketRateLimits.size >= MAX_SOCKET_RATE_STORE) {
-      socketRateLimits.clear()
+      const oldestKeys = Array.from(socketRateLimits.keys()).slice(0, Math.floor(MAX_SOCKET_RATE_STORE * 0.1))
+      for (const k of oldestKeys) socketRateLimits.delete(k)
     }
     socketRateLimits.set(key, { count: 1, resetAt: now + windowMs })
     return true
@@ -299,11 +300,6 @@ export function broadcastReaction(
   } else {
     io.to(msgInfo.channel_id).emit(event, payload);
   }
-}
-
-function getSocketUsernameById(userId: string, db: ReturnType<typeof getDb>): string {
-  const row = db.prepare('SELECT username FROM users WHERE id = ?').get(userId) as { username: string } | undefined
-  return row?.username || 'unknown'
 }
 
 export function registerChatHandlers(io: Server, socket: Socket): void {
@@ -696,20 +692,18 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
   socket.on('channel:unread', (_, callback?: Function) => {
     if (!userId || typeof callback !== 'function') return
     const db = getDb()
-    const rows = db.prepare(
-      'SELECT channel_id, last_read_at FROM channel_reads WHERE user_id = ?'
-    ).all(userId) as { channel_id: string; last_read_at: number }[]
-
-    const lastRead = new Map(rows.map(r => [r.channel_id, r.last_read_at]))
-    const channels = db.prepare("SELECT id FROM channels WHERE type = 'text'").all() as { id: string }[]
+    const countRows = db.prepare(`
+      SELECT m.channel_id, COUNT(*) as count
+      FROM messages m
+      JOIN channels c ON c.id = m.channel_id AND c.type = 'text'
+      LEFT JOIN channel_reads cr ON cr.channel_id = m.channel_id AND cr.user_id = ?
+      WHERE m.created_at > COALESCE(cr.last_read_at, 0)
+      GROUP BY m.channel_id
+    `).all(userId) as { channel_id: string; count: number }[]
 
     const unreadCounts: Record<string, number> = {}
-    for (const ch of channels) {
-      const threshold = lastRead.get(ch.id) || 0
-      const count = db.prepare(
-        'SELECT COUNT(*) as count FROM messages WHERE channel_id = ? AND created_at > ?'
-      ).get(ch.id, threshold) as { count: number }
-      if (count.count > 0) unreadCounts[ch.id] = count.count
+    for (const row of countRows) {
+      unreadCounts[row.channel_id] = row.count
     }
 
     callback(unreadCounts)
@@ -1152,12 +1146,22 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     }
 
     const db2 = getDb()
+    const onlineUserIds = Array.from(userStatuses.keys()).filter(uid => userStatuses.get(uid) !== 'invisible')
+    const usernameMap = new Map<string, string>()
+    if (onlineUserIds.length > 0) {
+      const placeholders = onlineUserIds.map(() => '?').join(',')
+      const userRows = db2.prepare(
+        `SELECT id, username FROM users WHERE id IN (${placeholders})`
+      ).all(...onlineUserIds) as { id: string; username: string }[]
+      for (const row of userRows) {
+        usernameMap.set(row.id, row.username)
+      }
+    }
     const onlineList: Record<string, { username: string; status: UserStatus; activity?: UserActivity | null }> = {}
-    for (const [uid, status] of userStatuses) {
-      if (status === 'invisible') continue
+    for (const uid of onlineUserIds) {
       onlineList[uid] = {
-        username: getSocketUsernameById(uid, db2),
-        status,
+        username: usernameMap.get(uid) || 'unknown',
+        status: userStatuses.get(uid)!,
         activity: userActivities.get(uid) || null,
       }
     }

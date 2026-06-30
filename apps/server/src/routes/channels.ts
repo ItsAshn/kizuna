@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, getUserChannelPermissions, getUserChannelPermission } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission, getUserChannelPermissions, getResolvedChannelPermissions } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 
 interface IOServer {
@@ -177,15 +177,12 @@ channelRoutes.get('/:id/permissions', authMiddleware, (c) => {
   const user = getAuth(c)
   const channelId = c.req.param('id')!
   const perms = getUserChannelPermissions(user.userId, channelId)
-  const resolved: Record<string, boolean> = {}
   const allPermissions = [
     'send_messages', 'send_dm_messages', 'add_reactions', 'upload_attachments',
     'delete_messages', 'manage_channels', 'manage_roles', 'kick_members',
     'manage_invites', 'use_voice', 'initiate_dm_calls',
   ]
-  for (const p of allPermissions) {
-    resolved[p] = getUserChannelPermission(user.userId, channelId, p)
-  }
+  const resolved = getResolvedChannelPermissions(user.userId, channelId, allPermissions)
   return c.json({ ...perms, permissions: resolved })
 })
 
