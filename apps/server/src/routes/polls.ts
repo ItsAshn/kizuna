@@ -13,7 +13,7 @@ const pollsRouter = new Hono()
 // Create a poll in a channel
 pollsRouter.post('/channels/:channelId/polls', authMiddleware, async (c) => {
   const db = getDb()
-  const { channelId } = c.req.param()
+  const { channelId } = c.req.param() as { channelId: string }
   const { userId, username } = getAuth(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.question?.trim() || !Array.isArray(body.options) || body.options.length < 2) {
