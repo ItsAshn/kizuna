@@ -47,6 +47,57 @@ webhooksRouter.delete('/webhooks/:webhookId', authMiddleware, async (c) => {
   return c.json({ ok: true })
 })
 
+function formatWebhookContent(c: Context, body: Record<string, unknown>): string | undefined {
+  const ghEvent = c.req.header('X-GitHub-Event')
+  if (ghEvent === 'release') {
+    const action = body.action
+    const repo = (body.repository as Record<string, unknown> | undefined)?.full_name ?? 'unknown'
+    const release = body.release as Record<string, unknown> | undefined
+    const tag = release?.tag_name ?? release?.name ?? 'unknown'
+    const url = release?.html_url ?? ''
+    const prerelease = release?.prerelease ? ' (pre-release)' : ''
+    return `${action === 'published' ? '🚀' : '📦'} **${repo}**: Release ${tag}${prerelease}\n${url}`
+  }
+  if (ghEvent === 'push') {
+    const repo = (body.repository as Record<string, unknown> | undefined)?.full_name ?? 'unknown'
+    const ref = (body as Record<string, unknown>).ref as string | undefined
+    const branch = ref?.replace('refs/heads/', '') ?? 'unknown'
+    const commits = (body as Record<string, unknown>).commits as Array<Record<string, unknown>> | undefined
+    const compare = (body as Record<string, unknown>).compare as string | undefined
+    let msg = `🔨 **${repo}**: ${commits?.length ?? 0} commit(s) pushed to \`${branch}\``
+    if (commits?.length) {
+      msg += '\n' + commits.slice(0, 5).map(c =>
+        `- \`${(c.id as string).slice(0, 7)}\` ${c.message}`
+      ).join('\n')
+      if (commits.length > 5) msg += `\n...and ${commits.length - 5} more`
+    }
+    if (compare) msg += `\n${compare}`
+    return msg
+  }
+  if (ghEvent === 'issues') {
+    const repo = (body.repository as Record<string, unknown> | undefined)?.full_name ?? 'unknown'
+    const issue = body.issue as Record<string, unknown> | undefined
+    const title = issue?.title ?? 'unknown'
+    const url = issue?.html_url ?? ''
+    const action = body.action
+    return `📝 **${repo}**: Issue ${action}: ${title}\n${url}`
+  }
+  if (ghEvent === 'pull_request') {
+    const repo = (body.repository as Record<string, unknown> | undefined)?.full_name ?? 'unknown'
+    const pr = body.pull_request as Record<string, unknown> | undefined
+    const title = pr?.title ?? 'unknown'
+    const url = pr?.html_url ?? ''
+    const action = body.action
+    const merged = pr?.merged ? ' (merged)' : ''
+    return `🔀 **${repo}**: PR ${action}${merged}: ${title}\n${url}`
+  }
+  if (ghEvent === 'star') {
+    const repo = (body.repository as Record<string, unknown> | undefined)?.full_name ?? 'unknown'
+    const sender = (body.sender as Record<string, unknown> | undefined)?.login ?? 'someone'
+    return `⭐ **${repo}**: Starred by ${sender}`
+  }
+}
+
 // Public incoming webhook endpoint (no auth — validated by token)
 webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
   const db = getDb()
@@ -58,7 +109,12 @@ webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
   if (!webhook) return c.json({ error: 'invalid token' }, 401)
 
   const body = await c.req.json().catch(() => null)
-  const content = body?.content?.trim()
+  if (!body) return c.json({ error: 'invalid JSON body' }, 400)
+
+  let content = typeof body.content === 'string' ? body.content.trim() : undefined
+  if (!content) {
+    content = formatWebhookContent(c, body)
+  }
   if (!content || content.length > 4000) return c.json({ error: 'content required (max 4000 chars)' }, 400)
 
   const messageId = uuidv4()
