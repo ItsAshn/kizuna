@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react'
 import { LayoutDashboard, MessageSquare, User } from 'lucide-react'
+import { useHaptics } from '../hooks/useHaptics'
 import './BottomTabBar.css'
 
 interface BottomTabBarProps {
@@ -10,6 +11,7 @@ interface BottomTabBarProps {
 }
 
 const TAB_COUNT = 3
+const INDICATOR_INSET = 14
 
 export default function BottomTabBar({
   activeTab,
@@ -19,6 +21,7 @@ export default function BottomTabBar({
 }: BottomTabBarProps) {
   const barRef = useRef<HTMLElement>(null)
   const indicatorRef = useRef<HTMLDivElement>(null)
+  const { tap } = useHaptics()
 
   useEffect(() => {
     const bar = barRef.current
@@ -26,9 +29,14 @@ export default function BottomTabBar({
     if (!bar || !indicator) return
 
     const tabWidth = bar.offsetWidth / TAB_COUNT
-    indicator.style.left = `${activeTab * tabWidth}px`
-    indicator.style.width = `${tabWidth}px`
+    indicator.style.left = `${activeTab * tabWidth + INDICATOR_INSET}px`
+    indicator.style.width = `${tabWidth - INDICATOR_INSET * 2}px`
   }, [activeTab])
+
+  const handleTabChange = (tab: number) => {
+    if (tab !== activeTab) tap()
+    onTabChange(tab)
+  }
 
   return (
     <nav ref={barRef} className="bottom-tab-bar" role="navigation" aria-label="Main navigation">
@@ -36,7 +44,7 @@ export default function BottomTabBar({
 
       <button
         className={`bottom-tab-bar__tab${activeTab === 0 ? ' bottom-tab-bar__tab--active' : ''}`}
-        onClick={() => onTabChange(0)}
+        onClick={() => handleTabChange(0)}
         aria-label={`Servers${serverMentionCount > 0 ? `, ${serverMentionCount} mentions` : ''}`}
         aria-current={activeTab === 0 ? 'page' : undefined}
       >
@@ -51,7 +59,7 @@ export default function BottomTabBar({
 
       <button
         className={`bottom-tab-bar__tab${activeTab === 1 ? ' bottom-tab-bar__tab--active' : ''}`}
-        onClick={() => onTabChange(1)}
+        onClick={() => handleTabChange(1)}
         aria-label={`Messages${dmUnreadCount > 0 ? `, ${dmUnreadCount} unread` : ''}`}
         aria-current={activeTab === 1 ? 'page' : undefined}
       >
@@ -66,7 +74,7 @@ export default function BottomTabBar({
 
       <button
         className={`bottom-tab-bar__tab${activeTab === 2 ? ' bottom-tab-bar__tab--active' : ''}`}
-        onClick={() => onTabChange(2)}
+        onClick={() => handleTabChange(2)}
         aria-label="You"
         aria-current={activeTab === 2 ? 'page' : undefined}
       >

@@ -215,7 +215,9 @@
     gap: 0;
     position: fixed;
     inset: 0;
+    bottom: var(--keyboard-height, 0px);
     overflow: hidden;
+    transition: bottom 0.2s ease-out;
   }
 
   .connection-banner {
@@ -228,6 +230,7 @@
     min-height: 0;
     position: relative;
     overflow: hidden;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
 
   .mobile-content__view {
@@ -689,8 +692,25 @@
     background: rgba(10, 10, 10, 0.82);
   }
 
-  .chat-layout--mobile--has-bg .chat-area {
+  /* Server bg shows through the chat area; dark overlay only on the messages
+     scroll area so header and input bar can let the bg through. */
+  .chat-layout--mobile--has-bg .chat-area__messages-wrap,
+  .chat-layout--mobile--has-bg .chat-area__empty {
     background: rgba(10, 10, 10, 0.82);
+  }
+
+  /* Header and input bar — semi-transparent to show server bg */
+  .chat-layout--mobile--has-bg .chat-area__header,
+  .chat-layout--mobile--has-bg .chat-area__input-bar {
+    background: rgba(17, 17, 17, 0.82);
+  }
+
+  .chat-layout--mobile--has-bg .chat-area__header {
+    border-bottom: 0.5px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .chat-layout--mobile--has-bg .chat-area__input-bar {
+    border-top-color: rgba(255, 255, 255, 0.06);
   }
 
   .chat-layout--mobile--has-bg .mobile-server-card,

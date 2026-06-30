@@ -552,24 +552,22 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
     }, 300)
   }, [])
 
-  // auto-save background blur on change
-  const blurInitRef = useRef(true)
-  const bgChangedRef = useRef(onBackgroundChanged)
-  bgChangedRef.current = onBackgroundChanged
-  useEffect(() => {
-    if (blurInitRef.current) { blurInitRef.current = false; return }
-    if (!serverUrl) return
-    const timer = setTimeout(async () => {
+  // auto-save background blur on change (ref-based so it survives modal close)
+  const bgBlurSaveTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const saveBgBlur = useCallback((blur: number) => {
+    clearTimeout(bgBlurSaveTimerRef.current)
+    bgBlurSaveTimerRef.current = setTimeout(async () => {
+      const url = useServerStore.getState().activeSession?.url
+      if (!url) return
       try {
-        await updateServerSettings(serverUrl, undefined, undefined, bgBlur)
-        bgChangedRef.current?.()
+        await updateServerSettings(url, undefined, undefined, blur)
+        onBackgroundChanged?.()
       } catch (err) {
         console.error('Failed to save background blur:', err)
         setServerMsg(handleApiErr(err))
       }
     }, 400)
-    return () => clearTimeout(timer)
-  }, [bgBlur, serverUrl])
+  }, [onBackgroundChanged])
 
   // ─── Members ─────────────────────────────────────────
   const [membersLoading, setMembersLoading] = useState(false)
@@ -1580,7 +1578,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
                         <label className="server-menu__label">background blur</label>
                         <span className="server-menu__value-chip">{bgBlur}px</span>
                       </div>
-                      <Slider min={0} max={20} value={bgBlur} onChange={setBgBlur} ariaLabel="Background blur" />
+                      <Slider min={0} max={20} value={bgBlur} onChange={(v) => { setBgBlur(v); saveBgBlur(v) }} ariaLabel="Background blur" />
                     </div>
                   </div>
 
