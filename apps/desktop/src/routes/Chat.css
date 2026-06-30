@@ -184,6 +184,10 @@
   gap: 8px;
 }
 
+.connection-banner--reconnecting {
+  background: #d97706;
+}
+
 .connection-banner__spinner {
   animation: spin 1s linear infinite;
 }

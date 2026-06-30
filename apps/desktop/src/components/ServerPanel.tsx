@@ -204,6 +204,8 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
         onClick={handleHome}
         title="Home"
         aria-label="Home"
+        data-tooltip="Home"
+        data-tooltip-side="right"
       >
         <LayoutDashboard size={20} />
       </button>
@@ -254,6 +256,8 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
         onClick={onAddServer}
         title="Add Server"
         aria-label="Add server"
+        data-tooltip="Add Server"
+        data-tooltip-side="right"
       >
         <Plus size={18} />
       </button>
@@ -263,6 +267,8 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
         onClick={onOpenExport}
         title="Export / Import"
         aria-label="Export / Import"
+        data-tooltip="Export / Import"
+        data-tooltip-side="right"
       >
         <Ellipsis size={18} />
       </button>
@@ -272,6 +278,8 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
         onClick={onOpenSettings}
         title="Settings"
         aria-label="Settings"
+        data-tooltip="Settings"
+        data-tooltip-side="right"
       >
         <Settings size={18} />
       </button>

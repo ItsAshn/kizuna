@@ -460,7 +460,8 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
               onClick={onOpenMenu}
               className="sidebar__channel-icon"
               style={{ marginLeft: 'auto', fontSize: '14px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
-              title="server menu"
+              title="Server Menu"
+              data-tooltip="Server Menu"
             >
               <Ellipsis size={18} />
             </button>

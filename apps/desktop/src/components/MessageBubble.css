@@ -5,6 +5,12 @@
   gap: 12px;
   padding: 0 16px;
   margin-top: 12px;
+  border-radius: var(--radius-sm);
+  transition: background 0.1s ease;
+}
+
+.msg-bubble__row:hover {
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .msg-bubble__row:first-child {
@@ -57,7 +63,6 @@
   letter-spacing: 0.5px;
   white-space: nowrap;
   padding: 2px 8px;
-  background: var(--bg-primary);
   border-radius: var(--radius-sm);
 }
 
@@ -1008,9 +1013,9 @@
   gap: 2px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm, 8px);
-  padding: 2px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border-radius: var(--radius-lg, 16px);
+  padding: 3px 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 .msg-bubble__react-quick {

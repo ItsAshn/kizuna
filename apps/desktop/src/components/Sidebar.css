@@ -193,13 +193,17 @@
   width: 8px;
   height: 8px;
   border-radius: var(--radius-full);
-  background: var(--text-muted);
+  background: var(--text-primary);
   flex-shrink: 0;
 }
 
 .sidebar__channel--unread .sidebar__channel-name {
   color: var(--text-primary);
-  font-weight: 500;
+  font-weight: 600;
+}
+
+.sidebar__channel--unread {
+  box-shadow: inset 2px 0 0 var(--text-secondary);
 }
 
 .sidebar__mute-icon {

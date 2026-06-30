@@ -138,6 +138,7 @@
   font-weight: 600;
   cursor: pointer;
   opacity: 0.92;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
   transition:
     opacity 0.15s ease,
     background 0.15s ease;
@@ -325,6 +326,7 @@
 
 .chat-area__input:focus {
   border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(76, 110, 245, 0.18);
 }
 
 .chat-area__input--locked {

@@ -114,11 +114,23 @@
   height: 20px;
   background: var(--text-primary);
   border-radius: 0 4px 4px 0;
-  transition: height 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: indicatorGrow 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .server-panel__icon--active:hover::before {
   height: 36px;
+  transition: height 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes indicatorGrow {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: 20px;
+    opacity: 1;
+  }
 }
 
 .server-panel__icon--active:hover {

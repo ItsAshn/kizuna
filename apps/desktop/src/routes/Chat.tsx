@@ -370,7 +370,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
       data-voice={activeVoiceChannelId ? 'true' : undefined}
     >
       {!socketConnected && (
-        <div className="connection-banner">
+        <div className={`connection-banner${socketReconnecting ? ' connection-banner--reconnecting' : ''}`}>
           {socketReconnecting ? (
             <>
               <Loader2 size={14} className="connection-banner__spinner" />
