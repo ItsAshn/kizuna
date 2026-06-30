@@ -40,7 +40,7 @@ export function createApp(httpPort: number) {
   const app = new Hono<HonoEnv>();
 
   const corsOrigin = process.env.CORS_ORIGIN || '*';
-  app.use('*', cors({ origin: corsOrigin, credentials: corsOrigin !== '*' }));
+  app.use('*', cors({ origin: corsOrigin, credentials: true }));
 
   app.use('*', compress());
 
@@ -75,6 +75,13 @@ export function createApp(httpPort: number) {
     if (contentLength > maxBodySize) {
       return c.json({ error: 'Request body too large' }, 413);
     }
+    await next();
+  });
+
+  const ioRef: { current: IoServer | null } = { current: null };
+
+  app.use('*', async (c, next) => {
+    c.set('io', ioRef.current!);
     await next();
   });
 
@@ -162,12 +169,7 @@ export function createApp(httpPort: number) {
     cors: { origin: corsOrigin, methods: ['GET', 'POST'] },
   });
 
-  const ioInstance: IoServer = io;
-
-  app.use('*', async (c, next) => {
-    c.set('io', ioInstance);
-    await next();
-  });
+  ioRef.current = io;
 
   io.use((socket, next) => {
     let token: string | undefined;
