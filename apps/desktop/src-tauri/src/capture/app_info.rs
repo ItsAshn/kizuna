@@ -53,6 +53,49 @@ fn normalize_proc(name: &str) -> String {
         .to_string()
 }
 
+/// Check if a process key matches a Steam Proton app (`steam_app_<digits>`).
+fn is_steam_proton_app(key: &str) -> bool {
+    key.starts_with("steam_app_")
+        && key
+            .strip_prefix("steam_app_")
+            .map_or(false, |rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// Extract the numeric Steam App ID from a `steam_app_XXXXX` key.
+fn extract_steam_app_id(key: &str) -> Option<&str> {
+    key.strip_prefix("steam_app_")
+        .filter(|rest| rest.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// Look up a game name from Steam's local `appmanifest_<appid>.acf` files.
+fn lookup_steam_game_name(app_id: &str) -> Option<String> {
+    let home = std::env::var("HOME").ok()?;
+
+    let steam_dirs: [String; 4] = [
+        format!("{home}/.steam/steam"),
+        format!("{home}/.local/share/Steam"),
+        format!("{home}/.var/app/com.valvesoftware.Steam/.local/share/Steam"),
+        format!("{home}/.var/app/com.valvesoftware.Steam/data/Steam"),
+    ];
+
+    for steam_dir in &steam_dirs {
+        let manifest_path = format!("{steam_dir}/steamapps/appmanifest_{app_id}.acf");
+        if let Ok(content) = std::fs::read_to_string(&manifest_path) {
+            for line in content.lines() {
+                let line = line.trim();
+                if let Some(rest) = line.strip_prefix("\"name\"") {
+                    let name = rest.trim().trim_matches('"').trim();
+                    if !name.is_empty() {
+                        return Some(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
 pub fn resolve_active_window_details(info: &WindowInfo) -> ActiveWindowDetails {
     let key = normalize_proc(&info.process_name);
 
@@ -60,6 +103,19 @@ pub fn resolve_active_window_details(info: &WindowInfo) -> ActiveWindowDetails {
         return ActiveWindowDetails {
             display_name: humanize_name(&key),
             category: AppCategory::App,
+            icon: None,
+            title: info.title.clone(),
+            process_name: info.process_name.clone(),
+        };
+    }
+
+    if is_steam_proton_app(&key) {
+        let display_name = extract_steam_app_id(&key)
+            .and_then(lookup_steam_game_name)
+            .unwrap_or_else(|| info.title.clone());
+        return ActiveWindowDetails {
+            display_name,
+            category: AppCategory::Game,
             icon: None,
             title: info.title.clone(),
             process_name: info.process_name.clone(),

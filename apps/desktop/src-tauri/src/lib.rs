@@ -96,7 +96,14 @@ fn list_windows() -> Result<Vec<AppEntry>, String> {
 
     Ok(capture::focus::list_windows(session)
         .into_iter()
-        .map(AppEntry::from)
+        .map(|w| {
+            let details = capture::app_info::resolve_active_window_details(&w);
+            AppEntry {
+                title: details.title,
+                process_name: details.process_name,
+                display_name: details.display_name,
+            }
+        })
         .collect())
 }
 
