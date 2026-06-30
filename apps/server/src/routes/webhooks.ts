@@ -11,11 +11,7 @@ function getAuth(c: Context): AuthUser { return c.get('auth') }
 
 const webhooksRouter = new Hono()
 
-// Management routes (require auth)
-const authedRouter = new Hono()
-authedRouter.use('*', authMiddleware)
-
-authedRouter.post('/channels/:channelId/webhooks', async (c) => {
+webhooksRouter.post('/channels/:channelId/webhooks', authMiddleware, async (c) => {
   const db = getDb()
   const { channelId } = c.req.param()
   const { userId } = getAuth(c)
@@ -30,14 +26,14 @@ authedRouter.post('/channels/:channelId/webhooks', async (c) => {
   return c.json({ webhook: { id, channelId, name, token } })
 })
 
-authedRouter.get('/channels/:channelId/webhooks', async (c) => {
+webhooksRouter.get('/channels/:channelId/webhooks', authMiddleware, async (c) => {
   const db = getDb()
   const { channelId } = c.req.param()
   const rows = db.prepare('SELECT id, name, created_at FROM webhooks WHERE channel_id = ?').all(channelId)
   return c.json({ webhooks: rows })
 })
 
-authedRouter.delete('/webhooks/:webhookId', async (c) => {
+webhooksRouter.delete('/webhooks/:webhookId', authMiddleware, async (c) => {
   const db = getDb()
   const { webhookId } = c.req.param()
   const { userId } = getAuth(c)
@@ -91,7 +87,5 @@ webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
 
   return c.json({ ok: true, messageId })
 })
-
-webhooksRouter.route('/', authedRouter)
 
 export default webhooksRouter
