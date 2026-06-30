@@ -11,6 +11,7 @@ import { openPorts, upnpClient, getMappedPorts } from './services/upnp'
 import { resolvePublicAddress, startIpWatcher } from './services/publicAddress'
 import { startHeartbeat } from './heartbeat'
 import { startRegistryCleanup } from './routes/registry'
+import { startIdentityLinkCleanup } from './routes/identityLinks'
 import { startAuditLogCleanup } from './routes/audit'
 import { startOrphanCleanup } from './routes/attachments'
 import { getServerInfo } from './routes/serverInfo'
@@ -74,6 +75,7 @@ async function start(): Promise<void> {
   }
 
   startAuditLogCleanup()
+  startIdentityLinkCleanup()
   startOrphanCleanup()
   console.log('[i] Scheduled cleanup jobs started')
 

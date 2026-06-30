@@ -360,3 +360,13 @@ export interface TaggerStatus {
   loading: boolean;
   enabled: boolean;
 }
+
+/** A verified cross-server identity link. */
+export interface LinkedIdentity {
+  id: string;
+  linked_server_url: string;
+  linked_user_id: string;
+  linked_username: string;
+  public: boolean;
+  linked_at: number;
+}

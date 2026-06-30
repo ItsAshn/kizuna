@@ -55,3 +55,4 @@ export const sensitiveAuthLimiter = rateLimiter(30, 60_000);
 export const messageLimiter = rateLimiter(120, 60_000);
 export const uploadLimiter = rateLimiter(60, 60_000);
 export const apiLimiter = rateLimiter(300, 60_000);
+export const verifyLimiter = rateLimiter(30, 60_000);

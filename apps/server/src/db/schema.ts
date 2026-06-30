@@ -305,6 +305,30 @@ export const SCHEMA_SQL = `
     last_heartbeat INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS identity_links (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    linked_server_url TEXT NOT NULL,
+    linked_user_id TEXT NOT NULL,
+    linked_username TEXT NOT NULL,
+    public INTEGER NOT NULL DEFAULT 0,
+    linked_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_links_user_server
+    ON identity_links(user_id, linked_server_url);
+
+  CREATE TABLE IF NOT EXISTS verification_tokens (
+    token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    requested_by TEXT NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    used INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
   CREATE TABLE IF NOT EXISTS _migrations (
     name TEXT PRIMARY KEY,
     applied_at INTEGER NOT NULL DEFAULT (unixepoch())

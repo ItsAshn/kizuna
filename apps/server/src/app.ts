@@ -30,9 +30,10 @@ import threadsRoutes from './routes/threads';
 import categoryRoutes from './routes/categories';
 import embedRoutes from './routes/embeds';
 import registryRoutes from './routes/registry';
+import identityLinkRoutes from './routes/identityLinks';
 import pollsRoutes from './routes/polls';
 import webhooksRoutes from './routes/webhooks';
-import { authLimiter, messageLimiter, uploadLimiter, apiLimiter } from './middleware/rateLimiter';
+import { authLimiter, messageLimiter, uploadLimiter, apiLimiter, verifyLimiter } from './middleware/rateLimiter';
 
 const log = createLogger('app');
 
@@ -87,6 +88,9 @@ export function createApp(httpPort: number) {
 
   app.use('/api/auth/*', authLimiter);
   app.route('/api/auth', authRoutes);
+
+  app.use('/api/auth/identity-link/verify/*', verifyLimiter);
+  app.route('/api/auth', identityLinkRoutes);
 
   app.use('/api/channels/*', apiLimiter);
   app.route('/api/channels', channelRoutes);

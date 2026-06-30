@@ -1,9 +1,3 @@
-
-
-
-
-
-
 .server-menu {
   width: min(920px, 92vw);
   height: min(700px, 88vh);
@@ -24,11 +18,9 @@
   .server-menu .settings-layout {
     flex: 1 1 auto;
     min-height: 0;
+    width: 100%;
   }
 }
-
-
-
 
 /* Sections */
 
@@ -61,7 +53,12 @@
 
 .server-menu__profile-banner-empty {
   height: 100%;
-  background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-hover) 50%, var(--bg-tertiary) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-hover) 50%,
+    var(--bg-tertiary) 100%
+  );
 }
 
 .server-menu__profile-banner-overlay {
@@ -221,7 +218,9 @@
   position: relative;
   cursor: pointer;
   border: 1px solid var(--border-color);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .server-menu__avatar:hover {
@@ -318,11 +317,6 @@
 }
 
 /* Tab bar */
-
-
-
-
-
 
 /* Forms */
 
@@ -453,7 +447,9 @@
   cursor: pointer;
   font-family: var(--font-mono);
   letter-spacing: 0.02em;
-  transition: background 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .server-menu__save-btn:hover:not(:disabled) {
@@ -778,7 +774,7 @@
   user-select: none;
 }
 
-.server-menu__role-flag input[type="checkbox"] {
+.server-menu__role-flag input[type='checkbox'] {
   accent-color: var(--brand);
   cursor: pointer;
 }
@@ -864,9 +860,6 @@
   color: var(--red);
 }
 
-
-
-
 /* QR code panel */
 .server-menu__qr-panel {
   display: flex;
@@ -912,7 +905,9 @@
   border-radius: 3px;
   padding: 2px 8px;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .server-menu__qr-copy-btn:hover {
@@ -1190,10 +1185,18 @@
   border: 2px solid var(--bg-secondary);
 }
 
-.server-menu__status-dot--online  { background: var(--green); }
-.server-menu__status-dot--idle    { background: var(--yellow); }
-.server-menu__status-dot--busy    { background: var(--red); }
-.server-menu__status-dot--invisible { background: var(--text-muted); }
+.server-menu__status-dot--online {
+  background: var(--green);
+}
+.server-menu__status-dot--idle {
+  background: var(--yellow);
+}
+.server-menu__status-dot--busy {
+  background: var(--red);
+}
+.server-menu__status-dot--invisible {
+  background: var(--text-muted);
+}
 
 /* ─── Checkbox for bulk select ────────────────────────── */
 
@@ -1364,8 +1367,14 @@
 }
 
 @keyframes overflowMenuIn {
-  from { opacity: 0; transform: translateY(-4px) scale(0.96); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .server-menu__overflow-item {
@@ -1793,7 +1802,9 @@
   font-size: 10px;
   color: var(--text-primary);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .server-menu__gif-suggested-tag:hover {
@@ -1884,7 +1895,9 @@
     width: calc(100vw - 16px);
     max-width: 480px;
     height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(
+      100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+    );
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);

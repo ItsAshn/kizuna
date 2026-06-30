@@ -207,8 +207,27 @@ authRoutes.get('/me', authMiddleware, (c) => {
 
   const { is_host, ...userFields } = user
   const perms = getUserPermissions(auth.userId)
+
+  const identityLinks = db.prepare(
+    'SELECT id, linked_server_url, linked_user_id, linked_username, public, linked_at FROM identity_links WHERE user_id = ? ORDER BY linked_at DESC',
+  ).all(auth.userId) as { id: string; linked_server_url: string; linked_user_id: string; linked_username: string; public: number; linked_at: number }[]
+
   return c.json({
-    user: { ...userFields, role: isUserAdmin(auth.userId) ? 'admin' : 'member', is_host: is_host === 1, permissions: perms?.permissions } })
+    user: {
+      ...userFields,
+      role: isUserAdmin(auth.userId) ? 'admin' : 'member',
+      is_host: is_host === 1,
+      permissions: perms?.permissions,
+      linked_identities: identityLinks.map((l) => ({
+        id: l.id,
+        linked_server_url: l.linked_server_url,
+        linked_user_id: l.linked_user_id,
+        linked_username: l.linked_username,
+        public: l.public === 1,
+        linked_at: l.linked_at,
+      })),
+    },
+  })
 })
 
 authRoutes.patch('/me/status', authMiddleware, async (c) => {
@@ -407,7 +426,12 @@ authRoutes.get('/users/:userId', authMiddleware, (c) => {
   const member = getMemberById(userId)
   if (!member) return c.json({ error: 'User not found' }, 404)
 
-  return c.json(member)
+  const db = getDb()
+  const identityLinks = db.prepare(
+    'SELECT id, linked_server_url, linked_username, linked_at FROM identity_links WHERE user_id = ? AND public = 1 ORDER BY linked_at DESC',
+  ).all(userId) as { id: string; linked_server_url: string; linked_username: string; linked_at: number }[]
+
+  return c.json({ ...member, linked_identities: identityLinks })
 })
 
 authRoutes.put('/public-key', authMiddleware, async (c) => {
