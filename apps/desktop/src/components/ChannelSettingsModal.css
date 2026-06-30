@@ -216,9 +216,107 @@
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   }
 
-  .channel-settings__done-btn {
-    min-height: 44px;
-    font-size: 13px;
-    padding: 8px 20px;
-  }
+.channel-settings__done-btn {
+  min-height: 44px;
+  font-size: 13px;
+  padding: 8px 20px;
+}
+
+/* ── Integrations / Webhooks ──────────────────────────────── */
+
+.channel-settings__input {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  outline: none;
+}
+.channel-settings__input:focus {
+  border-color: var(--accent);
+}
+.channel-settings__input::placeholder {
+  color: var(--text-muted);
+}
+
+.channel-settings__save-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.channel-settings__save-btn:hover {
+  opacity: 0.9;
+}
+.channel-settings__save-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.channel-settings__delete-btn {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.channel-settings__delete-btn:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.channel-settings__error {
+  color: var(--danger);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  margin-top: 8px;
+}
+
+.channel-settings__webhook-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  margin-bottom: 8px;
+}
+.channel-settings__webhook-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.channel-settings__webhook-item-name {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.channel-settings__webhook-item-date {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.channel-settings__webhook-item-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
 }

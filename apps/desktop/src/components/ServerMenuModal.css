@@ -1884,6 +1884,20 @@
   font-family: var(--font-mono);
 }
 
+.server-menu__webhook-item-date {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+}
+
+.server-menu__webhook-item-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 /* ── Mobile ────────────────────────────────────────────────── */
 
 @media (max-width: 767px) {

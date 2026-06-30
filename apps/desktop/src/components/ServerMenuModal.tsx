@@ -63,33 +63,38 @@ interface Props {
 
 function WebhooksSection() {
   const session = useServerStore((s) => s.activeSession)
-  const [webhooks, setWebhooks] = useState<{ id: string; name: string; created_at: number }[]>([])
-  const [channels, setChannels] = useState<{ id: string; name: string }[]>([])
+  const channels = useChatStore((s) => s.channels)
+  const [webhooks, setWebhooks] = useState<{ id: string; name: string; token: string; channel_id: string; created_at: number }[]>([])
   const [newName, setNewName] = useState('')
   const [newChannelId, setNewChannelId] = useState('')
-  const [createdToken, setCreatedToken] = useState<{ token: string; name: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   useEffect(() => {
-    const ch = useChatStore.getState().channels.filter((c: { id: string; name: string; type: string }) => c.type === 'text')
-    setChannels(ch)
-    if (ch[0]) setNewChannelId(ch[0].id)
-  }, [])
+    if (channels.length > 0 && !newChannelId) {
+      const first = channels.find((c) => c.type === 'text')
+      if (first) setNewChannelId(first.id)
+    }
+  }, [channels])
+
+  const loadWebhooks = useCallback((channelId: string) => {
+    if (!session) return
+    fetchWebhooks(session.url, channelId).then((r) => setWebhooks(r.webhooks)).catch(() => {})
+  }, [session])
 
   useEffect(() => {
     if (!newChannelId || !session) return
-    fetchWebhooks(session.url, newChannelId).then((r) => setWebhooks(r.webhooks)).catch(() => {})
-  }, [newChannelId, session])
+    loadWebhooks(newChannelId)
+  }, [newChannelId, session, loadWebhooks])
 
   const handleCreate = async () => {
     if (!newName.trim() || !newChannelId || !session) return
     setLoading(true); setError('')
     try {
-      const res = await createWebhook(session.url, newChannelId, newName.trim())
-      setWebhooks((prev) => [...prev, { id: res.webhook.id, name: res.webhook.name, created_at: Date.now() / 1000 }])
-      setCreatedToken({ token: res.webhook.token, name: res.webhook.name })
+      await createWebhook(session.url, newChannelId, newName.trim())
       setNewName('')
+      loadWebhooks(newChannelId)
     } catch (err) { setError(handleApiErr(err)) } finally { setLoading(false) }
   }
 
@@ -98,31 +103,27 @@ function WebhooksSection() {
     try {
       await deleteWebhook(session.url, id)
       setWebhooks((prev) => prev.filter((w) => w.id !== id))
-      if (createdToken) setCreatedToken(null)
     } catch (err) { setError(handleApiErr(err)) }
   }
 
-  const webhookUrl = (token: string) => `${session?.url ?? ''}/api/webhooks/incoming/${token}`
+  const handleCopy = async (token: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(`${session?.url ?? ''}/api/webhooks/incoming/${token}`)
+      setCopiedId(id)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch { /* ignore */ }
+  }
+
+  const textChannels = channels.filter((c) => c.type === 'text')
+  const getChannelName = (channelId: string) => channels.find((c) => c.id === channelId)?.name ?? 'unknown'
 
   return (
     <>
       <div className="server-menu__settings-group">
-        <p className="server-menu__settings-group-title">create webhook</p>
+        <p className="server-menu__settings-group-title">incoming webhooks</p>
         <p className="server-menu__css-hint" style={{ marginBottom: '12px' }}>
-          Incoming webhooks let external services (CI/CD, GitHub, etc.) post messages to a channel via a unique URL.
+          Post messages to a channel from external services. Use the URL below to send messages from bots, CI/CD, or GitHub.
         </p>
-
-        {createdToken && (
-          <div className="server-menu__webhook-created">
-            <p className="server-menu__webhook-created-heading">webhook created — copy your URL now, it won&apos;t be shown again.</p>
-            <code className="server-menu__webhook-created-code">
-              {webhookUrl(createdToken.token)}
-            </code>
-            <button className="server-menu__save-btn" onClick={() => navigator.clipboard.writeText(webhookUrl(createdToken!.token))}>
-              copy url
-            </button>
-          </div>
-        )}
 
         <div className="server-menu__field">
           <label className="server-menu__label">channel</label>
@@ -131,14 +132,14 @@ function WebhooksSection() {
             value={newChannelId}
             onChange={(e) => setNewChannelId(e.target.value)}
           >
-            {channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
+            {textChannels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
           </select>
         </div>
         <div className="server-menu__field">
           <label className="server-menu__label">name</label>
           <input
             className="server-menu__input"
-            placeholder="webhook name"
+            placeholder="My Bot"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
           />
@@ -154,24 +155,38 @@ function WebhooksSection() {
         </div>
       </div>
 
-      <p className="server-menu__section-title">webhooks ({webhooks.length})</p>
-      {webhooks.length > 0 ? (
-        webhooks.map((wh) => (
-          <div key={wh.id} className="server-menu__webhook-item">
-            <div className="server-menu__webhook-item-info">
-              <span className="server-menu__webhook-item-name">{wh.name}</span>
-              <span className="server-menu__webhook-item-channel">
-                #{channels.find((c) => c.id === newChannelId)?.name ?? 'unknown'}
-              </span>
+      <div className="server-menu__settings-group">
+        <p className="server-menu__settings-group-title">active webhooks ({webhooks.length})</p>
+        {webhooks.length > 0 ? (
+          webhooks.map((wh) => (
+            <div key={wh.id} className="server-menu__webhook-item">
+              <div className="server-menu__webhook-item-info">
+                <span className="server-menu__webhook-item-name">{wh.name}</span>
+                <span className="server-menu__webhook-item-channel">
+                  #{getChannelName(wh.channel_id)}
+                </span>
+                <span className="server-menu__webhook-item-date">
+                  {new Date(wh.created_at * 1000).toLocaleDateString()}
+                </span>
+              </div>
+              <div className="server-menu__webhook-item-actions">
+                <button
+                  className={`server-menu__save-btn${copiedId === wh.id ? ' server-menu__save-btn--copied' : ''}`}
+                  onClick={() => handleCopy(wh.token, wh.id)}
+                  style={{ fontSize: '11px', padding: '4px 10px' }}
+                >
+                  {copiedId === wh.id ? 'copied!' : 'copy url'}
+                </button>
+                <button className="server-menu__btn server-menu__btn--danger" onClick={() => handleDelete(wh.id)}>
+                  delete
+                </button>
+              </div>
             </div>
-            <button className="server-menu__btn server-menu__btn--danger" onClick={() => handleDelete(wh.id)}>
-              delete
-            </button>
-          </div>
-        ))
-      ) : (
-        <p className="server-menu__loading">no webhooks configured</p>
-      )}
+          ))
+        ) : (
+          <p className="server-menu__loading">no webhooks configured</p>
+        )}
+      </div>
     </>
   )
 }

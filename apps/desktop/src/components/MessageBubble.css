@@ -1449,3 +1449,16 @@
   font-size: 12px;
   margin-top: 8px;
 }
+
+.msg-bubble__bot-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: #fff;
+  vertical-align: middle;
+  margin-left: 4px;
+  text-transform: uppercase;
+}

@@ -29,7 +29,7 @@ webhooksRouter.post('/channels/:channelId/webhooks', authMiddleware, async (c) =
 webhooksRouter.get('/channels/:channelId/webhooks', authMiddleware, async (c) => {
   const db = getDb()
   const { channelId } = c.req.param()
-  const rows = db.prepare('SELECT id, name, created_at FROM webhooks WHERE channel_id = ?').all(channelId)
+  const rows = db.prepare('SELECT id, name, token, channel_id, created_at FROM webhooks WHERE channel_id = ?').all(channelId)
   return c.json({ webhooks: rows })
 })
 
@@ -45,6 +45,29 @@ webhooksRouter.delete('/webhooks/:webhookId', authMiddleware, async (c) => {
   }
   db.prepare('DELETE FROM webhooks WHERE id = ?').run(webhookId)
   return c.json({ ok: true })
+})
+
+webhooksRouter.patch('/webhooks/:webhookId', authMiddleware, async (c) => {
+  const db = getDb()
+  const { webhookId } = c.req.param()
+  const { userId } = getAuth(c)
+  const webhook = db.prepare('SELECT * FROM webhooks WHERE id = ?').get(webhookId) as { created_by: string; name: string; avatar: string | null } | undefined
+  if (!webhook) return c.json({ error: 'not found' }, 404)
+  if (webhook.created_by !== userId) {
+    const admin = db.prepare('SELECT role FROM members WHERE user_id = ? AND role = ?').get(userId, 'admin')
+    if (!admin) return c.json({ error: 'forbidden' }, 403)
+  }
+  const body = await c.req.json().catch(() => null)
+  if (!body) return c.json({ error: 'invalid JSON body' }, 400)
+  const name: string | undefined = typeof body.name === 'string' ? body.name.trim() : undefined
+  const avatar: string | null | undefined = body.avatar !== undefined
+    ? (typeof body.avatar === 'string' ? body.avatar.trim() || null : null)
+    : undefined
+  if (name === '' || (name === undefined && avatar === undefined)) return c.json({ error: 'name or avatar required' }, 400)
+  if (name !== undefined) db.prepare('UPDATE webhooks SET name = ? WHERE id = ?').run(name, webhookId)
+  if (avatar !== undefined) db.prepare('UPDATE webhooks SET avatar = ? WHERE id = ?').run(avatar, webhookId)
+  const updated = db.prepare('SELECT id, name, avatar, token, channel_id, created_at FROM webhooks WHERE id = ?').get(webhookId)
+  return c.json({ webhook: updated })
 })
 
 function formatWebhookContent(c: Context, body: Record<string, unknown>): string | undefined {
@@ -117,25 +140,32 @@ webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
   }
   if (!content || content.length > 4000) return c.json({ error: 'content required (max 4000 chars)' }, 400)
 
+  const username = typeof body.username === 'string' ? body.username.trim() || null : null
+  const avatarUrl = typeof body.avatar_url === 'string' ? body.avatar_url.trim() || null : null
+
+  const displayName = username || webhook.name
+  const avatar = avatarUrl ?? webhook.avatar ?? null
+
   const messageId = uuidv4()
   const now = Math.floor(Date.now() / 1000)
-  db.prepare(`INSERT INTO messages (id, channel_id, user_id, content, author_username, author_display_name, author_avatar, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    messageId, webhook.channel_id, webhook.created_by, content,
-    webhook.name, webhook.name, webhook.avatar ?? null, now
+  db.prepare(`INSERT INTO messages (id, channel_id, author_id, content, author_username, author_display_name, author_avatar, webhook_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    messageId, webhook.channel_id, null, content,
+    webhook.name, displayName, avatar, webhook.id, now
   )
 
   const message = {
     id: messageId,
     channel_id: webhook.channel_id,
-    user_id: webhook.created_by,
+    user_id: null,
+    webhook_id: webhook.id,
     content,
-    author_username: webhook.name,
-    author_display_name: webhook.name,
-    author_avatar: webhook.avatar ?? null,
+    username: webhook.name,
+    display_name: displayName,
+    avatar: avatar,
     created_at: now * 1000,
-    edited_at: null, reply_to_id: null, reply_to_content: null, reply_to_username: null,
-    reactions: [], attachments: [],
+    edited_at: null, reply_to_message_id: null, reply_to_username: null, reply_to_content: null,
+    reactions: [],
   }
 
   const io = c.get('io' as never) as IoServer | undefined

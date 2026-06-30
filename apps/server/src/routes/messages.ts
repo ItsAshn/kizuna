@@ -42,8 +42,8 @@ function mapMessage(row: Record<string, unknown>) {
     channel_id: row.channel_id as string,
     user_id: row.author_id as string,
     username: row.author_username as string,
-    display_name: (row.display_name as string | null) || (row.author_username as string),
-    avatar: (row.avatar as string | null | undefined) || undefined,
+    display_name: (row.author_display_name as string | null) || (row.display_name as string | null) || (row.author_username as string),
+    avatar: (row.author_avatar as string | null) || (row.avatar as string | null | undefined) || undefined,
     content: row.content as string,
     edited_at: row.edited_at ? (row.edited_at as number) * 1000 : null,
     created_at: (row.created_at as number) * 1000,
@@ -51,6 +51,7 @@ function mapMessage(row: Record<string, unknown>) {
     reply_to_message_id: (row.reply_to_message_id as string) || null,
     reply_to_username: (row.reply_to_username as string) || null,
     reply_to_content: (row.reply_to_content as string) || null,
+    webhook_id: (row.webhook_id as string) || null,
   }
 }
 

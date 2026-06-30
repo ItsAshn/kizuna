@@ -48,7 +48,8 @@ const EXPECTED_SCHEMA: Record<string, string[]> = {
     'reset_requested_at', 'backuptoken_hash', 'created_at'],
   channels: ['id', 'name', 'type', 'topic', 'position', 'locked', 'write_role_id', 'category_id', 'created_at'],
   messages: ['id', 'channel_id', 'author_id', 'author_username', 'content', 'edited_at',
-    'updated_at', 'created_at', 'reply_to_message_id', 'reply_to_username', 'reply_to_content'],
+    'updated_at', 'created_at', 'reply_to_message_id', 'reply_to_username', 'reply_to_content',
+    'author_display_name', 'author_avatar', 'webhook_id'],
   direct_messages: ['id', 'channel_id', 'from_id', 'from_username', 'to_id', 'content',
     'encrypted', 'edited_at', 'created_at', 'reply_to_message_id', 'reply_to_username', 'reply_to_content'],
   server_members: ['user_id', 'role', 'is_host', 'custom_role_id', 'joined_at'],
@@ -667,6 +668,9 @@ function runMigrations(database: Database.Database): void {
         created_at INTEGER NOT NULL DEFAULT (unixepoch())
       );
     ` },
+    { name: 'messages_add_author_display_name', sql: `ALTER TABLE messages ADD COLUMN author_display_name TEXT DEFAULT NULL` },
+    { name: 'messages_add_author_avatar', sql: `ALTER TABLE messages ADD COLUMN author_avatar TEXT DEFAULT NULL` },
+    { name: 'messages_add_webhook_id', sql: `ALTER TABLE messages ADD COLUMN webhook_id TEXT REFERENCES webhooks(id) ON DELETE SET NULL` },
   ]
 
   const insertStmt = database.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)')

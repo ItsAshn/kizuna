@@ -1227,8 +1227,17 @@ export async function createWebhook(
 export async function fetchWebhooks(
   serverUrl: string,
   channelId: string,
-): Promise<{ webhooks: { id: string; name: string; created_at: number }[] }> {
+): Promise<{ webhooks: { id: string; name: string; token: string; channel_id: string; created_at: number }[] }> {
   const res = await client(serverUrl).get(`/api/channels/${channelId}/webhooks`)
+  return res.data
+}
+
+export async function updateWebhook(
+  serverUrl: string,
+  webhookId: string,
+  data: { name?: string; avatar?: string | null },
+): Promise<{ webhook: { id: string; name: string; avatar: string | null; token: string; channel_id: string; created_at: number } }> {
+  const res = await client(serverUrl).patch(`/api/webhooks/${webhookId}`, data)
   return res.data
 }
 

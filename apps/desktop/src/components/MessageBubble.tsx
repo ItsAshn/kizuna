@@ -582,6 +582,7 @@ function MessageBubble({
               style={{ cursor: 'pointer' }}
             >
               {displayName}
+              {message.webhook_id && <span className="msg-bubble__bot-badge">BOT</span>}
             </p>
           )}
           {editing ? (

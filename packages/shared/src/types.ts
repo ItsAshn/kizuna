@@ -97,6 +97,7 @@ export interface Message {
   reply_to_username?: string | null;
   reply_to_content?: string | null;
   thread_id?: string | null;
+  webhook_id?: string | null;
 }
 
 export type ReactionType = 'emoji' | 'sticker';
