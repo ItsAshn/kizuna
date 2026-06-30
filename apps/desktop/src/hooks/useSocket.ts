@@ -492,6 +492,19 @@ export function useSocket(): MutableRefObject<Socket | null> {
           serverStore.setActiveSession({ ...serverStore.activeSession, user: sessionUser })
         }
       }
+      if (status_text !== undefined || status_emoji !== undefined || status_sticker_id !== undefined) {
+        const chatStore = useChatStore.getState()
+        const memberIdx = chatStore.members.findIndex(m => m.id === userId)
+        if (memberIdx !== -1) {
+          const member = { ...chatStore.members[memberIdx] }
+          if (status_text !== undefined) member.status_text = status_text
+          if (status_emoji !== undefined) member.status_emoji = status_emoji
+          if (status_sticker_id !== undefined) member.status_sticker_id = status_sticker_id
+          const updated = [...chatStore.members]
+          updated[memberIdx] = member
+          chatStore.setMembers(updated)
+        }
+      }
     })
 
     socket.on('user:activity', ({ userId, activity }: { userId: string; activity: UserActivity | null }) => {
