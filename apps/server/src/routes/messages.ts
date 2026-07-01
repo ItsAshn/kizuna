@@ -40,7 +40,7 @@ function mapMessage(row: Record<string, unknown>) {
   return {
     id: row.id as string,
     channel_id: row.channel_id as string,
-    user_id: row.author_id as string,
+    user_id: (row.author_id as string) || null,
     username: row.author_username as string,
     display_name: (row.author_display_name as string | null) || (row.display_name as string | null) || (row.author_username as string),
     avatar: (row.author_avatar as string | null) || (row.avatar as string | null | undefined) || undefined,

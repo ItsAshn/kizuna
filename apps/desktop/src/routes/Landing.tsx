@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MessageCircle, Mic, Monitor, Lock, Code, Download, ExternalLink, ArrowRight, Server, Apple, Container, Terminal, GitBranch } from 'lucide-react'
+import { MessageCircle, Mic, Monitor, Lock, Code, Download, ExternalLink, ArrowRight, Server, Apple, Container, Terminal, GitBranch, BookOpen } from 'lucide-react'
 import ServerBrowser from '../components/ServerBrowser'
 import './Landing.css'
 
@@ -222,9 +222,9 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
           </div>
         </div>
         <div className="landing-selfhost__more">
-          <a href="https://github.com/ItsAshn/kizuna" target="_blank" rel="noopener noreferrer" className="landing-selfhost__link">
-            <GitBranch size={14} />
-            Full documentation on GitHub
+          <a href="https://itsashn.github.io/kizuna/" target="_blank" rel="noopener noreferrer" className="landing-selfhost__link">
+            <BookOpen size={14} />
+            Full documentation
             <ExternalLink size={12} />
           </a>
         </div>
@@ -237,6 +237,9 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
             <span>Kizuna</span>
           </div>
           <div className="landing-footer__links">
+            <a href="https://itsashn.github.io/kizuna/" target="_blank" rel="noopener noreferrer">
+              <BookOpen size={18} />
+            </a>
             <a href="https://github.com/ItsAshn/kizuna" target="_blank" rel="noopener noreferrer">
               <GitBranch size={18} />
             </a>

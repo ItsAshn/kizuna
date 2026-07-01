@@ -134,9 +134,15 @@ webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
   const body = await c.req.json().catch(() => null)
   if (!body) return c.json({ error: 'invalid JSON body' }, 400)
 
-  let content = typeof body.content === 'string' ? body.content.trim() : undefined
-  if (!content) {
-    content = formatWebhookContent(c, body)
+  let content: string | undefined
+  try {
+    content = typeof body.content === 'string' ? body.content.trim() : undefined
+    if (!content) {
+      content = formatWebhookContent(c, body)
+    }
+  } catch (err: unknown) {
+    console.error('[webhook] format error:', err instanceof Error ? err.message : String(err))
+    return c.json({ error: 'Failed to parse webhook payload' }, 400)
   }
   if (!content || content.length > 4000) return c.json({ error: 'content required (max 4000 chars)' }, 400)
 
@@ -148,11 +154,16 @@ webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
 
   const messageId = uuidv4()
   const now = Math.floor(Date.now() / 1000)
-  db.prepare(`INSERT INTO messages (id, channel_id, author_id, content, author_username, author_display_name, author_avatar, webhook_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    messageId, webhook.channel_id, null, content,
-    webhook.name, displayName, avatar, webhook.id, now
-  )
+  try {
+    db.prepare(`INSERT INTO messages (id, channel_id, author_id, content, author_username, author_display_name, author_avatar, webhook_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      messageId, webhook.channel_id, '', content,
+      webhook.name, displayName, avatar, webhook.id, now
+    )
+  } catch (err: unknown) {
+    console.error('[webhook] db insert error:', err instanceof Error ? err.message : String(err))
+    return c.json({ error: 'Failed to create message' }, 500)
+  }
 
   const message = {
     id: messageId,
@@ -168,8 +179,10 @@ webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
     reactions: [],
   }
 
-  const io = c.get('io' as never) as IoServer | undefined
-  io?.to(webhook.channel_id).emit('message:new', message as never)
+  try {
+    const io = c.get('io' as never) as IoServer | undefined
+    io?.to(webhook.channel_id).emit('message:new', message as never)
+  } catch { /* best-effort */ }
 
   return c.json({ ok: true, messageId })
 })

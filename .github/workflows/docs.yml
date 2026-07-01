@@ -1,0 +1,43 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --filter kizuna-docs
+
+      - name: Build docs
+        run: pnpm --filter kizuna-docs build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/.vitepress/dist
+
+      - uses: actions/deploy-pages@v4
