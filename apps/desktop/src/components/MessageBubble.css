@@ -411,7 +411,7 @@
 .msg-bubble__meta {
   position: absolute;
   bottom: 0;
-  left: calc(100% + 6px);
+  left: 100%;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -421,12 +421,15 @@
   transition: opacity 0.15s ease, visibility 0.15s ease;
   pointer-events: none;
   white-space: nowrap;
+  padding-left: 6px;
   padding-bottom: 6px;
 }
 
 .msg-bubble__meta--own {
   left: auto;
-  right: calc(100% + 6px);
+  right: 100%;
+  padding-left: 0;
+  padding-right: 6px;
 }
 
 .msg-bubble__meta--visible {

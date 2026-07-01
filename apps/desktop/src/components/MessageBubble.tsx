@@ -303,11 +303,13 @@ function MessageBubble({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [hovered, setHovered] = useState(false)
   const [barHovered, setBarHovered] = useState(false)
+  const [metaHovered, setMetaHovered] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [barMounted, setBarMounted] = useState(false)
   const barTimer = useRef<ReturnType<typeof setTimeout>>()
+  const metaTimer = useRef<ReturnType<typeof setTimeout>>()
   const [barPos, setBarPos] = useState<{ top: number; left: number } | null>(null)
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null)
   const [showProfileCard, setShowProfileCard] = useState(false)
@@ -381,7 +383,7 @@ function MessageBubble({
     }
   }, [barMounted])
 
-  const showMeta = isMobile ? (mobileActionsVisible || editing) : (hovered || !!message.edited_at || confirmDelete || editing)
+  const showMeta = isMobile ? (mobileActionsVisible || editing) : (hovered || metaHovered || !!message.edited_at || confirmDelete || editing)
 
   const handleToggleReaction = useCallback(async (reactionKey: string, reactionType: string) => {
     if (!session) return
@@ -554,8 +556,8 @@ function MessageBubble({
       <div
         className="msg-bubble__content"
         ref={contentRef}
-        onMouseEnter={() => { if (!isMobile) setHovered(true) }}
-        onMouseLeave={() => { if (!isMobile) setHovered(false) }}
+        onMouseEnter={() => { if (!isMobile) { clearTimeout(metaTimer.current); setHovered(true) } }}
+        onMouseLeave={() => { if (!isMobile) { metaTimer.current = setTimeout(() => setHovered(false), 200) } }}
         {...(isMobile ? longPressHandlers : {})}
       >
         <div className="msg-bubble__bubble-row">
@@ -620,7 +622,11 @@ function MessageBubble({
             )}
           </div>
           {!editing && (
-            <div className={`msg-bubble__meta ${isOwn ? 'msg-bubble__meta--own' : ''} ${showMeta ? 'msg-bubble__meta--visible' : ''}`}>
+            <div
+              className={`msg-bubble__meta ${isOwn ? 'msg-bubble__meta--own' : ''} ${showMeta ? 'msg-bubble__meta--visible' : ''}`}
+              onMouseEnter={() => { clearTimeout(metaTimer.current); setMetaHovered(true) }}
+              onMouseLeave={() => { metaTimer.current = setTimeout(() => setMetaHovered(false), 200) }}
+            >
               {showMeta && <span className="msg-bubble__time">{time}</span>}
               {message.edited_at && <span className="msg-bubble__edited">(edited)</span>}
               {canEdit && !isStickerOnly && (
