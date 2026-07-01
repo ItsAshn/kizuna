@@ -1096,7 +1096,7 @@ export default function ChatArea({
   const handleUpload = async () => {
     if (!pendingFile || !session) return;
 
-    const targetChannelId = activeChannelId || activeDMChannelId;
+    const targetChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
     if (!targetChannelId) return;
 
     setUploading(true);
@@ -1139,6 +1139,31 @@ export default function ChatArea({
         if (encrypted) {
           message = { ...message, content: finalText };
         }
+      } else if (activeGroupDMChannelId) {
+        const secKey = getSecretKey();
+        const finalText = text ? text + '\n' + attachmentText : attachmentText;
+        let content: string;
+        let encrypted = false;
+        if (secKey) {
+          const channel = groupDMChannels.find((c) => c.id === activeGroupDMChannelId);
+          const memberKeys = new Map<string, string>();
+          for (const member of channel?.members || []) {
+            if (member.public_key) memberKeys.set(member.user_id, member.public_key);
+          }
+          if (memberKeys.size > 0) {
+            const enc = encryptGroupDM(finalText, memberKeys, secKey);
+            content = JSON.stringify(enc);
+            encrypted = true;
+          } else {
+            content = finalText;
+          }
+        } else {
+          content = finalText;
+        }
+        message = await sendGroupDMMessage(session.url, activeGroupDMChannelId, content, encrypted, attIds);
+        if (encrypted) {
+          message = { ...message, content: finalText };
+        }
       } else {
         return;
       }
@@ -1155,7 +1180,7 @@ export default function ChatArea({
       }
       if (!wasAtBottom) {
         requestAnimationFrame(() => {
-          const channelId = activeChannelId || activeDMChannelId;
+          const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
           if (channelId) {
             const msgs = useChatStore.getState().messages[channelId] || [];
             if (msgs.length > 0) {
@@ -1243,7 +1268,7 @@ export default function ChatArea({
         setUploading(true);
         setUploadProgress(0);
 
-        const targetChannelId = activeChannelId || activeDMChannelId;
+        const targetChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
         if (!targetChannelId) return;
 
         try {
@@ -1251,7 +1276,7 @@ export default function ChatArea({
             setUploadProgress(pct),
           );
           const msgText = input.trim();
-          const attachmentText = `${msgText ? msgText + '\n' : ''}🎤 [Voice Message](${result.url})`;
+          const attachmentText = msgText ? `${msgText}\n![voice-message.webm](${result.url})` : `![voice-message.webm](${result.url})`;
 
           const attIds = [result.id];
           let message: Message;
@@ -1271,6 +1296,33 @@ export default function ChatArea({
               content = attachmentText;
             }
             message = await sendDMMessage(session!.url, activeDMChannelId!, content, enc, attIds);
+            if (enc) {
+              message = { ...message, content: attachmentText };
+            }
+          } else if (activeGroupDMChannelId) {
+            const secKey = getSecretKey();
+            let content: string;
+            let encrypted = false;
+            if (secKey) {
+              const channel = groupDMChannels.find((c) => c.id === activeGroupDMChannelId);
+              const memberKeys = new Map<string, string>();
+              for (const member of channel?.members || []) {
+                if (member.public_key) memberKeys.set(member.user_id, member.public_key);
+              }
+              if (memberKeys.size > 0) {
+                const enc = encryptGroupDM(attachmentText, memberKeys, secKey);
+                content = JSON.stringify(enc);
+                encrypted = true;
+              } else {
+                content = attachmentText;
+              }
+            } else {
+              content = attachmentText;
+            }
+            message = await sendGroupDMMessage(session!.url, activeGroupDMChannelId!, content, encrypted, attIds);
+            if (encrypted) {
+              message = { ...message, content: attachmentText };
+            }
           }
           addMessage(targetChannelId, message!);
           setInput('');
@@ -1294,8 +1346,10 @@ export default function ChatArea({
     session,
     activeChannelId,
     activeDMChannelId,
+    activeGroupDMChannelId,
     input,
     dmChannels,
+    groupDMChannels,
     resolveRecipientPublicKey,
     addMessage,
   ]);

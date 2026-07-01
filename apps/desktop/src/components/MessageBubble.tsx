@@ -558,85 +558,88 @@ function MessageBubble({
         onMouseLeave={() => { if (!isMobile) setHovered(false) }}
         {...(isMobile ? longPressHandlers : {})}
       >
-        <div
-          className={`msg-bubble__bubble ${isOwn ? 'msg-bubble__bubble--own' : 'msg-bubble__bubble--other'} ${isGrouped && !isOwn ? 'msg-bubble__bubble--grouped' : ''} ${editing ? 'msg-bubble__bubble--editing' : ''} ${isMediaOnly ? 'msg-bubble__bubble--media-only' : ''} ${isStickerOnly ? 'msg-bubble__bubble--sticker-only' : ''}`}
-          onContextMenu={handleMessageContextMenu}
-        >
-          {message.reply_to_message_id && message.reply_to_username && (
-            <div className="msg-bubble__reply-preview">
-              <span className="msg-bubble__reply-preview-line" />
-              <span className="msg-bubble__reply-preview-username">@{message.reply_to_username}</span>
-              <span className="msg-bubble__reply-preview-text">
-                {message.reply_to_content
-                  ? message.reply_to_content.length > 120
-                    ? message.reply_to_content.slice(0, 120) + '...'
-                    : message.reply_to_content
-                  : '...'}
-              </span>
-            </div>
-          )}
-          {!isOwn && !isGrouped && (
-            <p
-              className="msg-bubble__author"
-              onClick={(e) => { profileAnchorRef.current = e.currentTarget as HTMLElement; setShowProfileCard(true) }}
-              style={{ cursor: 'pointer' }}
-            >
-              {displayName}
-              {message.webhook_id && <span className="msg-bubble__bot-badge">BOT</span>}
-            </p>
-          )}
-          {editing ? (
-            <textarea
-              ref={editInputRef}
-              className="msg-bubble__edit-input"
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              onKeyDown={handleEditKeyDown}
-            />
-          ) : (
-            (() => {
-              const poll = parsePoll(message.content)
-              if (poll) return <PollCard data={poll} serverUrl={session?.url ?? ''} userId={session?.user.id ?? ''} />
-              return text ? <div className="msg-bubble__text" onClick={handleSpoilerClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} /> : null
-            })()
-          )}
-          {attachments.length > 0 && attachments.map((att, i) => (
-            <AttachmentPreview key={i} url={att.url} filename={att.filename} serverUrl={serverUrl} isMediaOnly={isMediaOnly} onImageClick={onImageClick} />
-          ))}
-          {text && (() => {
-            const urls = (text.match(/(https?:\/\/[^\s<]+)/g) || [])
-              .filter(u => !/\.(jpg|jpeg|png|gif|webp|mp4|webm|mp3|ogg|wav|pdf)$/i.test(u.split('?')[0]))
-              .slice(0, 3)
-            return urls.length > 0 ? <EmbedCard urls={urls} /> : null
-          })()}
-          <div className={`msg-bubble__meta ${showMeta ? 'msg-bubble__meta--visible' : ''} ${editing ? 'msg-bubble__meta--editing' : ''}`}>
-            {hovered && <span className="msg-bubble__time">{time}</span>}
-            {message.edited_at && <span className="msg-bubble__edited">(edited)</span>}
+        <div className="msg-bubble__bubble-row">
+          <div
+            className={`msg-bubble__bubble ${isOwn ? 'msg-bubble__bubble--own' : 'msg-bubble__bubble--other'} ${isGrouped && !isOwn ? 'msg-bubble__bubble--grouped' : ''} ${editing ? 'msg-bubble__bubble--editing' : ''} ${isMediaOnly ? 'msg-bubble__bubble--media-only' : ''} ${isStickerOnly ? 'msg-bubble__bubble--sticker-only' : ''}`}
+            onContextMenu={handleMessageContextMenu}
+          >
+            {message.reply_to_message_id && message.reply_to_username && (
+              <div className="msg-bubble__reply-preview">
+                <span className="msg-bubble__reply-preview-line" />
+                <span className="msg-bubble__reply-preview-username">@{message.reply_to_username}</span>
+                <span className="msg-bubble__reply-preview-text">
+                  {message.reply_to_content
+                    ? message.reply_to_content.length > 120
+                      ? message.reply_to_content.slice(0, 120) + '...'
+                      : message.reply_to_content
+                    : '...'}
+                </span>
+              </div>
+            )}
+            {!isOwn && !isGrouped && (
+              <p
+                className="msg-bubble__author"
+                onClick={(e) => { profileAnchorRef.current = e.currentTarget as HTMLElement; setShowProfileCard(true) }}
+                style={{ cursor: 'pointer' }}
+              >
+                {displayName}
+                {message.webhook_id && <span className="msg-bubble__bot-badge">BOT</span>}
+              </p>
+            )}
             {editing ? (
-              <span className="msg-bubble__edit-actions">
-                <button className="msg-bubble__edit-action-btn msg-bubble__edit-action-btn--save" onClick={saveEdit}>save</button>
-                <button className="msg-bubble__edit-action-btn msg-bubble__edit-action-btn--cancel" onClick={cancelEdit}>cancel</button>
-              </span>
+              <textarea
+                ref={editInputRef}
+                className="msg-bubble__edit-input"
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                onKeyDown={handleEditKeyDown}
+              />
             ) : (
-              <>
-                {canEdit && !isStickerOnly && (
-                  <button className="msg-bubble__edit-btn" onClick={startEdit} title="Edit message">
-                    <Pencil size={12} />
-                  </button>
-                )}
-                {canDelete && confirmDelete ? (
-                  <span className="msg-bubble__delete-confirm">
-                    <button className="msg-bubble__delete-confirm-btn msg-bubble__delete-confirm-btn--yes" onClick={() => { onDelete(message.id); setConfirmDelete(false) }}>confirm</button>
-                    <button className="msg-bubble__delete-confirm-btn msg-bubble__delete-confirm-btn--no" onClick={() => setConfirmDelete(false)}>cancel</button>
-                  </span>
-                ) : canDelete ? (
-                  <button className="msg-bubble__delete-btn" onClick={() => setConfirmDelete(true)} title="Delete message">
-                    <Trash2 size={12} />
-                  </button>
-                ) : null}
-              </>
+              (() => {
+                const poll = parsePoll(message.content)
+                if (poll) return <PollCard data={poll} serverUrl={session?.url ?? ''} userId={session?.user.id ?? ''} />
+                return text ? <div className="msg-bubble__text" onClick={handleSpoilerClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} /> : null
+              })()
+            )}
+            {attachments.length > 0 && attachments.map((att, i) => (
+              <AttachmentPreview key={i} url={att.url} filename={att.filename} serverUrl={serverUrl} isMediaOnly={isMediaOnly} onImageClick={onImageClick} />
+            ))}
+            {text && (() => {
+              const urls = (text.match(/(https?:\/\/[^\s<]+)/g) || [])
+                .filter(u => !/\.(jpg|jpeg|png|gif|webp|mp4|webm|mp3|ogg|wav|pdf)$/i.test(u.split('?')[0]))
+                .slice(0, 3)
+              return urls.length > 0 ? <EmbedCard urls={urls} /> : null
+            })()}
+            {editing && (
+              <div className="msg-bubble__meta msg-bubble__meta--editing">
+                <span className="msg-bubble__edit-actions">
+                  <button className="msg-bubble__edit-action-btn msg-bubble__edit-action-btn--save" onClick={saveEdit}>save</button>
+                  <button className="msg-bubble__edit-action-btn msg-bubble__edit-action-btn--cancel" onClick={cancelEdit}>cancel</button>
+                </span>
+              </div>
             )}
           </div>
+          {!editing && (
+            <div className={`msg-bubble__meta ${isOwn ? 'msg-bubble__meta--own' : ''} ${showMeta ? 'msg-bubble__meta--visible' : ''}`}>
+              {showMeta && <span className="msg-bubble__time">{time}</span>}
+              {message.edited_at && <span className="msg-bubble__edited">(edited)</span>}
+              {canEdit && !isStickerOnly && (
+                <button className="msg-bubble__edit-btn" onClick={startEdit} title="Edit message">
+                  <Pencil size={12} />
+                </button>
+              )}
+              {canDelete && confirmDelete ? (
+                <span className="msg-bubble__delete-confirm">
+                  <button className="msg-bubble__delete-confirm-btn msg-bubble__delete-confirm-btn--yes" onClick={() => { onDelete(message.id); setConfirmDelete(false) }}>confirm</button>
+                  <button className="msg-bubble__delete-confirm-btn msg-bubble__delete-confirm-btn--no" onClick={() => setConfirmDelete(false)}>cancel</button>
+                </span>
+              ) : canDelete ? (
+                <button className="msg-bubble__delete-btn" onClick={() => setConfirmDelete(true)} title="Delete message">
+                  <Trash2 size={12} />
+                </button>
+              ) : null}
+            </div>
+          )}
         </div>
 
         <ReactionPills
