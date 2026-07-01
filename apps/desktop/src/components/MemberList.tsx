@@ -167,6 +167,7 @@ export default function MemberList({ visible, onClose }: Props) {
               <span className="member-list__member-activity-text">{activity.name}</span>
             </div>
           ) : null}
+          <span className="member-list__member-id">@{member.username}</span>
         </div>
         {member.is_host && <span className="member-list__host-badge">host</span>}
         {member.id === session?.user.id && <span className="member-list__self-tag">you</span>}

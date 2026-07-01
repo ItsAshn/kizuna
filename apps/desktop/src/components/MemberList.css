@@ -173,6 +173,24 @@
   white-space: nowrap;
 }
 
+.member-list__member-id {
+  display: none;
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.member-list__member:hover .member-list__member-activity {
+  display: none;
+}
+
+.member-list__member:hover .member-list__member-id {
+  display: block;
+}
+
 .member-list__host-badge {
   font-size: 10px;
   color: var(--yellow);
