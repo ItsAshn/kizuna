@@ -182,7 +182,7 @@ function seedPreExistingMigrations(database: Database.Database): void {
     ['idx_gifs_name', indexExists(database, 'idx_gifs_name')],
     ['message_reactions_v1', false],
     ['idx_msg_reactions_msg_v1', false],
-    ['message_reactions_new_table', tableExists(database, 'message_reactions')],
+    ['message_reactions_new_table', tableExists(database, 'message_reactions_new')],
     ['migrate_message_reactions', false],
     ['drop_message_reactions_v1', false],
     ['rename_message_reactions_new', false],

@@ -165,6 +165,34 @@ const EMOJI_LIST: { shortcode: string; emoji: string }[] = [
   { shortcode: 'sound', emoji: '🔊' },
 ];
 
+function parsePollArgs(input: string): string[] {
+  if (input.includes('|')) {
+    return input.split('|').map((s) => s.trim()).filter(Boolean)
+  }
+  const parts: string[] = []
+  let i = 0
+  while (i < input.length) {
+    if (input[i] === '"') {
+      const end = input.indexOf('"', i + 1)
+      if (end !== -1) {
+        parts.push(input.slice(i + 1, end).trim())
+        i = end + 1
+        continue
+      }
+    }
+    const nextSpace = input.indexOf(' ', i)
+    if (nextSpace === -1) {
+      const word = input.slice(i).trim()
+      if (word) parts.push(word)
+      break
+    }
+    const word = input.slice(i, nextSpace).trim()
+    if (word) parts.push(word)
+    i = nextSpace + 1
+  }
+  return parts
+}
+
 function hasDeletePermission(
   members: Member[],
   currentUserId: string,
@@ -937,12 +965,9 @@ export default function ChatArea({
       const trimmedInput = input.trim();
       if (trimmedInput.startsWith('/poll ') && activeChannelId) {
         const pollArgs = trimmedInput.slice(6);
-        const parts = pollArgs
-          .split('|')
-          .map((s: string) => s.trim())
-          .filter(Boolean);
+        const parts = parsePollArgs(pollArgs);
         if (parts.length < 3) {
-          setSendError('Usage: /poll <question> | <option1> | <option2> [| more options...]');
+          setSendError('Usage: /poll "question" option1 option2 [option3 ...]');
           return;
         }
         const [question, ...options] = parts;

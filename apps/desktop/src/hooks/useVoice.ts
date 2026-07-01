@@ -378,6 +378,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setLocalConnectionQuality(null)
     setLiveAudioLevel(0)
     clearScreenSharePeer()
+    useVoiceStore.getState().setIceServers([])
   }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, clearScreenSharePeer, clearPeerCameraStreams])
 
   const consumePeer = useCallback(async (
@@ -740,6 +741,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       serverBitrateRef.current = voiceBitrateKbps
       setServerVoiceBitrateKbps(voiceBitrateKbps)
 
+      useVoiceStore.getState().setIceServers(iceServers)
+
       // Step 2: create send transport via chat socket
       const sendParams: TransportResult = await new Promise((resolve) =>
         socket!.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
@@ -968,6 +971,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     deviceRef.current = device
 
     const iceServers = joinResult.iceServers || []
+
+    useVoiceStore.getState().setIceServers(iceServers)
 
     vlog('joinVoice', 'creating send transport')
     const sendParams: Record<string, unknown> = await new Promise((resolve) =>

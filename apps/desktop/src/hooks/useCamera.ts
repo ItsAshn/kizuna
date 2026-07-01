@@ -4,6 +4,7 @@ import { Device } from 'mediasoup-client'
 import type { Transport, Producer } from 'mediasoup-client/types'
 import { useCallStore } from '../store/callStore'
 import { useVoiceStore } from '../store/voiceStore'
+import { useNotificationStore } from '../store/notificationStore'
 import { isTauri } from '../utils/platform'
 
 const CAMERA_WIDTH = 640
@@ -90,7 +91,10 @@ export function useCamera(
         )
         if (sendParams?.error) throw new Error(`Create transport failed: ${sendParams.error}`)
 
-        const sendTransport = device.createSendTransport(sendParams as Parameters<typeof device.createSendTransport>[0])
+        const sendTransport = device.createSendTransport({
+          ...sendParams as Record<string, unknown>,
+          iceServers: voiceStore.getState().iceServers.length > 0 ? voiceStore.getState().iceServers : undefined,
+        } as Parameters<typeof device.createSendTransport>[0])
         cameraTransportRef.current = sendTransport
 
         sendTransport.on('connect', ({ dtlsParameters }, cb) => {
@@ -205,6 +209,11 @@ export function useCamera(
       }
     } catch (err) {
       console.error('Failed to start camera:', err)
+      useNotificationStore.getState().addNotification({
+        type: 'message',
+        title: 'Camera Error',
+        body: `Failed to start camera: ${err instanceof Error ? err.message : String(err)}`,
+      })
       await cleanupLocal()
     }
   }, [socketRef, sendTransportRef, cleanupLocal])

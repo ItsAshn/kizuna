@@ -1,3 +1,8 @@
+---
+title: Configuration Reference
+description: Complete configuration reference for the Kizuna self-hosted chat server. All environment variables documented — JWT, SQLite, mediasoup, SMTP, and more.
+---
+
 # Configuration Reference
 
 All environment variables for the Kizuna server. Set these in `.env` before running `docker compose up -d`.

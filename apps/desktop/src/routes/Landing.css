@@ -35,7 +35,7 @@
 }
 
 .landing-nav__inner {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 0 var(--space-6);
   height: 56px;
@@ -82,6 +82,33 @@
   background: var(--brand-hover);
 }
 
+.landing-nav__links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.landing-nav__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 6px var(--space-3);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: transparent;
+  transition: all 0.15s ease;
+}
+
+.landing-nav__link:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+  background: var(--bg-hover);
+}
+
 /* ── Hero ─────────────────────────────────────────────────── */
 
 .landing-hero {
@@ -99,8 +126,8 @@
   top: -40%;
   left: 50%;
   transform: translateX(-50%);
-  width: 600px;
-  height: 600px;
+  width: 800px;
+  height: 800px;
   background: radial-gradient(circle, rgba(76, 110, 245, 0.12) 0%, transparent 70%);
   pointer-events: none;
 }
@@ -132,7 +159,7 @@
 }
 
 .landing-hero__desc {
-  max-width: 540px;
+  max-width: 680px;
   margin-top: var(--space-5);
   font-size: 16px;
   line-height: 1.6;
@@ -226,7 +253,7 @@
   font-size: 15px;
   color: var(--text-muted);
   text-align: center;
-  max-width: 480px;
+  max-width: 580px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -235,7 +262,7 @@
 
 .landing-features {
   padding: 80px var(--space-6) 96px;
-  max-width: 1100px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
@@ -307,7 +334,7 @@
 
 .landing-servers {
   padding: 80px var(--space-6) 96px;
-  max-width: 1100px;
+  max-width: 1400px;
   margin: 0 auto;
   border-top: 1px solid var(--border-color);
 }
@@ -329,7 +356,7 @@
 
 .landing-how {
   padding: 80px var(--space-6) 96px;
-  max-width: 1100px;
+  max-width: 1400px;
   margin: 0 auto;
   border-top: 1px solid var(--border-color);
 }
@@ -371,7 +398,7 @@
   font-size: 14px;
   line-height: 1.5;
   color: var(--text-muted);
-  max-width: 260px;
+  max-width: 320px;
   margin: 0 auto;
 }
 
@@ -379,7 +406,7 @@
 
 .landing-download {
   padding: 80px var(--space-6) 96px;
-  max-width: 700px;
+  max-width: 860px;
   margin: 0 auto;
   border-top: 1px solid var(--border-color);
 }
@@ -475,11 +502,15 @@
   background: var(--bg-primary);
 }
 
+.landing-download__more {
+  margin-top: var(--space-4);
+  text-align: center;
+}
+
 .landing-download__gh-link {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  margin-top: var(--space-4);
   padding: var(--space-2) 0;
   font-size: 13px;
   color: var(--text-muted);
@@ -495,7 +526,7 @@
 
 .landing-selfhost {
   padding: 80px var(--space-6) 96px;
-  max-width: 780px;
+  max-width: 960px;
   margin: 0 auto;
   border-top: 1px solid var(--border-color);
 }
@@ -592,7 +623,7 @@
 }
 
 .landing-footer__inner {
-  max-width: 1100px;
+  max-width: 1400px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -631,7 +662,7 @@
 }
 
 .landing-footer__copy {
-  max-width: 1100px;
+  max-width: 1400px;
   margin: var(--space-3) auto 0;
   font-size: 12px;
   color: var(--text-muted);
@@ -763,28 +794,16 @@
     font-size: 15px;
   }
 
-.landing-nav__links {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
+  .landing-nav__links {
+    gap: var(--space-2);
+  }
 
-.landing-nav__link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  text-decoration: none;
-  transition: color 0.15s ease;
-}
+  .landing-nav__link {
+    padding: 4px var(--space-2);
+    font-size: 12px;
+  }
 
-.landing-nav__link:hover {
-  color: var(--text-primary);
-}
-
-.landing-nav__cta {
+  .landing-nav__cta {
     padding: var(--space-1) var(--space-3);
     font-size: 12px;
   }

@@ -39,6 +39,7 @@ interface VoiceState {
   /** Live remote webcam streams, keyed by peerId. Presence implies that peer's camera is on. */
   peerCameraStreams: Record<string, MediaStream>;
   routerRtpCapabilities: RtpCapabilities | null;
+  iceServers: { urls: string; username?: string; credential?: string }[];
 
   setActiveVoiceChannel: (channelId: string | null) => void;
   setVoicePeers: (peers: VoicePeer[]) => void;
@@ -64,6 +65,7 @@ interface VoiceState {
   removePeerCameraStream: (peerId: string) => void;
   clearPeerCameraStreams: () => void;
   setRouterRtpCapabilities: (caps: RtpCapabilities) => void;
+  setIceServers: (servers: { urls: string; username?: string; credential?: string }[]) => void;
   setVoiceInputMode: (mode: VoiceInputMode) => void;
   setPushToTalkKey: (key: string) => void;
   setVoiceProcessingMode: (mode: VoiceProcessingMode) => void;
@@ -108,6 +110,7 @@ export const useVoiceStore = create<VoiceState>()(
       peerVolumes: {},
       peerCameraStreams: {},
       routerRtpCapabilities: null,
+      iceServers: [],
 
       setActiveVoiceChannel: (activeVoiceChannelId) => set({ activeVoiceChannelId }),
       setVoicePeers: (voicePeers) => set({ voicePeers }),
@@ -174,6 +177,7 @@ export const useVoiceStore = create<VoiceState>()(
         }),
       clearPeerCameraStreams: () => set({ peerCameraStreams: {} }),
       setRouterRtpCapabilities: (routerRtpCapabilities) => set({ routerRtpCapabilities }),
+      setIceServers: (iceServers) => set({ iceServers }),
       setVoiceInputMode: (voiceInputMode) => set({ voiceInputMode }),
       setPushToTalkKey: (pushToTalkKey) => set({ pushToTalkKey }),
       setVoiceProcessingMode: (voiceProcessingMode) =>

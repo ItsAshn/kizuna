@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { MessageCircle, Mic, Monitor, Lock, Code, Download, ExternalLink, ArrowRight, Server, Apple, Container, Terminal, GitBranch, BookOpen } from 'lucide-react'
+import { MessageCircle, Mic, Monitor, Lock, Code, Download, ExternalLink, ArrowRight, Server, Container, GitBranch, BookOpen } from 'lucide-react'
+import { FaLinux, FaApple, FaWindows } from 'react-icons/fa'
 import ServerBrowser from '../components/ServerBrowser'
 import './Landing.css'
 
@@ -164,21 +165,21 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
               className={`landing-download__tab ${installTab === 'linux' ? 'landing-download__tab--active' : ''}`}
               onClick={() => setInstallTab('linux')}
             >
-              <Terminal size={13} />
+              <FaLinux size={13} />
               <span>Linux</span>
             </button>
             <button
               className={`landing-download__tab ${installTab === 'macos' ? 'landing-download__tab--active' : ''}`}
               onClick={() => setInstallTab('macos')}
             >
-              <Apple size={13} />
+              <FaApple size={13} />
               <span>macOS</span>
             </button>
             <button
               className={`landing-download__tab ${installTab === 'windows' ? 'landing-download__tab--active' : ''}`}
               onClick={() => setInstallTab('windows')}
             >
-              <Monitor size={13} />
+              <FaWindows size={13} />
               <span>Windows</span>
             </button>
           </div>
@@ -197,16 +198,18 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
             </p>
           )}
         </div>
-        <a
-          href="https://github.com/ItsAshn/kizuna/releases/latest"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="landing-download__gh-link"
-        >
-          <GitBranch size={14} />
-          View all releases on GitHub
-          <ExternalLink size={12} />
-        </a>
+        <div className="landing-download__more">
+          <a
+            href="https://github.com/ItsAshn/kizuna/releases/latest"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="landing-download__gh-link"
+          >
+            <GitBranch size={14} />
+            View all releases on GitHub
+            <ExternalLink size={12} />
+          </a>
+        </div>
       </section>
 
       <section className="landing-selfhost" id="self-host">

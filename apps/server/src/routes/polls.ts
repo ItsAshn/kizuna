@@ -37,7 +37,7 @@ pollsRouter.post('/channels/:channelId/polls', authMiddleware, async (c) => {
   })
 
   const content = JSON.stringify({ __poll__: true, pollId, question, options: options.map((label, i) => ({ id: '', label, position: i })) })
-  db.prepare(`INSERT INTO messages (id, channel_id, user_id, content, author_username, author_display_name, author_avatar, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+  db.prepare(`INSERT INTO messages (id, channel_id, author_id, content, author_username, author_display_name, author_avatar, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
     messageId, channelId, userId, content, username, author?.display_name ?? username, author?.avatar ?? null, now
   )
 

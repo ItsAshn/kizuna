@@ -1,3 +1,8 @@
+---
+title: Updating
+description: How to update your self-hosted Kizuna server. Keep your Discord alternative up to date with Docker or manual upgrade instructions.
+---
+
 # Updating
 
 ## Docker

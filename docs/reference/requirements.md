@@ -1,3 +1,8 @@
+---
+title: System Requirements
+description: System requirements for Kizuna desktop client and server. Audio pipeline, screen capture support across Windows, macOS, Linux, and Android.
+---
+
 # System Requirements
 
 ## Audio Pipeline

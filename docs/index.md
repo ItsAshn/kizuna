@@ -1,3 +1,31 @@
+---
+title: Kizuna Docs
+description: Self-hosted Discord alternative with text chat, voice channels, and screen sharing. You host the server, you own the data. Free and open source (AGPLv3).
+---
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Kizuna",
+  "applicationCategory": "CommunicationApplication",
+  "operatingSystem": "Windows, macOS, Linux, Android",
+  "description": "Self-hosted Discord alternative with text chat, voice channels, and screen sharing.",
+  "url": "https://use-kizuna.com",
+  "license": "https://github.com/ItsAshn/kizuna/blob/main/LICENSE",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "ItsAshn",
+    "url": "https://github.com/ItsAshn"
+  }
+}
+</script>
+
 # Kizuna Docs
 
 Self-hosted Discord alternative with text chat, voice channels, and screen sharing. You host the server, you own the data.

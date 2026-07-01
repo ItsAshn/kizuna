@@ -1,3 +1,8 @@
+---
+title: Security
+description: Security overview for Kizuna — JWT authentication, end-to-end encryption with NaCl, password hashing, Proof-of-Work registration protection, and vulnerability reporting.
+---
+
 # Security
 
 ## Reporting a Vulnerability

@@ -1,3 +1,8 @@
+---
+title: Getting Started
+description: Get started with Kizuna, the self-hosted Discord alternative. Overview, features, and project structure for the open-source chat and voice platform.
+---
+
 # Getting Started
 
 Kizuna is a self-hosted Discord alternative with real-time text chat, voice channels (WebRTC via mediasoup SFU), and screen sharing.

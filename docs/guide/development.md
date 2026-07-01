@@ -1,3 +1,8 @@
+---
+title: Development
+description: Set up a development environment for Kizuna, the open-source Discord alternative. Tech stack, monorepo structure, and build instructions.
+---
+
 # Development
 
 ## Prerequisites

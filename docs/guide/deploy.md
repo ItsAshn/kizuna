@@ -1,3 +1,8 @@
+---
+title: Self-Hosting
+description: Deploy your own Kizuna server with Docker. Self-hosted Discord alternative — one command deploy with automatic HTTPS via Caddy.
+---
+
 # Self-Hosting
 
 Deploy your own Kizuna server with Docker.
