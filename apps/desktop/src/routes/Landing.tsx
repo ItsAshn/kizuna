@@ -77,10 +77,16 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
             <img src="/Logo.svg" alt="Kizuna" className="landing-nav__logo" />
             <span className="landing-nav__name">Kizuna</span>
           </a>
-          <button className="landing-nav__cta" onClick={onEnterApp}>
-            Launch App
-            <ArrowRight size={14} />
-          </button>
+          <div className="landing-nav__links">
+            <a href="https://itsashn.github.io/kizuna/" target="_blank" rel="noopener noreferrer" className="landing-nav__link">
+              Docs
+              <ExternalLink size={12} />
+            </a>
+            <button className="landing-nav__cta" onClick={onEnterApp}>
+              Launch App
+              <ArrowRight size={14} />
+            </button>
+          </div>
         </div>
       </nav>
 

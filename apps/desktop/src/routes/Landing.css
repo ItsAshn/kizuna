@@ -763,7 +763,28 @@
     font-size: 15px;
   }
 
-  .landing-nav__cta {
+.landing-nav__links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.landing-nav__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.landing-nav__link:hover {
+  color: var(--text-primary);
+}
+
+.landing-nav__cta {
     padding: var(--space-1) var(--space-3);
     font-size: 12px;
   }
