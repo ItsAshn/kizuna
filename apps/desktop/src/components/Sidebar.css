@@ -532,6 +532,7 @@
   position: relative;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .sidebar__channel-wrap .sidebar__channel {
@@ -683,6 +684,7 @@
 }
 
 .sidebar__voice-users {
+  flex-basis: 100%;
   padding: 2px 0 2px 28px;
   display: flex;
   flex-direction: column;

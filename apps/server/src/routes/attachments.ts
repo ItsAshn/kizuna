@@ -6,7 +6,6 @@ import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission, isUserAdmin } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 import type { Context } from 'hono'
-import { uploadLimiter } from '../middleware/rateLimiter'
 import { processImage, shouldProcessImage } from '../media/imageProcessor'
 function getAuth(c: Context): AuthUser { return c.get('auth') }
 
@@ -74,7 +73,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 }
 
 // POST /attachments/:channelId — upload file via multipart/form-data
-attachmentRoutes.post('/:channelId', uploadLimiter as never, authMiddleware, async (c) => {
+attachmentRoutes.post('/:channelId', authMiddleware, async (c) => {
   const user = getAuth(c)
 
   const userPerms = getUserPermissions(user.userId)

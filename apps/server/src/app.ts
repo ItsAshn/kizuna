@@ -33,7 +33,7 @@ import registryRoutes from './routes/registry';
 import identityLinkRoutes from './routes/identityLinks';
 import pollsRoutes from './routes/polls';
 import webhooksRoutes from './routes/webhooks';
-import { authLimiter, messageLimiter, uploadLimiter, apiLimiter, verifyLimiter } from './middleware/rateLimiter';
+import { authLimiter, messageLimiter, uploadLimiter, apiLimiter, verifyLimiter, mediaLimiter } from './middleware/rateLimiter';
 
 const log = createLogger('app');
 
@@ -139,13 +139,15 @@ export function createApp(httpPort: number) {
   app.use('/api/admin/group-dms/*', apiLimiter);
   app.route('/api/admin/group-dms', adminGroupDmRoutes);
 
-  app.use('/api/attachments/*', uploadLimiter);
+  app.use('/api/attachments/*', (c, next) =>
+    c.req.method === 'GET' ? mediaLimiter(c, next) : uploadLimiter(c, next));
   app.route('/api/attachments', attachmentRoutes);
 
   app.use('/api/mutes/*', apiLimiter);
   app.route('/api/mutes', mutesRoutes);
 
-  app.use('/api/gifs/*', uploadLimiter);
+  app.use('/api/gifs/*', (c, next) =>
+    c.req.method === 'GET' ? mediaLimiter(c, next) : uploadLimiter(c, next));
   app.route('/api/gifs', gifRoutes);
 
   app.use('/api/reactions/*', apiLimiter);

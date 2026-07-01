@@ -24,10 +24,10 @@ function getClientIp(c: Context): string {
   return c.req.header('x-real-ip') || '127.0.0.1';
 }
 
-function rateLimiter(maxRequests: number, windowMs: number) {
+function rateLimiter(name: string, maxRequests: number, windowMs: number) {
   return async (c: Context, next: Next): Promise<Response | void> => {
     const ip = getClientIp(c);
-    const key = `rl:${ip}`;
+    const key = `rl:${name}:${ip}`;
     const now = Date.now();
     const entry = store.get(key);
 
@@ -50,9 +50,12 @@ function rateLimiter(maxRequests: number, windowMs: number) {
   };
 }
 
-export const authLimiter = rateLimiter(120, 60_000);
-export const sensitiveAuthLimiter = rateLimiter(30, 60_000);
-export const messageLimiter = rateLimiter(120, 60_000);
-export const uploadLimiter = rateLimiter(60, 60_000);
-export const apiLimiter = rateLimiter(300, 60_000);
-export const verifyLimiter = rateLimiter(30, 60_000);
+export const authLimiter = rateLimiter('auth', 120, 60_000);
+export const sensitiveAuthLimiter = rateLimiter('sensitive-auth', 30, 60_000);
+export const messageLimiter = rateLimiter('message', 120, 60_000);
+export const uploadLimiter = rateLimiter('upload', 60, 60_000);
+export const apiLimiter = rateLimiter('api', 300, 60_000);
+export const verifyLimiter = rateLimiter('verify', 30, 60_000);
+// Serving media (attachment downloads, gif thumbnails) — a single gif-heavy
+// channel can legitimately trigger hundreds of image GETs per minute.
+export const mediaLimiter = rateLimiter('media', 600, 60_000);
