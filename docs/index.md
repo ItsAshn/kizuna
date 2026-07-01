@@ -3,6 +3,7 @@ title: Kizuna Docs
 description: Self-hosted Discord alternative with text chat, voice channels, and screen sharing. You host the server, you own the data. Free and open source (AGPLv3).
 ---
 
+<div v-pre>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -25,6 +26,7 @@ description: Self-hosted Discord alternative with text chat, voice channels, and
   }
 }
 </script>
+</div>
 
 # Kizuna Docs
 
