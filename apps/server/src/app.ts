@@ -37,11 +37,37 @@ import { authLimiter, messageLimiter, uploadLimiter, apiLimiter, verifyLimiter }
 
 const log = createLogger('app');
 
+// Origins that may always talk to any Kizuna server: the official web app
+// (which self-hosters use as their frontend) and the Tauri desktop app
+// (tauri://localhost on Linux/macOS, http://tauri.localhost on Windows).
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://use-kizuna.com',
+  'https://www.use-kizuna.com',
+  'tauri://localhost',
+  'http://tauri.localhost',
+];
+
+const LOCALHOST_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+export function resolveCorsOrigin(origin: string): string | undefined {
+  const extra = (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (DEFAULT_ALLOWED_ORIGINS.includes(origin) || extra.includes(origin)) {
+    return origin;
+  }
+  // Local dev frontends (e.g. vite on :1420) may talk to any server.
+  if (LOCALHOST_ORIGIN_REGEX.test(origin)) {
+    return origin;
+  }
+  return undefined;
+}
+
 export function createApp(httpPort: number) {
   const app = new Hono<HonoEnv>();
 
-  const corsOrigin = process.env.CORS_ORIGIN || '*';
-  app.use('*', cors({ origin: corsOrigin, credentials: true }));
+  app.use('*', cors({ origin: (origin) => resolveCorsOrigin(origin), credentials: true }));
 
   app.use('*', compress());
 
@@ -170,7 +196,15 @@ export function createApp(httpPort: number) {
 
   const httpServer = server as unknown as import('http').Server;
   const io = new IoServer(httpServer, {
-    cors: { origin: corsOrigin, methods: ['GET', 'POST'] },
+    cors: {
+      // Non-browser clients send no Origin header and bypass CORS entirely.
+      origin: (origin, callback) => {
+        if (!origin || resolveCorsOrigin(origin)) return callback(null, true);
+        callback(new Error('Origin not allowed by CORS'));
+      },
+      methods: ['GET', 'POST'],
+      credentials: true,
+    },
   });
 
   ioRef.current = io;

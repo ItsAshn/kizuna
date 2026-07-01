@@ -23,6 +23,7 @@ All environment variables for the Kizuna server. Set these in `.env` before runn
 | `SERVER_DESCRIPTION` | `A self-hosted Kizuna community` | Short description. |
 | `SERVER_URL` | *(auto)* | Public HTTPS URL. Used for invite links. Should match your domain. |
 | `SERVER_PASSWORD` | *(none)* | Optional join password. If set, users must provide it to register. |
+| `CORS_ORIGIN` | *(none)* | Extra origins allowed to call this server from a browser, comma-separated. The official web app (`https://use-kizuna.com`), the desktop app, and localhost dev servers are always allowed. |
 
 ## WebRTC / Voice
 

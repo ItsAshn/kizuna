@@ -41,6 +41,7 @@ services:
       IS_REGISTRY: ${IS_REGISTRY:-false}
       SERVER_URL: ${SERVER_URL:-}
       UPNP_ENABLED: ${UPNP_ENABLED:-false}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
     volumes:
       - ./data:/data
       - ./uploads:/app/uploads
