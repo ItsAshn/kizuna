@@ -1,0 +1,9 @@
+# Development override — adds local build on top of docker-compose.yml.
+# Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+services:
+  kizuna:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
