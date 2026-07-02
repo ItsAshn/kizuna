@@ -245,20 +245,9 @@
     overflow: hidden;
   }
 
-  .mobile-content__view--push {
-    animation: pushSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @keyframes pushSlideIn {
-    from {
-      transform: translateX(30%);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
+  /* Push/pop/tab animations live in MobileShell.css, which owns the
+     mobile navigation transitions — keep a single source so the two
+     files can't fight over the same class. */
 
   /* ── Tab container ────────────────────────────────────────── */
 

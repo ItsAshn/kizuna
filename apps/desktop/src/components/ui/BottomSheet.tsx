@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useDragToDismiss } from '../../hooks/useDragToDismiss'
 import './BottomSheet.css'
 
@@ -7,17 +8,30 @@ interface BottomSheetProps {
   onClose: () => void
   /** Optional title shown next to the drag handle. */
   title?: string
-  children: ReactNode
+  /** Pass a function to get the animated `close` callback (plays the
+      slide-down before calling onClose). */
+  children: ReactNode | ((close: () => void) => ReactNode)
   className?: string
+  /** Extra class on the backdrop overlay (e.g. to raise z-index above
+      the surface the sheet was opened from). */
+  overlayClassName?: string
 }
 
 /**
  * Mobile bottom sheet: a backdrop + slide-up panel with a drag handle and
- * swipe-to-dismiss. Intended for non-Modal surfaces (pickers, action menus)
- * that need a native-feeling sheet on phones. Modals use ui/Modal which renders
- * as a sheet on mobile via the same useDragToDismiss hook.
+ * swipe-to-dismiss. The canonical presenter for pickers and action menus on
+ * phones (ActionSheet, ReactionPicker, GifPicker, UserStatusPicker). Modals
+ * use ui/Modal, which renders as a sheet on mobile via the same
+ * useDragToDismiss hook.
  */
-export default function BottomSheet({ open, onClose, title, children, className = '' }: BottomSheetProps) {
+export default function BottomSheet({
+  open,
+  onClose,
+  title,
+  children,
+  className = '',
+  overlayClassName = '',
+}: BottomSheetProps) {
   const [closing, setClosing] = useState(false)
   const sheetRef = useRef<HTMLDivElement>(null)
 
@@ -47,10 +61,15 @@ export default function BottomSheet({ open, onClose, title, children, className 
 
   if (!open) return null
 
-  return (
+  return createPortal(
     <div
-      className={`bottom-sheet-overlay${closing ? ' bottom-sheet-overlay--closing' : ''}`}
-      onClick={handleClose}
+      className={`bottom-sheet-overlay ${overlayClassName}${closing ? ' bottom-sheet-overlay--closing' : ''}`}
+      onClick={(e) => {
+        // Sheets can be nested in components with their own click handling
+        // (toggles, outside-click listeners) — don't leak the backdrop tap.
+        e.stopPropagation()
+        handleClose()
+      }}
       role="presentation"
     >
       <div
@@ -69,8 +88,11 @@ export default function BottomSheet({ open, onClose, title, children, className 
           <span className="bottom-sheet__grip" />
           {title && <span className="bottom-sheet__title">{title}</span>}
         </div>
-        <div className="bottom-sheet__body">{children}</div>
+        <div className="bottom-sheet__body">
+          {typeof children === 'function' ? children(handleClose) : children}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

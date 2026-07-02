@@ -17,6 +17,7 @@ import MobileServersTab from './MobileServersTab'
 import MobileMessagesTab from './MobileMessagesTab'
 import MobileYouTab from './MobileYouTab'
 import { useMobileNavigation } from '../../hooks/useMobileNavigation'
+import { useKeyboard } from '../../hooks/useKeyboard'
 import './MobileShell.css'
 
 interface MobileShellProps {
@@ -97,7 +98,7 @@ export default function MobileShell({
   const {
     activeTab,
     navStack,
-    isPushAnim,
+    navAnim,
     topEntry,
     viewKey,
     voiceStageVisible,
@@ -106,6 +107,8 @@ export default function MobileShell({
     switchTab,
     navStackRef,
   } = useMobileNavigation()
+
+  useKeyboard()
 
   const viewedVoiceChannelId = useChatStore((s) => s.viewedVoiceChannelId)
   const stageOwnsScreenshare =
@@ -306,7 +309,7 @@ export default function MobileShell({
 
         <div className="mobile-content" key={viewKey}>
           <div
-            className={`mobile-content__view${isPushAnim ? ' mobile-content__view--push' : ''}`}
+            className={`mobile-content__view${navAnim ? ` mobile-content__view--${navAnim}` : ''}`}
           >
             {renderCurrentView()}
           </div>

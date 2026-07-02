@@ -86,42 +86,5 @@
   margin: 4px 8px;
 }
 
-/* ── Mobile bottom sheet ───────────────────────────────────── */
-
-@media (max-width: 767px) {
-  .context-menu {
-    position: fixed !important;
-    bottom: 0;
-    left: 0 !important;
-    right: 0;
-    top: auto !important;
-    min-width: 0;
-    max-width: none;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    padding: 12px 8px 24px;
-    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
-    animation: contextMenuSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .context-menu__item {
-    font-size: 16px;
-    padding: 14px 16px;
-    border-radius: var(--radius-md);
-    min-height: 48px;
-  }
-
-  .context-menu__title {
-    font-size: 12px;
-    padding: 8px 16px;
-  }
-
-  .context-menu__shortcut {
-    font-size: 12px;
-  }
-}
-
-@keyframes contextMenuSlideUp {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
-}
+/* On mobile, ContextMenu renders ui/ActionSheet instead of this anchored
+   menu — see ActionSheet.css for the touch presentation. */

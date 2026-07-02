@@ -12,6 +12,19 @@
   flex-shrink: 0;
   z-index: 10;
   position: relative;
+  overflow: hidden;
+  transition:
+    height 0.2s ease-out,
+    padding-bottom 0.2s ease-out;
+}
+
+/* While the on-screen keyboard is up, the tab bar collapses so the
+   conversation and composer get the space — matching native chat apps
+   instead of stacking chrome on top of the keyboard. */
+html[data-keyboard-open] .bottom-tab-bar {
+  height: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
 }
 
 /* Pill-shaped active indicator that slides behind the active tab */

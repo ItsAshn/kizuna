@@ -12,7 +12,7 @@ export type NavEntry =
 export function useMobileNavigation() {
   const [activeTab, setActiveTab] = useState(0)
   const [navStack, setNavStack] = useState<NavEntry[]>([])
-  const [isPushAnim, setIsPushAnim] = useState(false)
+  const [navAnim, setNavAnim] = useState<'push' | 'pop' | null>(null)
 
   const setActiveServer = useServerStore((s) => s.setActiveServer)
   const setActiveChannel = useChatStore((s) => s.setActiveChannel)
@@ -22,14 +22,14 @@ export function useMobileNavigation() {
 
   const pushView = useCallback(
     (entry: NavEntry) => {
-      setIsPushAnim(true)
+      setNavAnim('push')
       if (entry.type === 'server') setActiveServer(entry.serverId)
       else if (entry.type === 'channel') setActiveChannel(entry.channelId)
       else if (entry.type === 'dm') setActiveDMChannel(entry.dmChannelId)
       else if (entry.type === 'group-dm') setActiveGroupDMChannel(entry.groupDmId)
       else if (entry.type === 'voice') setViewedVoiceChannel(entry.channelId)
       setNavStack((prev) => [...prev, entry])
-      setTimeout(() => setIsPushAnim(false), 320)
+      setTimeout(() => setNavAnim(null), 320)
     },
     [setActiveServer, setActiveChannel, setActiveDMChannel, setActiveGroupDMChannel, setViewedVoiceChannel],
   )
@@ -44,11 +44,14 @@ export function useMobileNavigation() {
       setActiveGroupDMChannel(null)
       setViewedVoiceChannel(null)
     }
+    setNavAnim('pop')
     setNavStack(newStack)
+    setTimeout(() => setNavAnim(null), 320)
   }, [navStack, setActiveChannel, setActiveDMChannel, setActiveGroupDMChannel, setViewedVoiceChannel])
 
   const switchTab = useCallback(
     (tab: number) => {
+      setNavAnim(null)
       if (tab === activeTab && navStack.length > 0) {
         setNavStack([])
       } else {
@@ -85,7 +88,7 @@ export function useMobileNavigation() {
   return {
     activeTab,
     navStack,
-    isPushAnim,
+    navAnim,
     topEntry,
     viewKey,
     voiceStageVisible,

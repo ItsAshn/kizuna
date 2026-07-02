@@ -37,14 +37,37 @@
 ### Docker (recommended)
 
 ```bash
-git clone https://github.com/ItsAshn/kizuna.git
-cd kizuna
+git clone https://github.com/ItsAshn/kizuna.git && cd kizuna
 cp .env.example .env
 # Edit .env — set DOMAIN and JWT_SECRET at minimum
+mkdir -p data uploads && chown -R 1000:1000 data uploads
 docker compose up -d
 ```
 
-The server will be available at `https://your-domain.com`. For voice and screen sharing to work, ensure UDP ports `40000-40099` are reachable.
+The server will be available at `https://your-domain.com`. Pre-built images are pulled from `ghcr.io/itsashn/kizuna` — no compilation or build tools needed on the server. Multi-arch images support amd64 and arm64 (Raspberry Pi, AWS Graviton).
+
+For voice and screen sharing, ensure UDP ports `40000-40099` are reachable on your firewall.
+
+### Updating
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+The compose file includes [Watchtower](https://github.com/containrrr/watchtower) which automatically pulls and applies updates within an hour of a new release. Remove the `watchtower` service from `docker-compose.yml` if you prefer manual updates.
+
+For safe manual updates with health-check verification and automatic rollback:
+
+```bash
+./scripts/update.sh                 # latest version
+./scripts/update.sh --pin v0.2.0   # specific version
+```
+
+### Local development builds
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
 
 ### Manual
 

@@ -9,6 +9,8 @@ export { default as Textarea } from './Textarea'
 // Existing primitives
 export { default as Modal } from './Modal'
 export { default as BottomSheet } from './BottomSheet'
+export { default as ActionSheet } from './ActionSheet'
+export type { ActionSheetItem, ActionSheetSection } from './ActionSheet'
 export { default as Tabs } from './Tabs'
 export { default as SettingsLayout } from './SettingsLayout'
 export { default as SettingsNav } from './SettingsNav'

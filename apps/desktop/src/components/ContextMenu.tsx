@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import ActionSheet from './ui/ActionSheet'
+import { useMobile } from '../hooks/useMobile'
 import './ContextMenu.css'
 
 export interface ContextMenuItem {
@@ -23,6 +25,7 @@ interface ContextMenuProps {
 }
 
 export default function ContextMenu({ x, y, sections, onClose, title }: ContextMenuProps) {
+  const isMobile = useMobile()
   const ref = useRef<HTMLDivElement>(null)
   const [adjustedPos, setAdjustedPos] = useState<{ left: number; top: number } | null>(null)
 
@@ -44,6 +47,8 @@ export default function ContextMenu({ x, y, sections, onClose, title }: ContextM
   }, [x, y])
 
   useEffect(() => {
+    // The mobile ActionSheet owns dismissal (backdrop, Escape, swipe).
+    if (isMobile) return
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         onClose()
@@ -69,7 +74,11 @@ export default function ContextMenu({ x, y, sections, onClose, title }: ContextM
       document.removeEventListener('mousedown', handleClick, true)
       window.removeEventListener('keydown', handleKey)
     }
-  }, [onClose])
+  }, [onClose, isMobile])
+
+  if (isMobile) {
+    return <ActionSheet title={title} sections={sections} onClose={onClose} />
+  }
 
   return createPortal(
     <div

@@ -360,11 +360,6 @@ select:focus:not(:focus-visible) {
   z-index: 9999;
 }
 
-[data-tooltip]:hover::after {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
 [data-tooltip-side='right']::after {
   bottom: auto;
   left: calc(100% + 8px);
@@ -372,9 +367,33 @@ select:focus:not(:focus-visible) {
   transform: translateY(-50%) translateX(-4px);
 }
 
-[data-tooltip-side='right']:hover::after {
-  opacity: 1;
-  transform: translateY(-50%) translateX(0);
+/* Tooltips are a pointer-hover affordance only. On touch devices the
+   emulated :hover sticks after a tap, which reads as a web page — so the
+   reveal rules only exist where a real hover pointer is present. */
+@media (hover: hover) {
+  [data-tooltip]:hover::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  [data-tooltip-side='right']:hover::after {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+/* Touch devices: no persistent scrollbars — native apps use transient
+   overlay indicators, and a visible gutter is the fastest way to read
+   as a shrunken website. Content remains scrollable as usual. */
+@media (pointer: coarse) {
+  * {
+    scrollbar-width: none;
+  }
+
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

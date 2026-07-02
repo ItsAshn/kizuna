@@ -5,11 +5,11 @@ description: Deploy your own Kizuna server with Docker. Self-hosted Discord alte
 
 # Self-Hosting
 
-Deploy your own Kizuna server with Docker.
+Deploy your own Kizuna server with Docker. Pre-built multi-arch images are pulled from `ghcr.io/itsashn/kizuna` — no build tools or compilation needed on your server.
 
 ## Prerequisites
 
-- A server running Linux
+- A server running Linux (amd64 or arm64)
 - A domain name with an A record pointing to your server's IP
 - Docker and Docker Compose v2 installed
 - Ports 80, 443 (TCP) and 40000-40099 (UDP) reachable
@@ -78,7 +78,7 @@ If your VPS has an external firewall (DigitalOcean, AWS, etc.), open these ports
 docker compose up -d
 ```
 
-Caddy will automatically obtain a Let's Encrypt certificate on first run.
+This pulls the pre-built image from `ghcr.io/itsashn/kizuna:latest` and starts everything. Caddy will automatically obtain a Let's Encrypt certificate on first run.
 
 ### 6. Verify
 
@@ -100,6 +100,50 @@ Internet
 
 Caddy handles TLS termination and reverse-proxies to the Kizuna server on port 5000. WebRTC voice traffic bypasses Caddy entirely on UDP.
 
+## Updating
+
+### Automatic (default)
+
+The compose file includes [Watchtower](https://github.com/containrrr/watchtower), which polls for new images every hour and automatically updates the Kizuna container when a new release is available. No action needed — updates happen in the background.
+
+To disable automatic updates, remove the `watchtower` service from `docker-compose.yml`.
+
+### Manual
+
+```bash
+# Pull latest image and recreate
+docker compose pull && docker compose up -d
+```
+
+For safe updates with health-check verification and automatic rollback:
+
+```bash
+./scripts/update.sh                 # latest version
+./scripts/update.sh --pin v0.2.0   # pin to a specific release
+./scripts/update.sh --no-verify     # skip health check
+```
+
+The update script pulls the image, recreates the container, waits for `/health` to respond, and rolls back to the previous image on failure.
+
+### Pinning to a release
+
+```bash
+# Edit docker-compose.yml and change the image tag:
+#   image: ghcr.io/itsashn/kizuna:v0.2.0
+# Then:
+docker compose pull && docker compose up -d
+```
+
+## Development builds
+
+If you need to build the image locally (e.g. for testing changes):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+This requires the build tools (python3, make, g++) inside the Docker build stage — not on your host.
+
 ## Directory layout
 
 ```
@@ -110,15 +154,6 @@ kizuna/
 ├── Caddyfile         # Reverse proxy config
 └── docker-compose.yml
 ```
-
-## Upgrading
-
-```bash
-git pull
-docker compose up -d --build
-```
-
-See [Updating](/guide/updating) for details.
 
 ## Backups
 

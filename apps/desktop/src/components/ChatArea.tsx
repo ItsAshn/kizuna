@@ -9,6 +9,7 @@ import { useCallStore } from '../store/callStore';
 import { useMobile } from '../hooks/useMobile';
 import { useSwipeBack } from '../hooks/useSwipeBack';
 import { useKeyboard } from '../hooks/useKeyboard';
+import { useHaptics } from '../hooks/useHaptics';
 import {
   fetchMessages,
   fetchDMMessages,
@@ -333,6 +334,7 @@ export default function ChatArea({
   const newMessagesRef = useRef<string | null>(null);
   useSwipeBack(chatAreaRef, onBackToSidebar || (() => {}), !!isMobile && !!onBackToSidebar);
   useKeyboard();
+  const haptics = useHaptics();
   const tryDecryptDM = useCallback(
     (msg: Message): Message => {
       if (!msg.encrypted) return msg;
@@ -1054,7 +1056,7 @@ export default function ChatArea({
       setSlashQuery(null);
       setReplyTo(null);
       setSendError(null);
-      if ('vibrate' in navigator) navigator.vibrate(10);
+      haptics.tap();
       if (inputRef.current) {
         inputRef.current.style.height = 'auto';
         inputRef.current.focus();

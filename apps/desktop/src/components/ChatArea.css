@@ -964,9 +964,11 @@
     padding: 4px 0 0;
   }
 
+  /* No safe-area padding here: the bottom tab bar below the composer
+     already absorbs the inset, and with the keyboard open the inset zone
+     is behind the keyboard. Adding it again created a dead strip. */
   .chat-area__input-bar {
     padding: 0 8px 12px;
-    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.4);
   }
 

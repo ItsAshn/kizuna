@@ -285,20 +285,29 @@
   opacity: 0.85;
 }
 
+/* Mobile: the picker renders inside ui/BottomSheet (see StatusSurface in
+   UserStatusPicker.tsx); these rules size its contents for touch. */
 @media (max-width: 767px) {
-  .status-picker__dropdown {
-    width: 240px;
-    padding: 6px;
+  /* The old anchored dropdown stacked at 9999 so it cleared every panel it
+     can open from — keep that guarantee for the sheet. */
+  .status-picker-sheet-overlay {
+    z-index: 9999;
+  }
+
+  .status-picker-sheet .bottom-sheet__body {
+    padding: 0 12px calc(12px + env(safe-area-inset-bottom, 0px));
   }
 
   .status-picker__option {
-    min-height: 44px;
+    min-height: 48px;
     font-size: 15px;
     padding: 10px 12px;
+    border-radius: var(--radius-md);
   }
 
   .status-picker__sticker-grid {
-    grid-template-columns: repeat(4, 52px);
+    grid-template-columns: repeat(auto-fill, 52px);
+    justify-content: space-between;
   }
 
   .status-picker__sticker-option {

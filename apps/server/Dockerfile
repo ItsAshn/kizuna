@@ -27,22 +27,15 @@ COPY packages/shared/src/ packages/shared/src/
 
 RUN pnpm --filter @kizuna/server build
 
-FROM base AS runtime
+RUN pnpm --filter @kizuna/server deploy /prod
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libstdc++6 \
-    && rm -rf /var/lib/apt/lists/*
+FROM base AS runtime
 
 WORKDIR /app
 
-COPY --from=builder /app/pnpm-workspace.yaml /app/pnpm-lock.yaml /app/package.json ./
-COPY --from=builder /app/apps/server/package.json apps/server/
-COPY --from=builder /app/packages/shared/package.json packages/shared/
-COPY --from=builder /app/packages/shared/src/ packages/shared/src/
+COPY --from=builder /prod /app
 
-RUN pnpm install --prod --frozen-lockfile
-
-COPY --from=builder /app/apps/server/dist apps/server/dist
+RUN mkdir -p /app/uploads /data && chown node:node /app/uploads /data
 
 EXPOSE 5000
 

@@ -6,11 +6,47 @@ import { useVoiceStore } from '../store/voiceStore'
 import { useServerStore } from '../store/serverStore'
 import { updateStatus, fetchGifs, fetchStickerPacks } from '@kizuna/shared'
 import type { UserStatus, GifInfo } from '@kizuna/shared'
+import BottomSheet from './ui/BottomSheet'
+import { useMobile } from '../hooks/useMobile'
 import './UserStatusPicker.css'
 
 interface Props {
   socketRef: React.MutableRefObject<Socket | null>
   children: React.ReactNode
+}
+
+/** Presents the picker as an anchored dropdown on desktop and a native
+    bottom sheet on phones — same body content either way. */
+function StatusSurface({
+  isMobile,
+  coords,
+  onClose,
+  children,
+}: {
+  isMobile: boolean
+  coords: { top: number; left: number }
+  onClose: () => void
+  children: React.ReactNode
+}) {
+  if (isMobile) {
+    return (
+      <BottomSheet
+        open
+        onClose={onClose}
+        title="Status"
+        className="status-picker-sheet"
+        overlayClassName="status-picker-sheet-overlay"
+      >
+        {children}
+      </BottomSheet>
+    )
+  }
+  return createPortal(
+    <div className="status-picker__dropdown" style={{ top: coords.top, left: coords.left, position: 'fixed' }}>
+      {children}
+    </div>,
+    document.body,
+  )
 }
 
 const STATUS_OPTIONS: { value: UserStatus; label: string }[] = [
@@ -21,6 +57,7 @@ const STATUS_OPTIONS: { value: UserStatus; label: string }[] = [
 ]
 
 export default function UserStatusPicker({ socketRef, children }: Props) {
+  const isMobile = useMobile()
   const session = useServerStore((s) => s.activeSession)
   const refreshSessionUser = useServerStore((s) => s.refreshSessionUser)
   const userStatuses = useVoiceStore((s) => s.userStatuses)
@@ -54,6 +91,9 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
   }, [session?.user?.status_text, session?.user?.status_sticker_id])
 
   useEffect(() => {
+    // The mobile BottomSheet owns dismissal (backdrop, Escape, swipe); the
+    // document-level listeners would close it without the exit animation.
+    if (isMobile) return
     function handleClick(e: MouseEvent) {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
         setOpen(false)
@@ -69,7 +109,7 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
       document.removeEventListener('click', handleClick)
       window.removeEventListener('keydown', handleKey)
     }
-  }, [])
+  }, [isMobile])
 
   const loadStickerPacks = useCallback(async () => {
     if (!session) return
@@ -138,8 +178,12 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
     >
       {/* The sticker badge is rendered by the Avatar child (ui/Avatar). */}
       {children}
-      {open && createPortal(
-        <div className="status-picker__dropdown" style={{ top: coords.top, left: coords.left, position: 'fixed' }}>
+      {open && (
+        <StatusSurface
+          isMobile={isMobile}
+          coords={coords}
+          onClose={() => { setOpen(false); setShowStickerPicker(false) }}
+        >
           {STATUS_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -223,8 +267,7 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
               </button>
             )}
           </div>
-        </div>,
-        document.body,
+        </StatusSurface>
       )}
     </div>
   )

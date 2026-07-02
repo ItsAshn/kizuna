@@ -26,6 +26,8 @@
 .bottom-sheet-overlay {
   position: fixed;
   inset: 0;
+  /* Rise with the on-screen keyboard so inputs inside sheets stay visible. */
+  bottom: var(--keyboard-height, 0px);
   z-index: 120;
   display: flex;
   align-items: flex-end;
@@ -33,6 +35,7 @@
   background: var(--modal-backdrop);
   backdrop-filter: blur(4px);
   animation: bottomSheetOverlayIn 0.2s ease-out;
+  transition: bottom 0.2s ease-out;
 }
 
 .bottom-sheet-overlay--closing {

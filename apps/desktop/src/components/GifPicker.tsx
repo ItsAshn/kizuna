@@ -3,6 +3,8 @@ import { Search, X } from 'lucide-react'
 import { fetchGifs, fetchGifCategories, fetchStickerPacks } from '@kizuna/shared'
 import type { GifInfo, GifType } from '@kizuna/shared'
 import IconButton from './ui/IconButton'
+import BottomSheet from './ui/BottomSheet'
+import { useMobile } from '../hooks/useMobile'
 import './GifPicker.css'
 
 interface GifPickerProps {
@@ -13,7 +15,42 @@ interface GifPickerProps {
 
 type Tab = 'gifs' | 'stickers'
 
+/** Centered modal panel on desktop, native bottom sheet on phones. */
+function GifSurface({
+  isMobile,
+  onClose,
+  children,
+}: {
+  isMobile: boolean
+  onClose: () => void
+  children: React.ReactNode
+}) {
+  if (isMobile) {
+    return (
+      <BottomSheet
+        open
+        onClose={onClose}
+        className="gif-picker-sheet"
+        overlayClassName="gif-picker-sheet-overlay"
+      >
+        {children}
+      </BottomSheet>
+    )
+  }
+  return (
+    <div
+      className="gif-picker__overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="gif-picker">{children}</div>
+    </div>
+  )
+}
+
 export default function GifPicker({ serverUrl, onSelect, onClose }: GifPickerProps) {
+  const isMobile = useMobile()
   const [activeTab, setActiveTab] = useState<Tab>('gifs')
   const [items, setItems] = useState<GifInfo[]>([])
   const [loading, setLoading] = useState(false)
@@ -81,21 +118,18 @@ export default function GifPicker({ serverUrl, onSelect, onClose }: GifPickerPro
     onSelect(resolvedUrl, item.display_name, item.type)
   }
 
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) onClose()
-  }
-
   useEffect(() => {
+    // The mobile BottomSheet handles Escape itself (with exit animation).
+    if (isMobile) return
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [onClose])
+  }, [onClose, isMobile])
 
   return (
-    <div className="gif-picker__overlay" onClick={handleOverlayClick}>
-      <div className="gif-picker">
+    <GifSurface isMobile={isMobile} onClose={onClose}>
         <div className="gif-picker__header">
           <div className="gif-picker__tabs">
             <button
@@ -120,7 +154,8 @@ export default function GifPicker({ serverUrl, onSelect, onClose }: GifPickerPro
             className="gif-picker__search-input"
             placeholder={`Search ${activeTab}...`}
             onChange={handleSearchChange}
-            autoFocus
+            /* Auto-focus would pop the keyboard over the sheet on touch. */
+            autoFocus={!isMobile}
           />
         </div>
 
@@ -191,7 +226,6 @@ export default function GifPicker({ serverUrl, onSelect, onClose }: GifPickerPro
             )
           })}
         </div>
-      </div>
-    </div>
+    </GifSurface>
   )
 }

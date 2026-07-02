@@ -185,15 +185,20 @@
 
 /* ── Mobile ────────────────────────────────────────────────── */
 
+/* On mobile the picker renders inside ui/BottomSheet (see GifSurface in
+   GifPicker.tsx); these rules lay out and touch-size its contents. */
 @media (max-width: 767px) {
-  .gif-picker__overlay {
-    align-items: flex-end;
+  .gif-picker-sheet-overlay {
+    z-index: 200;
   }
 
-  .gif-picker {
-    width: 100vw;
-    max-height: 70vh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  /* Fixed height so tab switches and load states don't jump the sheet;
+     the grid scrolls internally instead of the sheet body. */
+  .gif-picker-sheet .bottom-sheet__body {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 65dvh;
   }
 
   .gif-picker__header {

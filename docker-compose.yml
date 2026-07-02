@@ -13,13 +13,16 @@
 # run scripts/migrate-volumes.sh to copy your data before starting:
 #
 #   chmod +x scripts/migrate-volumes.sh && ./scripts/migrate-volumes.sh
+#
+# ─── Development / local builds ────────────────────────────────────────────────
+# If you want to build the image locally instead of pulling from ghcr.io, use
+# the dev override file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
 services:
   kizuna:
     image: ghcr.io/itsashn/kizuna:latest
-    build:
-      context: .
-      dockerfile: apps/server/Dockerfile
     restart: unless-stopped
     user: "1000:1000"
     ports:
@@ -42,6 +45,8 @@ services:
       SERVER_URL: ${SERVER_URL:-}
       UPNP_ENABLED: ${UPNP_ENABLED:-false}
       CORS_ORIGIN: ${CORS_ORIGIN:-}
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     volumes:
       - ./data:/data
       - ./uploads:/app/uploads
@@ -58,6 +63,15 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 3600 --cleanup --label-enable
+    # Remove this service if you prefer to update manually.
+    # Watchtower polls ghcr.io hourly and restarts kizuna when a new image is available.
 
 volumes:
   caddy_data:

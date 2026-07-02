@@ -3,11 +3,49 @@ import { X } from 'lucide-react'
 import { fetchGifs, fetchStickerPacks } from '@kizuna/shared'
 import type { GifInfo } from '@kizuna/shared'
 import IconButton from './ui/IconButton'
+import BottomSheet from './ui/BottomSheet'
+import { useMobile } from '../hooks/useMobile'
 
 interface ReactionPickerProps {
   serverUrl: string
   onSelect: (key: string, type: 'emoji' | 'sticker') => void
   onClose: () => void
+}
+
+/** Anchored floating panel on desktop, native bottom sheet on phones. */
+function PickerSurface({
+  isMobile,
+  onClose,
+  children,
+}: {
+  isMobile: boolean
+  onClose: () => void
+  children: React.ReactNode
+}) {
+  if (isMobile) {
+    return (
+      <BottomSheet
+        open
+        onClose={onClose}
+        className="reaction-picker-sheet"
+        overlayClassName="reaction-picker-sheet-overlay"
+      >
+        {children}
+      </BottomSheet>
+    )
+  }
+  return (
+    <div
+      className="reaction-picker__overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="reaction-picker" onClick={e => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
+  )
 }
 
 const EMOJI_GRID = [
@@ -24,6 +62,7 @@ const EMOJI_GRID = [
 type Tab = 'emoji' | 'sticker'
 
 export default function ReactionPicker({ serverUrl, onSelect, onClose }: ReactionPickerProps) {
+  const isMobile = useMobile()
   const [tab, setTab] = useState<Tab>('emoji')
   const [stickers, setStickers] = useState<GifInfo[]>([])
   const [stickerPacks, setStickerPacks] = useState<string[]>([])
@@ -50,21 +89,18 @@ export default function ReactionPicker({ serverUrl, onSelect, onClose }: Reactio
     }
   }, [tab, activePack, serverUrl])
 
-  const handleOverlay = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) onClose()
-  }
-
   useEffect(() => {
+    // The mobile BottomSheet handles Escape itself (with exit animation).
+    if (isMobile) return
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [onClose])
+  }, [onClose, isMobile])
 
   return (
-    <div className="reaction-picker__overlay" onClick={handleOverlay}>
-      <div className="reaction-picker" onClick={e => e.stopPropagation()}>
+    <PickerSurface isMobile={isMobile} onClose={onClose}>
         <div className="reaction-picker__header">
           <div className="reaction-picker__tabs">
             <button
@@ -134,7 +170,6 @@ export default function ReactionPicker({ serverUrl, onSelect, onClose }: Reactio
             </div>
           </>
         )}
-      </div>
-    </div>
+    </PickerSurface>
   )
 }
