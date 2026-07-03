@@ -258,9 +258,20 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
             </a>
           </div>
         </div>
-        <p className="landing-footer__copy">
-          Open source under <a href="https://github.com/ItsAshn/kizuna/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPLv3 License</a>
-        </p>
+        <div className="landing-footer__bottom">
+          <nav className="landing-footer__legal">
+            <a href="https://use-kizuna.com/kizuna/legal/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+            <span aria-hidden="true" className="landing-footer__sep">·</span>
+            <a href="https://use-kizuna.com/kizuna/legal/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
+            <span aria-hidden="true" className="landing-footer__sep">·</span>
+            <a href="https://use-kizuna.com/kizuna/legal/license" target="_blank" rel="noopener noreferrer">License</a>
+            <span aria-hidden="true" className="landing-footer__sep">·</span>
+            <a href="mailto:ashn@use-kizuna.com">ashn@use-kizuna.com</a>
+          </nav>
+          <p className="landing-footer__copy">
+            Open source under <a href="https://github.com/ItsAshn/kizuna/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPLv3 License</a>
+          </p>
+        </div>
       </footer>
 
       {import.meta.env.DEV && (

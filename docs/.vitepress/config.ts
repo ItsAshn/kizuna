@@ -68,6 +68,20 @@ export default defineConfig({
           ],
         },
       ],
+      '/legal/': [
+        {
+          text: 'Legal',
+          items: [
+            { text: 'Privacy Policy', link: '/legal/privacy' },
+            { text: 'Terms of Service', link: '/legal/terms' },
+            { text: 'License', link: '/legal/license' },
+          ],
+        },
+      ],
+    },
+    footer: {
+      message: '<a href="/kizuna/legal/privacy">Privacy Policy</a> &middot; <a href="/kizuna/legal/terms">Terms of Service</a> &middot; <a href="/kizuna/legal/license">License</a>',
+      copyright: 'Copyright &copy; 2025-present ItsAshn',
     },
     socialLinks: [
       { icon: 'github', link: 'https://github.com/ItsAshn/kizuna' },
