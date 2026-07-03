@@ -634,7 +634,8 @@ function runMigrations(database: Database.Database): void {
     { name: 'polls_tables', sql: `
       CREATE TABLE IF NOT EXISTS polls (
         id TEXT PRIMARY KEY,
-        channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+        channel_id TEXT NOT NULL,
+        channel_type TEXT NOT NULL DEFAULT 'channel',
         message_id TEXT NOT NULL,
         question TEXT NOT NULL,
         allow_multiple INTEGER NOT NULL DEFAULT 0,
@@ -671,6 +672,23 @@ function runMigrations(database: Database.Database): void {
     { name: 'messages_add_author_display_name', sql: `ALTER TABLE messages ADD COLUMN author_display_name TEXT DEFAULT NULL` },
     { name: 'messages_add_author_avatar', sql: `ALTER TABLE messages ADD COLUMN author_avatar TEXT DEFAULT NULL` },
     { name: 'messages_add_webhook_id', sql: `ALTER TABLE messages ADD COLUMN webhook_id TEXT REFERENCES webhooks(id) ON DELETE SET NULL` },
+    { name: 'polls_remove_channel_fk', sql: `
+      CREATE TABLE IF NOT EXISTS polls_new (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        channel_type TEXT NOT NULL DEFAULT 'channel',
+        message_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        allow_multiple INTEGER NOT NULL DEFAULT 0,
+        closes_at INTEGER DEFAULT NULL,
+        created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      INSERT INTO polls_new (id, channel_id, channel_type, message_id, question, allow_multiple, closes_at, created_by, created_at)
+        SELECT id, channel_id, 'channel', message_id, question, allow_multiple, closes_at, created_by, created_at FROM polls;
+      DROP TABLE polls;
+      ALTER TABLE polls_new RENAME TO polls;
+    ` },
   ]
 
   const insertStmt = database.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)')

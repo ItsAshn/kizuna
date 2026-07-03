@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { getDb } from '../db'
-import { authMiddleware } from '../middleware/auth'
+import { authMiddleware, hasPermission, getUserPermissions } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 import type { AuthUser } from '../types'
 import type { Server as IoServer } from 'socket.io'
@@ -10,7 +10,7 @@ function getAuth(c: Context): AuthUser { return c.get('auth') }
 
 const pollsRouter = new Hono()
 
-// Create a poll in a channel
+// Create a poll in a guild channel
 pollsRouter.post('/channels/:channelId/polls', authMiddleware, async (c) => {
   const db = getDb()
   const { channelId } = c.req.param() as { channelId: string }
@@ -24,13 +24,21 @@ pollsRouter.post('/channels/:channelId/polls', authMiddleware, async (c) => {
   const options: string[] = body.options.map((o: string) => String(o).trim()).filter(Boolean).slice(0, 10)
   if (options.length < 2) return c.json({ error: 'need at least 2 non-empty options' }, 400)
 
+  // Verify user can write to this channel
+  const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(channelId) as Record<string, unknown> | undefined
+  if (!channel) return c.json({ error: 'Channel not found' }, 404)
+  const userPerms = getUserPermissions(userId)
+  if (!userPerms || !hasPermission(userPerms, 'send_messages')) {
+    return c.json({ error: 'Forbidden' }, 403)
+  }
+
   const pollId = uuidv4()
   const messageId = uuidv4()
   const now = Math.floor(Date.now() / 1000)
 
   const author = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as { display_name: string; avatar: string | null } | undefined
 
-  db.prepare(`INSERT INTO polls (id, channel_id, message_id, question, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)`).run(pollId, channelId, messageId, question, userId, now)
+  db.prepare(`INSERT INTO polls (id, channel_id, channel_type, message_id, question, created_by, created_at) VALUES (?, ?, 'channel', ?, ?, ?, ?)`).run(pollId, channelId, messageId, question, userId, now)
 
   options.forEach((label, i) => {
     db.prepare(`INSERT INTO poll_options (id, poll_id, label, position) VALUES (?, ?, ?, ?)`).run(uuidv4(), pollId, label, i)
@@ -79,6 +87,150 @@ pollsRouter.post('/channels/:channelId/polls', authMiddleware, async (c) => {
   return c.json({ poll: { id: pollId, question, options: dbOptions }, message })
 })
 
+// Create a poll in a DM channel
+pollsRouter.post('/dms/channel/:channelId/polls', authMiddleware, async (c) => {
+  const db = getDb()
+  const channelId = c.req.param('channelId')
+  const { userId, username } = getAuth(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.question?.trim() || !Array.isArray(body.options) || body.options.length < 2) {
+    return c.json({ error: 'question and at least 2 options required' }, 400)
+  }
+
+  const question = body.question.trim().slice(0, 300)
+  const options: string[] = body.options.map((o: string) => String(o).trim()).filter(Boolean).slice(0, 10)
+  if (options.length < 2) return c.json({ error: 'need at least 2 non-empty options' }, 400)
+
+  const channel = db.prepare('SELECT * FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)').get(channelId, userId, userId) as Record<string, unknown> | undefined
+  if (!channel) return c.json({ error: 'Channel not found' }, 404)
+
+  const userPerms = getUserPermissions(userId)
+  if (!userPerms || !hasPermission(userPerms, 'send_dm_messages')) {
+    return c.json({ error: 'Forbidden' }, 403)
+  }
+
+  const toId = channel.user1_id === userId ? (channel.user2_id as string) : (channel.user1_id as string)
+
+  const pollId = uuidv4()
+  const messageId = uuidv4()
+  const now = Math.floor(Date.now() / 1000)
+
+  db.prepare(`INSERT INTO polls (id, channel_id, channel_type, message_id, question, created_by, created_at) VALUES (?, ?, 'dm', ?, ?, ?, ?)`).run(pollId, channelId, messageId, question, userId, now)
+
+  options.forEach((label, i) => {
+    db.prepare(`INSERT INTO poll_options (id, poll_id, label, position) VALUES (?, ?, ?, ?)`).run(uuidv4(), pollId, label, i)
+  })
+
+  const content = JSON.stringify({ __poll__: true, pollId, question, options: options.map((label, i) => ({ id: '', label, position: i })) })
+  db.prepare(
+    'INSERT INTO direct_messages (id, channel_id, from_id, from_username, to_id, content, encrypted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(messageId, channelId, userId, username, toId, content, 0, now)
+
+  db.prepare('UPDATE dm_channels SET last_message_at = ? WHERE id = ?').run(now, channelId)
+
+  // Fetch full poll options with ids for the broadcast
+  const dbOptions = db.prepare('SELECT id, label, position FROM poll_options WHERE poll_id = ? ORDER BY position').all(pollId) as { id: string; label: string; position: number }[]
+  const fullContent = JSON.stringify({ __poll__: true, pollId, question, options: dbOptions })
+  db.prepare('UPDATE direct_messages SET content = ? WHERE id = ?').run(fullContent, messageId)
+
+  const author = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as { display_name: string | null; avatar: string | null } | undefined
+  const message = {
+    id: messageId,
+    channel_id: channelId,
+    user_id: userId,
+    username,
+    display_name: author?.display_name || username,
+    avatar: author?.avatar || undefined,
+    content: fullContent,
+    encrypted: 0,
+    created_at: now * 1000,
+  }
+
+  try {
+    const io: IoServer | undefined = c.get('io' as never) as IoServer | undefined
+    if (io) {
+      io.to(`dm:${toId}`).emit('dm:received', message)
+      io.to(`user:${userId}`).emit('dm:sent', message)
+    }
+  } catch { /* best-effort */ }
+
+  return c.json({ poll: { id: pollId, question, options: dbOptions }, message })
+})
+
+// Create a poll in a group DM channel
+pollsRouter.post('/group-dms/:channelId/polls', authMiddleware, async (c) => {
+  const db = getDb()
+  const channelId = c.req.param('channelId')
+  const { userId, username } = getAuth(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.question?.trim() || !Array.isArray(body.options) || body.options.length < 2) {
+    return c.json({ error: 'question and at least 2 options required' }, 400)
+  }
+
+  const question = body.question.trim().slice(0, 300)
+  const options: string[] = body.options.map((o: string) => String(o).trim()).filter(Boolean).slice(0, 10)
+  if (options.length < 2) return c.json({ error: 'need at least 2 non-empty options' }, 400)
+
+  if (!db.prepare('SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?').get(channelId, userId)) {
+    return c.json({ error: 'Not a member' }, 403)
+  }
+
+  const userPerms = getUserPermissions(userId)
+  if (!userPerms || !hasPermission(userPerms, 'send_dm_messages')) {
+    return c.json({ error: 'Forbidden' }, 403)
+  }
+
+  const pollId = uuidv4()
+  const messageId = uuidv4()
+  const now = Math.floor(Date.now() / 1000)
+
+  db.prepare(`INSERT INTO polls (id, channel_id, channel_type, message_id, question, created_by, created_at) VALUES (?, ?, 'group-dm', ?, ?, ?, ?)`).run(pollId, channelId, messageId, question, userId, now)
+
+  options.forEach((label, i) => {
+    db.prepare(`INSERT INTO poll_options (id, poll_id, label, position) VALUES (?, ?, ?, ?)`).run(uuidv4(), pollId, label, i)
+  })
+
+  const content = JSON.stringify({ __poll__: true, pollId, question, options: options.map((label, i) => ({ id: '', label, position: i })) })
+  db.prepare(
+    'INSERT INTO group_dm_messages (id, channel_id, from_id, from_username, content, encrypted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(messageId, channelId, userId, username, content, 0, now)
+
+  db.prepare('UPDATE group_dm_channels SET last_message_at = ? WHERE id = ?').run(now, channelId)
+
+  // Fetch full poll options with ids for the broadcast
+  const dbOptions = db.prepare('SELECT id, label, position FROM poll_options WHERE poll_id = ? ORDER BY position').all(pollId) as { id: string; label: string; position: number }[]
+  const fullContent = JSON.stringify({ __poll__: true, pollId, question, options: dbOptions })
+  db.prepare('UPDATE group_dm_messages SET content = ? WHERE id = ?').run(fullContent, messageId)
+
+  const author = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as { display_name: string | null; avatar: string | null } | undefined
+  const message = {
+    id: messageId,
+    channel_id: channelId,
+    user_id: userId,
+    username,
+    display_name: author?.display_name || username,
+    avatar: author?.avatar || undefined,
+    content: fullContent,
+    encrypted: 0,
+    created_at: now * 1000,
+  }
+
+  try {
+    const io: IoServer | undefined = c.get('io' as never) as IoServer | undefined
+    if (io) {
+      const members = db.prepare(
+        'SELECT user_id FROM group_dm_members WHERE channel_id = ? AND user_id != ?'
+      ).all(channelId, userId) as { user_id: string }[]
+      for (const m of members) {
+        io.to(`group-dm:${m.user_id}`).emit('group-dm:received', message)
+      }
+      io.to(`user:${userId}`).emit('group-dm:sent', message)
+    }
+  } catch { /* best-effort */ }
+
+  return c.json({ poll: { id: pollId, question, options: dbOptions }, message })
+})
+
 // Get poll with vote counts
 pollsRouter.get('/polls/:pollId', authMiddleware, async (c) => {
   const db = getDb()
@@ -86,7 +238,7 @@ pollsRouter.get('/polls/:pollId', authMiddleware, async (c) => {
   const { userId } = getAuth(c)
 
   const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId) as {
-    id: string; channel_id: string; message_id: string; question: string
+    id: string; channel_id: string; channel_type: string; message_id: string; question: string
     created_by: string; created_at: number; closes_at: number | null; allow_multiple: number
   } | undefined
   if (!poll) return c.json({ error: 'not found' }, 404)
@@ -115,7 +267,7 @@ pollsRouter.post('/polls/:pollId/vote', authMiddleware, async (c) => {
   if (!body?.optionId) return c.json({ error: 'optionId required' }, 400)
 
   const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId) as {
-    id: string; channel_id: string; message_id: string; question: string
+    id: string; channel_id: string; channel_type: string; message_id: string; question: string
     created_by: string; created_at: number; closes_at: number | null; allow_multiple: number
   } | undefined
   if (!poll) return c.json({ error: 'not found' }, 404)
@@ -147,8 +299,25 @@ pollsRouter.post('/polls/:pollId/vote', authMiddleware, async (c) => {
 
   const userVotes = db.prepare('SELECT option_id FROM poll_votes WHERE poll_id = ? AND user_id = ?').all(pollId, userId) as { option_id: string }[]
 
+  const payload = { pollId, options, totalVotes: options.reduce((s, o) => s + o.vote_count, 0) }
   const io = c.get('io' as never) as IoServer | undefined
-  io?.to(poll.channel_id).emit('poll:update', { pollId, options, totalVotes: options.reduce((s, o) => s + o.vote_count, 0) } as never)
+
+  if (io) {
+    if (poll.channel_type === 'dm') {
+      const dmChannel = db.prepare('SELECT user1_id, user2_id FROM dm_channels WHERE id = ?').get(poll.channel_id) as { user1_id: string; user2_id: string } | undefined
+      if (dmChannel) {
+        io.to(`dm:${dmChannel.user1_id}`).emit('poll:update', payload as never)
+        io.to(`dm:${dmChannel.user2_id}`).emit('poll:update', payload as never)
+      }
+    } else if (poll.channel_type === 'group-dm') {
+      const members = db.prepare('SELECT user_id FROM group_dm_members WHERE channel_id = ?').all(poll.channel_id) as { user_id: string }[]
+      for (const m of members) {
+        io.to(`group-dm:${m.user_id}`).emit('poll:update', payload as never)
+      }
+    } else {
+      io.to(poll.channel_id).emit('poll:update', payload as never)
+    }
+  }
 
   return c.json({ options, userVoteIds: userVotes.map(v => v.option_id) })
 })

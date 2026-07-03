@@ -32,6 +32,8 @@ import {
   fetchPinnedMessages,
   createThread,
   createPoll,
+  createDMPoll,
+  createGroupDMPoll,
 } from '@kizuna/shared';
 import {
   encryptDM,
@@ -965,7 +967,8 @@ export default function ChatArea({
 
       // /poll is handled here because it needs channelId from component scope
       const trimmedInput = input.trim();
-      if (trimmedInput.startsWith('/poll ') && activeChannelId) {
+      const pollChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
+      if (trimmedInput.startsWith('/poll ') && pollChannelId) {
         const pollArgs = trimmedInput.slice(6);
         const parts = parsePollArgs(pollArgs);
         if (parts.length < 3) {
@@ -974,7 +977,13 @@ export default function ChatArea({
         }
         const [question, ...options] = parts;
         try {
-          await createPoll(session.url, activeChannelId, question, options);
+          if (activeDMChannelId) {
+            await createDMPoll(session.url, activeDMChannelId, question, options);
+          } else if (activeGroupDMChannelId) {
+            await createGroupDMPoll(session.url, activeGroupDMChannelId, question, options);
+          } else {
+            await createPoll(session.url, activeChannelId!, question, options);
+          }
           setInput('');
           setSendError(null);
           if (inputRef.current) inputRef.current.style.height = 'auto';

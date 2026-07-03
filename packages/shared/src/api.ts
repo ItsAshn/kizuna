@@ -1197,6 +1197,26 @@ export async function createPoll(
   return res.data
 }
 
+export async function createDMPoll(
+  serverUrl: string,
+  channelId: string,
+  question: string,
+  options: string[],
+): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] }; message: Message }> {
+  const res = await client(serverUrl).post(`/api/dms/channel/${channelId}/polls`, { question, options })
+  return res.data
+}
+
+export async function createGroupDMPoll(
+  serverUrl: string,
+  channelId: string,
+  question: string,
+  options: string[],
+): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] }; message: Message }> {
+  const res = await client(serverUrl).post(`/api/group-dms/${channelId}/polls`, { question, options })
+  return res.data
+}
+
 export async function fetchPoll(
   serverUrl: string,
   pollId: string,
