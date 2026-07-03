@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { MessageCircle, Mic, Monitor, Lock, Code, Download, ExternalLink, ArrowRight, Server, Container, GitBranch, BookOpen } from 'lucide-react'
 import { FaLinux, FaApple, FaWindows } from 'react-icons/fa'
+import { SiBluesky } from 'react-icons/si'
 import ServerBrowser from '../components/ServerBrowser'
 import './Landing.css'
 
@@ -251,6 +252,9 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
             </a>
             <a href="https://github.com/ItsAshn/kizuna" target="_blank" rel="noopener noreferrer">
               <GitBranch size={18} />
+            </a>
+            <a href="https://bsky.app/profile/use-kizuna.com" target="_blank" rel="noopener noreferrer">
+              <SiBluesky size={18} />
             </a>
           </div>
         </div>

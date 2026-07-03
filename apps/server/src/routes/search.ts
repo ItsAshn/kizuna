@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { getDb } from '../db'
-import { authMiddleware } from '../middleware/auth'
+import { authMiddleware, canViewChannel } from '../middleware/auth'
 import { searchSchema } from '../utils/schemas'
 import type { AuthUser } from '../middleware/auth'
 
@@ -28,7 +28,6 @@ searchRoutes.get('/', authMiddleware, (c) => {
 
     const params: (string | number)[] = [ftsQuery]
 
-    params.push(auth.userId)                 // permission: server member
     params.push(auth.userId)                 // permission: dm from
     params.push(auth.userId)                 // permission: dm to
     params.push(auth.userId)                 // permission: group_dm member
@@ -73,9 +72,6 @@ searchRoutes.get('/', authMiddleware, (c) => {
       LEFT JOIN group_dm_channels gdc ON f.source = 'group_dm' AND gdm.channel_id = gdc.id
       WHERE messages_fts MATCH ?
         AND (
-          f.source != 'channel' OR c.locked = 0 OR EXISTS (SELECT 1 FROM server_members sm WHERE sm.user_id = ?)
-        )
-        AND (
           f.source != 'dm' OR dm.from_id = ? OR dm.to_id = ?
         )
         AND (
@@ -100,10 +96,14 @@ searchRoutes.get('/', authMiddleware, (c) => {
     channel_name: string | null
   }[]
 
-    const hasMore = rows.length > limit
-    if (hasMore) rows.pop()
+    const hasMorePre = rows.length > limit
+    if (hasMorePre) rows.pop()
 
-    const results = rows.map((r: {
+    const visibleRows = rows.filter((r) => r.source !== 'channel' || canViewChannel(auth.userId, r.channel_id))
+    const hasMore = visibleRows.length > limit
+    const finalResults = hasMore ? visibleRows.slice(0, limit) : visibleRows
+
+    const results = finalResults.map((r: {
     source: string; id: string; channel_id: string; author_id: string;
     author_username: string; display_name: string | null; avatar: string | null;
     content: string; created_at: number; channel_name: string | null

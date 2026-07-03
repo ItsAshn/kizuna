@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, getUserChannelPermissions, getResolvedChannelPermissions } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission, getUserChannelPermissions, getResolvedChannelPermissions, canViewChannel } from '../middleware/auth'
 import type { AuthUser } from '../middleware/auth'
 
 interface IOServer {
@@ -14,6 +14,10 @@ function getAuth(c: Context): AuthUser { return c.get('auth' as never) as AuthUs
 const channelRoutes = new Hono()
 
 function mapChannel(row: Record<string, unknown>) {
+  let hiddenRoleIds: string[] | null = null
+  if (typeof row.hidden_role_ids === 'string' && row.hidden_role_ids) {
+    try { hiddenRoleIds = JSON.parse(row.hidden_role_ids) } catch { hiddenRoleIds = null }
+  }
   return {
     id: row.id,
     name: row.name,
@@ -21,8 +25,8 @@ function mapChannel(row: Record<string, unknown>) {
     topic: row.topic ?? null,
     position: row.position,
     locked: row.locked === 1,
-    write_role_id: row.write_role_id ?? null,
-    write_role_name: row.write_role_name ?? null,
+    hidden: row.hidden === 1,
+    hidden_role_ids: hiddenRoleIds,
     category_id: row.category_id ?? null,
     created_at: row.created_at,
   }
@@ -30,14 +34,15 @@ function mapChannel(row: Record<string, unknown>) {
 
 // GET /channels — list all channels
 channelRoutes.get('/', authMiddleware, (c) => {
+  const user = getAuth(c)
   const db = getDb()
-  const channels = db.prepare(`
-    SELECT c.*, r.name as write_role_name, cc.name as category_name
+  const rawChannels = db.prepare(`
+    SELECT c.*, cc.name as category_name
     FROM channels c
-    LEFT JOIN roles r ON c.write_role_id = r.id
     LEFT JOIN channel_categories cc ON c.category_id = cc.id
     ORDER BY c.position ASC
   `).all() as Record<string, unknown>[]
+  const channels = rawChannels.filter((ch) => canViewChannel(user.userId, ch.id as string))
   return c.json({ channels: channels.map(mapChannel) })
 })
 
@@ -48,8 +53,8 @@ channelRoutes.post('/', authMiddleware, async (c) => {
   if (!userPerms || !hasPermission(userPerms, 'manage_channels')) {
     return c.json({ error: 'Forbidden' }, 403)
   }
-  const body = await c.req.json() as { name: string; type: 'text' | 'voice'; topic?: string; locked?: boolean; write_role_id?: string | null }
-  const { name, type, topic, locked, write_role_id } = body
+  const body = await c.req.json() as { name: string; type: 'text' | 'voice'; topic?: string; locked?: boolean; hidden?: boolean; hidden_role_ids?: string[] | null }
+  const { name, type, topic, locked, hidden, hidden_role_ids } = body
   if (!name?.trim()) return c.json({ error: 'Name is required' }, 400)
   if (!['text', 'voice'].includes(type)) return c.json({ error: 'Type must be text or voice' }, 400)
 
@@ -59,7 +64,8 @@ channelRoutes.post('/', authMiddleware, async (c) => {
   const position = (maxPos?.max ?? -1) + 1
   const slug = name.trim().toLowerCase().replace(/\s+/g, '-')
   const isLocked = locked ? 1 : 0
-  db.prepare('INSERT INTO channels (id, name, type, topic, position, locked, write_role_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, slug, type, topic || null, position, isLocked, write_role_id || null)
+  const isHidden = hidden ? 1 : 0
+  db.prepare('INSERT INTO channels (id, name, type, topic, position, locked, hidden, hidden_role_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, slug, type, topic || null, position, isLocked, isHidden, hidden_role_ids?.length ? JSON.stringify(hidden_role_ids) : null)
 
   const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(id) as Record<string, unknown>
 
@@ -109,9 +115,9 @@ channelRoutes.patch('/:id', authMiddleware, async (c) => {
   const db = getDb()
   const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(c.req.param('id')) as Record<string, unknown>
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
+  const body = await c.req.json() as { name?: string; topic?: string | null; locked?: boolean; hidden?: boolean; hidden_role_ids?: string[] | null }
 
-  const body = await c.req.json() as { name?: string; topic?: string | null; locked?: boolean; write_role_id?: string | null }
-  const { name, topic, locked, write_role_id } = body
+  const { name, topic, locked, hidden, hidden_role_ids } = body
 
   const dbFields: string[] = []
   const dbValues: unknown[] = []
@@ -128,9 +134,13 @@ channelRoutes.patch('/:id', authMiddleware, async (c) => {
     dbFields.push('locked = ?')
     dbValues.push(locked ? 1 : 0)
   }
-  if (write_role_id !== undefined) {
-    dbFields.push('write_role_id = ?')
-    dbValues.push(write_role_id)
+  if (hidden !== undefined) {
+    dbFields.push('hidden = ?')
+    dbValues.push(hidden ? 1 : 0)
+  }
+  if (hidden_role_ids !== undefined) {
+    dbFields.push('hidden_role_ids = ?')
+    dbValues.push(hidden_role_ids?.length ? JSON.stringify(hidden_role_ids) : null)
   }
 
   if (dbFields.length > 0) {
@@ -183,7 +193,7 @@ channelRoutes.get('/:id/permissions', authMiddleware, (c) => {
     'manage_invites', 'use_voice', 'initiate_dm_calls',
   ]
   const resolved = getResolvedChannelPermissions(user.userId, channelId, allPermissions)
-  return c.json({ ...perms, permissions: resolved })
+  return c.json({ can_write: perms.can_write, locked: perms.locked, can_view: perms.can_view, hidden: perms.hidden, permissions: resolved })
 })
 
 // GET /channels/:id/overrides — list all role overrides for a channel

@@ -283,8 +283,9 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  margin-bottom: 4px;
   flex-wrap: wrap;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .chat-area__format-toolbar button {
@@ -304,6 +305,18 @@
 .chat-area__format-toolbar button:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
+}
+
+.chat-area__format-mirror {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  visibility: hidden;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  pointer-events: none;
+  overflow: hidden;
 }
 
 .chat-area__input {

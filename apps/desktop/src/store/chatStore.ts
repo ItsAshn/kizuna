@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Channel, Message, Member, DMChannelData, GroupDMChannelData, MessageReaction, PinnedMessage, Thread } from '@kizuna/shared';
+import type { Channel, Message, Member, DMChannelData, GroupDMChannelData, MessageReaction, PinnedMessage, Thread, PollData } from '@kizuna/shared';
 
 interface ChatState {
   channels: Channel[];
@@ -8,6 +8,7 @@ interface ChatState {
   groupDMChannels: GroupDMChannelData[];
   categories: { id: string; name: string; position: number }[];
   messages: Record<string, Message[]>;
+  polls: Record<string, PollData[]>;
   pinnedMessages: Record<string, PinnedMessage[]>;
   threads: Record<string, Thread[]>;
   threadMessages: Record<string, Message[]>;
@@ -40,6 +41,8 @@ interface ChatState {
   setMessages: (channelId: string, messages: Message[]) => void;
   addMessage: (channelId: string, message: Message) => void;
   updateMessage: (channelId: string, messageId: string, message: Message) => void;
+  addPoll: (channelId: string, poll: PollData) => void;
+  updatePoll: (pollId: string, options: { id: string; label: string; position: number; vote_count: number }[]) => void;
   setPinnedMessages: (channelId: string, pins: PinnedMessage[]) => void;
   addPinnedMessage: (channelId: string, pin: PinnedMessage) => void;
   removePinnedMessage: (channelId: string, messageId: string) => void;
@@ -73,7 +76,6 @@ interface ChatState {
   clearServerData: () => void;
   setPendingMention: (username: string | null) => void;
   setChannelDraft: (channelId: string, draft: string) => void;
-  updatePollInMessages: (pollId: string, options: { id: string; label: string; position: number; vote_count: number }[]) => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -84,6 +86,7 @@ export const useChatStore = create<ChatState>()(
       dmChannels: [],
       groupDMChannels: [],
       messages: {},
+      polls: {},
       pinnedMessages: {},
       threads: {},
       threadMessages: {},
@@ -125,6 +128,30 @@ export const useChatStore = create<ChatState>()(
               [channelId]: trimmed,
             },
           };
+        }),
+      addPoll: (channelId, poll) =>
+        set((state) => {
+          const existing = state.polls[channelId] || []
+          if (existing.some((p) => p.pollId === poll.pollId)) return state
+          const MAX_POLLS = 100
+          const appended = [...existing, poll]
+          const trimmed = appended.length > MAX_POLLS ? appended.slice(-MAX_POLLS) : appended
+          return {
+            polls: { ...state.polls, [channelId]: trimmed },
+          }
+        }),
+      updatePoll: (pollId, options) =>
+        set((state) => {
+          const updated: typeof state.polls = {}
+          for (const [channelId, channelPolls] of Object.entries(state.polls)) {
+            updated[channelId] = channelPolls.map((p) =>
+              p.pollId === pollId ? { ...p, options: p.options.map((o) => {
+                const updatedOption = options.find((uo) => uo.id === o.id)
+                return updatedOption ? { ...o, vote_count: updatedOption.vote_count } : o
+              }) } : p
+            )
+          }
+          return { polls: { ...state.polls, ...updated } }
         }),
       updateMessage: (channelId, messageId, message) =>
         set((state) => ({
@@ -296,6 +323,7 @@ export const useChatStore = create<ChatState>()(
           dmChannels: [],
           groupDMChannels: [],
           messages: {},
+          polls: {},
           pinnedMessages: {},
           threads: {},
           threadMessages: {},
@@ -317,21 +345,6 @@ export const useChatStore = create<ChatState>()(
       setChannelDraft: (channelId, draft) => set((state) => ({
         channelDrafts: { ...state.channelDrafts, [channelId]: draft },
       })),
-      updatePollInMessages: (pollId, options) => set((state) => {
-        const updated: typeof state.messages = {}
-        for (const [channelId, msgs] of Object.entries(state.messages)) {
-          updated[channelId] = msgs.map((m) => {
-            try {
-              const parsed = JSON.parse(m.content)
-              if (parsed.__poll__ && parsed.pollId === pollId) {
-                return { ...m, content: JSON.stringify({ ...parsed, options }) }
-              }
-            } catch { /* not json */ }
-            return m
-          })
-        }
-        return { messages: { ...state.messages, ...updated } }
-      }),
     }),
     {
       name: 'kizuna-chat-v1',

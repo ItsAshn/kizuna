@@ -24,6 +24,8 @@ export const SCHEMA_SQL = `
     topic TEXT DEFAULT NULL,
     position INTEGER DEFAULT 0,
     locked INTEGER NOT NULL DEFAULT 0,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    hidden_role_ids TEXT DEFAULT NULL,
     write_role_id TEXT DEFAULT NULL,
     created_at INTEGER DEFAULT (unixepoch())
   );

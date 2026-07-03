@@ -10,7 +10,7 @@ import { useSettingsStore } from '../store/settingsStore'
 import type { DMIncomingCall } from '../store/callStore'
 import { decryptDM, isEncryptedContent, decryptGroupDM, isGroupEncryptedContent } from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
-import type { Message, Channel, GroupDMChannelData, UserStatus, UserActivity, MessageReaction, Member, PinnedMessage, Thread } from '@kizuna/shared'
+import type { Message, Channel, GroupDMChannelData, UserStatus, UserActivity, MessageReaction, Member, PinnedMessage, Thread, PollData } from '@kizuna/shared'
 import { refreshToken } from '@kizuna/shared'
 import { showNotification } from '../utils/showNotification'
 
@@ -609,7 +609,11 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('poll:update', (data: { pollId: string; options: { id: string; label: string; position: number; vote_count: number }[]; totalVotes: number }) => {
-      useChatStore.getState().updatePollInMessages(data.pollId, data.options)
+      useChatStore.getState().updatePoll(data.pollId, data.options)
+    })
+
+    socket.on('poll:created', (data: PollData) => {
+      useChatStore.getState().addPoll(data.channelId, data)
     })
 
     const heartbeatInterval = setInterval(() => {

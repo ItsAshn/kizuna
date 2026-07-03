@@ -65,8 +65,8 @@ export interface Channel {
   topic?: string | null;
   position: number;
   locked: boolean;
-  write_role_id?: string | null;
-  write_role_name?: string | null;
+  hidden: boolean;
+  hidden_role_ids?: string[] | null;
   category_id?: string | null;
   created_at: number;
 }
@@ -98,6 +98,25 @@ export interface Message {
   reply_to_content?: string | null;
   thread_id?: string | null;
   webhook_id?: string | null;
+}
+
+export interface PollOption {
+  id: string;
+  label: string;
+  position: number;
+  vote_count?: number;
+}
+
+export interface PollData {
+  pollId: string;
+  channelId: string;
+  channelType: 'channel' | 'dm' | 'group-dm';
+  question: string;
+  options: PollOption[];
+  createdBy: string;
+  createdByDisplayName: string;
+  createdByAvatar: string | null;
+  createdAt: number;
 }
 
 export type ReactionType = 'emoji' | 'sticker';

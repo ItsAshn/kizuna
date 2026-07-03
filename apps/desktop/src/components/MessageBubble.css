@@ -1363,6 +1363,29 @@
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+/* Poll indicator (compact inline) */
+.msg-bubble__poll-indicator {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.msg-bubble__poll-indicator::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
 /* Poll card */
 .msg-bubble__poll {
   background: var(--bg-tertiary);

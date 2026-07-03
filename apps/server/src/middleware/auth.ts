@@ -232,50 +232,60 @@ export function hasPermissionForUser(
 
 export function canWriteToChannel(userId: string, channelId: string): boolean {
   const db = getDb()
-  const channel = db.prepare('SELECT locked, write_role_id FROM channels WHERE id = ?').get(channelId) as { locked: number; write_role_id: string | null } | undefined
+  const channel = db.prepare('SELECT locked FROM channels WHERE id = ?').get(channelId) as { locked: number } | undefined
   if (!channel || !channel.locked) return true
 
   const isMember = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
   if (!isMember) return false
-  if (isUserAdmin(userId)) return true
-
-  if (!channel.write_role_id) return false
-
-  const hasRole = db.prepare(`
-    SELECT 1 FROM member_roles WHERE user_id = ? AND role_id = ?
-    UNION ALL
-    SELECT 1 FROM server_members WHERE user_id = ? AND custom_role_id = ? AND custom_role_id IS NOT NULL
-      AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = ? AND mr.role_id = ?)
-  `).get(userId, channel.write_role_id, userId, channel.write_role_id, userId, channel.write_role_id)
-
-  return !!hasRole
+  return isUserAdmin(userId)
 }
 
-export function getUserChannelPermissions(userId: string, channelId: string): { can_write: boolean; locked: boolean; write_role_id: string | null; write_role_name: string | null } {
+export function canViewChannel(userId: string, channelId: string): boolean {
   const db = getDb()
-  const channel = db.prepare('SELECT locked, write_role_id FROM channels WHERE id = ?').get(channelId) as { locked: number; write_role_id: string | null } | undefined
-  if (!channel || !channel.locked) return { can_write: true, locked: false, write_role_id: null, write_role_name: null }
+  const channel = db.prepare('SELECT hidden, hidden_role_ids FROM channels WHERE id = ?').get(channelId) as { hidden: number; hidden_role_ids: string | null } | undefined
+  if (!channel || !channel.hidden) return true
+  if (isUserAdmin(userId)) return true
 
-  const isMember = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
-  if (!isMember) return { can_write: false, locked: true, write_role_id: channel.write_role_id, write_role_name: null }
-  if (isUserAdmin(userId)) return { can_write: true, locked: true, write_role_id: channel.write_role_id, write_role_name: null }
+  if (!channel.hidden_role_ids) return true
 
-  let writeRoleName: string | null = null
-  if (channel.write_role_id) {
-    const role = db.prepare('SELECT name FROM roles WHERE id = ?').get(channel.write_role_id) as { name: string } | undefined
-    writeRoleName = role?.name ?? null
+  let hiddenRoleIds: string[] = []
+  try {
+    hiddenRoleIds = JSON.parse(channel.hidden_role_ids)
+  } catch { return true }
+
+  if (!Array.isArray(hiddenRoleIds) || hiddenRoleIds.length === 0) return true
+
+  const userRoles = db.prepare('SELECT role_id FROM member_roles WHERE user_id = ?').all(userId) as { role_id: string }[]
+  const userRoleIds = new Set(userRoles.map(r => r.role_id))
+
+  const member = db.prepare('SELECT custom_role_id FROM server_members WHERE user_id = ? AND custom_role_id IS NOT NULL').get(userId) as { custom_role_id: string } | undefined
+  if (member?.custom_role_id) userRoleIds.add(member.custom_role_id)
+
+  return !hiddenRoleIds.some(roleId => userRoleIds.has(roleId))
+}
+
+export function getUserChannelPermissions(userId: string, channelId: string): { can_write: boolean; locked: boolean; can_view: boolean; hidden: boolean } {
+  const db = getDb()
+  const channel = db.prepare('SELECT locked, hidden FROM channels WHERE id = ?').get(channelId) as { locked: number; hidden: number } | undefined
+  if (!channel) return { can_write: true, locked: false, can_view: true, hidden: false }
+
+  const result = {
+    locked: channel.locked === 1,
+    can_write: true,
+    hidden: channel.hidden === 1,
+    can_view: true,
   }
 
-  if (!channel.write_role_id) return { can_write: false, locked: true, write_role_id: channel.write_role_id, write_role_name: writeRoleName }
+  if (result.locked) {
+    const isMember = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
+    result.can_write = !!isMember && isUserAdmin(userId)
+  }
 
-  const hasRole = db.prepare(`
-    SELECT 1 FROM member_roles WHERE user_id = ? AND role_id = ?
-    UNION ALL
-    SELECT 1 FROM server_members WHERE user_id = ? AND custom_role_id = ? AND custom_role_id IS NOT NULL
-      AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = ? AND mr.role_id = ?)
-  `).get(userId, channel.write_role_id, userId, channel.write_role_id, userId, channel.write_role_id)
+  if (result.hidden) {
+    result.can_view = canViewChannel(userId, channelId)
+  }
 
-  return { can_write: !!hasRole, locked: true, write_role_id: channel.write_role_id, write_role_name: writeRoleName }
+  return result
 }
 
 export function getUserChannelPermission(userId: string, channelId: string, permission: string): boolean {

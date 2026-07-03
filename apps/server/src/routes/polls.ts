@@ -24,7 +24,6 @@ pollsRouter.post('/channels/:channelId/polls', authMiddleware, async (c) => {
   const options: string[] = body.options.map((o: string) => String(o).trim()).filter(Boolean).slice(0, 10)
   if (options.length < 2) return c.json({ error: 'need at least 2 non-empty options' }, 400)
 
-  // Verify user can write to this channel
   const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(channelId) as Record<string, unknown> | undefined
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
   const userPerms = getUserPermissions(userId)
@@ -33,58 +32,35 @@ pollsRouter.post('/channels/:channelId/polls', authMiddleware, async (c) => {
   }
 
   const pollId = uuidv4()
-  const messageId = uuidv4()
   const now = Math.floor(Date.now() / 1000)
 
   const author = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as { display_name: string; avatar: string | null } | undefined
 
-  db.prepare(`INSERT INTO polls (id, channel_id, channel_type, message_id, question, created_by, created_at) VALUES (?, ?, 'channel', ?, ?, ?, ?)`).run(pollId, channelId, messageId, question, userId, now)
+  db.prepare(`INSERT INTO polls (id, channel_id, channel_type, message_id, question, created_by, created_at) VALUES (?, ?, 'channel', ?, ?, ?, ?)`).run(pollId, channelId, pollId, question, userId, now)
 
+  const dbOptions: { id: string; label: string; position: number }[] = []
   options.forEach((label, i) => {
-    db.prepare(`INSERT INTO poll_options (id, poll_id, label, position) VALUES (?, ?, ?, ?)`).run(uuidv4(), pollId, label, i)
+    const optId = uuidv4()
+    db.prepare(`INSERT INTO poll_options (id, poll_id, label, position) VALUES (?, ?, ?, ?)`).run(optId, pollId, label, i)
+    dbOptions.push({ id: optId, label, position: i })
   })
 
-  const content = JSON.stringify({ __poll__: true, pollId, question, options: options.map((label, i) => ({ id: '', label, position: i })) })
-  db.prepare(`INSERT INTO messages (id, channel_id, author_id, content, author_username, author_display_name, author_avatar, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    messageId, channelId, userId, content, username, author?.display_name ?? username, author?.avatar ?? null, now
-  )
-
-  // Fetch full poll options with ids for the broadcast
-  const dbOptions = db.prepare('SELECT id, label, position FROM poll_options WHERE poll_id = ? ORDER BY position').all(pollId) as { id: string; label: string; position: number }[]
-  const fullContent = JSON.stringify({ __poll__: true, pollId, question, options: dbOptions })
-  db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(fullContent, messageId)
-
-  const messageRow = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as {
-    id: string
-    channel_id: string
-    user_id: string
-    content: string
-    author_username: string
-    author_display_name: string
-    author_avatar: string | null
-    created_at: number
-  }
-  const message = {
-    id: messageRow.id,
-    channel_id: messageRow.channel_id,
-    user_id: messageRow.user_id,
-    content: messageRow.content,
-    author_username: messageRow.author_username,
-    author_display_name: messageRow.author_display_name,
-    author_avatar: messageRow.author_avatar,
-    created_at: messageRow.created_at * 1000,
-    edited_at: null,
-    reply_to_id: null,
-    reply_to_content: null,
-    reply_to_username: null,
-    reactions: [],
-    attachments: [],
+  const pollData = {
+    pollId,
+    channelId,
+    channelType: 'channel',
+    question,
+    options: dbOptions,
+    createdBy: userId,
+    createdByDisplayName: author?.display_name ?? username,
+    createdByAvatar: author?.avatar ?? null,
+    createdAt: now * 1000,
   }
 
   const io = c.get('io' as never) as IoServer | undefined
-  io?.to(channelId).emit('message:new', message as never)
+  io?.to(channelId).emit('poll:created', pollData)
 
-  return c.json({ poll: { id: pollId, question, options: dbOptions }, message })
+  return c.json({ poll: { id: pollId, question, options: dbOptions } })
 })
 
 // Create a poll in a DM channel
@@ -112,49 +88,40 @@ pollsRouter.post('/dms/channel/:channelId/polls', authMiddleware, async (c) => {
   const toId = channel.user1_id === userId ? (channel.user2_id as string) : (channel.user1_id as string)
 
   const pollId = uuidv4()
-  const messageId = uuidv4()
   const now = Math.floor(Date.now() / 1000)
 
-  db.prepare(`INSERT INTO polls (id, channel_id, channel_type, message_id, question, created_by, created_at) VALUES (?, ?, 'dm', ?, ?, ?, ?)`).run(pollId, channelId, messageId, question, userId, now)
+  const author = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as { display_name: string; avatar: string | null } | undefined
 
+  db.prepare(`INSERT INTO polls (id, channel_id, channel_type, message_id, question, created_by, created_at) VALUES (?, ?, 'dm', ?, ?, ?, ?)`).run(pollId, channelId, pollId, question, userId, now)
+
+  const dbOptions: { id: string; label: string; position: number }[] = []
   options.forEach((label, i) => {
-    db.prepare(`INSERT INTO poll_options (id, poll_id, label, position) VALUES (?, ?, ?, ?)`).run(uuidv4(), pollId, label, i)
+    const optId = uuidv4()
+    db.prepare(`INSERT INTO poll_options (id, poll_id, label, position) VALUES (?, ?, ?, ?)`).run(optId, pollId, label, i)
+    dbOptions.push({ id: optId, label, position: i })
   })
 
-  const content = JSON.stringify({ __poll__: true, pollId, question, options: options.map((label, i) => ({ id: '', label, position: i })) })
-  db.prepare(
-    'INSERT INTO direct_messages (id, channel_id, from_id, from_username, to_id, content, encrypted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(messageId, channelId, userId, username, toId, content, 0, now)
-
-  db.prepare('UPDATE dm_channels SET last_message_at = ? WHERE id = ?').run(now, channelId)
-
-  // Fetch full poll options with ids for the broadcast
-  const dbOptions = db.prepare('SELECT id, label, position FROM poll_options WHERE poll_id = ? ORDER BY position').all(pollId) as { id: string; label: string; position: number }[]
-  const fullContent = JSON.stringify({ __poll__: true, pollId, question, options: dbOptions })
-  db.prepare('UPDATE direct_messages SET content = ? WHERE id = ?').run(fullContent, messageId)
-
-  const author = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as { display_name: string | null; avatar: string | null } | undefined
-  const message = {
-    id: messageId,
-    channel_id: channelId,
-    user_id: userId,
-    username,
-    display_name: author?.display_name || username,
-    avatar: author?.avatar || undefined,
-    content: fullContent,
-    encrypted: 0,
-    created_at: now * 1000,
+  const pollData = {
+    pollId,
+    channelId,
+    channelType: 'dm',
+    question,
+    options: dbOptions,
+    createdBy: userId,
+    createdByDisplayName: author?.display_name ?? username,
+    createdByAvatar: author?.avatar ?? null,
+    createdAt: now * 1000,
   }
 
   try {
     const io: IoServer | undefined = c.get('io' as never) as IoServer | undefined
     if (io) {
-      io.to(`dm:${toId}`).emit('dm:received', message)
-      io.to(`user:${userId}`).emit('dm:sent', message)
+      io.to(`dm:${toId}`).emit('poll:created', pollData)
+      io.to(`user:${userId}`).emit('poll:created', pollData)
     }
   } catch { /* best-effort */ }
 
-  return c.json({ poll: { id: pollId, question, options: dbOptions }, message })
+  return c.json({ poll: { id: pollId, question, options: dbOptions } })
 })
 
 // Create a poll in a group DM channel
@@ -181,38 +148,29 @@ pollsRouter.post('/group-dms/:channelId/polls', authMiddleware, async (c) => {
   }
 
   const pollId = uuidv4()
-  const messageId = uuidv4()
   const now = Math.floor(Date.now() / 1000)
 
-  db.prepare(`INSERT INTO polls (id, channel_id, channel_type, message_id, question, created_by, created_at) VALUES (?, ?, 'group-dm', ?, ?, ?, ?)`).run(pollId, channelId, messageId, question, userId, now)
+  const author = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as { display_name: string; avatar: string | null } | undefined
 
+  db.prepare(`INSERT INTO polls (id, channel_id, channel_type, message_id, question, created_by, created_at) VALUES (?, ?, 'group-dm', ?, ?, ?, ?)`).run(pollId, channelId, pollId, question, userId, now)
+
+  const dbOptions: { id: string; label: string; position: number }[] = []
   options.forEach((label, i) => {
-    db.prepare(`INSERT INTO poll_options (id, poll_id, label, position) VALUES (?, ?, ?, ?)`).run(uuidv4(), pollId, label, i)
+    const optId = uuidv4()
+    db.prepare(`INSERT INTO poll_options (id, poll_id, label, position) VALUES (?, ?, ?, ?)`).run(optId, pollId, label, i)
+    dbOptions.push({ id: optId, label, position: i })
   })
 
-  const content = JSON.stringify({ __poll__: true, pollId, question, options: options.map((label, i) => ({ id: '', label, position: i })) })
-  db.prepare(
-    'INSERT INTO group_dm_messages (id, channel_id, from_id, from_username, content, encrypted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(messageId, channelId, userId, username, content, 0, now)
-
-  db.prepare('UPDATE group_dm_channels SET last_message_at = ? WHERE id = ?').run(now, channelId)
-
-  // Fetch full poll options with ids for the broadcast
-  const dbOptions = db.prepare('SELECT id, label, position FROM poll_options WHERE poll_id = ? ORDER BY position').all(pollId) as { id: string; label: string; position: number }[]
-  const fullContent = JSON.stringify({ __poll__: true, pollId, question, options: dbOptions })
-  db.prepare('UPDATE group_dm_messages SET content = ? WHERE id = ?').run(fullContent, messageId)
-
-  const author = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(userId) as { display_name: string | null; avatar: string | null } | undefined
-  const message = {
-    id: messageId,
-    channel_id: channelId,
-    user_id: userId,
-    username,
-    display_name: author?.display_name || username,
-    avatar: author?.avatar || undefined,
-    content: fullContent,
-    encrypted: 0,
-    created_at: now * 1000,
+  const pollData = {
+    pollId,
+    channelId,
+    channelType: 'group-dm',
+    question,
+    options: dbOptions,
+    createdBy: userId,
+    createdByDisplayName: author?.display_name ?? username,
+    createdByAvatar: author?.avatar ?? null,
+    createdAt: now * 1000,
   }
 
   try {
@@ -222,13 +180,13 @@ pollsRouter.post('/group-dms/:channelId/polls', authMiddleware, async (c) => {
         'SELECT user_id FROM group_dm_members WHERE channel_id = ? AND user_id != ?'
       ).all(channelId, userId) as { user_id: string }[]
       for (const m of members) {
-        io.to(`group-dm:${m.user_id}`).emit('group-dm:received', message)
+        io.to(`group-dm:${m.user_id}`).emit('poll:created', pollData)
       }
-      io.to(`user:${userId}`).emit('group-dm:sent', message)
+      io.to(`user:${userId}`).emit('poll:created', pollData)
     }
   } catch { /* best-effort */ }
 
-  return c.json({ poll: { id: pollId, question, options: dbOptions }, message })
+  return c.json({ poll: { id: pollId, question, options: dbOptions } })
 })
 
 // Get poll with vote counts

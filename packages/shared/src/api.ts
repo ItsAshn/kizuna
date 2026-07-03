@@ -280,9 +280,10 @@ export async function createChannel(
   name: string,
   type: 'text' | 'voice',
   locked = false,
-  write_role_id?: string | null,
+  hidden = false,
+  hidden_role_ids?: string[] | null,
 ): Promise<Channel> {
-  const res = await client(serverUrl).post('/api/channels', { name, type, locked, write_role_id })
+  const res = await client(serverUrl).post('/api/channels', { name, type, locked, hidden, hidden_role_ids })
   return res.data.channel ?? res.data
 }
 
@@ -304,16 +305,25 @@ export async function lockChannel(
   serverUrl: string,
   id: string,
   locked: boolean,
-  write_role_id?: string | null,
 ): Promise<Channel> {
-  const res = await client(serverUrl).patch(`/api/channels/${id}`, { locked, write_role_id })
+  const res = await client(serverUrl).patch(`/api/channels/${id}`, { locked })
+  return res.data.channel ?? res.data
+}
+
+export async function hideChannel(
+  serverUrl: string,
+  id: string,
+  hidden: boolean,
+  hidden_role_ids?: string[] | null,
+): Promise<Channel> {
+  const res = await client(serverUrl).patch(`/api/channels/${id}`, { hidden, hidden_role_ids })
   return res.data.channel ?? res.data
 }
 
 export async function fetchChannelPermissions(
   serverUrl: string,
   channelId: string,
-): Promise<{ can_write: boolean; locked: boolean; write_role_id: string | null; write_role_name: string | null; permissions?: Record<string, boolean> }> {
+): Promise<{ can_write: boolean; locked: boolean; can_view: boolean; hidden: boolean; permissions?: Record<string, boolean> }> {
   const res = await client(serverUrl).get(`/api/channels/${channelId}/permissions`)
   return res.data
 }
@@ -1192,7 +1202,7 @@ export async function createPoll(
   channelId: string,
   question: string,
   options: string[],
-): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] }; message: Message }> {
+): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] } }> {
   const res = await client(serverUrl).post(`/api/channels/${channelId}/polls`, { question, options })
   return res.data
 }
@@ -1202,7 +1212,7 @@ export async function createDMPoll(
   channelId: string,
   question: string,
   options: string[],
-): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] }; message: Message }> {
+): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] } }> {
   const res = await client(serverUrl).post(`/api/dms/channel/${channelId}/polls`, { question, options })
   return res.data
 }
@@ -1212,7 +1222,7 @@ export async function createGroupDMPoll(
   channelId: string,
   question: string,
   options: string[],
-): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] }; message: Message }> {
+): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] } }> {
   const res = await client(serverUrl).post(`/api/group-dms/${channelId}/polls`, { question, options })
   return res.data
 }

@@ -62,6 +62,7 @@ import {
   Search,
   Settings,
   Image as ImageIcon,
+  BarChart3,
 } from 'lucide-react';
 import type {
   Message,
@@ -84,6 +85,7 @@ import EnvStatus from './EnvStatus';
 import GroupDMSettingsModal from './GroupDMSettingsModal';
 import IconButton from './ui/IconButton';
 import MediaGallery from './MediaGallery';
+import PollPanel from './PollPanel';
 import './ChatArea.css';
 
 interface ChatAreaProps {
@@ -303,9 +305,12 @@ export default function ChatArea({
   } | null>(null);
   const [pinsOpen, setPinsOpen] = useState(false);
   const [mediaGalleryOpen, setMediaGalleryOpen] = useState(false);
+  const [pollPanelOpen, setPollPanelOpen] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [formatSel, setFormatSel] = useState<{ start: number; end: number } | null>(null);
+  const [toolbarCoords, setToolbarCoords] = useState<{ top: number; left: number } | null>(null);
+  const mirrorRef = useRef<HTMLDivElement>(null);
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -315,7 +320,6 @@ export default function ChatArea({
   const [channelPerms, setChannelPerms] = useState<{
     can_write: boolean;
     locked: boolean;
-    write_role_name: string | null;
   } | null>(null);
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
   const chatAreaRef = useRef<HTMLDivElement>(null);
@@ -929,6 +933,7 @@ export default function ChatArea({
       input.slice(0, start) + prefix + input.slice(start, end) + suffix + input.slice(end);
     setInput(newValue);
     setFormatSel(null);
+    setToolbarCoords(null);
     requestAnimationFrame(() => {
       ta.focus();
       ta.selectionStart = start + prefix.length;
@@ -1405,6 +1410,19 @@ export default function ChatArea({
     }
   };
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.files;
+    if (items && items.length > 0) {
+      const file = items[0];
+      if (file.type.startsWith('image/')) {
+        e.preventDefault();
+        setPendingFile(file);
+        if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
+        setPendingPreviewUrl(URL.createObjectURL(file));
+      }
+    }
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1793,9 +1811,7 @@ export default function ChatArea({
             className={`chat-area__locked-badge ${channelPerms.can_write ? 'chat-area__locked-badge--can-write' : ''}`}
           >
             <Lock size={12} className="chat-area__locked-badge-icon" />
-            {channelPerms.can_write
-              ? 'Locked'
-              : `Locked to ${channelPerms.write_role_name || 'a role'}`}
+            Locked
           </span>
         )}
         <div className="chat-area__header-actions">
@@ -1869,6 +1885,15 @@ export default function ChatArea({
               onClick={() => setMediaGalleryOpen(true)}
             />
           )}
+          {(activeChannelId || activeDMChannelId || activeGroupDMChannelId) && (
+            <IconButton
+              icon={<BarChart3 className="icon-sm" />}
+              label="Toggle polls"
+              title="Polls"
+              active={pollPanelOpen}
+              onClick={() => setPollPanelOpen((v) => !v)}
+            />
+          )}
           {activeChannelId && (
             <IconButton
               icon={<MessageSquare className="icon-sm" />}
@@ -1888,6 +1913,13 @@ export default function ChatArea({
           onJumpToMessage={handleJumpToMessage}
         />
       )}
+
+      <PollPanel
+        serverUrl={session?.url ?? ''}
+        channelId={activeChannelId || activeDMChannelId || activeGroupDMChannelId || null}
+        isOpen={pollPanelOpen}
+        onClose={() => setPollPanelOpen(false)}
+      />
 
       <div className="chat-area__messages-wrap">
         <div className="chat-area__messages" role="log" aria-label="Messages" aria-live="polite">
@@ -2179,8 +2211,12 @@ export default function ChatArea({
               )}
             </>
           )}
-          {formatSel && (
-            <div className="chat-area__format-toolbar" onMouseDown={(e) => e.preventDefault()}>
+          {formatSel && toolbarCoords && (
+            <div
+              className="chat-area__format-toolbar"
+              style={{ position: 'fixed', top: toolbarCoords.top, left: toolbarCoords.left }}
+              onMouseDown={(e) => e.preventDefault()}
+            >
               <button onClick={() => applyFormat('**')} title="Bold" aria-label="Bold">
                 <strong>B</strong>
               </button>
@@ -2208,6 +2244,7 @@ export default function ChatArea({
               </button>
             </div>
           )}
+          <div ref={mirrorRef} className="chat-area__format-mirror" aria-hidden="true" />
           <textarea
             ref={inputRef}
             className={`chat-area__input ${cantWrite ? 'chat-area__input--locked' : ''}`}
@@ -2215,12 +2252,13 @@ export default function ChatArea({
             style={{ resize: 'none' }}
             placeholder={
               cantWrite
-                ? `Channel locked — you cannot send messages`
+                ? `Channel locked — only admins can send messages`
                 : `Message ${activeDMChannelId ? `@${activeDM?.other_display_name}` : `#${activeChannel?.name}`}`
             }
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             onSelect={() => {
               const ta = inputRef.current;
               if (!ta) return;
@@ -2231,11 +2269,49 @@ export default function ChatArea({
                 selectionStart !== selectionEnd
               ) {
                 setFormatSel({ start: selectionStart, end: selectionEnd });
+                requestAnimationFrame(() => {
+                  const mirror = mirrorRef.current;
+                  if (!mirror) return;
+                  const style = getComputedStyle(ta);
+                  const taRect = ta.getBoundingClientRect();
+                  mirror.style.fontFamily = style.fontFamily;
+                  mirror.style.fontSize = style.fontSize;
+                  mirror.style.fontWeight = style.fontWeight;
+                  mirror.style.lineHeight = style.lineHeight;
+                  mirror.style.letterSpacing = style.letterSpacing;
+                  mirror.style.textTransform = style.textTransform;
+                  mirror.style.textIndent = style.textIndent;
+                  mirror.style.whiteSpace = style.whiteSpace || 'pre-wrap';
+                  mirror.style.wordBreak = style.wordBreak || 'break-word';
+                  mirror.style.overflowWrap = style.overflowWrap || 'break-word';
+                  mirror.style.boxSizing = style.boxSizing || 'border-box';
+                  mirror.style.padding = style.padding;
+                  mirror.style.width = style.width;
+                  mirror.textContent = '';
+                  const text = ta.value;
+                  mirror.appendChild(document.createTextNode(text.slice(0, selectionStart)));
+                  const span = document.createElement('span');
+                  span.textContent = text.slice(selectionStart, selectionEnd);
+                  mirror.appendChild(span);
+                  mirror.appendChild(document.createTextNode(text.slice(selectionEnd)));
+                  const mirrorRect = mirror.getBoundingClientRect();
+                  const spanRect = span.getBoundingClientRect();
+                  const scrollTop = ta.scrollTop;
+                  const scrollLeft = ta.scrollLeft;
+                  let top = taRect.top + (spanRect.top - mirrorRect.top) - scrollTop - 44;
+                  let left = taRect.left + (spanRect.left - mirrorRect.left) - scrollLeft;
+                  const TOOLBAR_W = 230;
+                  if (left < 4) left = 4;
+                  if (left + TOOLBAR_W > window.innerWidth - 4) left = window.innerWidth - TOOLBAR_W - 4;
+                  if (top < 4) top = taRect.top + (spanRect.bottom - mirrorRect.top) - scrollTop + 6;
+                  setToolbarCoords({ top, left });
+                });
               } else {
                 setFormatSel(null);
+                setToolbarCoords(null);
               }
             }}
-            onBlur={() => setFormatSel(null)}
+            onBlur={() => { setFormatSel(null); setToolbarCoords(null); }}
             maxLength={inputMaxLen}
             disabled={cantWrite}
             aria-label={`Message ${activeDMChannelId ? activeDM?.other_display_name || 'direct messages' : activeChannel?.name || 'channel'}`}

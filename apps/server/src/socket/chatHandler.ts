@@ -372,7 +372,7 @@ export function registerChatHandlers(io: Server, socket: Socket): void {
     }
 
     if (!canWriteToChannel(userId, channelId)) {
-      socket.emit('error', { code: 'LOCKED', message: 'This channel is locked' })
+      socket.emit('error', { code: 'LOCKED', message: 'This channel is locked — only admins can send messages' })
       return
     }
 

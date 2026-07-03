@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, canWriteToChannel, isUserAdmin } from '../middleware/auth'
+import { authMiddleware, getUserPermissions, hasPermission, canWriteToChannel, canViewChannel, isUserAdmin } from '../middleware/auth'
 import { checkSpam } from '../services/spamFilter'
 import { parseMentions, processMentions } from '../socket/chatHandler'
 import { checkMessageContent } from '../moderation'
@@ -100,9 +100,15 @@ function fetchReactionsForMessages(db: Database.Database, messageIds: string[]):
 
 // GET /messages/:channelId — fetch messages with ?limit= and ?before= pagination
 messageRoutes.get('/:channelId', authMiddleware, (c) => {
-  const channelId = c.req.param('channelId')
+  const channelId = c.req.param('channelId')!
+  const user = getAuth(c)
   const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 100)
   const before = c.req.query('before')
+
+  if (!canViewChannel(user.userId, channelId)) {
+    return c.json({ error: 'Channel not found' }, 404)
+  }
+
   const db = getDb()
 
   const SELECT = `
@@ -142,6 +148,9 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   const userPerms = getUserPermissions(user.userId)
   if (!userPerms || !hasPermission(userPerms, 'send_messages')) {
     return c.json({ error: 'Forbidden' }, 403)
+  }
+  if (!canViewChannel(user.userId, channelId)) {
+    return c.json({ error: 'Channel not found' }, 404)
   }
   if (!canWriteToChannel(user.userId, channelId)) {
     return c.json({ error: 'This channel is locked' }, 403)

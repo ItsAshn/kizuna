@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import type { Socket } from 'socket.io-client'
 import { createPortal } from 'react-dom'
 import { useServerStore } from '../store/serverStore'
@@ -10,13 +10,14 @@ import { useHaptics } from '../hooks/useHaptics'
 import { useSwipeBack } from '../hooks/useSwipeBack'
 import { isTauri } from '../utils/platform'
 import { useNavigate } from 'react-router-dom'
-import { createChannel, lockChannel, fetchRoles, setChannelMute, deleteChannelMute, deleteChannel, reorderChannels } from '@kizuna/shared'
-import type { CustomRole, Channel } from '@kizuna/shared'
-import { Lock, Unlock, BellOff, ChevronLeft, Ellipsis, Bell } from 'lucide-react'
+import { createChannel, setChannelMute, deleteChannelMute, deleteChannel, reorderChannels } from '@kizuna/shared'
+import type { Channel } from '@kizuna/shared'
+import { BellOff, ChevronLeft, Ellipsis, Bell, Settings } from 'lucide-react'
 import UserStatusPicker from './UserStatusPicker'
 import { Avatar } from './ui'
 import ContextMenu from './ContextMenu'
 import ChannelSettingsModal from './ChannelSettingsModal'
+import ChannelAccessModal from './ChannelAccessModal'
 import CreateGroupDMModal from './CreateGroupDMModal'
 import './Sidebar.css'
 
@@ -71,15 +72,12 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
   const [creating, setCreating] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [showCreateGroupDM, setShowCreateGroupDM] = useState(false)
-  const [lockMenuChannelId, setLockMenuChannelId] = useState<string | null>(null)
-  const [roles, setRoles] = useState<CustomRole[]>([])
-  const [rolesLoaded, setRolesLoaded] = useState(false)
+  const [accessModalChannel, setAccessModalChannel] = useState<Channel | null>(null)
   const [contextMenuChannelId, setContextMenuChannelId] = useState<string | null>(null)
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
-  const lockMenuRef = useRef<HTMLDivElement | null>(null)
+  const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null)
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false)
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
-  const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null)
   const [drag, setDrag] = useState<{ channelId: string; type: 'text' | 'voice' } | null>(null)
   const [dragOver, setDragOver] = useState<{ channelId: string; position: 'above' | 'below' } | null>(null)
 
@@ -141,26 +139,6 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
     reorderChannels(session.url, order).catch((err) => { console.error('Failed to reorder channels:', err) })
   }
 
-  useEffect(() => {
-    if (!lockMenuChannelId) return
-    function handleClickOutside(e: MouseEvent) {
-      if (lockMenuRef.current && !lockMenuRef.current.contains(e.target as Node)) {
-        setLockMenuChannelId(null)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [lockMenuChannelId])
-
-  useEffect(() => {
-    if (!lockMenuChannelId) return
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setLockMenuChannelId(null)
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [lockMenuChannelId])
-
   function handleLogout() {
     const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
     if (channelId) {
@@ -184,16 +162,6 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
     } finally {
       setCreating(false)
     }
-  }
-
-  async function handleToggleLock(ch: typeof channels[0], locked: boolean, write_role_id?: string | null) {
-    if (!session) return
-    try {
-      await lockChannel(session.url, ch.id, locked, write_role_id ?? null)
-    } catch (err) {
-      console.error('Failed to toggle channel lock:', err)
-    }
-    setLockMenuChannelId(null)
   }
 
   function handleChannelContextMenu(e: React.MouseEvent, channelId: string) {
@@ -251,20 +219,6 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
     return sections
   }
 
-  async function openLockMenu(channelId: string) {
-    if (!session || !isAdmin) return
-    if (!rolesLoaded) {
-      try {
-        const r = await fetchRoles(session.url)
-        setRoles(r)
-        setRolesLoaded(true)
-      } catch (err) {
-        console.error('Failed to fetch roles for lock menu:', err)
-      }
-    }
-    setLockMenuChannelId(lockMenuChannelId === channelId ? null : channelId)
-  }
-
   function renderChannel(ch: Channel) {
     const isText = ch.type === 'text'
     const voiceUsers = isText ? [] : (voiceChannelUsers[ch.id] || [])
@@ -296,9 +250,9 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
           onClick={() => {
             haptics.tap()
             if (isText) {
-              setActiveChannel(ch.id); setLockMenuChannelId(null); onOpenChat?.()
+              setActiveChannel(ch.id); onOpenChat?.()
             } else {
-              setViewedVoiceChannel(ch.id); setLockMenuChannelId(null); onOpenVoiceStage?.(ch.id)
+              setViewedVoiceChannel(ch.id); onOpenVoiceStage?.(ch.id)
               if (activeVoiceChannelId !== ch.id) {
                 (async () => {
                   if (activeVoiceChannelId) await leaveVoice()
@@ -325,41 +279,12 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
         </button>
         {isAdmin && isText && (
           <button
-            onClick={(e) => { e.stopPropagation(); openLockMenu(ch.id) }}
-            className={`sidebar__lock-btn ${ch.locked ? 'sidebar__lock-btn--active' : ''}`}
-            title={ch.locked ? 'Unlock channel' : 'Lock channel'}
+            onClick={(e) => { e.stopPropagation(); setAccessModalChannel(ch) }}
+            className={`sidebar__settings-btn ${(ch.locked || ch.hidden) ? 'sidebar__settings-btn--active' : ''}`}
+            title="Channel access settings"
           >
-            {ch.locked ? <Lock size={12} /> : <Unlock size={12} />}
+            <Settings size={12} />
           </button>
-        )}
-        {lockMenuChannelId === ch.id && (
-          <div className="sidebar__lock-menu" ref={lockMenuRef}>
-            {ch.locked ? (
-              <>
-                <span className="sidebar__lock-menu-label">Locked to: {ch.write_role_name || 'no role'}</span>
-                <button onClick={() => handleToggleLock(ch, false, null)} className="sidebar__lock-menu-btn">Unlock</button>
-                {roles.map(r => (
-                  <button
-                    key={r.id}
-                    onClick={() => handleToggleLock(ch, true, r.id)}
-                    className={`sidebar__lock-menu-btn ${ch.write_role_id === r.id ? 'sidebar__lock-menu-btn--active' : ''}`}
-                  >
-                    Change to {r.name}
-                  </button>
-                ))}
-              </>
-            ) : (
-              <>
-                <span className="sidebar__lock-menu-label">Lock to role:</span>
-                {roles.map(r => (
-                  <button key={r.id} onClick={() => handleToggleLock(ch, true, r.id)} className="sidebar__lock-menu-btn">
-                    {r.name}
-                  </button>
-                ))}
-                {roles.length === 0 && <span className="sidebar__lock-menu-label">No roles exist. Create one in server menu.</span>}
-              </>
-            )}
-          </div>
         )}
         {!isText && voiceUsers.length > 0 && (
           <div className="sidebar__voice-users">
@@ -655,6 +580,14 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
         <ChannelSettingsModal
           channel={settingsChannel}
           onClose={() => setSettingsChannel(null)}
+        />,
+        document.body,
+      )}
+
+      {accessModalChannel && createPortal(
+        <ChannelAccessModal
+          channel={accessModalChannel}
+          onClose={() => setAccessModalChannel(null)}
         />,
         document.body,
       )}
