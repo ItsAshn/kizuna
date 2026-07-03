@@ -421,6 +421,69 @@
   border-color: var(--red);
 }
 
+.settings-btn--delete {
+  color: var(--red);
+  border-color: var(--red-dim-border);
+  background: var(--red-dim);
+  font-weight: 600;
+}
+
+.settings-btn--delete:hover {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
+}
+
+.settings-btn--delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Delete account form ───────────────────────────────────── */
+
+.settings-delete-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.settings-delete-form .settings-hint {
+  margin-top: 0;
+}
+
+.settings-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.settings-input:focus {
+  border-color: var(--brand);
+}
+
+.settings-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.settings-checkbox-row input[type="checkbox"] {
+  accent-color: var(--brand);
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
 .settings-btn--block {
   display: block;
   width: 100%;

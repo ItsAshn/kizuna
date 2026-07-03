@@ -42,6 +42,67 @@ export function closeDb(): void {
   }
 }
 
+export function deleteUserAccount(userId: string, deleteData: boolean): void {
+  const db = getDb()
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM message_reactions WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM channel_reads WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM channel_mutes WHERE user_id = ?').run(userId)
+
+    const dmChannelIds = (
+      db.prepare('SELECT id FROM dm_channels WHERE user1_id = ? OR user2_id = ?').all(userId, userId) as { id: string }[]
+    ).map(r => r.id)
+
+    for (const channelId of dmChannelIds) {
+      db.prepare('DELETE FROM dm_reads WHERE channel_id = ?').run(channelId)
+      if (deleteData) {
+        db.prepare('DELETE FROM direct_messages WHERE channel_id = ?').run(channelId)
+      }
+    }
+    if (deleteData) {
+      db.prepare('DELETE FROM dm_reads WHERE user_id = ?').run(userId)
+    }
+    db.prepare('DELETE FROM dm_channels WHERE user1_id = ? OR user2_id = ?').run(userId, userId)
+
+    if (deleteData) {
+      const groupDmChannelIds = (
+        db.prepare('SELECT channel_id FROM group_dm_members WHERE user_id = ?').all(userId) as { channel_id: string }[]
+      ).map(r => r.channel_id)
+
+      for (const channelId of groupDmChannelIds) {
+        db.prepare('DELETE FROM group_dm_messages WHERE channel_id = ? AND from_id = ?').run(channelId, userId)
+      }
+      db.prepare('DELETE FROM group_dm_messages WHERE from_id = ?').run(userId)
+      db.prepare('DELETE FROM direct_messages WHERE from_id = ? OR to_id = ?').run(userId, userId)
+      db.prepare('DELETE FROM messages WHERE author_id = ?').run(userId)
+      db.prepare('DELETE FROM mentions WHERE author_id = ? OR mentioned_user_id = ?').run(userId, userId)
+      db.prepare('DELETE FROM message_edits WHERE edited_by = ?').run(userId)
+      db.prepare('DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE author_id = ?)').run(userId)
+      db.prepare('DELETE FROM polls WHERE created_by = ?').run(userId)
+      db.prepare('DELETE FROM webhooks WHERE created_by = ?').run(userId)
+      db.prepare('DELETE FROM gifs WHERE uploaded_by = ?').run(userId)
+      db.prepare('DELETE FROM threads WHERE creator_id = ?').run(userId)
+      db.prepare('DELETE FROM pinned_messages WHERE pinned_by = ?').run(userId)
+      db.prepare('DELETE FROM invite_codes WHERE created_by = ?').run(userId)
+      db.prepare('DELETE FROM audit_logs WHERE actor_id = ? OR target_id = ?').run(userId, userId)
+      db.prepare('DELETE FROM bans WHERE user_id = ? OR banned_by = ?').run(userId, userId)
+    } else {
+      db.prepare('UPDATE group_dm_channels SET owner_id = NULL WHERE owner_id = ?').run(userId)
+    }
+
+    db.prepare('DELETE FROM group_dm_reads WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM group_dm_members WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM group_dm_voice_participants WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM identity_links WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM verification_tokens WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM member_roles WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM server_members WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId)
+  })()
+}
+
 const EXPECTED_SCHEMA: Record<string, string[]> = {
   users: ['id', 'username', 'display_name', 'password_hash', 'avatar', 'banner', 'last_seen_at',
     'public_key', 'key_salt', 'token_invalidated_at', 'reset_token', 'reset_token_expires_at',

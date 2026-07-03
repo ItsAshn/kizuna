@@ -218,6 +218,17 @@ export async function generatePasswordReset(
   return res.data
 }
 
+export async function deleteAccount(
+  serverUrl: string,
+  password: string,
+  deleteData = false,
+): Promise<void> {
+  await client(serverUrl).delete('/api/auth/me', {
+    data: { password },
+    params: { data: deleteData ? 'true' : 'false' },
+  })
+}
+
 export async function requestPasswordReset(
   serverUrl: string,
   username: string,

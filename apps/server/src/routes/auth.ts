@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
-import { getDb } from '../db'
+import { getDb, deleteUserAccount } from '../db'
 import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getUserPermissions, getJwtSecret, assignDefaultRoles } from '../middleware/auth'
 import type { AuthUser, JwtPayload } from '../middleware/auth'
 import type { Context } from 'hono'
@@ -572,6 +572,25 @@ authRoutes.get('/reset-password/:token', (c) => {
   }
 
   return c.json({ username: user.username })
+})
+
+authRoutes.delete('/me', authMiddleware, async (c) => {
+  const auth = getAuth(c)
+  const { password } = await c.req.json().catch(() => ({}))
+  const deleteData = c.req.query('data') === 'true'
+
+  const db = getDb()
+  const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(auth.userId) as { password_hash: string } | undefined
+  if (!user) return c.json({ error: 'User not found' }, 404)
+  if (!password) return c.json({ error: 'Password required to delete account' }, 400)
+  const valid = await bcrypt.compare(password, user.password_hash)
+  if (!valid) return c.json({ error: 'Invalid password' }, 401)
+
+  deleteUserAccount(auth.userId, deleteData)
+
+  c.header('Set-Cookie', 'kizuna_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
+  try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:removed', auth.userId) } catch {}
+  return c.json({ ok: true })
 })
 
 authRoutes.post('/logout', authMiddleware, (c) => {

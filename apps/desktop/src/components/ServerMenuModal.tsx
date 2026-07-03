@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   MoreHorizontal, Pencil, X,
   User, Bell, SlidersHorizontal, Users, Link2, Shield, Code, Image as ImageIcon, Trash2,
@@ -7,6 +8,7 @@ import Modal from './ui/Modal'
 import Tabs from './ui/Tabs'
 import SettingsLayout, { type SettingsNavGroup } from './ui/SettingsLayout'
 import ToggleSwitch from './ui/ToggleSwitch'
+import Checkbox from './ui/Checkbox'
 import Slider from './ui/Slider'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
@@ -51,6 +53,7 @@ import {
   fetchStorageStats,
   clearAuditLogs,
   cleanupOrphanFiles,
+  deleteAccount,
 } from '@kizuna/shared'
 import type { Member, CustomRole, Permission, UserStatus, GifInfo, TaggerStatus, InviteCode } from '@kizuna/shared'
 import { hexToRgba } from '../utils/color'
@@ -455,6 +458,34 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
   useEffect(() => {
     return () => { mountedRef.current = false }
   }, [])
+
+  const navigate = useNavigate()
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteAllData, setDeleteAllData] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  const handleDeleteAccount = useCallback(async () => {
+    if (!serverUrl || !deletePassword) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await deleteAccount(serverUrl, deletePassword, deleteAllData)
+      useServerStore.getState().setActiveSession(null)
+      onClose()
+      navigate('/')
+    } catch (err: unknown) {
+      const msg = handleApiErr(err)
+      if (msg.includes('401') || msg.includes('Invalid password')) {
+        setDeleteError('Incorrect password')
+      } else {
+        setDeleteError(msg)
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }, [serverUrl, deletePassword, deleteAllData, onClose, navigate])
 
   // ─── Profile ─────────────────────────────────────────
   const [displayName, setDisplayName] = useState(session?.user?.display_name ?? '')
@@ -1521,6 +1552,16 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
                 </span>
               )}
             </div>
+
+            <div className="server-menu__settings-group" style={{ marginTop: '16px' }}>
+              <p className="server-menu__settings-group-title">danger zone</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <p className="server-menu__hint" style={{ margin: 0 }}>permanently remove your account from this server.</p>
+                <button onClick={() => { setDeleteConfirm(true); setDeleteAllData(false); setDeletePassword(''); setDeleteError('') }} className="server-menu__btn server-menu__btn--danger">
+                  delete account
+                </button>
+              </div>
+            </div>
           </section>
         )}
 
@@ -2569,6 +2610,55 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
         </Modal>
       )
     })()}
+
+    <Modal
+      open={deleteConfirm}
+      onClose={() => { setDeleteConfirm(false); setDeletePassword(''); setDeleteAllData(false); setDeleteError('') }}
+      title="// delete account"
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          <button
+            className="server-menu__confirm-cancel"
+            onClick={() => { setDeleteConfirm(false); setDeletePassword(''); setDeleteAllData(false); setDeleteError('') }}
+            disabled={deleting}
+          >
+                cancel
+          </button>
+          <button
+            onClick={handleDeleteAccount}
+            disabled={deleting || !deletePassword}
+            className="server-menu__btn server-menu__btn--danger"
+          >
+            {deleting ? 'deleting...' : 'delete account'}
+          </button>
+        </div>
+      }
+    >
+      <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '16px' }}>
+        your account will be permanently removed. your public messages remain visible to others
+        unless you choose to delete all data below.
+      </p>
+      <Checkbox
+        checked={deleteAllData}
+        onChange={setDeleteAllData}
+                    label="also delete all my data"
+      />
+      <div style={{ marginTop: '16px' }}>
+        <label className="server-menu__label" style={{ marginBottom: '6px' }}>enter your password to confirm</label>
+        <input
+          type="password"
+          className="server-menu__input"
+          placeholder="your password"
+          value={deletePassword}
+          onChange={(e) => setDeletePassword(e.target.value)}
+          autoFocus
+          onKeyDown={(e) => { if (e.key === 'Enter') handleDeleteAccount() }}
+        />
+      </div>
+      {deleteError && (
+        <span className="server-menu__save-msg server-menu__save-msg--err" style={{ display: 'block', marginTop: '8px' }}>{deleteError}</span>
+      )}
+    </Modal>
 
     </>
   )
