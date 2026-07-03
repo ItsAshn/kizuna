@@ -28,7 +28,7 @@
 
 .backuptoken-modal__warning {
   background: var(--bg-tertiary);
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--accent-color);
   padding: 10px 12px;
   border-radius: var(--radius-sm);
   margin-bottom: 12px;
@@ -59,7 +59,7 @@
 .backuptoken-modal__token {
   flex: 1;
   font-size: 12px;
-  color: var(--accent);
+  color: var(--accent-color);
   word-break: break-all;
   font-family: monospace;
   line-height: 1.6;
@@ -112,5 +112,5 @@
 .backuptoken-modal__checkbox input {
   margin-top: 3px;
   flex-shrink: 0;
-  accent-color: var(--accent);
+  accent-color: var(--accent-color);
 }

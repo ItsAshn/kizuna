@@ -24,7 +24,7 @@ export default function MobileYouTab({
 
   return (
     <div className="mobile-tab mobile-you-tab">
-      <div className="mobile-you-tab__header">
+      <div className="mobile-tab__header">
         <h1 className="mobile-tab__title">You</h1>
       </div>
       <div className="mobile-tab__body mobile-you-tab__body">

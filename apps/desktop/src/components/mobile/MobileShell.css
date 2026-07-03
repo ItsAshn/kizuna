@@ -61,6 +61,6 @@
   }
 }
 
-.mobile-content__view:not(.mobile-content__view--push):not(.mobile-content__view--pop) {
+.mobile-content__view--tab {
   animation: mobileTabFadeIn 0.2s ease-out;
 }

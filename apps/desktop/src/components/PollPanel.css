@@ -175,11 +175,11 @@
 }
 
 .poll-panel__option:hover:not(:disabled) {
-  border-color: var(--accent);
+  border-color: var(--accent-color);
 }
 
 .poll-panel__option--voted {
-  border-color: var(--accent);
+  border-color: var(--accent-color);
 }
 
 .poll-panel__card--compact .poll-panel__option {
@@ -188,7 +188,7 @@
 }
 
 .poll-panel__bar {
-  background: var(--accent);
+  background: var(--accent-color);
   bottom: 0;
   left: 0;
   opacity: 0.15;

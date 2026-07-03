@@ -239,7 +239,7 @@
 
 .chat-area__bulk-bar {
   align-items: center;
-  background: var(--accent);
+  background: var(--accent-color);
   color: #fff;
   display: flex;
   font-size: 13px;

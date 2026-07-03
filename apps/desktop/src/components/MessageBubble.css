@@ -1360,7 +1360,7 @@
 
 /* Bulk selection */
 .msg-bubble__row--selected {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: color-mix(in srgb, var(--accent-color) 12%, transparent);
 }
 
 /* Poll indicator (compact inline) */
@@ -1382,7 +1382,7 @@
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--accent-color);
   flex-shrink: 0;
 }
 
@@ -1425,15 +1425,15 @@
 }
 
 .msg-bubble__poll-option:hover:not(:disabled) {
-  border-color: var(--accent);
+  border-color: var(--accent-color);
 }
 
 .msg-bubble__poll-option--voted {
-  border-color: var(--accent);
+  border-color: var(--accent-color);
 }
 
 .msg-bubble__poll-bar {
-  background: var(--accent);
+  background: var(--accent-color);
   bottom: 0;
   left: 0;
   opacity: 0.15;
@@ -1469,7 +1469,7 @@
   letter-spacing: 0.04em;
   padding: 1px 4px;
   border-radius: 3px;
-  background: var(--accent);
+  background: var(--accent-color);
   color: #fff;
   vertical-align: middle;
   margin-left: 4px;

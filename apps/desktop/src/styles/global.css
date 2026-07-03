@@ -26,12 +26,12 @@
   --text-secondary: #a0a0a0;
   --text-muted: #808080;
   --border-color: #2a2a2a;
-  --brand: #4c6ef5;
-  --brand-hover: #4263eb;
-  --brand-dim: rgba(76, 110, 245, 0.15);
-  --brand-dim-border: rgba(76, 110, 245, 0.25);
-  --brand-glow: rgba(76, 110, 245, 0.20);
-  --accent-color: #6366f1;
+  --brand: #A1D93F;
+  --brand-hover: #8cc22e;
+  --brand-dim: rgba(161, 217, 63, 0.15);
+  --brand-dim-border: rgba(161, 217, 63, 0.25);
+  --brand-glow: rgba(161, 217, 63, 0.20);
+  --accent-color: #A1D93F;
   --bg-surface: #1a1a1a;
   --modal-bg: rgba(17, 17, 17, 0.94);
   --modal-backdrop: rgba(0, 0, 0, 0.6);

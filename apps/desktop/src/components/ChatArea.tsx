@@ -7,7 +7,6 @@ import { useServerStore } from '../store/serverStore';
 import { useChatStore } from '../store/chatStore';
 import { useCallStore } from '../store/callStore';
 import { useMobile } from '../hooks/useMobile';
-import { useSwipeBack } from '../hooks/useSwipeBack';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { useHaptics } from '../hooks/useHaptics';
 import {
@@ -322,7 +321,6 @@ export default function ChatArea({
     locked: boolean;
   } | null>(null);
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
-  const chatAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -338,7 +336,6 @@ export default function ChatArea({
   const [showGroupDMSettings, setShowGroupDMSettings] = useState(false);
   const [mentionableRoles, setMentionableRoles] = useState<CustomRole[]>([]);
   const newMessagesRef = useRef<string | null>(null);
-  useSwipeBack(chatAreaRef, onBackToSidebar || (() => {}), !!isMobile && !!onBackToSidebar);
   useKeyboard();
   const haptics = useHaptics();
   const tryDecryptDM = useCallback(
@@ -1737,7 +1734,6 @@ export default function ChatArea({
   return (
     <div
       id="main-content"
-      ref={chatAreaRef}
       className="chat-area"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}

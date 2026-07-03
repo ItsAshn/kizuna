@@ -103,7 +103,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--accent);
+  color: var(--accent-color);
   font-size: 13px;
   transition: opacity 0.15s ease;
 }

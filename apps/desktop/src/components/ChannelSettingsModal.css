@@ -235,14 +235,14 @@
   outline: none;
 }
 .channel-settings__input:focus {
-  border-color: var(--accent);
+  border-color: var(--accent-color);
 }
 .channel-settings__input::placeholder {
   color: var(--text-muted);
 }
 
 .channel-settings__save-btn {
-  background: var(--accent);
+  background: var(--accent-color);
   color: #fff;
   border: none;
   border-radius: 4px;

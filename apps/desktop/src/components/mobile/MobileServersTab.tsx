@@ -53,7 +53,7 @@ export default function MobileServersTab({
 
   return (
     <div className="mobile-tab mobile-servers-tab">
-      <div className="mobile-servers-tab__header">
+      <div className="mobile-tab__header">
         <h1 className="mobile-tab__title">Servers</h1>
         <button
           className="mobile-tab__header-btn"
@@ -72,16 +72,16 @@ export default function MobileServersTab({
       >
         {/* Pull-to-refresh indicator */}
         <div
-          className="mobile-servers-tab__pull-indicator"
+          className="mobile-tab__pull-indicator"
           style={{
             height: `${pullDistance}px`,
             opacity: indicatorOpacity,
           }}
         >
-          <div className="mobile-servers-tab__pull-spinner">
+          <div className="mobile-tab__pull-spinner">
             <RefreshCw
               size={22}
-              className={refreshing ? 'mobile-servers-tab__pull-spinner--spinning' : ''}
+              className={refreshing ? 'mobile-tab__pull-spinner--spinning' : ''}
               style={{
                 transform: pulling && !refreshing
                   ? `rotate(${Math.min(pullDistance * 3, 360)}deg)`

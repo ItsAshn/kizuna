@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useEffect, type MutableRefObject } from 'react'
+import { useMemo, useCallback, useEffect, useRef, type MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
 import type { SavedServer, DMChannelData, User } from '@kizuna/shared'
 import { Loader2 } from 'lucide-react'
@@ -17,7 +17,10 @@ import MobileServersTab from './MobileServersTab'
 import MobileMessagesTab from './MobileMessagesTab'
 import MobileYouTab from './MobileYouTab'
 import { useMobileNavigation } from '../../hooks/useMobileNavigation'
+import { useMobileNavStore } from '../../store/mobileNavStore'
+import { useSwipeBack } from '../../hooks/useSwipeBack'
 import { useKeyboard } from '../../hooks/useKeyboard'
+import { supportsNavTransitions } from '../../lib/navTransitions'
 import './MobileShell.css'
 
 interface MobileShellProps {
@@ -110,6 +113,26 @@ export default function MobileShell({
 
   useKeyboard()
 
+  const contentRef = useRef<HTMLDivElement>(null)
+  const canSwipe = useCallback(() => navStackRef.current.length > 0, [navStackRef])
+  useSwipeBack({ containerRef: contentRef, canSwipe, onCommit: popView })
+
+  /* Native tab bars treat a re-tap of the active root tab as scroll-to-top;
+   * with a stack it pops to the root instead (handled by the store). */
+  const handleTabChange = useCallback(
+    (tab: number) => {
+      const { tab: currentTab, stack } = useMobileNavStore.getState()
+      if (tab === currentTab && stack.length === 0) {
+        contentRef.current
+          ?.querySelector('.mobile-tab__body')
+          ?.scrollTo({ top: 0, behavior: 'smooth' })
+        return
+      }
+      switchTab(tab)
+    },
+    [switchTab],
+  )
+
   const viewedVoiceChannelId = useChatStore((s) => s.viewedVoiceChannelId)
   const stageOwnsScreenshare =
     voiceStageVisible &&
@@ -165,16 +188,16 @@ export default function MobileShell({
     return () => window.removeEventListener('popstate', goBackFn)
   }, [goBack, showMembers])
 
-    const pushToChat = () => {
-      const state = useChatStore.getState()
-      if (state.activeChannelId) {
-        pushView({ type: 'channel', channelId: state.activeChannelId })
-      } else if (state.activeDMChannelId) {
-        pushView({ type: 'dm', dmChannelId: state.activeDMChannelId })
-      } else if (state.activeGroupDMChannelId) {
-        pushView({ type: 'group-dm', groupDmId: state.activeGroupDMChannelId })
-      }
+  const pushToChat = () => {
+    const state = useChatStore.getState()
+    if (state.activeChannelId) {
+      pushView({ type: 'channel', channelId: state.activeChannelId })
+    } else if (state.activeDMChannelId) {
+      pushView({ type: 'dm', dmChannelId: state.activeDMChannelId })
+    } else if (state.activeGroupDMChannelId) {
+      pushView({ type: 'group-dm', groupDmId: state.activeGroupDMChannelId })
     }
+  }
 
   function renderCurrentView() {
     if (!topEntry) {
@@ -307,9 +330,13 @@ export default function MobileShell({
           </div>
         )}
 
-        <div className="mobile-content" key={viewKey}>
+        <div className="mobile-content" ref={contentRef}>
+          {/* Keyed so each navigation mounts a fresh view; when the View
+              Transitions API drives the animation the fallback mount class
+              must stay off or both would animate at once. */}
           <div
-            className={`mobile-content__view${navAnim ? ` mobile-content__view--${navAnim}` : ''}`}
+            key={viewKey}
+            className={`mobile-content__view${supportsNavTransitions ? '' : ` mobile-content__view--${navAnim}`}`}
           >
             {renderCurrentView()}
           </div>
@@ -328,7 +355,7 @@ export default function MobileShell({
 
         <BottomTabBar
           activeTab={activeTab}
-          onTabChange={switchTab}
+          onTabChange={handleTabChange}
           serverMentionCount={serverMentionTotal}
           dmUnreadCount={dmUnreadTotal}
         />

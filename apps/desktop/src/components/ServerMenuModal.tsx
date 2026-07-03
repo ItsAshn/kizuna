@@ -1876,7 +1876,7 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
                             <div style={{ marginTop: '6px', padding: '6px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', fontSize: '10px' }}>
                               <p style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Reset token for {resetTokenData.username} (valid 24h) — share this with the user:</p>
                               <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                <code style={{ flex: 1, fontSize: '10px', color: 'var(--accent)', wordBreak: 'break-all', background: 'var(--bg-primary)', padding: '4px 6px', borderRadius: '4px' }}>{resetTokenData.token}</code>
+                                <code style={{ flex: 1, fontSize: '10px', color: 'var(--accent-color)', wordBreak: 'break-all', background: 'var(--bg-primary)', padding: '4px 6px', borderRadius: '4px' }}>{resetTokenData.token}</code>
                                 <button
                                   onClick={() => navigator.clipboard.writeText(resetTokenData.token)}
                                   className="server-menu__member-action-btn"

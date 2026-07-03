@@ -39,7 +39,7 @@ export default function MobileMessagesTab({
 
   return (
     <div className="mobile-tab mobile-messages-tab">
-      <div className="mobile-messages-tab__header">
+      <div className="mobile-tab__header">
         <h1 className="mobile-tab__title">Messages</h1>
       </div>
       <div
@@ -47,16 +47,16 @@ export default function MobileMessagesTab({
         className="mobile-tab__body mobile-messages-tab__body"
       >
         <div
-          className="mobile-messages-tab__pull-indicator"
+          className="mobile-tab__pull-indicator"
           style={{
             height: `${pullDistance}px`,
             opacity: indicatorOpacity,
           }}
         >
-          <div className="mobile-messages-tab__pull-spinner">
+          <div className="mobile-tab__pull-spinner">
             <RefreshCw
               size={22}
-              className={refreshing ? 'mobile-messages-tab__pull-spinner--spinning' : ''}
+              className={refreshing ? 'mobile-tab__pull-spinner--spinning' : ''}
               style={{
                 transform: pulling && !refreshing
                   ? `rotate(${Math.min(pullDistance * 3, 360)}deg)`

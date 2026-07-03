@@ -1,43 +1,9 @@
-.mobile-messages-tab__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px 12px;
-  flex-shrink: 0;
-}
-
 .mobile-messages-tab__body {
   position: relative;
 }
 
-/* Pull-to-refresh indicator */
-.mobile-messages-tab__pull-indicator {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  will-change: height, opacity;
-}
-
-.mobile-messages-tab__pull-spinner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-full);
-  background: var(--bg-tertiary);
-  color: var(--text-muted);
-}
-
-.mobile-messages-tab__pull-spinner--spinning {
-  animation: pullSpinnerSpin 0.8s linear infinite;
-}
-
-@keyframes pullSpinnerSpin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
+/* Pull-to-refresh + empty-state styles are shared across tabs and live
+   in routes/Chat.css (.mobile-tab__pull-*, .mobile-tab__empty*). */
 
 /* DM item enhancements */
 .mobile-dm-item {
