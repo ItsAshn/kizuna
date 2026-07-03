@@ -68,7 +68,7 @@ export function useSwipeBack({ containerRef, canSwipe, onCommit }: SwipeBackOpti
       lastX = touch.clientX
       lastTime = e.timeStamp
       velocityX = 0
-      width = container.clientWidth || 1
+      width = container!.clientWidth || 1
     }
 
     function onTouchMove(e: TouchEvent) {
