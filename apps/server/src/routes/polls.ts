@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { getDb } from '../db'
-import { authMiddleware, hasPermission, getUserPermissions } from '../middleware/auth'
+import { authMiddleware, hasPermission, getUserPermissions, isUserAdmin } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 import type { AuthUser } from '../types'
 import type { Server as IoServer } from 'socket.io'
@@ -278,6 +278,48 @@ pollsRouter.post('/polls/:pollId/vote', authMiddleware, async (c) => {
   }
 
   return c.json({ options, userVoteIds: userVotes.map(v => v.option_id) })
+})
+
+// Delete a poll (admin or creator only)
+pollsRouter.delete('/polls/:pollId', authMiddleware, async (c) => {
+  const db = getDb()
+  const { pollId } = c.req.param()
+  const { userId } = getAuth(c)
+
+  const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId) as {
+    id: string; channel_id: string; channel_type: string; message_id: string; question: string
+    created_by: string; created_at: number; closes_at: number | null; allow_multiple: number
+  } | undefined
+  if (!poll) return c.json({ error: 'not found' }, 404)
+
+  if (poll.created_by !== userId && !isUserAdmin(userId)) {
+    return c.json({ error: 'Forbidden' }, 403)
+  }
+
+  db.prepare('DELETE FROM poll_votes WHERE poll_id = ?').run(pollId)
+  db.prepare('DELETE FROM poll_options WHERE poll_id = ?').run(pollId)
+  db.prepare('DELETE FROM polls WHERE id = ?').run(pollId)
+
+  const io = c.get('io' as never) as IoServer | undefined
+  if (io) {
+    const payload = { pollId, channelId: poll.channel_id, channelType: poll.channel_type }
+    if (poll.channel_type === 'dm') {
+      const dmChannel = db.prepare('SELECT user1_id, user2_id FROM dm_channels WHERE id = ?').get(poll.channel_id) as { user1_id: string; user2_id: string } | undefined
+      if (dmChannel) {
+        io.to(`dm:${dmChannel.user1_id}`).emit('poll:deleted', payload as never)
+        io.to(`dm:${dmChannel.user2_id}`).emit('poll:deleted', payload as never)
+      }
+    } else if (poll.channel_type === 'group-dm') {
+      const members = db.prepare('SELECT user_id FROM group_dm_members WHERE channel_id = ?').all(poll.channel_id) as { user_id: string }[]
+      for (const m of members) {
+        io.to(`group-dm:${m.user_id}`).emit('poll:deleted', payload as never)
+      }
+    } else {
+      io.to(poll.channel_id).emit('poll:deleted', payload as never)
+    }
+  }
+
+  return c.json({ success: true })
 })
 
 export default pollsRouter

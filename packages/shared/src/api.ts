@@ -1244,6 +1244,13 @@ export async function votePoll(
   return res.data
 }
 
+export async function deletePoll(
+  serverUrl: string,
+  pollId: string,
+): Promise<void> {
+  await client(serverUrl).delete(`/api/polls/${pollId}`)
+}
+
 // Webhooks
 export async function createWebhook(
   serverUrl: string,

@@ -43,6 +43,7 @@ interface ChatState {
   updateMessage: (channelId: string, messageId: string, message: Message) => void;
   addPoll: (channelId: string, poll: PollData) => void;
   updatePoll: (pollId: string, options: { id: string; label: string; position: number; vote_count: number }[]) => void;
+  removePoll: (channelId: string, pollId: string) => void;
   setPinnedMessages: (channelId: string, pins: PinnedMessage[]) => void;
   addPinnedMessage: (channelId: string, pin: PinnedMessage) => void;
   removePinnedMessage: (channelId: string, messageId: string) => void;
@@ -153,6 +154,13 @@ export const useChatStore = create<ChatState>()(
           }
           return { polls: { ...state.polls, ...updated } }
         }),
+      removePoll: (channelId, pollId) =>
+        set((state) => ({
+          polls: {
+            ...state.polls,
+            [channelId]: (state.polls[channelId] || []).filter((p) => p.pollId !== pollId),
+          },
+        })),
       updateMessage: (channelId, messageId, message) =>
         set((state) => ({
           messages: {

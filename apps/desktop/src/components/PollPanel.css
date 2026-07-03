@@ -106,12 +106,46 @@
   color: var(--text-primary);
   font-size: 15px;
   font-weight: 600;
+}
+
+.poll-panel__card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin-bottom: 10px;
+}
+
+.poll-panel__card-header .poll-panel__question {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.poll-panel__card--compact .poll-panel__card-header {
+  margin-bottom: 6px;
 }
 
 .poll-panel__card--compact .poll-panel__question {
   font-size: 13px;
-  margin-bottom: 6px;
+}
+
+.poll-panel__delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.poll-panel__delete-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--red);
 }
 
 .poll-panel__options {

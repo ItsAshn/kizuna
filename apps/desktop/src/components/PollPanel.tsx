@@ -1,8 +1,9 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { X, ChevronDown, ChevronUp, BarChart3 } from 'lucide-react'
+import { X, ChevronDown, ChevronUp, BarChart3, Trash2 } from 'lucide-react'
 import type { PollData } from '@kizuna/shared'
-import { votePoll, fetchPoll } from '@kizuna/shared'
+import { votePoll, fetchPoll, deletePoll } from '@kizuna/shared'
 import { useChatStore } from '../store/chatStore'
+import { useServerStore } from '../store/serverStore'
 import './PollPanel.css'
 
 const EMPTY_POLLS: PollData[] = []
@@ -15,9 +16,11 @@ interface PollPanelProps {
 }
 
 export default function PollPanel({ serverUrl, channelId, isOpen, onClose }: PollPanelProps) {
+  const session = useServerStore((s) => s.activeSession)
   const polls = useChatStore(
     (s) => (channelId ? s.polls[channelId] : undefined) ?? EMPTY_POLLS,
   )
+  const removePoll = useChatStore((s) => s.removePoll)
 
   const sortedPolls = useMemo(() => {
     return [...polls].sort((a, b) => b.createdAt - a.createdAt)
@@ -27,6 +30,9 @@ export default function PollPanel({ serverUrl, channelId, isOpen, onClose }: Pol
   const [userVoteIdsByPoll, setUserVoteIdsByPoll] = useState<Map<string, string[]>>(new Map())
   const [loadingPollId, setLoadingPollId] = useState<string | null>(null)
   const fetchedRef = useRef<Set<string>>(new Set())
+
+  const currentUserId = session?.user.id ?? ''
+  const isAdmin = session?.user.role === 'admin'
 
   useEffect(() => {
     sortedPolls.forEach((p) => {
@@ -57,7 +63,17 @@ export default function PollPanel({ serverUrl, channelId, isOpen, onClose }: Pol
     finally { setLoadingPollId(null) }
   }, [loadingPollId, serverUrl])
 
+  const handleDelete = useCallback(async (pollId: string) => {
+    if (!serverUrl || !channelId) return
+    try {
+      await deletePoll(serverUrl, pollId)
+      removePoll(channelId, pollId)
+    } catch { /* ignore */ }
+  }, [serverUrl, channelId, removePoll])
+
   if (!isOpen || sortedPolls.length === 0) return null
+
+  const canDelete = (poll: PollData) => isAdmin || poll.createdBy === currentUserId
 
   const renderPoll = (poll: PollData, isCompact: boolean) => {
     const options = poll.options
@@ -66,7 +82,19 @@ export default function PollPanel({ serverUrl, channelId, isOpen, onClose }: Pol
 
     return (
       <div key={poll.pollId} className={`poll-panel__card${isCompact ? ' poll-panel__card--compact' : ''}`}>
-        <div className="poll-panel__question">{poll.question}</div>
+        <div className="poll-panel__card-header">
+          <div className="poll-panel__question">{poll.question}</div>
+          {canDelete(poll) && (
+            <button
+              className="poll-panel__delete-btn"
+              onClick={() => handleDelete(poll.pollId)}
+              aria-label="Delete poll"
+              title="Delete poll"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
         <div className="poll-panel__options">
           {options.map((opt) => {
             const pct = totalVotes > 0 ? Math.round(((opt.vote_count ?? 0) / totalVotes) * 100) : 0

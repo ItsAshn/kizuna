@@ -616,6 +616,10 @@ export function useSocket(): MutableRefObject<Socket | null> {
       useChatStore.getState().addPoll(data.channelId, data)
     })
 
+    socket.on('poll:deleted', (data: { pollId: string; channelId: string; channelType: string }) => {
+      useChatStore.getState().removePoll(data.channelId, data.pollId)
+    })
+
     const heartbeatInterval = setInterval(() => {
       if (socket.connected) {
         socket.emit('presence:heartbeat')
