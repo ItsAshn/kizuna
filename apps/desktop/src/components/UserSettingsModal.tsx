@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Mic, Eye, Database, Download } from 'lucide-react'
-import { useVoiceStore, type VoiceInputMode } from '../store/voiceStore'
+import { useVoiceStore, type VoiceInputMode, type VoiceProcessingMode } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useServerStore } from '../store/serverStore'
 import { useUpdaterActions } from '../hooks/useUpdater'
@@ -232,6 +232,10 @@ export default function UserSettingsModal({ onClose }: Props) {
   const unmountedRef = useRef(false)
   const audioLevelCleanupRef = useRef<(() => void) | null>(null)
 
+  // Desktop Tauri runs the Rust DSP chain (RNNoise); web and mobile Tauri use
+  // the browser's built-in getUserMedia processing instead — label honestly.
+  const nativeVoice = isTauri() && !isMobileTauri()
+
   const navGroups = useMemo<SettingsNavGroup[]>(() => {
     const tauri = isTauri()
     return [
@@ -288,7 +292,11 @@ export default function UserSettingsModal({ onClose }: Props) {
     return () => window.removeEventListener('keydown', handleKey, true)
   }, [onClose, listeningForKey, handleKeyCapture])
 
-  const loadDevices = useCallback(async () => {
+  // `probe` allows a short-lived getUserMedia capture to unlock device labels
+  // when the browser hasn't granted mic permission yet. Opening any capture
+  // makes some platforms pause other apps' audio, so this is never done
+  // implicitly — only from the explicit "detect audio devices" button.
+  const loadDevices = useCallback(async (probe = false) => {
     setDevicesLoading(true)
     setPermissionDenied(false)
 
@@ -311,14 +319,13 @@ export default function UserSettingsModal({ onClose }: Props) {
         }
       }
     } else {
-      try {
-        const devices = await Promise.race([
-          navigator.mediaDevices.enumerateDevices(),
-          new Promise<MediaDeviceInfo[]>((_, reject) =>
-            setTimeout(() => reject(new Error('Device enumeration timed out')), 3000)
-          ),
-        ])
-        if (unmountedRef.current) return
+      const enumerate = () => Promise.race([
+        navigator.mediaDevices.enumerateDevices(),
+        new Promise<MediaDeviceInfo[]>((_, reject) =>
+          setTimeout(() => reject(new Error('Device enumeration timed out')), 3000)
+        ),
+      ])
+      const applyDevices = (devices: MediaDeviceInfo[]) => {
         setInputDevices(
           devices
             .filter(d => d.kind === 'audioinput')
@@ -341,59 +348,48 @@ export default function UserSettingsModal({ onClose }: Props) {
               default_sample_rate: 48000,
             }))
         )
+      }
+
+      try {
+        const devices = await enumerate()
+        const hasLabels = devices.some(d => d.kind === 'audioinput' && d.label)
+        if (hasLabels) {
+          // Mic permission already granted — labels come free, no capture.
+          if (!unmountedRef.current) applyDevices(devices)
+        } else if (probe) {
+          try {
+            // Echo cancellation opens the capture in the OS communications
+            // path, which pauses other apps' audio — keep all processing off
+            // for this label-unlock probe; the stream is stopped immediately.
+            const stream = await Promise.race([
+              navigator.mediaDevices.getUserMedia({
+                audio: {
+                  echoCancellation: false,
+                  noiseSuppression: false,
+                  autoGainControl: false,
+                },
+              }),
+              new Promise<MediaStream>((_, reject) =>
+                setTimeout(() => reject(new Error('Permission request timed out')), 3000)
+              ),
+            ])
+            stream.getTracks().forEach(t => t.stop())
+            if (unmountedRef.current) return
+            const labeled = await enumerate()
+            if (!unmountedRef.current) applyDevices(labeled)
+          } catch (err) {
+            console.error('Failed to get user media for device labels:', err)
+            if (!unmountedRef.current) setPermissionDenied(true)
+          }
+        }
+        // No labels and no probe requested: leave the device list null so the
+        // "detect audio devices" button is shown instead of grabbing the mic.
       } catch (err) {
         console.error('Failed to enumerate audio devices:', err)
         if (!unmountedRef.current) {
           setInputDevices([])
           setOutputDevices([])
         }
-      }
-
-      try {
-        const stream = await Promise.race([
-          navigator.mediaDevices.getUserMedia({ audio: true }),
-          new Promise<MediaStream>((_, reject) =>
-            setTimeout(() => reject(new Error('Permission request timed out')), 3000)
-          ),
-        ])
-        if (unmountedRef.current) {
-          stream.getTracks().forEach(t => t.stop())
-          return
-        }
-        stream.getTracks().forEach(t => t.stop())
-
-        const devices = await Promise.race([
-          navigator.mediaDevices.enumerateDevices(),
-          new Promise<MediaDeviceInfo[]>((_, reject) =>
-            setTimeout(() => reject(new Error('Device enumeration timed out')), 3000)
-          ),
-        ])
-        if (unmountedRef.current) return
-        setInputDevices(
-          devices
-            .filter(d => d.kind === 'audioinput')
-            .map(d => ({
-              name: d.label || `microphone (${d.deviceId.slice(0, 8)}...)`,
-              device_id: d.deviceId,
-              is_default: d.deviceId === 'default',
-              max_channels: 1,
-              default_sample_rate: 48000,
-            }))
-        )
-        setOutputDevices(
-          devices
-            .filter(d => d.kind === 'audiooutput')
-            .map(d => ({
-              name: d.label || `speaker (${d.deviceId.slice(0, 8)}...)`,
-              device_id: d.deviceId,
-              is_default: d.deviceId === 'default',
-              max_channels: 2,
-              default_sample_rate: 48000,
-            }))
-        )
-      } catch (err) {
-        console.error('Failed to get user media for device labels:', err)
-        if (!unmountedRef.current) setPermissionDenied(true)
       }
     }
 
@@ -580,7 +576,7 @@ export default function UserSettingsModal({ onClose }: Props) {
             <p className="settings-card-title">audio devices</p>
             {inputDevices === null ? (
               <button
-                onClick={loadDevices}
+                onClick={() => loadDevices(true)}
                 disabled={devicesLoading}
                 className="settings-btn settings-btn--block"
               >
@@ -668,9 +664,15 @@ export default function UserSettingsModal({ onClose }: Props) {
             >
               {([
                 { id: 'off', label: 'off', desc: 'raw mic — no processing' },
-                { id: 'standard', label: 'standard', desc: 'rnnoise suppression + auto leveler · recommended' },
+                {
+                  id: 'standard',
+                  label: 'standard',
+                  desc: nativeVoice
+                    ? 'rnnoise suppression + auto leveler · recommended'
+                    : 'browser noise suppression + auto leveler · recommended',
+                },
                 { id: 'custom', label: 'custom', desc: 'tune each filter yourself' },
-              ] as const).map((m) => (
+              ] as { id: VoiceProcessingMode; label: string; desc: string }[]).map((m) => (
                 <button
                   key={m.id}
                   type="button"
@@ -713,7 +715,9 @@ export default function UserSettingsModal({ onClose }: Props) {
 
             {voiceProcessingMode === 'standard' && (
               <p className="settings-hint">
-                rnnoise (ai) noise suppression removes steady background noise like fans and hum, with a gentle auto-leveler. pick custom to fine-tune the gate, suppression, and gain yourself.
+                {nativeVoice
+                  ? 'rnnoise (ai) noise suppression removes steady background noise like fans and hum, with a gentle auto-leveler. pick custom to fine-tune the gate, suppression, and gain yourself.'
+                  : "your browser's built-in noise suppression removes steady background noise like fans and hum, with automatic gain. pick custom to fine-tune the gate, suppression, and gain yourself."}
               </p>
             )}
 
@@ -722,11 +726,13 @@ export default function UserSettingsModal({ onClose }: Props) {
                 <div className="settings-processing-item">
                   <p className="settings-processing-item-title">noise suppression</p>
                   <SettingsToggleRow
-                    label="enable suppression (rnnoise)"
+                    label={`enable suppression (${nativeVoice ? 'rnnoise' : 'browser'})`}
                     checked={noiseSuppression}
                     onChange={setNoiseSuppression}
                     ariaLabel="enable noise suppression"
-                    hint="ai-based removal of steady background noise like fans and hum. runs at full strength"
+                    hint={nativeVoice
+                      ? 'ai-based removal of steady background noise like fans and hum. runs at full strength'
+                      : "your browser's built-in removal of steady background noise like fans and hum"}
                   />
                 </div>
 

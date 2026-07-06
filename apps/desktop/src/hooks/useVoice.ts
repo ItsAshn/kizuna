@@ -70,6 +70,11 @@ const RECONNECT_DELAY_MS = 1000
 const MAX_RECONNECT_ATTEMPTS = 5
 const AUDIO_SAMPLE_RATE = 48000
 
+// Map the 0..100 gate slider to dBFS. Shared by the native (Rust) and browser
+// (worklet) noise gates so the same slider position gates identically on
+// every platform.
+const gateSliderToDb = (threshold: number) => -(threshold * 0.5) - 25 // 0..100 -> -25..-75 dB
+
 let __voiceSeq = 0
 const MAX_VOICE_LOG_LINES = 30
 const __voiceLogBuffer: string[] = []
@@ -127,17 +132,20 @@ function startSpeakingDetection(
   gainNode?: GainNode,
   audioCtx?: AudioContext,
 ): () => void {
-  const analyserStream = stream.clone()
   const ctx = audioCtx ?? new AudioContext()
-  const source = ctx.createMediaStreamSource(analyserStream)
   const analyser = ctx.createAnalyser()
   analyser.fftSize = 512
   analyser.smoothingTimeConstant = 0.1
+  // When the producing graph's gain node is provided, tap it directly for
+  // metering. Feeding a second mic source into that node would sum a raw,
+  // ungated copy of the mic into the track peers hear.
+  let analyserStream: MediaStream | null = null
+  let source: MediaStreamAudioSourceNode | null = null
   if (gainNode) {
-    source.disconnect()
-    source.connect(gainNode)
     gainNode.connect(analyser)
   } else {
+    analyserStream = stream.clone()
+    source = ctx.createMediaStreamSource(analyserStream)
     source.connect(analyser)
   }
   const buf = new Uint8Array(analyser.fftSize)
@@ -186,9 +194,10 @@ function startSpeakingDetection(
     stopped = true
     if (timer !== null) clearTimeout(timer)
     if (holdTimer !== null) clearTimeout(holdTimer)
-    source.disconnect()
+    if (gainNode) gainNode.disconnect(analyser)
+    source?.disconnect()
     if (!audioCtx) ctx.close()
-    analyserStream.getTracks().forEach((t) => t.stop())
+    analyserStream?.getTracks().forEach((t) => t.stop())
   }
 }
 
@@ -792,7 +801,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       vlog('joinVoiceNative', 'audio produce OK', { producerId: produceResult?.id })
 
       // Step 8: start audio capture in Rust with DSP config
-      const gateDb = -(noiseGateThreshold * 0.5) - 25 // 0..100 -> -25..-75 dB
+      const gateDb = gateSliderToDb(noiseGateThreshold)
       // RNNoise runs at full strength (a dry/wet blend would comb-filter the
       // voice — see voice/rnnoise.rs). suppressionStrength only affects the
       // legacy spectral suppressor, which the desktop path no longer selects.
@@ -1288,7 +1297,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       workletNode = new AudioWorkletNode(audioCtx, 'audio-processor', {
         parameterData: {
           gateEnabled: noiseGateEnabled ? 1 : 0,
-          gateThresholdDb: -(noiseGateThreshold * 0.6),
+          gateThresholdDb: gateSliderToDb(noiseGateThreshold),
           // Suppression and AGC are handled by the browser's getUserMedia
           // processing above; the broken worklet implementations stay disabled.
           suppressionEnabled: 0,

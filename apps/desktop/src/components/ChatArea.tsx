@@ -69,10 +69,10 @@ import type {
   DMChannelData,
   CustomRole,
   PinnedMessage,
-  ChatCommand,
 } from '@kizuna/shared';
-import { CHAT_COMMANDS } from '@kizuna/shared';
-import { runChatCommand, userCanUseCommand } from '../lib/chatCommands';
+import { runChatCommand } from '../lib/chatCommands';
+import { useComposerAutocomplete, MENTION_LIMIT } from '../hooks/useComposerAutocomplete';
+import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import { useNotificationStore } from '../store/notificationStore';
 import MessageBubble from './MessageBubble';
 import GifPicker from './GifPicker';
@@ -97,104 +97,35 @@ interface ChatAreaProps {
   onOpenEnvWizard?: () => void;
 }
 
-function getAtQuery(text: string, cursor: number): string | null {
-  const before = text.slice(0, cursor);
-  const match = /(?:^|[\s])@([\w.-]*)$/.exec(before);
-  return match ? match[1] : null;
-}
-
-function getEmojiQuery(text: string, cursor: number): string | null {
-  const before = text.slice(0, cursor);
-  const match = /(?:^|[\s]):([\w+-]*)$/.exec(before);
-  return match ? match[1] : null;
-}
-
-const EMOJI_LIST: { shortcode: string; emoji: string }[] = [
-  { shortcode: 'smile', emoji: '😊' },
-  { shortcode: 'laugh', emoji: '😂' },
-  { shortcode: 'heart', emoji: '❤️' },
-  { shortcode: 'thumbsup', emoji: '👍' },
-  { shortcode: 'thumbsdown', emoji: '👎' },
-  { shortcode: 'clap', emoji: '👏' },
-  { shortcode: 'fire', emoji: '🔥' },
-  { shortcode: 'star', emoji: '⭐' },
-  { shortcode: 'check', emoji: '✅' },
-  { shortcode: 'x', emoji: '❌' },
-  { shortcode: 'warning', emoji: '⚠️' },
-  { shortcode: 'question', emoji: '❓' },
-  { shortcode: 'bulb', emoji: '💡' },
-  { shortcode: 'rocket', emoji: '🚀' },
-  { shortcode: 'party', emoji: '🎉' },
-  { shortcode: 'cry', emoji: '😢' },
-  { shortcode: 'angry', emoji: '😠' },
-  { shortcode: 'cool', emoji: '😎' },
-  { shortcode: 'wink', emoji: '😉' },
-  { shortcode: 'kiss', emoji: '😘' },
-  { shortcode: 'hug', emoji: '🤗' },
-  { shortcode: 'pray', emoji: '🙏' },
-  { shortcode: 'ok', emoji: '👌' },
-  { shortcode: 'wave', emoji: '👋' },
-  { shortcode: 'muscle', emoji: '💪' },
-  { shortcode: 'brain', emoji: '🧠' },
-  { shortcode: 'eyes', emoji: '👀' },
-  { shortcode: '100', emoji: '💯' },
-  { shortcode: 'tada', emoji: '🎊' },
-  { shortcode: 'sunglasses', emoji: '😎' },
-  { shortcode: 'sleep', emoji: '😴' },
-  { shortcode: 'cat', emoji: '🐱' },
-  { shortcode: 'dog', emoji: '🐶' },
-  { shortcode: 'alien', emoji: '👽' },
-  { shortcode: 'ghost', emoji: '👻' },
-  { shortcode: 'skull', emoji: '💀' },
-  { shortcode: 'pizza', emoji: '🍕' },
-  { shortcode: 'coffee', emoji: '☕' },
-  { shortcode: 'beer', emoji: '🍺' },
-  { shortcode: 'crown', emoji: '👑' },
-  { shortcode: 'gem', emoji: '💎' },
-  { shortcode: 'gift', emoji: '🎁' },
-  { shortcode: 'zap', emoji: '⚡' },
-  { shortcode: 'rainbow', emoji: '🌈' },
-  { shortcode: 'lock', emoji: '🔒' },
-  { shortcode: 'key', emoji: '🔑' },
-  { shortcode: 'hammer', emoji: '🔨' },
-  { shortcode: 'wrench', emoji: '🔧' },
-  { shortcode: 'link', emoji: '🔗' },
-  { shortcode: 'pin', emoji: '📌' },
-  { shortcode: 'book', emoji: '📖' },
-  { shortcode: 'pencil', emoji: '✏️' },
-  { shortcode: 'scissors', emoji: '✂️' },
-  { shortcode: 'phone', emoji: '📱' },
-  { shortcode: 'monitor', emoji: '🖥️' },
-  { shortcode: 'mute', emoji: '🔇' },
-  { shortcode: 'sound', emoji: '🔊' },
-];
-
 function parsePollArgs(input: string): string[] {
   if (input.includes('|')) {
-    return input.split('|').map((s) => s.trim()).filter(Boolean)
+    return input
+      .split('|')
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
-  const parts: string[] = []
-  let i = 0
+  const parts: string[] = [];
+  let i = 0;
   while (i < input.length) {
     if (input[i] === '"') {
-      const end = input.indexOf('"', i + 1)
+      const end = input.indexOf('"', i + 1);
       if (end !== -1) {
-        parts.push(input.slice(i + 1, end).trim())
-        i = end + 1
-        continue
+        parts.push(input.slice(i + 1, end).trim());
+        i = end + 1;
+        continue;
       }
     }
-    const nextSpace = input.indexOf(' ', i)
+    const nextSpace = input.indexOf(' ', i);
     if (nextSpace === -1) {
-      const word = input.slice(i).trim()
-      if (word) parts.push(word)
-      break
+      const word = input.slice(i).trim();
+      if (word) parts.push(word);
+      break;
     }
-    const word = input.slice(i, nextSpace).trim()
-    if (word) parts.push(word)
-    i = nextSpace + 1
+    const word = input.slice(i, nextSpace).trim();
+    if (word) parts.push(word);
+    i = nextSpace + 1;
   }
-  return parts
+  return parts;
 }
 
 function hasDeletePermission(
@@ -269,8 +200,6 @@ export default function ChatArea({
   const loadMoreErrors = useChatStore((s) => s.loadMoreErrors);
   const pendingMention = useChatStore((s) => s.pendingMention);
   const setPendingMention = useChatStore((s) => s.setPendingMention);
-  const _channelDrafts = useChatStore((s) => s.channelDrafts);
-  const _setChannelDraft = useChatStore((s) => s.setChannelDraft);
   const pinnedMessages = useChatStore((s) => s.pinnedMessages);
   const setPinned = useChatStore((s) => s.setPinnedMessages);
   const setActiveChannel = useChatStore((s) => s.setActiveChannel);
@@ -280,23 +209,18 @@ export default function ChatArea({
   const setThreadPanelVisible = useChatStore((s) => s.setThreadPanelVisible);
   const dmCallStatus = useCallStore((s) => s.dmCallStatus);
   const dmCallChannelId = useCallStore((s) => s.dmCallChannelId);
+  const activeAnyChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId || null;
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
   const [pendingAttachmentId, setPendingAttachmentId] = useState<string | null>(null);
-  const [atQuery, setAtQuery] = useState<string | null>(null);
-  const [emojiQuery, setEmojiQuery] = useState<string | null>(null);
-  const [slashQuery, setSlashQuery] = useState<string | null>(null);
-  const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
-  const [atIndex, setAtIndex] = useState(0);
-  const [emojiIndex, setEmojiIndex] = useState(0);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [selectedEmojiIndex, setSelectedEmojiIndex] = useState(0);
   const [replyTo, setReplyTo] = useState<{
     messageId: string;
     username: string;
@@ -310,21 +234,17 @@ export default function ChatArea({
   const [formatSel, setFormatSel] = useState<{ start: number; end: number } | null>(null);
   const [toolbarCoords, setToolbarCoords] = useState<{ top: number; left: number } | null>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
-  const [recording, setRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingChunksRef = useRef<Blob[]>([]);
-  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [channelPerms, setChannelPerms] = useState<{
     can_write: boolean;
     locked: boolean;
   } | null>(null);
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
+  const sendingRef = useRef(false);
+  const uploadAbortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [atBottom, setAtBottom] = useState(true);
   const lastCountAtBottom = useRef(0);
   const prevChannelKeyRef = useRef<string | null>(null);
@@ -338,25 +258,22 @@ export default function ChatArea({
   const newMessagesRef = useRef<string | null>(null);
   useKeyboard();
   const haptics = useHaptics();
-  const tryDecryptDM = useCallback(
-    (msg: Message): Message => {
-      if (!msg.encrypted) return msg;
-      const parsed = isEncryptedContent(msg.content);
-      if (!parsed) return msg;
-      const secKey = getSecretKey();
-      if (!secKey) return { ...msg, content: '[Encrypted - no key available]' };
-      const activeDM = dmChannels.find((d) => d.id === msg.channel_id);
-      const otherPubKey = activeDM?.other_public_key;
-      if (!otherPubKey) return { ...msg, content: '[Encrypted - missing sender key]' };
-      try {
-        const decrypted = decryptDM(parsed, otherPubKey, secKey);
-        return { ...msg, content: decrypted };
-      } catch {
-        return { ...msg, content: '[Encrypted - unable to decrypt]' };
-      }
-    },
-    [dmChannels],
-  );
+  const tryDecryptDM = useCallback((msg: Message): Message => {
+    if (!msg.encrypted) return msg;
+    const parsed = isEncryptedContent(msg.content);
+    if (!parsed) return msg;
+    const secKey = getSecretKey();
+    if (!secKey) return { ...msg, content: '[Encrypted - no key available]' };
+    const activeDM = useChatStore.getState().dmChannels.find((d) => d.id === msg.channel_id);
+    const otherPubKey = activeDM?.other_public_key;
+    if (!otherPubKey) return { ...msg, content: '[Encrypted - missing sender key]' };
+    try {
+      const decrypted = decryptDM(parsed, otherPubKey, secKey);
+      return { ...msg, content: decrypted };
+    } catch {
+      return { ...msg, content: '[Encrypted - unable to decrypt]' };
+    }
+  }, []);
 
   const tryDecryptGroupDM = useCallback(
     (msg: Message): Message => {
@@ -367,7 +284,7 @@ export default function ChatArea({
       if (!secKey) return { ...msg, content: '[Encrypted - no key available]' };
       const currentUserId = session?.user.id;
       if (!currentUserId) return { ...msg, content: '[Encrypted - not authenticated]' };
-      const channel = groupDMChannels.find((d) => d.id === msg.channel_id);
+      const channel = useChatStore.getState().groupDMChannels.find((d) => d.id === msg.channel_id);
       const senderMember = channel?.members.find((m) => m.user_id === msg.user_id);
       const senderPubKey =
         senderMember?.public_key ||
@@ -381,7 +298,7 @@ export default function ChatArea({
         return { ...msg, content: '[Encrypted - unable to decrypt]' };
       }
     },
-    [groupDMChannels, session],
+    [session],
   );
 
   const resolveRecipientPublicKey = useCallback(
@@ -398,6 +315,76 @@ export default function ChatArea({
     [session],
   );
 
+  // Encrypts outgoing content for the active DM / group DM; plaintext fallback when keys are unavailable.
+  const encryptOutgoing = useCallback(
+    async (plain: string): Promise<{ content: string; encrypted: boolean }> => {
+      const secKey = getSecretKey();
+      if (activeDMChannelId && secKey) {
+        const dm = dmChannels.find((d) => d.id === activeDMChannelId);
+        const otherPubKey = await resolveRecipientPublicKey(dm);
+        if (otherPubKey) {
+          return {
+            content: JSON.stringify(encryptDM(plain, otherPubKey, secKey)),
+            encrypted: true,
+          };
+        }
+      } else if (activeGroupDMChannelId && secKey) {
+        const channel = groupDMChannels.find((c) => c.id === activeGroupDMChannelId);
+        const memberKeys = new Map<string, string>();
+        for (const member of channel?.members || []) {
+          if (member.public_key) memberKeys.set(member.user_id, member.public_key);
+        }
+        if (memberKeys.size > 0) {
+          return {
+            content: JSON.stringify(encryptGroupDM(plain, memberKeys, secKey)),
+            encrypted: true,
+          };
+        }
+      }
+      return { content: plain, encrypted: false };
+    },
+    [
+      activeDMChannelId,
+      activeGroupDMChannelId,
+      dmChannels,
+      groupDMChannels,
+      resolveRecipientPublicKey,
+    ],
+  );
+
+  const sendToActiveChannel = useCallback(
+    async (plain: string, attIds?: string[], replyToId?: string): Promise<Message | null> => {
+      if (!session) return null;
+      if (activeChannelId) {
+        return sendMessage(session.url, activeChannelId, plain, attIds, replyToId);
+      }
+      if (activeDMChannelId) {
+        const { content, encrypted } = await encryptOutgoing(plain);
+        const message = await sendDMMessage(
+          session.url,
+          activeDMChannelId,
+          content,
+          encrypted,
+          attIds,
+        );
+        return encrypted ? { ...message, content: plain } : message;
+      }
+      if (activeGroupDMChannelId) {
+        const { content, encrypted } = await encryptOutgoing(plain);
+        const message = await sendGroupDMMessage(
+          session.url,
+          activeGroupDMChannelId,
+          content,
+          encrypted,
+          attIds,
+        );
+        return encrypted ? { ...message, content: plain } : message;
+      }
+      return null;
+    },
+    [session, activeChannelId, activeDMChannelId, activeGroupDMChannelId, encryptOutgoing],
+  );
+
   const activeChannel = channels.find((c) => c.id === activeChannelId);
   const activeDM = dmChannels.find((d) => d.id === activeDMChannelId);
 
@@ -408,24 +395,20 @@ export default function ChatArea({
   const canCall =
     session?.user.permissions?.initiate_dm_calls === true || session?.user.role === 'admin';
 
-  const MENTION_LIMIT = 8;
+  const mentionCandidates = useMemo(
+    () => ['everyone', 'here', ...mentionableRoles.map((r) => r.name), ...members.map((m) => m.username)],
+    [mentionableRoles, members],
+  );
 
-  const specialTargets = ['everyone', 'here'];
-  const allSuggestions = [
-    ...specialTargets,
-    ...mentionableRoles.map((r) => r.name),
-    ...members.map((m) => m.username),
-  ];
-  const suggestions =
-    atQuery !== null
-      ? allSuggestions.filter((u) => u.toLowerCase().startsWith(atQuery.toLowerCase()))
-      : [];
-  const emojiSuggestions =
-    emojiQuery !== null
-      ? EMOJI_LIST.filter((e) =>
-          e.shortcode.toLowerCase().startsWith(emojiQuery.toLowerCase()),
-        ).slice(0, 8)
-      : [];
+  const autocomplete = useComposerAutocomplete({
+    input,
+    setInput,
+    inputRef,
+    mentionCandidates,
+    user: session?.user ?? null,
+    slashEnabled: !!activeAnyChannelId,
+  });
+  const { mention, emoji: emojiAutocomplete, slash } = autocomplete;
 
   useEffect(() => {
     if (session) {
@@ -440,19 +423,10 @@ export default function ChatArea({
   }, [session]);
 
   useEffect(() => {
-    setSelectedIndex(0);
-  }, [suggestions.length, atQuery]);
-  useEffect(() => {
-    setSelectedEmojiIndex(0);
-  }, [emojiSuggestions.length, emojiQuery]);
-  useEffect(() => {
-    suggestionRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' });
-  }, [selectedIndex]);
-
-  useEffect(() => {
     if (activeChannelId) {
       let cancelled = false;
       setLoading(true);
+      setLoadError(null);
       setChannelPerms(null);
       fetchMessages(session!.url, activeChannelId)
         .then(({ messages: msgs, hasMore }) => {
@@ -466,6 +440,10 @@ export default function ChatArea({
           } else {
             newMessagesRef.current = null;
           }
+        })
+        .catch((err) => {
+          console.error('Failed to load messages:', err);
+          if (!cancelled) setLoadError('Failed to load messages');
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -513,12 +491,13 @@ export default function ChatArea({
         socketRef.current?.emit('typing:stop', { channelId: activeChannelId });
       };
     }
-  }, [activeChannelId]);
+  }, [activeChannelId, reloadNonce]);
 
   useEffect(() => {
     if (activeDMChannelId) {
       let cancelled = false;
       setLoading(true);
+      setLoadError(null);
       setChannelPerms(null);
       fetchDMMessages(session!.url, activeDMChannelId)
         .then(({ messages: msgs, hasMore }) => {
@@ -533,6 +512,10 @@ export default function ChatArea({
           } else {
             newMessagesRef.current = null;
           }
+        })
+        .catch((err) => {
+          console.error('Failed to load messages:', err);
+          if (!cancelled) setLoadError('Failed to load messages');
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -561,7 +544,7 @@ export default function ChatArea({
         socketRef.current?.emit('typing:stop', { channelId: activeDMChannelId });
       };
     }
-  }, [activeDMChannelId, tryDecryptDM]);
+  }, [activeDMChannelId, tryDecryptDM, reloadNonce]);
 
   useEffect(() => {
     if (!activeDMChannelId) return;
@@ -579,6 +562,7 @@ export default function ChatArea({
     if (activeGroupDMChannelId) {
       let cancelled = false;
       setLoading(true);
+      setLoadError(null);
       setChannelPerms(null);
       fetchGroupDMMessages(session!.url, activeGroupDMChannelId)
         .then(({ messages: msgs, hasMore }) => {
@@ -593,6 +577,10 @@ export default function ChatArea({
           } else {
             newMessagesRef.current = null;
           }
+        })
+        .catch((err) => {
+          console.error('Failed to load messages:', err);
+          if (!cancelled) setLoadError('Failed to load messages');
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -621,13 +609,14 @@ export default function ChatArea({
         socketRef.current?.emit('typing:stop', { channelId: activeGroupDMChannelId });
       };
     }
-  }, [activeGroupDMChannelId, tryDecryptGroupDM]);
+  }, [activeGroupDMChannelId, tryDecryptGroupDM, reloadNonce]);
 
   // Draft persistence: save when leaving a channel, restore when entering
   useEffect(() => {
-    const currentKey = activeChannelId || activeDMChannelId || activeGroupDMChannelId || null;
+    const currentKey = activeAnyChannelId;
     const prevKey = prevChannelKeyRef.current;
     if (prevKey !== currentKey) {
+      setSendError(null);
       if (prevKey !== null) {
         const currentInput = inputRef.current?.value ?? '';
         useChatStore.getState().setChannelDraft(prevKey, currentInput);
@@ -666,7 +655,7 @@ export default function ChatArea({
   }, [pendingPreviewUrl]);
 
   const loadMoreMessages = useCallback(() => {
-    const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
+    const channelId = activeAnyChannelId;
     if (!channelId || !session) return;
     const store = useChatStore.getState();
     const channelMessages = store.messages[channelId] || [];
@@ -678,21 +667,23 @@ export default function ChatArea({
     store.setLoadMoreError(channelId, null);
     (async () => {
       try {
-        const { messages: olderMsgs, hasMore } = activeDMChannelId
-          ? await fetchDMMessages(session.url, channelId, 50, oldestId)
-          : activeGroupDMChannelId
-            ? await fetchGroupDMMessages(session.url, channelId, 50, oldestId)
-            : await fetchMessages(session.url, channelId, 50, oldestId);
+        const { messages: olderMsgs, hasMore } =
+          channelId === activeDMChannelId
+            ? await fetchDMMessages(session.url, channelId, 50, oldestId)
+            : channelId === activeGroupDMChannelId
+              ? await fetchGroupDMMessages(session.url, channelId, 50, oldestId)
+              : await fetchMessages(session.url, channelId, 50, oldestId);
         if (olderMsgs.length === 0) {
           store.setHasMoreMessages(channelId, false);
           return;
         }
         const beforeLen = (store.messages[channelId] || []).length;
-        const decrypted = activeDMChannelId
-          ? olderMsgs.map((m) => tryDecryptDM(m))
-          : activeGroupDMChannelId
-            ? olderMsgs.map((m) => tryDecryptGroupDM(m))
-            : olderMsgs;
+        const decrypted =
+          channelId === activeDMChannelId
+            ? olderMsgs.map((m) => tryDecryptDM(m))
+            : channelId === activeGroupDMChannelId
+              ? olderMsgs.map((m) => tryDecryptGroupDM(m))
+              : olderMsgs;
         store.prependMessages(channelId, decrypted);
         const afterLen = (store.messages[channelId] || []).length;
         store.setHasMoreMessages(channelId, hasMore && afterLen > beforeLen);
@@ -714,7 +705,7 @@ export default function ChatArea({
   ]);
 
   const retryLoadMoreMessages = useCallback(() => {
-    const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
+    const channelId = activeAnyChannelId;
     if (!channelId) return;
     const store = useChatStore.getState();
     store.setHasMoreMessages(channelId, true);
@@ -748,27 +739,7 @@ export default function ChatArea({
       if (sendError) setSendError(null);
 
       const cursor = e.target.selectionStart ?? val.length;
-      const query = getAtQuery(val, cursor);
-      const emQuery = getEmojiQuery(val, cursor);
-      setAtQuery(query);
-      setEmojiQuery(emQuery);
-
-      const slash =
-        (activeChannelId || activeDMChannelId || activeGroupDMChannelId) &&
-        val.startsWith('/') &&
-        !val.slice(1).includes(' ')
-          ? val.slice(1)
-          : null;
-      setSlashQuery(slash);
-      if (slash !== null) setSelectedSlashIndex(0);
-      if (query !== null) {
-        const before = val.slice(0, cursor);
-        setAtIndex(before.lastIndexOf('@'));
-      }
-      if (emQuery !== null) {
-        const before = val.slice(0, cursor);
-        setEmojiIndex(before.lastIndexOf(':'));
-      }
+      autocomplete.onInputChange(val, cursor);
 
       const el = inputRef.current;
       if (el) {
@@ -776,7 +747,7 @@ export default function ChatArea({
         el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
       }
 
-      const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
+      const channelId = activeAnyChannelId;
       if (channelId && session) {
         if (typingTimeout.current) {
           clearTimeout(typingTimeout.current);
@@ -789,134 +760,20 @@ export default function ChatArea({
         }, 3000);
       }
     },
-    [sendError, activeChannelId, activeDMChannelId, session],
+    [sendError, activeAnyChannelId, session, autocomplete],
   );
-
-  const insertMention = (username: string) => {
-    const before = input.slice(0, atIndex);
-    const after = input.slice(atIndex + 1 + (atQuery?.length ?? 0));
-    const newVal = `${before}@${username} ${after}`;
-    setInput(newVal);
-    setAtQuery(null);
-    requestAnimationFrame(() => {
-      if (inputRef.current) {
-        const pos = before.length + username.length + 2;
-        inputRef.current.setSelectionRange(pos, pos);
-        inputRef.current.focus();
-      }
-    });
-  };
 
   useEffect(() => {
     if (pendingMention) {
-      insertMention(pendingMention);
+      mention.insert(pendingMention);
       setPendingMention(null);
     }
   }, [pendingMention]);
 
-  const slashSuggestions = useMemo<ChatCommand[]>(() => {
-    if (slashQuery === null || !session) return [];
-    const q = slashQuery.toLowerCase();
-    return CHAT_COMMANDS.filter(
-      (c) =>
-        (c.name.startsWith(q) || c.aliases?.some((a) => a.startsWith(q))) &&
-        userCanUseCommand(session.user, c),
-    );
-  }, [slashQuery, session]);
-
-  const insertSlashCommand = (cmd: ChatCommand) => {
-    setInput(`/${cmd.name} `);
-    setSlashQuery(null);
-    requestAnimationFrame(() => inputRef.current?.focus());
-  };
-
-  const insertEmoji = (entry: (typeof EMOJI_LIST)[0]) => {
-    const before = input.slice(0, emojiIndex);
-    const after = input.slice(emojiIndex + 1 + (emojiQuery?.length ?? 0));
-    const newVal = `${before}${entry.emoji} ${after}`;
-    setInput(newVal);
-    setEmojiQuery(null);
-    requestAnimationFrame(() => {
-      if (inputRef.current) {
-        const pos = before.length + entry.emoji.length + 1;
-        inputRef.current.setSelectionRange(pos, pos);
-        inputRef.current.focus();
-      }
-    });
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (slashSuggestions.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedSlashIndex((i) => (i + 1) % slashSuggestions.length);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedSlashIndex((i) => (i - 1 + slashSuggestions.length) % slashSuggestions.length);
-        return;
-      }
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        insertSlashCommand(slashSuggestions[selectedSlashIndex] ?? slashSuggestions[0]);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setSlashQuery(null);
-        return;
-      }
-    }
-    if (emojiSuggestions.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedEmojiIndex((i) => (i + 1) % emojiSuggestions.length);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedEmojiIndex((i) => (i - 1 + emojiSuggestions.length) % emojiSuggestions.length);
-        return;
-      }
-      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-        e.preventDefault();
-        insertEmoji(emojiSuggestions[selectedEmojiIndex] ?? emojiSuggestions[0]);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setEmojiQuery(null);
-        return;
-      }
-    }
-    if (suggestions.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedIndex((i) => (i + 1) % suggestions.slice(0, MENTION_LIMIT).length);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedIndex(
-          (i) =>
-            (i - 1 + suggestions.slice(0, MENTION_LIMIT).length) %
-            suggestions.slice(0, MENTION_LIMIT).length,
-        );
-        return;
-      }
-      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-        e.preventDefault();
-        insertMention(suggestions[selectedIndex] ?? suggestions[0]);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setAtQuery(null);
-        return;
-      }
-    }
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (autocomplete.onKeyDown(e)) return;
+    // On mobile, Enter inserts a newline; sending is done via the send button.
+    if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
       e.preventDefault();
       handleSend();
     }
@@ -938,7 +795,7 @@ export default function ChatArea({
     });
   };
 
-  const handleSend = async () => {
+  const performSend = async () => {
     if ((!input.trim() && !pendingFile) || !session) return;
 
     if (pendingFile) {
@@ -958,8 +815,7 @@ export default function ChatArea({
       if (result.kind === 'handled') {
         setInput('');
         setSendError(null);
-        setAtQuery(null);
-        setEmojiQuery(null);
+        autocomplete.clear();
         if (inputRef.current) inputRef.current.style.height = 'auto';
         return;
       }
@@ -999,92 +855,49 @@ export default function ChatArea({
       }
     }
 
-    const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
+    const channelId = activeAnyChannelId;
     if (!channelId) return;
 
     socketRef.current?.emit('typing:stop', { channelId });
 
     const wasAtBottom = atBottom;
+    const rawInput = input;
+    const outgoing = commandContent ?? rawInput.trim();
+    const attIds = pendingAttachmentId ? [pendingAttachmentId] : undefined;
+    const replyToId = replyTo?.messageId;
+
+    // Clear the composer before the request so a slow send doesn't wipe text typed meanwhile.
+    setInput('');
+    autocomplete.clear();
+    setSendError(null);
+    if (inputRef.current) inputRef.current.style.height = 'auto';
 
     try {
-      let message: Message;
-      if (activeChannelId) {
-        const attIds = pendingAttachmentId ? [pendingAttachmentId] : undefined;
-        message = await sendMessage(
-          session.url,
-          activeChannelId,
-          commandContent ?? input.trim(),
-          attIds,
-          replyTo?.messageId,
-        );
-        setPendingAttachmentId(null);
-      } else if (activeDMChannelId) {
-        const activeDM = dmChannels.find((d) => d.id === activeDMChannelId);
-        const otherPubKey = await resolveRecipientPublicKey(activeDM);
-        const secKey = getSecretKey();
-        let content: string;
-        let encrypted = false;
-        if (otherPubKey && secKey) {
-          const enc = encryptDM(commandContent ?? input.trim(), otherPubKey, secKey);
-          content = JSON.stringify(enc);
-          encrypted = true;
-        } else {
-          content = commandContent ?? input.trim();
-        }
-        message = await sendDMMessage(session.url, activeDMChannelId, content, encrypted);
-        if (encrypted) {
-          message = { ...message, content: commandContent ?? input.trim() };
-        }
-      } else if (activeGroupDMChannelId) {
-        const secKey = getSecretKey();
-        let content: string;
-        let encrypted = false;
-        if (secKey) {
-          const channel = groupDMChannels.find((c) => c.id === activeGroupDMChannelId);
-          const memberKeys = new Map<string, string>();
-          for (const member of channel?.members || []) {
-            if (member.public_key) memberKeys.set(member.user_id, member.public_key);
-          }
-          if (memberKeys.size > 0) {
-            const enc = encryptGroupDM(commandContent ?? input.trim(), memberKeys, secKey);
-            content = JSON.stringify(enc);
-            encrypted = true;
-          } else {
-            content = commandContent ?? input.trim();
-          }
-        } else {
-          content = commandContent ?? input.trim();
-        }
-        message = await sendGroupDMMessage(session.url, activeGroupDMChannelId, content, encrypted);
-        if (encrypted) {
-          message = { ...message, content: commandContent ?? input.trim() };
-        }
-      } else {
-        return;
-      }
+      const message = await sendToActiveChannel(outgoing, attIds, replyToId);
+      if (!message) return;
+      setPendingAttachmentId(null);
       addMessage(message.channel_id || channelId, message);
-      setInput('');
-      setSlashQuery(null);
       setReplyTo(null);
-      setSendError(null);
       haptics.tap();
-      if (inputRef.current) {
-        inputRef.current.style.height = 'auto';
-        inputRef.current.focus();
-      }
+      inputRef.current?.focus();
       if (!wasAtBottom) {
         requestAnimationFrame(() => {
-          const chId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
-          if (chId) {
-            const msgs = useChatStore.getState().messages[chId] || [];
-            if (msgs.length > 0) {
-              virtuosoRef.current?.scrollToIndex(msgs.length - 1);
-            }
-            lastCountAtBottom.current = msgs.length;
+          const msgs = useChatStore.getState().messages[channelId] || [];
+          if (msgs.length > 0) {
+            virtuosoRef.current?.scrollToIndex(msgs.length - 1);
           }
+          lastCountAtBottom.current = msgs.length;
         });
       }
     } catch (err: unknown) {
+      // Restore the message so a failed send doesn't lose it.
+      setInput(rawInput);
+      requestAnimationFrame(() => {
+        if (inputRef.current) {
+          inputRef.current.style.height = 'auto';
+          inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 160)}px`;
+        }
+      });
       const e = err as {
         response?: { status?: number; data?: { error?: string } };
         message?: string;
@@ -1096,88 +909,74 @@ export default function ChatArea({
     }
   };
 
+  const handleSend = async () => {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      await performSend();
+    } finally {
+      sendingRef.current = false;
+    }
+  };
+
+  const setPendingFileFromList = useCallback(
+    (files: File[]) => {
+      if (files.length === 0) return;
+      const [file, ...rest] = files;
+      setPendingFile(file);
+      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
+      const isImage = file.type.startsWith('image/');
+      setPendingPreviewUrl(isImage ? URL.createObjectURL(file) : null);
+      if (rest.length > 0) {
+        useNotificationStore.getState().addNotification({
+          type: 'announce',
+          title: 'One file at a time',
+          body: `Only "${file.name}" was attached. Send it, then attach the other ${rest.length} file${rest.length === 1 ? '' : 's'} separately.`,
+        });
+      }
+    },
+    [pendingPreviewUrl],
+  );
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setPendingFile(file);
-    if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
-    const isImage = file.type.startsWith('image/');
-    setPendingPreviewUrl(isImage ? URL.createObjectURL(file) : null);
+    const files = Array.from(e.target.files ?? []);
+    setPendingFileFromList(files);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
+
+  const cancelUpload = useCallback(() => {
+    uploadAbortRef.current?.abort();
+  }, []);
 
   const handleUpload = async () => {
     if (!pendingFile || !session) return;
 
-    const targetChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
+    const targetChannelId = activeAnyChannelId;
     if (!targetChannelId) return;
 
     setUploading(true);
     setUploadProgress(0);
+    const abortController = new AbortController();
+    uploadAbortRef.current = abortController;
 
     const wasAtBottom = atBottom;
 
     try {
-      const result = await uploadAttachment(session.url, targetChannelId, pendingFile, (pct) =>
-        setUploadProgress(pct),
+      const result = await uploadAttachment(
+        session.url,
+        targetChannelId,
+        pendingFile,
+        (pct) => setUploadProgress(pct),
+        abortController.signal,
       );
       setPendingAttachmentId(result.id);
       const attachmentText = `![${result.filename}](${result.url})`;
       const text = input.trim();
-      const attIds = [result.id];
+      const finalText = text ? text + '\n' + attachmentText : attachmentText;
 
-      let message: Message;
-      if (activeChannelId) {
-        message = await sendMessage(
-          session.url,
-          activeChannelId,
-          text ? text + '\n' + attachmentText : attachmentText,
-          attIds,
-        );
-      } else if (activeDMChannelId) {
-        const activeDM = dmChannels.find((d) => d.id === activeDMChannelId);
-        const otherPubKey = await resolveRecipientPublicKey(activeDM);
-        const secKey = getSecretKey();
-        const finalText = text ? text + '\n' + attachmentText : attachmentText;
-        let content: string;
-        let encrypted = false;
-        if (otherPubKey && secKey) {
-          const enc = encryptDM(finalText, otherPubKey, secKey);
-          content = JSON.stringify(enc);
-          encrypted = true;
-        } else {
-          content = finalText;
-        }
-        message = await sendDMMessage(session.url, activeDMChannelId, content, encrypted, attIds);
-        if (encrypted) {
-          message = { ...message, content: finalText };
-        }
-      } else if (activeGroupDMChannelId) {
-        const secKey = getSecretKey();
-        const finalText = text ? text + '\n' + attachmentText : attachmentText;
-        let content: string;
-        let encrypted = false;
-        if (secKey) {
-          const channel = groupDMChannels.find((c) => c.id === activeGroupDMChannelId);
-          const memberKeys = new Map<string, string>();
-          for (const member of channel?.members || []) {
-            if (member.public_key) memberKeys.set(member.user_id, member.public_key);
-          }
-          if (memberKeys.size > 0) {
-            const enc = encryptGroupDM(finalText, memberKeys, secKey);
-            content = JSON.stringify(enc);
-            encrypted = true;
-          } else {
-            content = finalText;
-          }
-        } else {
-          content = finalText;
-        }
-        message = await sendGroupDMMessage(session.url, activeGroupDMChannelId, content, encrypted, attIds);
-        if (encrypted) {
-          message = { ...message, content: finalText };
-        }
-      } else {
+      const message = await sendToActiveChannel(finalText, [result.id]);
+      if (!message) {
+        setUploading(false);
         return;
       }
       addMessage(message.channel_id || targetChannelId, message);
@@ -1193,23 +992,29 @@ export default function ChatArea({
       }
       if (!wasAtBottom) {
         requestAnimationFrame(() => {
-          const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
-          if (channelId) {
-            const msgs = useChatStore.getState().messages[channelId] || [];
-            if (msgs.length > 0) {
-              virtuosoRef.current?.scrollToIndex(msgs.length - 1);
-            }
-            lastCountAtBottom.current = msgs.length;
+          const msgs = useChatStore.getState().messages[targetChannelId] || [];
+          if (msgs.length > 0) {
+            virtuosoRef.current?.scrollToIndex(msgs.length - 1);
           }
+          lastCountAtBottom.current = msgs.length;
         });
       }
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } }; message?: string };
-      setSendError(e?.response?.data?.error || e?.message || 'Failed to upload file');
-      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
-      setPendingPreviewUrl(null);
-      setPendingAttachmentId(null);
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // User-initiated cancel — clear the pending file instead of showing an error.
+        if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
+        setPendingFile(null);
+        setPendingPreviewUrl(null);
+        setPendingAttachmentId(null);
+      } else {
+        const e = err as { response?: { data?: { error?: string } }; message?: string };
+        setSendError(e?.response?.data?.error || e?.message || 'Failed to upload file');
+        if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
+        setPendingPreviewUrl(null);
+        setPendingAttachmentId(null);
+      }
     }
+    uploadAbortRef.current = null;
     setUploading(false);
   };
 
@@ -1235,14 +1040,23 @@ export default function ChatArea({
 
   const handleBulkDelete = useCallback(async () => {
     if (!session || selectedMessages.size === 0 || !activeChannelId) return;
+    const count = selectedMessages.size;
+    if (!confirm(`Delete ${count} message${count === 1 ? '' : 's'}? This cannot be undone.`))
+      return;
     setBulkDeleting(true);
     try {
-      for (const id of selectedMessages) {
-        await deleteMessage(session.url, id);
+      const ids = [...selectedMessages];
+      const results = await Promise.allSettled(ids.map((id) => deleteMessage(session.url, id)));
+      const failedIds = ids.filter((_, i) => results[i].status === 'rejected');
+      setSelectedMessages(new Set(failedIds));
+      if (failedIds.length > 0) {
+        console.error('Bulk delete failed for', failedIds.length, 'messages');
+        useNotificationStore.getState().addNotification({
+          type: 'announce',
+          title: 'Bulk delete',
+          body: `${failedIds.length} of ${count} messages could not be deleted. They remain selected.`,
+        });
       }
-      setSelectedMessages(new Set());
-    } catch (err) {
-      console.error('Bulk delete failed:', err);
     } finally {
       setBulkDeleting(false);
     }
@@ -1257,141 +1071,49 @@ export default function ChatArea({
     });
   }, []);
 
-  const startRecording = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
-          : 'audio/webm',
-      });
-      mediaRecorderRef.current = mr;
-      recordingChunksRef.current = [];
+  const handleVoiceRecordingComplete = useCallback(
+    async (file: File) => {
+      const targetChannelId = activeAnyChannelId;
+      if (!targetChannelId || !session) return;
+      setPendingFile(file);
+      setUploading(true);
+      setUploadProgress(0);
+      const abortController = new AbortController();
+      uploadAbortRef.current = abortController;
+      try {
+        const result = await uploadAttachment(
+          session.url,
+          targetChannelId,
+          file,
+          (pct) => setUploadProgress(pct),
+          abortController.signal,
+        );
+        // Read the composer at stop time, not at record-start time.
+        const msgText = (inputRef.current?.value ?? '').trim();
+        const attachmentText = msgText
+          ? `${msgText}\n![voice-message.webm](${result.url})`
+          : `![voice-message.webm](${result.url})`;
 
-      mr.ondataavailable = (e) => {
-        if (e.data.size > 0) recordingChunksRef.current.push(e.data);
-      };
-
-      mr.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(recordingChunksRef.current, { type: mr.mimeType });
-        const file = new File([blob], `voice-${Date.now()}.webm`, { type: mr.mimeType });
-        setPendingFile(file);
-        setPendingPreviewUrl(null);
-        setUploading(true);
-        setUploadProgress(0);
-
-        const targetChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
-        if (!targetChannelId) return;
-
-        try {
-          const result = await uploadAttachment(session!.url, targetChannelId, file, (pct) =>
-            setUploadProgress(pct),
-          );
-          const msgText = input.trim();
-          const attachmentText = msgText ? `${msgText}\n![voice-message.webm](${result.url})` : `![voice-message.webm](${result.url})`;
-
-          const attIds = [result.id];
-          let message: Message;
-          if (activeChannelId) {
-            message = await sendMessage(session!.url, activeChannelId, attachmentText, attIds);
-          } else if (activeDMChannelId) {
-            const activeDM = dmChannels.find((d) => d.id === activeDMChannelId);
-            const otherPubKey = await resolveRecipientPublicKey(activeDM);
-            const secKey = getSecretKey();
-            let content: string;
-            let enc = false;
-            if (otherPubKey && secKey) {
-              const encrypted = encryptDM(attachmentText, otherPubKey, secKey);
-              content = JSON.stringify(encrypted);
-              enc = true;
-            } else {
-              content = attachmentText;
-            }
-            message = await sendDMMessage(session!.url, activeDMChannelId!, content, enc, attIds);
-            if (enc) {
-              message = { ...message, content: attachmentText };
-            }
-          } else if (activeGroupDMChannelId) {
-            const secKey = getSecretKey();
-            let content: string;
-            let encrypted = false;
-            if (secKey) {
-              const channel = groupDMChannels.find((c) => c.id === activeGroupDMChannelId);
-              const memberKeys = new Map<string, string>();
-              for (const member of channel?.members || []) {
-                if (member.public_key) memberKeys.set(member.user_id, member.public_key);
-              }
-              if (memberKeys.size > 0) {
-                const enc = encryptGroupDM(attachmentText, memberKeys, secKey);
-                content = JSON.stringify(enc);
-                encrypted = true;
-              } else {
-                content = attachmentText;
-              }
-            } else {
-              content = attachmentText;
-            }
-            message = await sendGroupDMMessage(session!.url, activeGroupDMChannelId!, content, encrypted, attIds);
-            if (encrypted) {
-              message = { ...message, content: attachmentText };
-            }
-          }
-          addMessage(targetChannelId, message!);
+        const message = await sendToActiveChannel(attachmentText, [result.id]);
+        if (message) {
+          addMessage(targetChannelId, message);
           setInput('');
-        } catch (err) {
+        }
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
           console.error('Failed to send voice message:', err);
         }
-        setUploading(false);
-        setPendingFile(null);
-      };
-
-      mr.start();
-      setRecording(true);
-      setRecordingTime(0);
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingTime((t) => t + 1);
-      }, 1000);
-    } catch (err) {
-      console.error('Failed to start recording:', err);
-    }
-  }, [
-    session,
-    activeChannelId,
-    activeDMChannelId,
-    activeGroupDMChannelId,
-    input,
-    dmChannels,
-    groupDMChannels,
-    resolveRecipientPublicKey,
-    addMessage,
-  ]);
-
-  const stopRecording = useCallback((send: boolean) => {
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      if (send) {
-        mediaRecorderRef.current.stop();
-      } else {
-        mediaRecorderRef.current.ondataavailable = null;
-        mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
       }
-    }
-    setRecording(false);
-    setRecordingTime(0);
-  }, []);
+      uploadAbortRef.current = null;
+      setUploading(false);
+      setPendingFile(null);
+    },
+    [activeAnyChannelId, session, sendToActiveChannel, addMessage],
+  );
 
-  useEffect(() => {
-    return () => {
-      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-      if (mediaRecorderRef.current?.state !== 'inactive') {
-        mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
-      }
-    };
-  }, []);
+  const { recording, recordingTime, startRecording, stopRecording } = useVoiceRecorder(
+    handleVoiceRecordingComplete,
+  );
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -1408,15 +1130,12 @@ export default function ChatArea({
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    const items = e.clipboardData?.files;
-    if (items && items.length > 0) {
-      const file = items[0];
-      if (file.type.startsWith('image/')) {
-        e.preventDefault();
-        setPendingFile(file);
-        if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
-        setPendingPreviewUrl(URL.createObjectURL(file));
-      }
+    const imageFiles = Array.from(e.clipboardData?.files ?? []).filter((f) =>
+      f.type.startsWith('image/'),
+    );
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      setPendingFileFromList(imageFiles);
     }
   };
 
@@ -1424,13 +1143,7 @@ export default function ChatArea({
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      setPendingFile(files[0]);
-      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
-      const isImage = files[0].type.startsWith('image/');
-      setPendingPreviewUrl(isImage ? URL.createObjectURL(files[0]) : null);
-    }
+    setPendingFileFromList(Array.from(e.dataTransfer.files));
   };
 
   const handleEditMessage = useCallback(
@@ -1440,34 +1153,10 @@ export default function ChatArea({
       if (!channelId) return;
       try {
         if (activeDMChannelId) {
-          const activeDM = dmChannels.find((d) => d.id === activeDMChannelId);
-          if (!activeDM) return;
-          const otherPubKey = await resolveRecipientPublicKey(activeDM);
-          const secKey = getSecretKey();
-          let sendContent = content;
-          let encrypted = false;
-          if (otherPubKey && secKey) {
-            const enc = encryptDM(content, otherPubKey, secKey);
-            sendContent = JSON.stringify(enc);
-            encrypted = true;
-          }
+          const { content: sendContent, encrypted } = await encryptOutgoing(content);
           await editDMMessage(session.url, messageId, sendContent, encrypted);
         } else if (activeGroupDMChannelId) {
-          const secKey = getSecretKey();
-          let sendContent = content;
-          let encrypted = false;
-          if (secKey) {
-            const channel = groupDMChannels.find((c) => c.id === activeGroupDMChannelId);
-            const memberKeys = new Map<string, string>();
-            for (const member of channel?.members || []) {
-              if (member.public_key) memberKeys.set(member.user_id, member.public_key);
-            }
-            if (memberKeys.size > 0) {
-              const enc = encryptGroupDM(content, memberKeys, secKey);
-              sendContent = JSON.stringify(enc);
-              encrypted = true;
-            }
-          }
+          const { content: sendContent, encrypted } = await encryptOutgoing(content);
           await editGroupDMMessage(session.url, messageId, sendContent, encrypted);
         } else {
           await editMessage(session.url, messageId, content);
@@ -1476,15 +1165,7 @@ export default function ChatArea({
         console.error('Failed to edit message:', err);
       }
     },
-    [
-      session,
-      activeChannelId,
-      activeDMChannelId,
-      activeGroupDMChannelId,
-      dmChannels,
-      groupDMChannels,
-      resolveRecipientPublicKey,
-    ],
+    [session, activeChannelId, activeDMChannelId, activeGroupDMChannelId, encryptOutgoing],
   );
 
   const handlePinMessage = useCallback(
@@ -1539,6 +1220,28 @@ export default function ChatArea({
       ? groupDMMessages
       : channelMessages;
 
+  // Screen-reader announcement for incoming messages. Virtuoso mounts/unmounts items on
+  // scroll, so aria-live on the scrolling container itself fires unreliably — this is a
+  // dedicated off-screen region updated only when a genuinely new message arrives.
+  const [liveAnnouncement, setLiveAnnouncement] = useState('');
+  const lastAnnouncedIdRef = useRef<string | null>(null);
+  const announceChannelKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const last = displayMessages[displayMessages.length - 1];
+    if (announceChannelKeyRef.current !== activeAnyChannelId) {
+      // Switching channels — don't announce the channel's existing history.
+      announceChannelKeyRef.current = activeAnyChannelId;
+      lastAnnouncedIdRef.current = last?.id ?? null;
+      return;
+    }
+    if (!last || last.id === lastAnnouncedIdRef.current) return;
+    lastAnnouncedIdRef.current = last.id;
+    if (last.user_id === session?.user.id) return;
+    const author = last.display_name || last.username || 'Someone';
+    const preview = last.content.length > 140 ? last.content.slice(0, 140) + '…' : last.content;
+    setLiveAnnouncement(`${author}: ${preview}`);
+  }, [displayMessages, activeAnyChannelId, session?.user.id]);
+
   const lightboxImageMap = useMemo(() => {
     const images: { url: string; filename: string }[] = [];
     const urlToIndex = new Map<string, number>();
@@ -1583,8 +1286,8 @@ export default function ChatArea({
   useEffect(() => {
     lastCountAtBottom.current = displayMessages.length;
   }, [activeChannelId, activeDMChannelId, activeGroupDMChannelId]);
-  const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId || '';
-  const typingList = typingUsers[channelId]?.filter((u) => u !== session?.user.username) || [];
+  const typingList =
+    typingUsers[activeAnyChannelId || '']?.filter((u) => u !== session?.user.username) || [];
   const typingText =
     typingList.length === 1
       ? `${typingList[0]} is typing...`
@@ -1592,6 +1295,11 @@ export default function ChatArea({
         ? `${typingList.length} people are typing...`
         : '';
   const dmHasKey = activeDMChannelId ? !!(activeDM?.other_public_key && getSecretKey()) : false;
+  const composerTarget = activeDMChannelId
+    ? `@${activeDM?.other_display_name ?? 'user'}`
+    : activeGroupDMChannelId
+      ? (activeGroupDM?.name ?? 'group')
+      : `#${activeChannel?.name ?? 'channel'}`;
   const inputMaxLen = activeDMChannelId ? 2700 : 4000;
   const inputRemaining = inputMaxLen - input.length;
   const showCharCounter = inputRemaining < 500;
@@ -1601,7 +1309,7 @@ export default function ChatArea({
     (messageId: string, targetChannelId: string) => {
       setShowSearch(false);
 
-      const currentChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
+      const currentChannelId = activeAnyChannelId;
 
       if (targetChannelId !== currentChannelId) {
         const isDM = dmChannels.some((d) => d.id === targetChannelId);
@@ -1616,7 +1324,10 @@ export default function ChatArea({
       }
 
       const tryScroll = (attempts: number) => {
-        const idx = displayMessages.findIndex((m) => m.id === messageId);
+        // Read fresh from the store — this closure outlives the channel switch,
+        // so `displayMessages` here would be the previous channel's list.
+        const msgs = useChatStore.getState().messages[targetChannelId] || [];
+        const idx = msgs.findIndex((m) => m.id === messageId);
         if (idx >= 0) {
           virtuosoRef.current?.scrollToIndex({ index: idx, align: 'center' });
           const el = document.getElementById(`msg-${messageId}`);
@@ -1641,15 +1352,12 @@ export default function ChatArea({
       }
     },
     [
-      activeChannelId,
-      activeDMChannelId,
-      activeGroupDMChannelId,
+      activeAnyChannelId,
       dmChannels,
       groupDMChannels,
       setActiveChannel,
       setActiveDMChannel,
       setActiveGroupDMChannel,
-      displayMessages,
     ],
   );
 
@@ -1784,7 +1492,9 @@ export default function ChatArea({
             <EnvStatus onOpenWizard={onOpenEnvWizard} />
           </div>
         )}
-        <span className="chat-area__header-prefix">{activeDMChannelId ? '@' : '#'}</span>
+        <span className="chat-area__header-prefix">
+          {activeDMChannelId || activeGroupDMChannelId ? '@' : '#'}
+        </span>
         <h2 className="chat-area__header-title">{headerTitle}</h2>
         {activeDMChannelId && dmHasKey && (
           <span className="chat-area__encrypted-badge" title="End-to-end encrypted">
@@ -1843,7 +1553,7 @@ export default function ChatArea({
               <span>{members.length}</span>
             </button>
           )}
-          {(activeChannelId || activeDMChannelId || activeGroupDMChannelId) && (
+          {activeAnyChannelId && (
             <IconButton
               icon={<Search className="icon-sm" />}
               label="Search messages"
@@ -1872,7 +1582,7 @@ export default function ChatArea({
               onClick={() => setPinsOpen(true)}
             />
           )}
-          {(activeChannelId || activeDMChannelId || activeGroupDMChannelId) && (
+          {activeAnyChannelId && (
             <IconButton
               icon={<ImageIcon className="icon-sm" />}
               label="Media gallery"
@@ -1881,7 +1591,7 @@ export default function ChatArea({
               onClick={() => setMediaGalleryOpen(true)}
             />
           )}
-          {(activeChannelId || activeDMChannelId || activeGroupDMChannelId) && (
+          {activeAnyChannelId && (
             <IconButton
               icon={<BarChart3 className="icon-sm" />}
               label="Toggle polls"
@@ -1902,9 +1612,9 @@ export default function ChatArea({
         </div>
       </div>
 
-      {showSearch && (activeChannelId || activeDMChannelId || activeGroupDMChannelId) && (
+      {showSearch && activeAnyChannelId && (
         <SearchBar
-          channelId={activeChannelId || activeDMChannelId || activeGroupDMChannelId || undefined}
+          channelId={activeAnyChannelId}
           onClose={() => setShowSearch(false)}
           onJumpToMessage={handleJumpToMessage}
         />
@@ -1912,13 +1622,17 @@ export default function ChatArea({
 
       <PollPanel
         serverUrl={session?.url ?? ''}
-        channelId={activeChannelId || activeDMChannelId || activeGroupDMChannelId || null}
+        channelId={activeAnyChannelId}
         isOpen={pollPanelOpen}
         onClose={() => setPollPanelOpen(false)}
       />
 
+      <div className="chat-area__sr-only" aria-live="polite" aria-atomic="true">
+        {liveAnnouncement}
+      </div>
+
       <div className="chat-area__messages-wrap">
-        <div className="chat-area__messages" role="log" aria-label="Messages" aria-live="polite">
+        <div className="chat-area__messages" role="log" aria-label="Messages">
           {loading && (
             <>
               {[1, 2, 3, 4, 5].map((i) => (
@@ -1933,12 +1647,23 @@ export default function ChatArea({
               ))}
             </>
           )}
-          {!loading && displayMessages.length === 0 && (
+          {!loading && loadError && displayMessages.length === 0 && (
+            <div className="chat-area__loading">
+              <p>{loadError}. Check your connection.</p>
+              <button
+                className="chat-area__load-more-retry chat-area__load-more-retry--visible"
+                onClick={() => setReloadNonce((n) => n + 1)}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {!loading && !loadError && displayMessages.length === 0 && (
             <p className="chat-area__loading">No messages yet. Be the first to send one!</p>
           )}
           {!loading && displayMessages.length > 0 && (
             <Virtuoso
-              key={activeChannelId || activeDMChannelId}
+              key={activeAnyChannelId}
               ref={virtuosoRef}
               data={displayMessages}
               itemContent={renderMessageItem}
@@ -1950,7 +1675,7 @@ export default function ChatArea({
               style={{ flex: 1 }}
               components={{
                 Header: () => {
-                  const chId = activeChannelId || activeDMChannelId || '';
+                  const chId = activeAnyChannelId || '';
                   const loadingMore = loadingMoreMessages[chId];
                   const loadError = loadMoreErrors[chId];
                   const hasMore = hasMoreMessages[chId];
@@ -2017,17 +1742,23 @@ export default function ChatArea({
       </div>
 
       <div className="chat-area__input-bar">
-        {slashSuggestions.length > 0 && (
-          <div className="chat-area__mention-suggestions chat-area__slash-suggestions">
-            {slashSuggestions.map((cmd, i) => (
+        {slash.suggestions.length > 0 && (
+          <div
+            className="chat-area__mention-suggestions chat-area__slash-suggestions"
+            role="listbox"
+            aria-label="Command suggestions"
+          >
+            {slash.suggestions.map((cmd, i) => (
               <button
                 key={cmd.name}
+                role="option"
+                aria-selected={i === slash.selectedIndex}
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  insertSlashCommand(cmd);
+                  slash.insert(cmd);
                 }}
-                onMouseEnter={() => setSelectedSlashIndex(i)}
-                className={`chat-area__mention-suggestion ${i === selectedSlashIndex ? 'chat-area__mention-suggestion--selected' : ''}`}
+                onMouseEnter={() => slash.setSelectedIndex(i)}
+                className={`chat-area__mention-suggestion ${i === slash.selectedIndex ? 'chat-area__mention-suggestion--selected' : ''}`}
               >
                 <span className="chat-area__mention-prefix">/</span>
                 <span className="chat-area__slash-name">{cmd.name}</span>
@@ -2038,23 +1769,29 @@ export default function ChatArea({
           </div>
         )}
 
-        {suggestions.length > 0 && (
-          <div className="chat-area__mention-suggestions">
-            {suggestions.slice(0, MENTION_LIMIT).map((u, i) => {
+        {mention.suggestions.length > 0 && (
+          <div
+            className="chat-area__mention-suggestions"
+            role="listbox"
+            aria-label="Mention suggestions"
+          >
+            {mention.suggestions.slice(0, MENTION_LIMIT).map((u, i) => {
               const mentionableRole = mentionableRoles.find((r) => r.name === u);
               const isRole = !!mentionableRole;
               return (
                 <button
-                  key={u}
+                  key={`${isRole ? 'role' : 'user'}:${u}`}
+                  role="option"
+                  aria-selected={i === mention.selectedIndex}
                   ref={(el) => {
-                    suggestionRefs.current[i] = el;
+                    mention.refs.current[i] = el;
                   }}
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    insertMention(u);
+                    mention.insert(u);
                   }}
-                  onMouseEnter={() => setSelectedIndex(i)}
-                  className={`chat-area__mention-suggestion ${i === selectedIndex ? 'chat-area__mention-suggestion--selected' : ''}`}
+                  onMouseEnter={() => mention.setSelectedIndex(i)}
+                  className={`chat-area__mention-suggestion ${i === mention.selectedIndex ? 'chat-area__mention-suggestion--selected' : ''}`}
                 >
                   {isRole && (
                     <span
@@ -2071,25 +1808,31 @@ export default function ChatArea({
                 </button>
               );
             })}
-            {suggestions.length > MENTION_LIMIT && (
+            {mention.suggestions.length > MENTION_LIMIT && (
               <div className="chat-area__mention-capped">
-                Found {suggestions.length} — keep typing to narrow
+                Found {mention.suggestions.length} — keep typing to narrow
               </div>
             )}
           </div>
         )}
 
-        {emojiSuggestions.length > 0 && (
-          <div className="chat-area__emoji-suggestions">
-            {emojiSuggestions.map((entry, i) => (
+        {emojiAutocomplete.suggestions.length > 0 && (
+          <div
+            className="chat-area__emoji-suggestions"
+            role="listbox"
+            aria-label="Emoji suggestions"
+          >
+            {emojiAutocomplete.suggestions.map((entry, i) => (
               <button
                 key={entry.shortcode}
+                role="option"
+                aria-selected={i === emojiAutocomplete.selectedIndex}
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  insertEmoji(entry);
+                  emojiAutocomplete.insert(entry);
                 }}
-                onMouseEnter={() => setSelectedEmojiIndex(i)}
-                className={`chat-area__emoji-suggestion ${i === selectedEmojiIndex ? 'chat-area__emoji-suggestion--selected' : ''}`}
+                onMouseEnter={() => emojiAutocomplete.setSelectedIndex(i)}
+                className={`chat-area__emoji-suggestion ${i === emojiAutocomplete.selectedIndex ? 'chat-area__emoji-suggestion--selected' : ''}`}
               >
                 <span className="chat-area__emoji-char">{entry.emoji}</span>
                 <span className="chat-area__emoji-code">:{entry.shortcode}:</span>
@@ -2114,7 +1857,7 @@ export default function ChatArea({
               onClick={() => setReplyTo(null)}
               aria-label="Cancel reply"
             >
-              x
+              ×
             </button>
           </div>
         )}
@@ -2129,9 +1872,16 @@ export default function ChatArea({
               <p className="chat-area__upload-size">{formatFileSize(pendingFile.size)}</p>
             </div>
             {uploading ? (
-              <span className="chat-area__upload-progress">
-                {uploadProgress > 0 && uploadProgress < 100 ? `${uploadProgress}%` : 'uploading...'}
-              </span>
+              <>
+                <span className="chat-area__upload-progress">
+                  {uploadProgress > 0 && uploadProgress < 100
+                    ? `${uploadProgress}%`
+                    : 'uploading...'}
+                </span>
+                <button className="chat-area__upload-cancel" onClick={cancelUpload}>
+                  cancel
+                </button>
+              </>
             ) : (
               <button
                 className="chat-area__upload-cancel"
@@ -2173,9 +1923,9 @@ export default function ChatArea({
             <>
               <button
                 className={`chat-area__mic-btn${recording ? ' chat-area__mic-btn--recording' : ''}`}
-                onClick={() => (recording ? undefined : startRecording())}
-                title={recording ? 'Recording...' : 'Record voice message'}
-                aria-label="Record voice message"
+                onClick={() => (recording ? stopRecording(true) : startRecording())}
+                title={recording ? 'Stop and send' : 'Record voice message'}
+                aria-label={recording ? 'Stop and send voice message' : 'Record voice message'}
                 disabled={cantWrite}
               >
                 <Mic size={16} />
@@ -2249,7 +1999,7 @@ export default function ChatArea({
             placeholder={
               cantWrite
                 ? `Channel locked — only admins can send messages`
-                : `Message ${activeDMChannelId ? `@${activeDM?.other_display_name}` : `#${activeChannel?.name}`}`
+                : `Message ${composerTarget}`
             }
             value={input}
             onChange={handleInputChange}
@@ -2298,8 +2048,10 @@ export default function ChatArea({
                   let left = taRect.left + (spanRect.left - mirrorRect.left) - scrollLeft;
                   const TOOLBAR_W = 230;
                   if (left < 4) left = 4;
-                  if (left + TOOLBAR_W > window.innerWidth - 4) left = window.innerWidth - TOOLBAR_W - 4;
-                  if (top < 4) top = taRect.top + (spanRect.bottom - mirrorRect.top) - scrollTop + 6;
+                  if (left + TOOLBAR_W > window.innerWidth - 4)
+                    left = window.innerWidth - TOOLBAR_W - 4;
+                  if (top < 4)
+                    top = taRect.top + (spanRect.bottom - mirrorRect.top) - scrollTop + 6;
                   setToolbarCoords({ top, left });
                 });
               } else {
@@ -2307,10 +2059,13 @@ export default function ChatArea({
                 setToolbarCoords(null);
               }
             }}
-            onBlur={() => { setFormatSel(null); setToolbarCoords(null); }}
+            onBlur={() => {
+              setFormatSel(null);
+              setToolbarCoords(null);
+            }}
             maxLength={inputMaxLen}
             disabled={cantWrite}
-            aria-label={`Message ${activeDMChannelId ? activeDM?.other_display_name || 'direct messages' : activeChannel?.name || 'channel'}`}
+            aria-label={`Message ${composerTarget}`}
           />
           <button
             className="chat-area__send-btn"

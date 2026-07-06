@@ -6,8 +6,9 @@ import { fetchDMChannels, fetchServerInfo, resolveInviteCode } from '@kizuna/sha
 import type { ServerInfo } from '@kizuna/shared'
 import { useAuth } from '../hooks/useAuth'
 import { useMobile } from '../hooks/useMobile'
+import { useUpdaterActions } from '../hooks/useUpdater'
 import type { DMChannelData } from '@kizuna/shared'
-import { Settings } from 'lucide-react'
+import { Settings, BookOpen, GitBranch, Bug } from 'lucide-react'
 import AuthForm from '../components/AuthForm'
 import BackupTokenModal from '../components/BackupTokenModal'
 import ServerConnectForm from '../components/ServerConnectForm'
@@ -32,8 +33,11 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
   const isMobile = useMobile()
   const { addServer, setActiveSession, servers } = useServerStore()
   const mentionCounts = useChatStore((s) => s.mentionCounts)
+  const { getVersion } = useUpdaterActions()
   const [serverDMs, setServerDMs] = useState<ServerDMs[]>([])
   const [dmsLoading, setDmsLoading] = useState(false)
+  const [serverStatus, setServerStatus] = useState<Record<string, 'checking' | 'online' | 'offline'>>({})
+  const [appVersion, setAppVersion] = useState('')
 
   const [showLanding, setShowLanding] = useState(() => {
     return isLanding && localStorage.getItem('kizuna-landing-dismissed') !== 'true'
@@ -69,6 +73,24 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
     }
     loadDMs()
   }, [servers.length])
+
+  useEffect(() => {
+    if (servers.length === 0) { setServerStatus({}); return }
+    setServerStatus((prev) => {
+      const next: Record<string, 'checking' | 'online' | 'offline'> = {}
+      for (const server of servers) next[server.id] = prev[server.id] ?? 'checking'
+      return next
+    })
+    servers.forEach((server) => {
+      fetchServerInfo(server.url)
+        .then(() => setServerStatus((prev) => ({ ...prev, [server.id]: 'online' })))
+        .catch(() => setServerStatus((prev) => ({ ...prev, [server.id]: 'offline' })))
+    })
+  }, [servers.length])
+
+  useEffect(() => {
+    getVersion().then(setAppVersion)
+  }, [getVersion])
 
   async function handleConnect(urlToUse: string) {
     if (!urlToUse.trim()) return
@@ -120,8 +142,6 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
       navigate('/chat')
     }
   }
-
-  const totalMentions = Object.values(mentionCounts).reduce((sum, n) => sum + n, 0)
 
   if (showConnect && serverUrl) {
     return (
@@ -308,18 +328,29 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
 
             <div className="welcome__dashboard-panel">
               <div className="welcome__dashboard-panel-header">
-                <span className="welcome__dashboard-panel-label">Status</span>
+                <span className="welcome__dashboard-panel-label">Server Status</span>
               </div>
               <div className="welcome__dashboard-panel-body">
-                <div className="welcome__status-row">
-                  <span className="welcome__status-label">Servers</span>
-                  <span className="welcome__status-value">{servers.length}</span>
-                </div>
-                {totalMentions > 0 && (
-                  <div className="welcome__status-row">
-                    <span className="welcome__status-label">Mentions</span>
-                    <span className="welcome__status-value welcome__status-value--danger">{totalMentions}</span>
+                {servers.length === 0 ? (
+                  <div className="welcome__dashboard-empty">
+                    <p className="welcome__dashboard-empty-text">No servers to check</p>
                   </div>
+                ) : (
+                  servers.map((server) => {
+                    const status = serverStatus[server.id] ?? 'checking'
+                    return (
+                      <div key={server.id} className="welcome__status-row">
+                        <span className="welcome__status-label">{server.name}</span>
+                        <span
+                          className={`welcome__status-value ${
+                            status === 'online' ? 'welcome__status-value--good' : status === 'offline' ? 'welcome__status-value--danger' : ''
+                          }`}
+                        >
+                          {status === 'checking' ? 'Checking…' : status === 'online' ? 'Online' : 'Offline'}
+                        </span>
+                      </div>
+                    )
+                  })
                 )}
               </div>
             </div>
@@ -329,14 +360,21 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
                 <span className="welcome__dashboard-panel-label">About</span>
               </div>
               <div className="welcome__dashboard-panel-body">
-                <p className="welcome__server-name">Kizuna <span className="welcome__dashboard-panel-label">v0.1.0</span></p>
+                <p className="welcome__server-name">Kizuna {appVersion && <span className="welcome__dashboard-panel-label">v{appVersion}</span>}</p>
                 <p className="welcome__subtitle" style={{ marginTop: '4px' }}>Self-hosted voice & chat</p>
-                <div className="welcome__tech-tags">
-                  <span className="welcome__tech-tag">webrtc</span>
-                  <span className="welcome__tech-tag">mediasoup</span>
-                  <span className="welcome__tech-tag">react</span>
-                  <span className="welcome__tech-tag">sqlite</span>
-                  <span className="welcome__tech-tag">tauri</span>
+                <div className="welcome__about-links">
+                  <a href="https://itsashn.github.io/kizuna/" target="_blank" rel="noopener noreferrer" className="welcome__about-link">
+                    <BookOpen size={14} />
+                    Docs
+                  </a>
+                  <a href="https://github.com/ItsAshn/kizuna" target="_blank" rel="noopener noreferrer" className="welcome__about-link">
+                    <GitBranch size={14} />
+                    GitHub
+                  </a>
+                  <a href="https://github.com/ItsAshn/kizuna/issues" target="_blank" rel="noopener noreferrer" className="welcome__about-link">
+                    <Bug size={14} />
+                    Report Issue
+                  </a>
                 </div>
               </div>
             </div>
