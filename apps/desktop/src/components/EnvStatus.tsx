@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { isTauri } from '../utils/platform'
 
 interface EnvDiagnostic {
+  os: string
   session_type: string
   compositor: string
   pipewire_ok: boolean
@@ -31,6 +32,7 @@ export default function EnvStatus({ onOpenWizard }: { onOpenWizard: () => void }
   const errorCount = diagnostic.issues.filter(i => i.severity === 'error').length
   const warnCount = diagnostic.issues.filter(i => i.severity === 'warning').length
   const hasIssues = errorCount > 0 || warnCount > 0
+  const label = diagnostic.os === 'linux' ? diagnostic.compositor : diagnostic.os
 
   return (
     <button
@@ -38,7 +40,7 @@ export default function EnvStatus({ onOpenWizard }: { onOpenWizard: () => void }
       title={
         hasIssues
           ? `${errorCount} error(s), ${warnCount} warning(s) — click for details`
-          : `${diagnostic.compositor} (${diagnostic.session_type}) — environment OK`
+          : `${label} (${diagnostic.session_type}) — environment OK`
       }
       style={{
         display: 'flex',
@@ -61,7 +63,7 @@ export default function EnvStatus({ onOpenWizard }: { onOpenWizard: () => void }
         background: hasIssues ? 'var(--error)' : 'var(--success)',
         flexShrink: 0,
       }} />
-      {diagnostic.compositor}
+      {label}
       {hasIssues && ` (${errorCount + warnCount})`}
     </button>
   )

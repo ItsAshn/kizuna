@@ -10,6 +10,7 @@ interface EnvIssue {
 }
 
 interface EnvDiagnostic {
+  os: string
   session_type: string
   compositor: string
   pipewire_ok: boolean
@@ -84,6 +85,7 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
     return null
   }
 
+  const isLinux = diagnostic.os === 'linux'
   const hasIssues = diagnostic.issues.length > 0
   const criticalIssues = diagnostic.issues.filter(i => i.severity === 'error')
   const warnings = diagnostic.issues.filter(i => i.severity === 'warning')
@@ -106,20 +108,28 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="setup-wizard__diagnostic-box">
-          <div>session: {diagnostic.session_type} | compositor: {diagnostic.compositor}</div>
-          <div>
-            <StatusIcon ok={diagnostic.pipewire_ok} /> pipewire
-            {'  '}
-            <StatusIcon ok={diagnostic.pipewire_pulse_ok} /> pipewire-pulse
-            {'  '}
-            <StatusIcon ok={diagnostic.portal_ok} /> portal ({diagnostic.portal_backend})
+        {isLinux ? (
+          <div className="setup-wizard__diagnostic-box">
+            <div>session: {diagnostic.session_type} | compositor: {diagnostic.compositor}</div>
+            <div>
+              <StatusIcon ok={diagnostic.pipewire_ok} /> pipewire
+              {'  '}
+              <StatusIcon ok={diagnostic.pipewire_pulse_ok} /> pipewire-pulse
+              {'  '}
+              <StatusIcon ok={diagnostic.portal_ok} /> portal ({diagnostic.portal_backend})
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="setup-wizard__diagnostic-box">
+            <div>platform: {diagnostic.os || 'unknown'}</div>
+          </div>
+        )}
 
         {!hasIssues && (
           <p className="setup-wizard__status-all-ok">
-            environment looks good — you're all set
+            {isLinux
+              ? "environment looks good — you're all set"
+              : 'screen capture and audio use native APIs on this platform — no setup required'}
           </p>
         )}
 

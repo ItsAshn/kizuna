@@ -2,6 +2,7 @@ use serde::Serialize;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct EnvDiagnostic {
+    pub os: String,
     pub session_type: String,
     pub compositor: String,
     pub pipewire_ok: bool,
@@ -19,30 +20,44 @@ pub struct EnvIssue {
     pub fix_command: Option<String>,
 }
 
+#[cfg(target_os = "linux")]
 fn runtime_dir() -> String {
     std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".into())
 }
 
+#[cfg(target_os = "linux")]
 fn detect_portal_backend(compositor: &str) -> String {
     let portal_dir = "/usr/share/xdg-desktop-portal/portals";
-    let compositor_lower = compositor.to_lowercase();
+    // XDG_CURRENT_DESKTOP may be a colon-separated list (e.g. "pop:GNOME"), and
+    // `.portal` files list the desktop names case-insensitively and lowercased
+    // (e.g. `UseIn=hyprland`). Normalise both sides before comparing.
+    let wanted: Vec<String> = compositor
+        .to_lowercase()
+        .split(':')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
     if let Ok(entries) = std::fs::read_dir(portal_dir) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
-            if name.ends_with(".portal") {
-                if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                    if content.contains(&format!("UseIn={}", compositor))
-                        || content.contains(&format!("UseIn={};", compositor))
-                    {
-                        return name.replace(".portal", "");
-                    }
-                    if content.contains(&format!("default={};", compositor_lower))
-                        || content.contains(&format!("default={}:", compositor_lower))
-                        || content.contains(&format!("default={}\n", compositor_lower))
-                        || content.contains(&format!("default={}", compositor_lower))
-                    {
-                        return name.replace(".portal", "");
-                    }
+            if !name.ends_with(".portal") {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(entry.path()) else {
+                continue;
+            };
+            for line in content.lines() {
+                let line = line.trim().to_lowercase();
+                let value = line
+                    .strip_prefix("usein=")
+                    .or_else(|| line.strip_prefix("default="));
+                let Some(value) = value else { continue };
+                let matched = value
+                    .split([';', ':', ','])
+                    .map(|s| s.trim())
+                    .any(|p| !p.is_empty() && wanted.iter().any(|w| w == p));
+                if matched {
+                    return name.replace(".portal", "");
                 }
             }
         }
@@ -52,6 +67,28 @@ fn detect_portal_backend(compositor: &str) -> String {
 
 #[tauri::command]
 pub async fn check_environment() -> Result<EnvDiagnostic, String> {
+    let os = std::env::consts::OS.to_string();
+
+    // PipeWire and XDG desktop portals are Linux-only. On macOS and Windows,
+    // screen capture and audio go through native APIs, so there is nothing to
+    // diagnose — report a clean "native" environment instead of surfacing
+    // spurious portal/pipewire failures.
+    #[cfg(not(target_os = "linux"))]
+    {
+        return Ok(EnvDiagnostic {
+            os,
+            session_type: "native".into(),
+            compositor: "native".into(),
+            pipewire_ok: true,
+            pipewire_pulse_ok: true,
+            portal_ok: true,
+            portal_backend: "native".into(),
+            issues: Vec::new(),
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    {
     let session_type =
         std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "unknown".into());
     let is_wayland =
@@ -68,7 +105,6 @@ pub async fn check_environment() -> Result<EnvDiagnostic, String> {
     let pipewire_pulse_ok =
         std::path::Path::new(&format!("{}/pulse/native", rd)).exists();
 
-    #[cfg(target_os = "linux")]
     let (portal_ok, portal_backend) = if is_wayland {
         let backend = detect_portal_backend(&compositor);
         let ok = ashpd::desktop::screencast::Screencast::new().await.is_ok();
@@ -76,8 +112,6 @@ pub async fn check_environment() -> Result<EnvDiagnostic, String> {
     } else {
         (false, "none".into())
     };
-    #[cfg(not(target_os = "linux"))]
-    let (portal_ok, portal_backend) = (false, "none".into());
 
     let mut issues = Vec::new();
 
@@ -128,6 +162,7 @@ pub async fn check_environment() -> Result<EnvDiagnostic, String> {
     }
 
     Ok(EnvDiagnostic {
+        os,
         session_type,
         compositor,
         pipewire_ok,
@@ -136,8 +171,10 @@ pub async fn check_environment() -> Result<EnvDiagnostic, String> {
         portal_backend,
         issues,
     })
+    }
 }
 
+#[cfg(target_os = "linux")]
 fn into_distro_command(pkg: &str) -> String {
     let (install_cmd, enable_cmd) = detect_distro_commands(pkg);
     if enable_cmd.is_empty() {
@@ -147,6 +184,7 @@ fn into_distro_command(pkg: &str) -> String {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn detect_distro_commands(pkg: &str) -> (String, String) {
     if !pkg.contains("pipewire") {
         if std::path::Path::new("/etc/arch-release").exists() {

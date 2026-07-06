@@ -31,8 +31,20 @@ function AppContent() {
 
   useEffect(() => {
     const dismissed = localStorage.getItem(WIZARD_KEY)
-    if (!dismissed && !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
-      setShowWizard(true)
+    const inTauri = !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+    if (dismissed || !inTauri) return
+    // The setup wizard only exists to guide Linux users through PipeWire/portal
+    // setup. On macOS and Windows screen capture uses native APIs with nothing
+    // to configure, so don't auto-pop the dialog there.
+    let cancelled = false
+    import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke<{ os: string }>('get_environment'))
+      .then((env) => {
+        if (!cancelled && env.os === 'linux') setShowWizard(true)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
     }
   }, [])
 
