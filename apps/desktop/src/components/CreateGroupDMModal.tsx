@@ -134,7 +134,7 @@ export default function CreateGroupDMModal({ onClose }: CreateGroupDMModalProps)
                 >
                   <div className="cgdm__member-avatar">
                     {member.avatar ? (
-                      <img src={member.avatar} alt="" />
+                      <img src={member.avatar} alt="" loading="lazy" decoding="async" />
                     ) : (
                       (member.display_name || member.username)[0]?.toUpperCase() || '?'
                     )}

@@ -18,6 +18,7 @@ interface ModalProps {
 
 export default function Modal({ open, onClose, title, children, footer, className = '' }: ModalProps) {
   const [closing, setClosing] = useState(false)
+  const [blurred, setBlurred] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
   const titleId = `modal-title-${title.replace(/\s+/g, '-').toLowerCase()}`
@@ -89,14 +90,16 @@ export default function Modal({ open, onClose, title, children, footer, classNam
 
   useEffect(() => {
     setClosing(false)
+    if (!open) setBlurred(false)
   }, [open])
 
   if (!open) return null
 
   return (
     <div
-      className={`modal-overlay${closing ? ' modal-overlay--closing' : ''}`}
+      className={`modal-overlay${closing ? ' modal-overlay--closing' : ''}${blurred ? ' modal-overlay--blurred' : ''}`}
       onClick={handleClose}
+      onAnimationEnd={() => { if (!closing) setBlurred(true) }}
       role="presentation"
     >
       <div

@@ -336,13 +336,13 @@ authRoutes.get('/users', authMiddleware, (c) => {
 
   const users = db
     .prepare(
-       `SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.status_text, u.status_emoji, u.status_sticker_id, u.reset_requested_at, sm.is_host
+       `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at, u.status_text, u.status_emoji, u.status_sticker_id, u.reset_requested_at, sm.is_host
        FROM users u
        LEFT JOIN server_members sm ON sm.user_id = u.id
        ORDER BY u.username
        LIMIT ? OFFSET ?`,
     )
-    .all(limit, offset) as { id: string; username: string; display_name: string; avatar: string | null; banner: string | null; public_key: string | null; last_seen_at: number | null; status_text: string | null; status_emoji: string | null; status_sticker_id: string | null; reset_requested_at: number | null; is_host: number }[]
+    .all(limit, offset) as { id: string; username: string; display_name: string; avatar: string | null; public_key: string | null; last_seen_at: number | null; status_text: string | null; status_emoji: string | null; status_sticker_id: string | null; reset_requested_at: number | null; is_host: number }[]
 
   if (users.length === 0) {
     return c.json({ users: [], total, offset, limit })

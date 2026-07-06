@@ -42,8 +42,11 @@
   align-items: center;
   justify-content: center;
   background: var(--modal-backdrop);
-  backdrop-filter: blur(4px);
   animation: modalOverlayFadeIn 0.2s ease-out;
+}
+
+.modal-overlay--blurred {
+  backdrop-filter: blur(4px);
 }
 
 .modal-overlay--closing {

@@ -107,7 +107,7 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
 
   return createPortal(
     <div ref={ref} className="user-profile-card" style={{ position: 'fixed', top: pos?.top ?? 0, left: pos?.left ?? 0, visibility: pos ? 'visible' : 'hidden' }}>
-      <div className="user-profile-card__banner" style={member.banner ? { backgroundImage: `url(${member.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { backgroundColor: member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)') }} />
+      <div className="user-profile-card__banner" style={profile.banner ? { backgroundImage: `url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { backgroundColor: member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)') }} />
       <div className="user-profile-card__avatar-wrap">
         <Avatar
           src={member.avatar}
