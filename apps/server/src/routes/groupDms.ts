@@ -1,15 +1,10 @@
 import { Hono } from 'hono'
-import type { Context } from 'hono'
 import type Database from 'better-sqlite3'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
 import { authMiddleware, adminMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
-import type { AuthUser } from '../middleware/auth'
-
-interface IOServer {
-  to(room: string): { emit(event: string, data: unknown): void }
-  emit(event: string, data: unknown): void
-}
+import { getAuth } from '../utils/auth'
+import { getIo } from '../utils/io'
 
 interface GroupDMChannelRow {
   id: string
@@ -34,8 +29,6 @@ interface GroupDMMessageWithOwner {
   reply_to_content: string | null
   owner_id: string
 }
-
-function getAuth(c: Context): AuthUser { return c.get('auth' as never) as AuthUser }
 
 function getMaxMembers(): number {
   return parseInt(process.env.GROUP_DM_MAX_MEMBERS || '10', 10) || 10
@@ -141,7 +134,7 @@ groupDmRoutes.post('/', authMiddleware, async (c) => {
   const formatted = formatGroupDMChannel(db, channel)
 
   try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+    const io = getIo(c)
     if (io) {
       for (const memberId of uniqueIds) {
         io.to(`group-dm:${memberId}`).emit('group-dm:channel-created', formatted)
@@ -192,7 +185,7 @@ groupDmRoutes.patch('/:channelId', authMiddleware, async (c) => {
   const formatted = formatGroupDMChannel(db, updated)
 
   try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+    const io = getIo(c)
     if (io) {
       const members = db.prepare(
         'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
@@ -311,7 +304,7 @@ groupDmRoutes.post('/:channelId/messages', authMiddleware, async (c) => {
   }
 
   try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+    const io = getIo(c)
     if (io) {
       const members = db.prepare(
         'SELECT user_id FROM group_dm_members WHERE channel_id = ? AND user_id != ?'
@@ -345,7 +338,7 @@ groupDmRoutes.delete('/messages/:messageId', authMiddleware, (c) => {
   db.prepare('DELETE FROM group_dm_messages WHERE id = ?').run(messageId)
 
   try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+    const io = getIo(c)
     if (io) {
       const members = db.prepare(
         'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
@@ -397,7 +390,7 @@ groupDmRoutes.patch('/messages/:messageId', authMiddleware, async (c) => {
   }
 
   try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+    const io = getIo(c)
     if (io) {
       const members = db.prepare(
         'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
@@ -445,7 +438,7 @@ groupDmRoutes.post('/:channelId/members', authMiddleware, async (c) => {
   const formatted = formatGroupDMChannel(db, channel)
 
   try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+    const io = getIo(c)
     if (io) {
       const members = db.prepare(
         'SELECT user_id FROM group_dm_members WHERE channel_id = ?'
@@ -490,7 +483,7 @@ groupDmRoutes.delete('/:channelId/members/:userId', authMiddleware, (c) => {
     db.prepare('DELETE FROM group_dm_channels WHERE id = ?').run(channelId)
 
     try {
-      const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+      const io = getIo(c)
       if (io) {
         for (const m of allMembers) {
           io.to(`group-dm:${m.user_id}`).emit('group-dm:channel-deleted', { channel_id: channelId })
@@ -510,7 +503,7 @@ groupDmRoutes.delete('/:channelId/members/:userId', authMiddleware, (c) => {
   db.prepare('DELETE FROM group_dm_members WHERE channel_id = ? AND user_id = ?').run(channelId, targetUserId)
 
   try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+    const io = getIo(c)
     if (io) {
       io.to(`group-dm:${targetUserId}`).emit('group-dm:member-removed', { channel_id: channelId, user_id: targetUserId })
 

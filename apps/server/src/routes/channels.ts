@@ -1,17 +1,11 @@
 import { Hono } from 'hono'
-import type { Context } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, getUserChannelPermissions, getResolvedChannelPermissions, canViewChannel } from '../middleware/auth'
-import type { AuthUser } from '../middleware/auth'
+import { authMiddleware, requirePermission, getUserChannelPermissions, getResolvedChannelPermissions, canViewChannel } from '../middleware/auth'
+import type { HonoEnv } from '../types'
+import { emitIo } from '../utils/io'
 
-interface IOServer {
-  emit(event: string, data: unknown): void
-}
-
-function getAuth(c: Context): AuthUser { return c.get('auth' as never) as AuthUser }
-
-const channelRoutes = new Hono()
+const channelRoutes = new Hono<HonoEnv>()
 
 function mapChannel(row: Record<string, unknown>) {
   let hiddenRoleIds: string[] | null = null
@@ -34,7 +28,7 @@ function mapChannel(row: Record<string, unknown>) {
 
 // GET /channels — list all channels
 channelRoutes.get('/', authMiddleware, (c) => {
-  const user = getAuth(c)
+  const user = c.get('auth')
   const db = getDb()
   const rawChannels = db.prepare(`
     SELECT c.*, cc.name as category_name
@@ -47,12 +41,7 @@ channelRoutes.get('/', authMiddleware, (c) => {
 })
 
 // POST /channels — create channel (manage_channels permission)
-channelRoutes.post('/', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_channels')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+channelRoutes.post('/', authMiddleware, requirePermission('manage_channels'), async (c) => {
   const body = await c.req.json() as { name: string; type: 'text' | 'voice'; topic?: string; locked?: boolean; hidden?: boolean; hidden_role_ids?: string[] | null }
   const { name, type, topic, locked, hidden, hidden_role_ids } = body
   if (!name?.trim()) return c.json({ error: 'Name is required' }, 400)
@@ -69,21 +58,13 @@ channelRoutes.post('/', authMiddleware, async (c) => {
 
   const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(id) as Record<string, unknown>
 
-  try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
-    if (io) io.emit('channel:created', mapChannel(channel))
-  } catch { /* best-effort */ }
+  emitIo(c, 'channel:created', mapChannel(channel))
 
   return c.json({ channel: mapChannel(channel) }, 201)
 })
 
 // PATCH /channels/reorder — reorder channels by position (manage_channels permission)
-channelRoutes.patch('/reorder', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_channels')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+channelRoutes.patch('/reorder', authMiddleware, requirePermission('manage_channels'), async (c) => {
   const body = await c.req.json() as { order: { id: string; position: number }[] }
   const { order } = body
   if (!Array.isArray(order)) return c.json({ error: 'Invalid order' }, 400)
@@ -97,21 +78,13 @@ channelRoutes.patch('/reorder', authMiddleware, async (c) => {
   })
   tx()
 
-  try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
-    if (io) io.emit('channel:reordered', { order })
-  } catch { /* best-effort */ }
+  emitIo(c, 'channel:reordered', { order })
 
   return c.json({ ok: true })
 })
 
 // PATCH /channels/:id — update channel name/topic/lock (manage_channels permission)
-channelRoutes.patch('/:id', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_channels')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+channelRoutes.patch('/:id', authMiddleware, requirePermission('manage_channels'), async (c) => {
   const db = getDb()
   const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(c.req.param('id')) as Record<string, unknown>
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
@@ -150,21 +123,13 @@ channelRoutes.patch('/:id', authMiddleware, async (c) => {
 
   const updated = db.prepare('SELECT * FROM channels WHERE id = ?').get(c.req.param('id')) as Record<string, unknown>
 
-  try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
-    if (io) io.emit('channel:updated', mapChannel(updated))
-  } catch { /* best-effort */ }
+  emitIo(c, 'channel:updated', mapChannel(updated))
 
   return c.json({ channel: mapChannel(updated) })
 })
 
 // DELETE /channels/:id — delete channel (manage_channels permission)
-channelRoutes.delete('/:id', authMiddleware, (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_channels')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+channelRoutes.delete('/:id', authMiddleware, requirePermission('manage_channels'), (c) => {
   const id = c.req.param('id')
   const db = getDb()
   const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(id)
@@ -174,17 +139,14 @@ channelRoutes.delete('/:id', authMiddleware, (c) => {
   db.prepare('DELETE FROM channel_reads WHERE channel_id = ?').run(id)
   db.prepare('DELETE FROM channels WHERE id = ?').run(id)
 
-  try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
-    if (io) io.emit('channel:deleted', { id })
-  } catch { /* best-effort */ }
+  emitIo(c, 'channel:deleted', { id })
 
   return c.json({ ok: true })
 })
 
 // GET /channels/:id/permissions — check user's resolved permissions for a channel
 channelRoutes.get('/:id/permissions', authMiddleware, (c) => {
-  const user = getAuth(c)
+  const user = c.get('auth')
   const channelId = c.req.param('id')!
   const perms = getUserChannelPermissions(user.userId, channelId)
   const allPermissions = [
@@ -197,12 +159,7 @@ channelRoutes.get('/:id/permissions', authMiddleware, (c) => {
 })
 
 // GET /channels/:id/overrides — list all role overrides for a channel
-channelRoutes.get('/:id/overrides', authMiddleware, (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_channels')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+channelRoutes.get('/:id/overrides', authMiddleware, requirePermission('manage_channels'), (c) => {
   const channelId = c.req.param('id')
   const db = getDb()
   const overrides = db.prepare(`
@@ -226,12 +183,7 @@ channelRoutes.get('/:id/overrides', authMiddleware, (c) => {
 })
 
 // PUT /channels/:id/overrides/:roleId — set or update a channel role override
-channelRoutes.put('/:id/overrides/:roleId', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_channels')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+channelRoutes.put('/:id/overrides/:roleId', authMiddleware, requirePermission('manage_channels'), async (c) => {
   const channelId = c.req.param('id')
   const roleId = c.req.param('roleId')
   const body = await c.req.json() as {
@@ -254,21 +206,13 @@ channelRoutes.put('/:id/overrides/:roleId', authMiddleware, async (c) => {
     JSON.stringify(body.deny_permissions || {}),
   )
 
-  try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
-    if (io) io.emit('channel:updated', { id: channelId })
-  } catch {}
+  emitIo(c, 'channel:updated', { id: channelId })
 
   return c.json({ ok: true })
 })
 
 // DELETE /channels/:id/overrides/:roleId — remove a channel role override
-channelRoutes.delete('/:id/overrides/:roleId', authMiddleware, (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_channels')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+channelRoutes.delete('/:id/overrides/:roleId', authMiddleware, requirePermission('manage_channels'), (c) => {
   const channelId = c.req.param('id')
   const roleId = c.req.param('roleId')
   const db = getDb()
@@ -276,10 +220,7 @@ channelRoutes.delete('/:id/overrides/:roleId', authMiddleware, (c) => {
     'DELETE FROM channel_role_overrides WHERE channel_id = ? AND role_id = ?'
   ).run(channelId, roleId)
 
-  try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
-    if (io) io.emit('channel:updated', { id: channelId })
-  } catch {}
+  emitIo(c, 'channel:updated', { id: channelId })
 
   return c.json({ ok: true })
 })

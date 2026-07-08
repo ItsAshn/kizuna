@@ -1,8 +1,7 @@
-import type { Context } from 'hono';
-import type { HonoEnv, AuthUser } from '../types';
+import type { Context } from 'hono'
+import type { AuthUser } from '../types'
 
-type Ctx = Context<HonoEnv>;
-
-export function getAuth(c: Ctx): AuthUser | null {
-  return c.get('auth') ?? null;
+// The authenticated user set by authMiddleware — only call on routes behind it.
+export function getAuth(c: Context): AuthUser {
+  return c.get('auth' as never) as AuthUser
 }

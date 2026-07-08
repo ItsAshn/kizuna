@@ -2,11 +2,8 @@ import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
-import type { Context } from 'hono'
-import type { AuthUser } from '../types'
-import type { Server as IoServer } from 'socket.io'
-
-function getAuth(c: Context): AuthUser { return c.get('auth') }
+import { getAuth } from '../utils/auth'
+import { getIo, emitToRoom } from '../utils/io'
 
 const threadsRoutes = new Hono()
 
@@ -55,7 +52,7 @@ threadsRoutes.post('/:channelId', authMiddleware, async (c) => {
     db.prepare('UPDATE threads SET message_count = message_count + 1 WHERE id = ?').run(id)
   }
 
-  const io = c.get('io' as never) as IoServer | undefined
+  const io = getIo(c)
   if (io) {
     io.to(channelId).emit('thread:created', {
       id,
@@ -93,12 +90,7 @@ threadsRoutes.delete('/:channelId/:threadId', authMiddleware, (c) => {
   db.prepare('DELETE FROM messages WHERE thread_id = ?').run(threadId)
   db.prepare('DELETE FROM threads WHERE id = ?').run(threadId)
 
-  try {
-    const io = c.get('io' as never) as IoServer | undefined
-    if (io) {
-      io.to(channelId).emit('thread:deleted', { id: threadId, channel_id: channelId } as never)
-    }
-  } catch { /* best-effort */ }
+  emitToRoom(c, channelId, 'thread:deleted', { id: threadId, channel_id: channelId } as never)
 
   return c.json({ ok: true })
 })
@@ -191,7 +183,7 @@ threadsRoutes.post('/:channelId/:threadId/messages', authMiddleware, async (c) =
     thread_id: threadId,
   }
 
-  const io = c.get('io' as never) as IoServer | undefined
+  const io = getIo(c)
   if (io) {
     io.to(threadId).emit('thread:message:new', message as never)
   }

@@ -1,12 +1,9 @@
 import { Hono } from 'hono'
-import type { Context } from 'hono'
 import { getDb } from '../db'
 import { authMiddleware, hasPermission, getUserPermissions, isUserAdmin } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
-import type { AuthUser } from '../types'
-import type { Server as IoServer } from 'socket.io'
-
-function getAuth(c: Context): AuthUser { return c.get('auth') }
+import { getAuth } from '../utils/auth'
+import { getIo } from '../utils/io'
 
 const pollsRouter = new Hono()
 
@@ -57,7 +54,7 @@ pollsRouter.post('/channels/:channelId/polls', authMiddleware, async (c) => {
     createdAt: now * 1000,
   }
 
-  const io = c.get('io' as never) as IoServer | undefined
+  const io = getIo(c)
   io?.to(channelId).emit('poll:created', pollData)
 
   return c.json({ poll: { id: pollId, question, options: dbOptions } })
@@ -114,7 +111,7 @@ pollsRouter.post('/dms/channel/:channelId/polls', authMiddleware, async (c) => {
   }
 
   try {
-    const io: IoServer | undefined = c.get('io' as never) as IoServer | undefined
+    const io = getIo(c)
     if (io) {
       io.to(`dm:${toId}`).emit('poll:created', pollData)
       io.to(`user:${userId}`).emit('poll:created', pollData)
@@ -174,7 +171,7 @@ pollsRouter.post('/group-dms/:channelId/polls', authMiddleware, async (c) => {
   }
 
   try {
-    const io: IoServer | undefined = c.get('io' as never) as IoServer | undefined
+    const io = getIo(c)
     if (io) {
       const members = db.prepare(
         'SELECT user_id FROM group_dm_members WHERE channel_id = ? AND user_id != ?'
@@ -258,7 +255,7 @@ pollsRouter.post('/polls/:pollId/vote', authMiddleware, async (c) => {
   const userVotes = db.prepare('SELECT option_id FROM poll_votes WHERE poll_id = ? AND user_id = ?').all(pollId, userId) as { option_id: string }[]
 
   const payload = { pollId, options, totalVotes: options.reduce((s, o) => s + o.vote_count, 0) }
-  const io = c.get('io' as never) as IoServer | undefined
+  const io = getIo(c)
 
   if (io) {
     if (poll.channel_type === 'dm') {
@@ -300,7 +297,7 @@ pollsRouter.delete('/polls/:pollId', authMiddleware, async (c) => {
   db.prepare('DELETE FROM poll_options WHERE poll_id = ?').run(pollId)
   db.prepare('DELETE FROM polls WHERE id = ?').run(pollId)
 
-  const io = c.get('io' as never) as IoServer | undefined
+  const io = getIo(c)
   if (io) {
     const payload = { pollId, channelId: poll.channel_id, channelType: poll.channel_type }
     if (poll.channel_type === 'dm') {

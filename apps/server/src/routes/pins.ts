@@ -1,12 +1,10 @@
 import { Hono } from 'hono'
-import type { Context } from 'hono'
 import { getDb } from '../db'
 import { authMiddleware } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
-import type { AuthUser } from '../types'
 import type { Server as IoServer } from 'socket.io'
-
-function getAuth(c: Context): AuthUser { return c.get('auth') }
+import { getAuth } from '../utils/auth'
+import { getIo } from '../utils/io'
 
 function broadcastPin(io: IoServer | undefined, channelId: string, event: string, data: Record<string, unknown>) {
   if (io) {
@@ -83,7 +81,7 @@ pinsRoutes.post('/:channelId/:messageId', authMiddleware, (c) => {
     authorUsername: msg?.author_username || '',
   }
 
-  const io = c.get('io' as never) as IoServer | undefined
+  const io = getIo(c)
   broadcastPin(io, channelId!, 'message:pin', pin)
 
   return c.json({ success: true, id })
@@ -96,7 +94,7 @@ pinsRoutes.delete('/:channelId/:messageId', authMiddleware, (c) => {
 
   db.prepare('DELETE FROM pinned_messages WHERE channel_id = ? AND message_id = ?').run(channelId, messageId)
 
-  const io = c.get('io' as never) as IoServer | undefined
+  const io = getIo(c)
   broadcastPin(io, channelId!, 'message:unpin', { channelId, messageId })
 
   return c.json({ success: true })

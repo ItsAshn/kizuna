@@ -1,15 +1,9 @@
 import { Hono } from 'hono'
-import type { Context } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
-import type { AuthUser } from '../middleware/auth'
-
-interface IOServer {
-  to(room: string): { emit(event: string, data: unknown): void }
-  emit(event: string, data: unknown): void
-}
-function getAuth(c: Context): AuthUser { return c.get('auth' as never) as AuthUser }
+import { getAuth } from '../utils/auth'
+import { getIo } from '../utils/io'
 
 function getOrCreateDMChannel(db: ReturnType<typeof getDb>, userId: string, otherUserId: string) {
   const sortedIds = [userId, otherUserId].sort()
@@ -202,7 +196,7 @@ dmRoutes.post('/channel/:channelId/messages', authMiddleware, async (c) => {
   }
 
   try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+    const io = getIo(c)
     if (io) {
       io.to(`dm:${toId}`).emit('dm:received', message)
       io.to(`user:${user.userId}`).emit('dm:sent', message)
@@ -231,7 +225,7 @@ dmRoutes.delete('/messages/:messageId', authMiddleware, (c) => {
   db.prepare('DELETE FROM direct_messages WHERE id = ?').run(messageId)
 
   try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+    const io = getIo(c)
     if (io) {
       const toId = dm.user1_id === user.userId ? dm.user2_id : dm.user1_id
       ;io.to(`dm:${toId}`).emit('dm:delete', { id: messageId, channel_id: dm.channel_id })
@@ -278,7 +272,7 @@ dmRoutes.patch('/messages/:messageId', authMiddleware, async (c) => {
   }
 
   try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+    const io = getIo(c)
     if (io) {
       const toId = dm.user1_id === user.userId ? dm.user2_id : dm.user1_id
       ;io.to(`dm:${toId}`).emit('dm:edit', message)

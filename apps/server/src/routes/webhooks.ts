@@ -4,10 +4,8 @@ import { authMiddleware } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 import crypto from 'crypto'
 import type { Context } from 'hono'
-import type { AuthUser } from '../types'
-import type { Server as IoServer } from 'socket.io'
-
-function getAuth(c: Context): AuthUser { return c.get('auth') }
+import { getAuth } from '../utils/auth'
+import { emitToRoom } from '../utils/io'
 
 const webhooksRouter = new Hono()
 
@@ -179,10 +177,7 @@ webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
     reactions: [],
   }
 
-  try {
-    const io = c.get('io' as never) as IoServer | undefined
-    io?.to(webhook.channel_id).emit('message:new', message as never)
-  } catch { /* best-effort */ }
+  emitToRoom(c, webhook.channel_id, 'message:new', message as never)
 
   return c.json({ ok: true, messageId })
 })

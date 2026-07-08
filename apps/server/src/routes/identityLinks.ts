@@ -4,10 +4,7 @@ import { randomBytes } from 'node:crypto'
 import { getDb } from '../db'
 import { authMiddleware } from '../middleware/auth'
 import { sensitiveAuthLimiter } from '../middleware/rateLimiter'
-import type { AuthUser } from '../middleware/auth'
-import type { Context } from 'hono'
-
-function getAuth(c: Context): AuthUser { return c.get('auth') }
+import { getAuth } from '../utils/auth'
 
 function normalizeUrl(url: string): string {
   return url.replace(/\/$/, '')

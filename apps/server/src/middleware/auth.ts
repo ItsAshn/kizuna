@@ -418,6 +418,17 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
   }
 }
 
+export function requirePermission(permission: string, message = 'Forbidden') {
+  return async (c: Context, next: Next): Promise<Response | void> => {
+    const user = c.get('auth' as never) as AuthUser | undefined
+    const perms = user ? getUserPermissions(user.userId) : null
+    if (!perms || !hasPermission(perms, permission)) {
+      return c.json({ error: message }, 403)
+    }
+    await next()
+  }
+}
+
 export async function adminMiddleware(c: Context, next: Next): Promise<Response | void> {
   const user = c.get('auth' as never) as AuthUser | undefined
   if (!user || !isUserAdmin(user.userId)) {

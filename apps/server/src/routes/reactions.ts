@@ -1,11 +1,9 @@
 import { Hono } from 'hono'
 import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
-import type { AuthUser } from '../middleware/auth'
-import type { Context } from 'hono'
 import type Database from 'better-sqlite3'
-import type { Server as IoServer } from 'socket.io'
-function getAuth(c: Context): AuthUser { return c.get('auth') }
+import { getAuth } from '../utils/auth'
+import { getIo } from '../utils/io'
 
 const reactionRoutes = new Hono()
 
@@ -90,7 +88,7 @@ reactionRoutes.post('/:messageId', authMiddleware, async (c) => {
   const reactions = getReactionsForMessage(db, messageId)
 
   try {
-    const io = c.get('io' as never) as IoServer | undefined
+    const io = getIo(c)
     if (io) {
       const payload = {
         messageId,
@@ -130,7 +128,7 @@ reactionRoutes.delete('/:messageId/:reactionKey', authMiddleware, (c) => {
   const reactions = getReactionsForMessage(db, messageId)
 
   try {
-    const io = c.get('io' as never) as IoServer | undefined
+    const io = getIo(c)
     if (io) {
       const payload = {
         messageId,

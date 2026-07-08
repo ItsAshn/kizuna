@@ -1,14 +1,13 @@
-import { Hono, type Context } from 'hono'
+import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'node:path'
 import fs from 'node:fs'
 import AdmZip from 'adm-zip'
 import { getDb } from '../db'
-import { authMiddleware, isUserAdmin } from '../middleware/auth'
-import type { AuthUser } from '../middleware/auth'
+import { adminMiddleware, authMiddleware } from '../middleware/auth'
 import { processImage, shouldProcessImage } from '../media/imageProcessor'
 import { isTaggingEnabled, generateAndStoreTags, generateTags, loadTagger, unloadTagger, getTaggerStatus } from '../media/tagGenerator'
-function getAuth(c: Context): AuthUser { return c.get('auth' as never) as AuthUser }
+import { getAuth } from '../utils/auth'
 
 const gifRoutes = new Hono()
 
@@ -194,9 +193,8 @@ gifRoutes.get('/packs', authMiddleware, (c) => {
 })
 
 // POST /api/gifs/upload — upload a single GIF (admin only)
-gifRoutes.post('/upload', authMiddleware, async (c) => {
+gifRoutes.post('/upload', authMiddleware, adminMiddleware, async (c) => {
   const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   const contentLength = parseInt(c.req.header('content-length') || '0', 10)
   if (contentLength > MAX_GIF_SIZE) {
@@ -239,9 +237,8 @@ gifRoutes.post('/upload', authMiddleware, async (c) => {
 })
 
 // POST /api/gifs/pack — upload a GIF pack as ZIP (admin only)
-gifRoutes.post('/pack', authMiddleware, async (c) => {
+gifRoutes.post('/pack', authMiddleware, adminMiddleware, async (c) => {
   const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   const contentLength = parseInt(c.req.header('content-length') || '0', 10)
   if (contentLength > MAX_PACK_SIZE) {
@@ -350,9 +347,8 @@ gifRoutes.post('/pack', authMiddleware, async (c) => {
 })
 
 // POST /api/gifs/sticker-pack — upload a sticker pack as ZIP (admin only)
-gifRoutes.post('/sticker-pack', authMiddleware, async (c) => {
+gifRoutes.post('/sticker-pack', authMiddleware, adminMiddleware, async (c) => {
   const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   const contentLength = parseInt(c.req.header('content-length') || '0', 10)
   if (contentLength > MAX_PACK_SIZE) {
@@ -424,9 +420,8 @@ gifRoutes.post('/sticker-pack', authMiddleware, async (c) => {
 })
 
 // POST /api/gifs/sticker — upload a single sticker into an existing or new pack (admin only)
-gifRoutes.post('/sticker', authMiddleware, async (c) => {
+gifRoutes.post('/sticker', authMiddleware, adminMiddleware, async (c) => {
   const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
 
   const contentLength = parseInt(c.req.header('content-length') || '0', 10)
   if (contentLength > MAX_GIF_SIZE) {
@@ -462,9 +457,7 @@ gifRoutes.post('/sticker', authMiddleware, async (c) => {
 })
 
 // POST /api/gifs/load-tagger — load the CLIP tagging model into memory (admin only)
-gifRoutes.post('/load-tagger', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+gifRoutes.post('/load-tagger', authMiddleware, adminMiddleware, async (c) => {
 
   if (!isTaggingEnabled()) return c.json({ error: 'Auto-tagging is not enabled. Set AUTO_TAGGING_ENABLED=true in env.' }, 400)
 
@@ -482,9 +475,7 @@ gifRoutes.post('/load-tagger', authMiddleware, async (c) => {
 })
 
 // POST /api/gifs/unload-tagger — unload the CLIP tagging model from memory (admin only)
-gifRoutes.post('/unload-tagger', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+gifRoutes.post('/unload-tagger', authMiddleware, adminMiddleware, async (c) => {
 
   unloadTagger()
   return c.json({ message: 'Model unloaded' })
@@ -500,9 +491,7 @@ gifRoutes.get('/tagger-status', async (c) => {
 })
 
 // POST /api/gifs/:id/generate-tags — manually trigger tag generation (admin only)
-gifRoutes.post('/:id/generate-tags', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+gifRoutes.post('/:id/generate-tags', authMiddleware, adminMiddleware, async (c) => {
 
   const id = c.req.param('id')
   if (!id) return c.json({ error: 'ID is required' }, 400)
@@ -535,9 +524,7 @@ gifRoutes.post('/:id/generate-tags', authMiddleware, async (c) => {
 })
 
 // POST /api/gifs/:id/confirm-tags — accept suggested tags (admin only)
-gifRoutes.post('/:id/confirm-tags', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+gifRoutes.post('/:id/confirm-tags', authMiddleware, adminMiddleware, async (c) => {
 
   const id = c.req.param('id')
   if (!id) return c.json({ error: 'ID is required' }, 400)
@@ -560,9 +547,7 @@ gifRoutes.post('/:id/confirm-tags', authMiddleware, async (c) => {
 })
 
 // PATCH /api/gifs/:id — update gif/sticker metadata (admin only)
-gifRoutes.patch('/:id', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+gifRoutes.patch('/:id', authMiddleware, adminMiddleware, async (c) => {
 
   const id = c.req.param('id')
   if (!id) return c.json({ error: 'ID is required' }, 400)
@@ -587,9 +572,7 @@ gifRoutes.patch('/:id', authMiddleware, async (c) => {
 })
 
 // DELETE /api/gifs/pack/:packName — delete an entire sticker pack (admin only)
-gifRoutes.delete('/pack/:packName', authMiddleware, (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+gifRoutes.delete('/pack/:packName', authMiddleware, adminMiddleware, (c) => {
 
   const packName = c.req.param('packName') || ''
   if (!packName) return c.json({ error: 'Pack name is required' }, 400)
@@ -608,9 +591,7 @@ gifRoutes.delete('/pack/:packName', authMiddleware, (c) => {
 })
 
 // DELETE /api/gifs/:id — delete a single gif/sticker (admin only)
-gifRoutes.delete('/:id', authMiddleware, (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+gifRoutes.delete('/:id', authMiddleware, adminMiddleware, (c) => {
 
   const id = c.req.param('id') || ''
   if (!id) return c.json({ error: 'ID is required' }, 400)

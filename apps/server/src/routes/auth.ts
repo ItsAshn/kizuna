@@ -4,14 +4,13 @@ import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { getDb, deleteUserAccount } from '../db'
 import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getUserPermissions, getJwtSecret, assignDefaultRoles } from '../middleware/auth'
-import type { AuthUser, JwtPayload } from '../middleware/auth'
-import type { Context } from 'hono'
-import type { Server as IoServer } from 'socket.io'
+import type { JwtPayload } from '../middleware/auth'
 import { generateChallenge, verifyPoW } from '../middleware/pow'
 import { sensitiveAuthLimiter } from '../middleware/rateLimiter'
 import { getMemberById } from '../routes/serverInfo'
 import jwt from 'jsonwebtoken'
-function getAuth(c: Context): AuthUser { return c.get('auth') }
+import { getAuth } from '../utils/auth'
+import { getIo, emitIo } from '../utils/io'
 
 const authRoutes = new Hono()
 
@@ -99,7 +98,7 @@ authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
     'Set-Cookie',
     `kizuna_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
   )
-  try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:added', getMemberById(id)) } catch {}
+  emitIo(c, 'member:added', getMemberById(id))
 
   return c.json(
       {
@@ -165,7 +164,7 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
     if (!member) {
       member = { role: 'member', is_host: 0 }
     }
-    try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:added', getMemberById(user.id)) } catch {}
+    emitIo(c, 'member:added', getMemberById(user.id))
   }
 
   const tokenId = uuidv4()
@@ -272,7 +271,7 @@ authRoutes.patch('/me/status', authMiddleware, async (c) => {
   db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values)
 
   try {
-    const io = c.get('io' as never) as IoServer | undefined
+    const io = getIo(c)
     if (io) {
       io.emit('user:status', {
         userId: auth.userId,
@@ -589,7 +588,7 @@ authRoutes.delete('/me', authMiddleware, async (c) => {
   deleteUserAccount(auth.userId, deleteData)
 
   c.header('Set-Cookie', 'kizuna_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
-  try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:removed', auth.userId) } catch {}
+  emitIo(c, 'member:removed', auth.userId)
   return c.json({ ok: true })
 })
 

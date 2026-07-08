@@ -5,12 +5,10 @@ import jwt from 'jsonwebtoken'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb, getDbPath } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin, isUserHost, assignDefaultRoles, clearPermissionCache } from '../middleware/auth'
+import { requirePermission, adminMiddleware, authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin, isUserHost, assignDefaultRoles, clearPermissionCache } from '../middleware/auth'
 import { getAllPeers } from '../socket/voiceHandler'
-import type { AuthUser } from '../middleware/auth'
-import type { Context } from 'hono'
-import type { Server as IoServer } from 'socket.io'
-function getAuth(c: Context): AuthUser { return c.get('auth') }
+import { getAuth } from '../utils/auth'
+import { getIo, emitIo } from '../utils/io'
 
 export function getMemberById(userId: string) {
   const db = getDb()
@@ -212,9 +210,7 @@ serverInfoRoutes.get('/admins', (c) => {
   return c.json({ admins })
 })
 
-serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+serverInfoRoutes.patch('/settings', authMiddleware, adminMiddleware, async (c) => {
 
   const body = await c.req.json() as { name?: string; icon?: string | null; background_blur?: number; custom_css?: string | null; voice_bitrate_kbps?: number; profanity_filter_enabled?: boolean; blocked_words?: string[] }
   const { name, icon, background_blur, custom_css, voice_bitrate_kbps, profanity_filter_enabled, blocked_words } = body
@@ -263,7 +259,7 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
         transport.setMaxIncomingBitrate(bps).catch(() => {})
       }
     }
-    const io = c.get('io' as never) as IoServer | undefined
+    const io = getIo(c)
     if (io) {
       io.emit('server:voiceBitrateChanged', { voiceBitrateKbps: kbps })
     }
@@ -287,9 +283,7 @@ serverInfoRoutes.patch('/settings', authMiddleware, async (c) => {
   return c.json(getServerInfo())
 })
 
-serverInfoRoutes.post('/announce', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+serverInfoRoutes.post('/announce', authMiddleware, adminMiddleware, async (c) => {
 
   const body = await c.req.json() as { title: string; body: string }
   const { title, body: announceBody } = body
@@ -298,7 +292,7 @@ serverInfoRoutes.post('/announce', authMiddleware, async (c) => {
   }
 
   try {
-    const io = c.get('io' as never) as IoServer | undefined
+    const io = getIo(c)
     if (!io) return c.json({ error: 'Socket.IO not available' }, 500)
     io.to('__notifications__').emit('server:announce', { title, body: announceBody })
     return c.json({ ok: true })
@@ -307,12 +301,8 @@ serverInfoRoutes.post('/announce', authMiddleware, async (c) => {
   }
 })
 
-serverInfoRoutes.post('/invites', authMiddleware, async (c) => {
+serverInfoRoutes.post('/invites', authMiddleware, requirePermission('manage_invites'), async (c) => {
   const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_invites')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
 
   const body = await c.req.json() as { maxUses?: number | null; expiresInHours?: number | null }
   const { maxUses, expiresInHours } = body
@@ -350,12 +340,7 @@ serverInfoRoutes.post('/invites', authMiddleware, async (c) => {
   }, 201)
 })
 
-serverInfoRoutes.get('/invites', authMiddleware, (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_invites')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+serverInfoRoutes.get('/invites', authMiddleware, requirePermission('manage_invites'), (c) => {
   const db = getDb()
   const now = Math.floor(Date.now() / 1000)
   const invites = db.prepare(
@@ -378,12 +363,7 @@ serverInfoRoutes.get('/invites', authMiddleware, (c) => {
   return c.json({ invites: result })
 })
 
-serverInfoRoutes.delete('/invites/:code', authMiddleware, (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_invites')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+serverInfoRoutes.delete('/invites/:code', authMiddleware, requirePermission('manage_invites'), (c) => {
   const code = (c.req.param('code') || '').toUpperCase()
   const db = getDb()
   const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code)
@@ -431,13 +411,12 @@ serverInfoRoutes.post('/join/:code', async (c) => {
 
     db.prepare('INSERT OR REPLACE INTO server_members (user_id, role) VALUES (?, ?)').run(userId, 'member')
     assignDefaultRoles(userId)
-    try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:added', getMemberById(userId)) } catch {}
+    emitIo(c, 'member:added', getMemberById(userId))
     return c.json({ ok: true, alreadyMember: false })
   }
 
   return c.json({ ok: true, alreadyMember: false, needsRegistration: true })
 })
-
 
 serverInfoRoutes.get('/resolve/:code', (c) => {
   const code = (c.req.param('code') || '').toUpperCase()
@@ -458,9 +437,7 @@ serverInfoRoutes.get('/resolve/:code', (c) => {
   }
 })
 
-serverInfoRoutes.patch('/members/:userId/role', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+serverInfoRoutes.patch('/members/:userId/role', authMiddleware, adminMiddleware, async (c) => {
 
   const targetUserId = c.req.param('userId') || ''
   if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
@@ -486,19 +463,15 @@ serverInfoRoutes.patch('/members/:userId/role', authMiddleware, async (c) => {
 
   const updatedMember = getMemberById(targetUserId)
   if (updatedMember) {
-    try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:updated', updatedMember) } catch {}
+    emitIo(c, 'member:updated', updatedMember)
   }
 
   clearPermissionCache(targetUserId)
   return c.json({ ok: true })
 })
 
-serverInfoRoutes.delete('/members/:userId', authMiddleware, (c) => {
+serverInfoRoutes.delete('/members/:userId', authMiddleware, requirePermission('kick_members'), (c) => {
   const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'kick_members')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
 
   const targetUserId = c.req.param('userId') || ''
   if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
@@ -518,13 +491,11 @@ serverInfoRoutes.delete('/members/:userId', authMiddleware, (c) => {
 
   db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
   clearPermissionCache(targetUserId)
-  try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:removed', { userId: targetUserId }) } catch {}
+  emitIo(c, 'member:removed', { userId: targetUserId })
   return c.json({ ok: true })
 })
 
-serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, adminMiddleware, async (c) => {
 
   const targetUserId = c.req.param('userId') || ''
   if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
@@ -544,7 +515,7 @@ serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, async (c)
   clearPermissionCache(targetUserId)
   const updatedMember = getMemberById(targetUserId)
   if (updatedMember) {
-    try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:updated', updatedMember) } catch {}
+    emitIo(c, 'member:updated', updatedMember)
   }
   return c.json({ ok: true })
 })
@@ -576,7 +547,7 @@ serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
   clearPermissionCache(targetUserId)
   const updatedMember = getMemberById(targetUserId)
   if (updatedMember) {
-    try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:updated', updatedMember) } catch {}
+    emitIo(c, 'member:updated', updatedMember)
   }
   return c.json({ ok: true })
 })
@@ -604,14 +575,12 @@ serverInfoRoutes.delete('/members/:userId/roles/:roleId', authMiddleware, (c) =>
   clearPermissionCache(targetUserId)
   const updatedMember = getMemberById(targetUserId)
   if (updatedMember) {
-    try { const io = c.get('io' as never) as IoServer | undefined; if (io) io.emit('member:updated', updatedMember) } catch {}
+    emitIo(c, 'member:updated', updatedMember)
   }
   return c.json({ ok: true })
 })
 
-serverInfoRoutes.post('/members/:userId/generate-reset', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+serverInfoRoutes.post('/members/:userId/generate-reset', authMiddleware, adminMiddleware, async (c) => {
 
   const targetUserId = c.req.param('userId') || ''
   if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
@@ -635,9 +604,7 @@ serverInfoRoutes.post('/members/:userId/generate-reset', authMiddleware, async (
 })
 
 // POST /background — upload background image (admin only)
-serverInfoRoutes.post('/background', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+serverInfoRoutes.post('/background', authMiddleware, adminMiddleware, async (c) => {
 
   const contentLength = parseInt(c.req.header('content-length') || '0', 10)
   if (contentLength > MAX_BACKGROUND_SIZE) {
@@ -712,9 +679,7 @@ serverInfoRoutes.get('/background', (c) => {
 })
 
 // DELETE /background — remove background image (admin only)
-serverInfoRoutes.delete('/background', authMiddleware, (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+serverInfoRoutes.delete('/background', authMiddleware, adminMiddleware, (c) => {
 
   try {
     const files = fs.readdirSync(BACKGROUNDS_DIR)
@@ -726,9 +691,7 @@ serverInfoRoutes.delete('/background', authMiddleware, (c) => {
 })
 
 // GET /storage — storage stats (admin only)
-serverInfoRoutes.get('/storage', authMiddleware, (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+serverInfoRoutes.get('/storage', authMiddleware, adminMiddleware, (c) => {
 
   const db = getDb()
   const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
@@ -778,9 +741,7 @@ serverInfoRoutes.get('/storage', authMiddleware, (c) => {
 })
 
 // POST /cleanup/orphans — delete orphaned attachment files (admin only)
-serverInfoRoutes.post('/cleanup/orphans', authMiddleware, (c) => {
-  const user = getAuth(c)
-  if (!isUserAdmin(user.userId)) return c.json({ error: 'Admin access required' }, 403)
+serverInfoRoutes.post('/cleanup/orphans', authMiddleware, adminMiddleware, (c) => {
 
   const db = getDb()
   const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')

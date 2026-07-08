@@ -7,10 +7,9 @@ import { authMiddleware, getUserPermissions, hasPermission, canWriteToChannel, c
 import { checkSpam } from '../services/spamFilter'
 import { parseMentions, processMentions } from '../socket/chatHandler'
 import { checkMessageContent } from '../moderation'
-import type { AuthUser } from '../middleware/auth'
-import type { Context } from 'hono'
-import type { Server as IOServer } from 'socket.io'
 import type Database from 'better-sqlite3'
+import { getAuth } from '../utils/auth'
+import { getIo, emitToChannel } from '../utils/io'
 
 interface ReactionRow {
   message_id: string
@@ -31,8 +30,6 @@ interface ReactionGroup {
 interface AttachmentRow {
   url: string
 }
-
-function getAuth(c: Context): AuthUser { return c.get('auth' as never) as AuthUser }
 
 const messageRoutes = new Hono()
 
@@ -209,16 +206,11 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   const message = mapMessage(row)
   message.reactions = []
 
-  try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
-    if (io) {
-      io.to(channelId).to('__notifications__').emit('message:new', message)
-    }
-  } catch { /* best-effort */ }
+  emitToChannel(c, channelId, 'message:new', message)
 
   const mentions = parseMentions(content.trim())
   try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
+    const io = getIo(c)
     if (io) processMentions(io, {
       id: row.id as string,
       channel_id: row.channel_id as string,
@@ -259,12 +251,7 @@ messageRoutes.delete('/:messageId', authMiddleware, async (c) => {
   db.prepare('DELETE FROM message_edits WHERE message_id = ?').run(messageId)
   db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
 
-  try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
-    if (io) {
-      io.to(message.channel_id as string).to('__notifications__').emit('message:delete', { id: messageId, channel_id: message.channel_id as string })
-    }
-  } catch { /* best-effort */ }
+  emitToChannel(c, message.channel_id as string, 'message:delete', { id: messageId, channel_id: message.channel_id as string })
 
   return c.json({ ok: true })
 })
@@ -304,12 +291,7 @@ messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
   const result = mapMessage(row)
   result.reactions = fetchReactionsForMessages(db, [messageId])[messageId] || []
 
-  try {
-    const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined
-    if (io) {
-      io.to(message.channel_id as string).to('__notifications__').emit('message:edit', result)
-    }
-  } catch { /* best-effort */ }
+  emitToChannel(c, message.channel_id as string, 'message:edit', result)
 
   return c.json({ message: result })
 })

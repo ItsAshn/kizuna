@@ -1,20 +1,12 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
-import type { Context } from 'hono'
-import type { AuthUser } from '../types'
-function getAuth(c: Context): AuthUser { return c.get('auth') }
+import { requirePermission, authMiddleware } from '../middleware/auth'
 
 const roleRoutes = new Hono()
 
 // GET /roles — list custom roles (admin or manage_roles)
-roleRoutes.get('/', authMiddleware, (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_roles')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+roleRoutes.get('/', authMiddleware, requirePermission('manage_roles'), (c) => {
   const db = getDb()
   const roles = db.prepare('SELECT * FROM roles ORDER BY position ASC').all() as {
     id: string; name: string; color: string; permissions: string;
@@ -34,12 +26,7 @@ roleRoutes.get('/', authMiddleware, (c) => {
 })
 
 // POST /roles — create role
-roleRoutes.post('/', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_roles')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+roleRoutes.post('/', authMiddleware, requirePermission('manage_roles'), async (c) => {
   const body = await c.req.json() as {
     name: string
     color: string
@@ -84,12 +71,7 @@ roleRoutes.post('/', authMiddleware, async (c) => {
 })
 
 // PATCH /roles/:id — update role
-roleRoutes.patch('/:id', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_roles')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+roleRoutes.patch('/:id', authMiddleware, requirePermission('manage_roles'), async (c) => {
   const id = c.req.param('id')
   const db = getDb()
   const existing = db.prepare('SELECT * FROM roles WHERE id = ?').get(id)
@@ -148,12 +130,7 @@ roleRoutes.patch('/:id', authMiddleware, async (c) => {
 })
 
 // DELETE /roles/:id — delete role
-roleRoutes.delete('/:id', authMiddleware, (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_roles')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+roleRoutes.delete('/:id', authMiddleware, requirePermission('manage_roles'), (c) => {
   const id = c.req.param('id')
   const db = getDb()
   const existing = db.prepare('SELECT * FROM roles WHERE id = ?').get(id) as { is_admin: number } | undefined
@@ -166,12 +143,7 @@ roleRoutes.delete('/:id', authMiddleware, (c) => {
 })
 
 // PATCH /roles/reorder — reorder roles by position
-roleRoutes.patch('/reorder', authMiddleware, async (c) => {
-  const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'manage_roles')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
+roleRoutes.patch('/reorder', authMiddleware, requirePermission('manage_roles'), async (c) => {
   const body = await c.req.json() as { order: { id: string; position: number }[] }
   const { order } = body
   if (!Array.isArray(order)) return c.json({ error: 'Invalid order' }, 400)

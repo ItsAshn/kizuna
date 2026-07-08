@@ -1,16 +1,10 @@
 import { Hono } from 'hono'
-import type { Context } from 'hono'
 import { getDb } from '../db'
 import { authMiddleware, adminMiddleware, hasPermissionForUser, getUserInfo, isUserAdmin } from '../middleware/auth'
-import type { AuthUser } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 import { logAuditEvent } from '../routes/audit'
-
-interface IOServer {
-  emit(event: string, data: unknown): void
-}
-
-function getAuth(c: Context): AuthUser { return c.get('auth' as never) as AuthUser }
+import { getAuth } from '../utils/auth'
+import { emitIo } from '../utils/io'
 
 const banRoutes = new Hono()
 
@@ -72,7 +66,7 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
   const id = uuidv4()
   db.prepare('INSERT INTO bans (id, user_id, banned_by, reason) VALUES (?, ?, ?, ?)').run(id, targetUserId, user.userId, reason)
   db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
-  try { const io: IOServer | undefined = c.get('io' as never) as IOServer | undefined; if (io) io.emit('member:removed', { userId: targetUserId }) } catch {}
+  emitIo(c, 'member:removed', { userId: targetUserId })
 
   logAuditEvent(db, 'member_ban', user.userId, targetUserId, JSON.stringify({ reason }))
 

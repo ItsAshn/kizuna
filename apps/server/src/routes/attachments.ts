@@ -4,10 +4,8 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission, isUserAdmin } from '../middleware/auth'
-import type { AuthUser } from '../middleware/auth'
-import type { Context } from 'hono'
 import { processImage, shouldProcessImage } from '../media/imageProcessor'
-function getAuth(c: Context): AuthUser { return c.get('auth') }
+import { getAuth } from '../utils/auth'
 
 const attachmentRoutes = new Hono()
 
