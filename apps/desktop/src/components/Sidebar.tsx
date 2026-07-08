@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import type { Socket } from 'socket.io-client'
 import { createPortal } from 'react-dom'
 import { useServerStore } from '../store/serverStore'

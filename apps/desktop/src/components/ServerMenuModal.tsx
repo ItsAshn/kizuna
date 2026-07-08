@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  MoreHorizontal, Pencil, X,
+  Pencil, X,
   User, Bell, SlidersHorizontal, Users, Link2, Shield, Code, Image as ImageIcon, Trash2,
 } from 'lucide-react'
 import Modal from './ui/Modal'
@@ -12,25 +12,13 @@ import Checkbox from './ui/Checkbox'
 import Slider from './ui/Slider'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
-import { useVoiceStore } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
 import {
   updateProfile,
   updateServerSettings,
-  fetchMembers,
-  setMemberRole,
-  kickMember,
-  addMemberRole,
-  removeMemberRole,
-  fetchRoles,
-  createRole,
-  updateRole,
-  deleteRole,
-  reorderRoles,
   uploadServerBackground,
   deleteServerBackground,
   fetchServerInfo,
-  generatePasswordReset,
   uploadGif,
   uploadGifPack,
   uploadStickerPack,
@@ -51,10 +39,11 @@ import {
   cleanupOrphanFiles,
   deleteAccount,
 } from '@kizuna/shared'
-import type { Member, CustomRole, Permission, UserStatus, GifInfo, TaggerStatus } from '@kizuna/shared'
-import { hexToRgba } from '../utils/color'
+import type { GifInfo, TaggerStatus } from '@kizuna/shared'
 import './ServerMenuModal.css'
 import { InvitesSection } from './server-settings/InvitesSection'
+import { MembersSection } from './server-settings/MembersSection'
+import { RolesSection } from './server-settings/RolesSection'
 
 interface Props {
   onClose: () => void
@@ -377,21 +366,6 @@ const GIF_TABS: { key: 'gif' | 'sticker'; label: string }[] = [
   { key: 'sticker', label: 'sticker' },
 ]
 
-const ALL_PERMISSIONS: { key: Permission; label: string; desc: string }[] = [
-  { key: 'send_messages', label: 'send', desc: 'Post messages in guild text channels' },
-  { key: 'send_dm_messages', label: 'dm', desc: 'Send direct messages to other users' },
-  { key: 'add_reactions', label: 'react', desc: 'Add emoji and sticker reactions to messages' },
-  { key: 'upload_attachments', label: 'attach', desc: 'Upload files, images, and attachments' },
-  { key: 'delete_messages', label: 'delete', desc: 'Remove messages from any user' },
-  { key: 'manage_channels', label: 'channels', desc: 'Create, edit, and delete channels' },
-  { key: 'manage_roles', label: 'roles', desc: 'Create, edit, delete, and assign roles' },
-  { key: 'kick_members', label: 'kick', desc: 'Remove members from the server' },
-  { key: 'ban_members', label: 'ban', desc: 'Permanently ban members from the server' },
-  { key: 'manage_invites', label: 'invites', desc: 'Create and revoke invite codes' },
-  { key: 'use_voice', label: 'voice', desc: 'Join and speak in guild voice channels' },
-  { key: 'initiate_dm_calls', label: 'dm call', desc: 'Start and accept DM voice calls' },
-]
-
 function NotificationSettings() {
   const session = useServerStore((s) => s.activeSession)
   const settings = useSettingsStore((s) => s.notificationSettings)
@@ -437,8 +411,6 @@ function NotificationSettings() {
 
 export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props) {
   const { activeSession: session, updateServerInfo, servers } = useServerStore()
-  const { members, setMembers } = useChatStore()
-  const { userStatuses } = useVoiceStore()
   const serverUrl = session?.url
   const isAdmin = session?.user?.role === 'admin'
   const mountedRef = useRef(false)
@@ -603,54 +575,6 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
     }, 400)
   }, [onBackgroundChanged])
 
-  // ─── Members ─────────────────────────────────────────
-  const [membersLoading, setMembersLoading] = useState(false)
-  const [memberMsg, setMemberMsg] = useState<Record<string, string>>({})
-  const [resetTokenData, setResetTokenData] = useState<{ userId: string; token: string; username: string } | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set())
-  const [openOverflowMember, setOpenOverflowMember] = useState<string | null>(null)
-  const [kickConfirmMember, setKickConfirmMember] = useState<string | null>(null)
-  const [selfDemoteConfirm, setSelfDemoteConfirm] = useState(false)
-  const overflowRef = useRef<HTMLDivElement | null>(null)
-
-  // close overflow menu on outside click
-  useEffect(() => {
-    if (!openOverflowMember) return
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (overflowRef.current && !overflowRef.current.contains(target)) {
-        setOpenOverflowMember(null)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [openOverflowMember])
-
-  // ─── Invites ─────────────────────────────────────────
-  // ─── Roles ───────────────────────────────────────────
-  const [roles, setRoles] = useState<CustomRole[]>([])
-  const [rolesLoading, setRolesLoading] = useState(false)
-  const [newRoleName, setNewRoleName] = useState('')
-  const [newRoleColor, setNewRoleColor] = useState('#4c6ef5')
-  const [newRolePerms, setNewRolePerms] = useState<Partial<Record<Permission, boolean>>>({})
-  const [newRoleHoist, setNewRoleHoist] = useState(false)
-  const [newRoleMentionable, setNewRoleMentionable] = useState(false)
-  const [newRoleDefaultOnJoin, setNewRoleDefaultOnJoin] = useState(false)
-  const [creatingRole, setCreatingRole] = useState(false)
-  const [editingRoleId, setEditingRoleId] = useState<string | null>(null)
-  const [editName, setEditName] = useState('')
-  const [editColor, setEditColor] = useState('')
-  const [editPerms, setEditPerms] = useState<Partial<Record<Permission, boolean>>>({})
-  const [editHoist, setEditHoist] = useState(false)
-  const [editMentionable, setEditMentionable] = useState(false)
-  const [editDefaultOnJoin, setEditDefaultOnJoin] = useState(false)
-  const [savingRoleId, setSavingRoleId] = useState<string | null>(null)
-  const [assigningRole, setAssigningRole] = useState<Record<string, boolean>>({})
-  const [showCreateRole, setShowCreateRole] = useState(false)
-  const [reorderingRoles, setReorderingRoles] = useState(false)
-  const [roleError, setRoleError] = useState<string | null>(null)
-
   // ─── GIFs & Stickers ────────────────────────────────
   const [gifsList, setGifsList] = useState<GifInfo[]>([])
   const [gifsLoading, setGifsLoading] = useState(false)
@@ -686,32 +610,13 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
     uploading: boolean
   }>({ open: false, file: null, selectedPack: '', newPackName: '', displayName: '', uploading: false })
 
-  function memberRoleCount(roleId: string): number {
-    return members.filter(m => (m.custom_roles || []).some(r => r.id === roleId)).length
-  }
-
   useEffect(() => {
     if (!isAdmin || !serverUrl) return
-    if (section === 'members') {
-      setMembersLoading(true)
-      fetchMembers(serverUrl).then(d => { if (mountedRef.current) setMembers(d) }).catch(console.error).finally(() => { if (mountedRef.current) setMembersLoading(false) })
-      loadRoles()
-    } else if (section === 'roles') {
-      loadRoles()
-    } else if (section === 'gifs') {
+    if (section === 'gifs') {
       loadGifs()
       loadTaggerStatus()
     }
   }, [section, isAdmin, serverUrl])
-
-  async function loadRoles() {
-    if (!serverUrl) return
-    setRolesLoading(true)
-    try { if (mountedRef.current) setRoles(await fetchRoles(serverUrl)) } catch (err) {
-      console.error('Failed to fetch roles:', err)
-    }
-    if (mountedRef.current) setRolesLoading(false)
-  }
 
   async function loadGifs() {
     if (!serverUrl) return
@@ -911,210 +816,6 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
       setTimeout(() => setServerMsg(null), 3000)
     } catch (err) {
       setServerMsg(handleApiErr(err))
-    }
-  }
-
-  // ─── Member handlers ────────────────────────────────
-  const toggleMemberSelect = (memberId: string) => {
-    setSelectedMembers(prev => {
-      const next = new Set(prev)
-      if (next.has(memberId)) next.delete(memberId)
-      else next.add(memberId)
-      return next
-    })
-  }
-
-  const clearSelection = () => setSelectedMembers(new Set())
-
-  const handleToggleRole = async (m: Member) => {
-    if (!serverUrl) return
-    const newRole = m.role === 'admin' ? 'member' : 'admin'
-
-    if (newRole === 'member' && m.id === session?.user?.id && !selfDemoteConfirm) {
-      setSelfDemoteConfirm(true)
-      return
-    }
-    setSelfDemoteConfirm(false)
-
-    try {
-      await setMemberRole(serverUrl, m.id, newRole)
-      setMemberMsg(prev => ({ ...prev, [m.id]: `role \u2192 ${newRole}` }))
-      setTimeout(() => setMemberMsg(prev => { const n = { ...prev }; delete n[m.id]; return n }), 2000)
-    } catch (err) {
-      setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
-    }
-  }
-
-  const handleKick = async (m: Member) => {
-    if (!serverUrl) return
-    try {
-      await kickMember(serverUrl, m.id)
-      setKickConfirmMember(null)
-    } catch (err) {
-      setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
-    }
-  }
-
-  const handleGenerateReset = async (m: Member) => {
-    if (!serverUrl) return
-    try {
-      const result = await generatePasswordReset(serverUrl, m.id)
-      setResetTokenData({ userId: m.id, token: result.resetToken, username: result.username })
-    } catch (err) {
-      setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
-    }
-  }
-
-  const handleAddRole = async (userId: string, roleId: string) => {
-    if (!serverUrl) return
-    setAssigningRole(prev => ({ ...prev, [userId + roleId]: true }))
-    try {
-      await addMemberRole(serverUrl, userId, roleId)
-    } catch (err) {
-      console.error('Failed to add member role:', err)
-      setMemberMsg(prev => ({ ...prev, [userId]: handleApiErr(err) }))
-    }
-    setAssigningRole(prev => ({ ...prev, [userId + roleId]: false }))
-  }
-
-  const handleRemoveRole = async (userId: string, roleId: string) => {
-    if (!serverUrl) return
-    setAssigningRole(prev => ({ ...prev, [userId + roleId]: true }))
-    try {
-      await removeMemberRole(serverUrl, userId, roleId)
-    } catch (err) {
-      console.error('Failed to remove member role:', err)
-      setMemberMsg(prev => ({ ...prev, [userId]: handleApiErr(err) }))
-    }
-    setAssigningRole(prev => ({ ...prev, [userId + roleId]: false }))
-  }
-
-  // ─── Bulk member handlers ───────────────────────────
-  const handleBulkToggleAdmin = async (makeAdmin: boolean) => {
-    if (!serverUrl) return
-    const targetRole = makeAdmin ? 'admin' : 'member' as const
-    const targets = members.filter(m => selectedMembers.has(m.id) && m.role !== targetRole)
-
-    if (!makeAdmin && targets.some(m => m.id === session?.user?.id) && !selfDemoteConfirm) {
-      setSelfDemoteConfirm(true)
-      return
-    }
-    setSelfDemoteConfirm(false)
-
-    for (const m of targets) {
-      try {
-        await setMemberRole(serverUrl, m.id, targetRole)
-      } catch (err) {
-        console.error('Bulk toggle admin failed for member:', m.id, err)
-      }
-    }
-    clearSelection()
-  }
-
-  const handleBulkKick = async () => {
-    if (!serverUrl) return
-    const targets = members.filter(m => selectedMembers.has(m.id) && m.id !== session?.user?.id)
-    for (const m of targets) {
-      try {
-        await kickMember(serverUrl, m.id)
-      } catch (err) {
-        console.error('Bulk kick failed for member:', m.id, err)
-      }
-    }
-    clearSelection()
-  }
-
-  const handleBulkAddRole = async (roleId: string) => {
-    if (!roleId || !serverUrl) return
-    const targets = members.filter(m =>
-      selectedMembers.has(m.id) &&
-      !(m.custom_roles || []).some(r => r.id === roleId),
-    )
-    for (const m of targets) {
-      try {
-        await addMemberRole(serverUrl, m.id, roleId)
-      } catch (err) {
-        console.error('Bulk add role failed for member:', m.id, err)
-      }
-    }
-    clearSelection()
-  }
-
-  // ─── Invite handlers ────────────────────────────────
-  // ─── Role handlers ──────────────────────────────────
-  const handleCreateRole = async () => {
-    if (!newRoleName.trim() || !serverUrl) return
-    setCreatingRole(true)
-    try {
-      const role = await createRole(serverUrl, newRoleName.trim(), newRoleColor, newRolePerms, newRoleHoist, newRoleMentionable, newRoleDefaultOnJoin)
-      setRoles(prev => [...prev, role])
-      setNewRoleName('')
-      setNewRoleColor('#4c6ef5')
-      setNewRolePerms({})
-      setNewRoleHoist(false)
-      setNewRoleMentionable(false)
-      setNewRoleDefaultOnJoin(false)
-      setShowCreateRole(false)
-      setRoleError(null)
-    } catch (err) {
-      console.error('Failed to create role:', err)
-      setRoleError(handleApiErr(err))
-    }
-    setCreatingRole(false)
-  }
-
-  const handleStartEditRole = (role: CustomRole) => {
-    setEditingRoleId(role.id)
-    setEditName(role.name)
-    setEditColor(role.color)
-    setEditPerms({ ...role.permissions })
-    setEditHoist(role.hoist ?? false)
-    setEditMentionable(role.mentionable ?? false)
-    setEditDefaultOnJoin(role.default_on_join ?? false)
-  }
-
-  const handleSaveRole = async (id: string) => {
-    if (!serverUrl) return
-    setSavingRoleId(id)
-    try {
-      const updated = await updateRole(serverUrl, id, editName, editColor, editPerms, editHoist, editMentionable, editDefaultOnJoin)
-      setRoles(prev => prev.map(r => r.id === id ? updated : r))
-      setMembers(members.map(m => ({
-        ...m,
-        custom_role_id: m.custom_role_id === id ? id : m.custom_role_id,
-        custom_role_name: m.custom_role_id === id ? updated.name : m.custom_role_name,
-        custom_role_color: m.custom_role_id === id ? updated.color : m.custom_role_color,
-        custom_roles: (m.custom_roles || []).map(r => r.id === id ? { ...r, name: updated.name, color: updated.color } : r),
-      })))
-      setEditingRoleId(null)
-      setRoleError(null)
-    } catch (err) {
-      console.error('Failed to save role:', err)
-      setRoleError(handleApiErr(err))
-    }
-    setSavingRoleId(null)
-  }
-
-  const handleDeleteRole = async (id: string) => {
-    const count = memberRoleCount(id)
-    const msg = `Delete this role? It will be unassigned from ${count} member${count !== 1 ? 's' : ''}.`
-    if (!confirm(msg)) return
-    if (!serverUrl) return
-    try {
-      await deleteRole(serverUrl, id)
-      setRoles(prev => prev.filter(r => r.id !== id))
-      setMembers(members.map(m => ({
-        ...m,
-        custom_role_id: m.custom_role_id === id ? null : m.custom_role_id,
-        custom_role_name: m.custom_role_id === id ? null : m.custom_role_name,
-        custom_role_color: m.custom_role_id === id ? null : m.custom_role_color,
-        custom_roles: (m.custom_roles || []).filter(r => r.id !== id),
-      })))
-      if (editingRoleId === id) setEditingRoleId(null)
-      setRoleError(null)
-    } catch (err) {
-      console.error('Failed to delete role:', err)
-      setRoleError(handleApiErr(err))
     }
   }
 
@@ -1320,23 +1021,6 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
     }
   }
 
-  // ─── Filter / sort members ──────────────────────────
-  const filteredMembers = (searchQuery.trim()
-    ? members.filter(m =>
-        m.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.display_name.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
-    : [...members]
-  ).sort((a, b) => {
-    const rankA = a.role === 'admin' ? 0 : (a.custom_roles || []).length > 0 ? 1 : 2
-    const rankB = b.role === 'admin' ? 0 : (b.custom_roles || []).length > 0 ? 1 : 2
-    const r = rankA - rankB
-    if (r !== 0) return r
-    return a.username.localeCompare(b.username)
-  })
-
-  const statusFor = (memberId: string): UserStatus => userStatuses[memberId] || 'offline'
-
   // Left-nav groups: the "user" group is always shown; the "admin" group only
   // appears for admins. Item keys map 1:1 to the `section` union.
   const navGroups = useMemo<SettingsNavGroup[]>(() => {
@@ -1369,7 +1053,6 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
 
   const handleSectionChange = useCallback((key: string) => {
     setSection(key as Section)
-    setRoleError(null)
   }, [])
 
   return (
@@ -1592,440 +1275,13 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
               )}
 
               {/* Members tab */}
-              {section === 'members' && (
-                <div className="server-menu__section">
-                  <input
-                    className="server-menu__member-search"
-                    placeholder={`Search members (${filteredMembers.length})...`}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-
-                  {/* Bulk action bar */}
-                  {selectedMembers.size > 0 && (
-                    <div className="server-menu__bulk-bar">
-                      <span className="server-menu__bulk-bar-count">{selectedMembers.size} selected</span>
-                      <div className="server-menu__bulk-bar-actions">
-                        <button onClick={() => handleBulkToggleAdmin(true)} className="server-menu__bulk-bar-btn">make admin</button>
-                        <button onClick={() => handleBulkToggleAdmin(false)} className="server-menu__bulk-bar-btn">remove admin</button>
-                        <button onClick={handleBulkKick} className="server-menu__bulk-bar-btn server-menu__bulk-bar-btn--danger">kick</button>
-                        {roles.length > 0 && (
-                          <select
-                            value=""
-                            onChange={(e) => { if (e.target.value) handleBulkAddRole(e.target.value); e.target.value = '' }}
-                            className="server-menu__bulk-bar-btn"
-                            style={{ background: 'var(--bg-hover)', cursor: 'pointer', appearance: 'auto' } as React.CSSProperties}
-                          >
-                            <option value="">+ role</option>
-                            {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                          </select>
-                        )}
-                      </div>
-                      <button onClick={clearSelection} className="server-menu__confirm-cancel" style={{ marginLeft: 'auto' }}>clear</button>
-                    </div>
-                  )}
-                  {selfDemoteConfirm && selectedMembers.size > 0 && selectedMembers.has(session?.user?.id ?? '') && (
-                    <div className="server-menu__self-warn" style={{ marginBottom: '12px' }}>
-                      <p>This action will remove admin privileges from your own account. Are you sure?</p>
-                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-                        <button onClick={() => handleBulkToggleAdmin(false)} className="server-menu__confirm-btn">
-                          confirm demotion
-                        </button>
-                        <button onClick={() => setSelfDemoteConfirm(false)} className="server-menu__confirm-cancel">
-                          cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {membersLoading ? (
-                    <p className="server-menu__loading">loading...</p>
-                  ) : filteredMembers.length === 0 ? (
-                    <p className="server-menu__loading">{searchQuery ? 'no members found' : 'no members'}</p>
-                  ) : (
-                    filteredMembers.map(m => {
-                      const isSelf = m.id === session?.user?.id
-                      const status = statusFor(m.id)
-                      const isSelected = selectedMembers.has(m.id)
-                      return (
-                        <div key={m.id}>
-                          <div className={`server-menu__member${isSelected ? ' server-menu__member--selected' : ''}`}>
-                            <label className="server-menu__member-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => { if (!m.is_host) toggleMemberSelect(m.id) }}
-                      disabled={m.is_host}
-                    />
-                              <span className="server-menu__member-checkbox-visual" />
-                            </label>
-                            <div className="server-menu__member-avatar-wrap">
-                              <div className="server-menu__member-avatar">
-                                <span>{(m.display_name || m.username)[0]?.toUpperCase()}</span>
-                                {m.avatar && <img src={m.avatar} alt="" className="server-menu__member-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />}
-                              </div>
-                              {status !== 'offline' && <span className={`server-menu__status-dot server-menu__status-dot--${status}`} />}
-                            </div>
-                            <div className="server-menu__member-info">
-                              <p className="server-menu__member-name">
-                                {m.display_name || m.username}
-                                {isSelf && <span className="server-menu__member-self">(you)</span>}
-                                {m.is_host && <span className="server-menu__member-badge" style={{ color: '#fab005', borderColor: hexToRgba('#fab005', 0.4), backgroundColor: hexToRgba('#fab005', 34 / 255), marginLeft: '4px' }}>host</span>}
-                              </p>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                {(m.custom_roles || []).map((r) => (
-                                  <span key={r.id} className="server-menu__member-badge"
-                                    style={{ color: r.color || '#4c6ef5', borderColor: hexToRgba(r.color || '#4c6ef5', 0.4), backgroundColor: hexToRgba(r.color || '#4c6ef5', 34 / 255) }}>
-                                    {r.name}
-                                    {!(m.is_host && r.id === 'admin-role') && (
-                                    <button
-                                      onClick={() => handleRemoveRole(m.id, r.id)}
-                                      disabled={assigningRole[m.id + r.id]}
-                                      className="server-menu__role-remove-btn"
-                                      title={`Remove ${r.name} role`}
-                                    >
-                                      x
-                                    </button>
-                                    )}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            {memberMsg[m.id] && <span className="server-menu__member-msg">{memberMsg[m.id]}</span>}
-                            {m.reset_requested_at && (
-                              <span className="server-menu__member-badge" style={{ color: '#fbbf24', borderColor: hexToRgba('#fbbf24', 0.4), backgroundColor: hexToRgba('#fbbf24', 34 / 255) }}>
-                                reset
-                              </span>
-                            )}
-                            <div className="server-menu__member-overflow-wrap" ref={openOverflowMember === m.id ? overflowRef : undefined}>
-                              <button
-                                onClick={() => {
-                                  if (openOverflowMember === m.id) {
-                                    setOpenOverflowMember(null)
-                                    setSelfDemoteConfirm(false)
-                                  } else {
-                                    setOpenOverflowMember(m.id)
-                                    setSelfDemoteConfirm(false)
-                                  }
-                                }}
-                                className={`server-menu__member-overflow-btn${openOverflowMember === m.id ? ' server-menu__member-overflow-btn--active' : ''}`}
-                              >
-                                <MoreHorizontal size={14} />
-                              </button>
-                              {openOverflowMember === m.id && (
-                                <div className="server-menu__overflow-menu">
-                                  {!m.is_host && (isSelf && selfDemoteConfirm && m.role === 'admin' ? (
-                                    <button
-                                      onClick={() => { setOpenOverflowMember(null); handleToggleRole(m) }}
-                                      className="server-menu__overflow-item server-menu__overflow-item--danger">
-                                      confirm demotion
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => {
-                                        if (isSelf && m.role === 'admin') {
-                                          setSelfDemoteConfirm(true)
-                                        } else {
-                                          setOpenOverflowMember(null)
-                                          handleToggleRole(m)
-                                        }
-                                      }}
-                                      className="server-menu__overflow-item">
-                                      {m.role === 'admin' ? 'remove admin' : 'make admin'}
-                                    </button>
-                                  ))}
-                                  <button
-                                    onClick={() => { setOpenOverflowMember(null); handleGenerateReset(m) }}
-                                    className="server-menu__overflow-item">
-                                    reset password
-                                  </button>
-                                  {!isSelf && !m.is_host && (
-                                    <button
-                                      onClick={() => { setOpenOverflowMember(null); setKickConfirmMember(m.id) }}
-                                      className="server-menu__overflow-item server-menu__overflow-item--danger">
-                                      kick
-                                    </button>
-                                  )}
-                                  {roles.length > 0 && (
-                                    <>
-                                      <div className="server-menu__overflow-divider" />
-                                      <span className="server-menu__overflow-section-title">assign roles</span>
-                                      {roles.map(r => {
-                                        const hasRole = (m.custom_roles || []).some(cr => cr.id === r.id)
-                                        return (
-                                          <button
-                                            key={r.id}
-                                            onClick={() => {
-                                              if (hasRole) handleRemoveRole(m.id, r.id)
-                                              else handleAddRole(m.id, r.id)
-                                              if (!assigningRole[m.id + r.id]) setOpenOverflowMember(null)
-                                            }}
-                                            disabled={assigningRole[m.id + r.id]}
-                                            className="server-menu__overflow-role-item"
-                                          >
-                                            <span className="server-menu__overflow-role-dot" style={{ backgroundColor: r.color }} />
-                                            {r.name}
-                                            {hasRole && <span className="server-menu__overflow-role-check">&#10003;</span>}
-                                          </button>
-                                        )
-                                      })}
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Kick confirmation panel */}
-                          {kickConfirmMember === m.id && (
-                            <div className="server-menu__confirm-panel">
-                              <p className="server-menu__confirm-text">
-                                Kick {m.display_name || m.username}? They can rejoin via invite.
-                              </p>
-                              <div className="server-menu__confirm-actions">
-                                <button onClick={() => handleKick(m)} className="server-menu__confirm-btn">kick</button>
-                                <button onClick={() => setKickConfirmMember(null)} className="server-menu__confirm-cancel">cancel</button>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Reset token panel */}
-                          {resetTokenData?.userId === m.id && (
-                            <div style={{ marginTop: '6px', padding: '6px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', fontSize: '10px' }}>
-                              <p style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Reset token for {resetTokenData.username} (valid 24h) — share this with the user:</p>
-                              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                <code style={{ flex: 1, fontSize: '10px', color: 'var(--accent-color)', wordBreak: 'break-all', background: 'var(--bg-primary)', padding: '4px 6px', borderRadius: '4px' }}>{resetTokenData.token}</code>
-                                <button
-                                  onClick={() => navigator.clipboard.writeText(resetTokenData.token)}
-                                  className="server-menu__member-action-btn"
-                                  style={{ flexShrink: 0 }}
-                                >
-                                  copy
-                                </button>
-                                <button
-                                  onClick={() => setResetTokenData(null)}
-                                  className="server-menu__member-action-btn"
-                                  style={{ flexShrink: 0 }}
-                                >
-                                  dismiss
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              )}
+              {section === 'members' && <MembersSection serverUrl={serverUrl} />}
 
               {/* Invites tab */}
               {section === 'invites' && <InvitesSection serverUrl={serverUrl} />}
 
               {/* Roles tab */}
-              {section === 'roles' && (
-                <div className="server-menu__section">
-                  {!showCreateRole ? (
-                    <button
-                      onClick={() => setShowCreateRole(true)}
-                      className="server-menu__role-create-btn"
-                      style={{ marginBottom: '16px' }}
-                    >
-                      + create role
-                    </button>
-                  ) : (
-                    <div className="server-menu__role-create">
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <p className="server-menu__section-title" style={{ margin: 0 }}>create role</p>
-                        <button onClick={() => setShowCreateRole(false)} className="server-menu__member-action-btn">cancel</button>
-                      </div>
-                      <div className="server-menu__role-create-row">
-                        <input className="server-menu__role-create-input" placeholder="role name" value={newRoleName} onChange={(e) => setNewRoleName(e.target.value)} maxLength={50} />
-                        <input type="color" className="server-menu__color-input" value={newRoleColor} onChange={(e) => setNewRoleColor(e.target.value)} />
-                      </div>
-                      <div className="server-menu__perm-toggles">
-                        {ALL_PERMISSIONS.map(p => (
-                          <button key={p.key}
-                            onClick={() => setNewRolePerms(prev => ({ ...prev, [p.key]: !prev[p.key] }))}
-                            className={`server-menu__perm-toggle ${newRolePerms[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
-                            title={p.desc}
-                          >
-                            {p.label}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="server-menu__role-flags">
-                        <label className="server-menu__role-flag">
-                          <input type="checkbox" checked={newRoleHoist} onChange={(e) => setNewRoleHoist(e.target.checked)} />
-                          <span>Display members separately</span>
-                        </label>
-                        <label className="server-menu__role-flag">
-                          <input type="checkbox" checked={newRoleMentionable} onChange={(e) => setNewRoleMentionable(e.target.checked)} />
-                          <span>Allow @role mentions</span>
-                        </label>
-                        <label className="server-menu__role-flag">
-                          <input type="checkbox" checked={newRoleDefaultOnJoin} onChange={(e) => setNewRoleDefaultOnJoin(e.target.checked)} />
-                          <span>Assign on join</span>
-                        </label>
-                      </div>
-                      <button onClick={handleCreateRole} disabled={creatingRole || !newRoleName.trim()}
-                        className="server-menu__role-create-btn">
-                        {creatingRole ? '...' : 'create role'}
-                      </button>
-                      {roleError && (
-                        <span className="server-menu__save-msg server-menu__save-msg--err" style={{ marginTop: '6px' }}>{roleError}</span>
-                      )}
-                    </div>
-                  )}
-
-                  {rolesLoading ? (
-                    <p className="server-menu__loading">loading...</p>
-                  ) : roles.length === 0 ? (
-                    <p className="server-menu__loading">no custom roles</p>
-                  ) : (
-                    roles.map((role, idx) => {
-                      const count = memberRoleCount(role.id)
-                      return (
-                        <div key={role.id} className="server-menu__role-item">
-                          {editingRoleId === role.id ? (
-                            <div>
-                              <div className="server-menu__role-create-row">
-                                <input className="server-menu__role-create-input" value={editName} onChange={(e) => setEditName(e.target.value)} maxLength={50} />
-                                <input type="color" className="server-menu__color-input" value={editColor} onChange={(e) => setEditColor(e.target.value)} />
-                              </div>
-                              <div className="server-menu__perm-toggles">
-                                {ALL_PERMISSIONS.map(p => (
-                                  <button key={p.key}
-                                    onClick={() => setEditPerms(prev => ({ ...prev, [p.key]: !prev[p.key] }))}
-                                    className={`server-menu__perm-toggle ${editPerms[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
-                                    title={p.desc}
-                                  >
-                                    {p.label}
-                                  </button>
-                                ))}
-                              </div>
-                              <div className="server-menu__role-flags">
-                                <label className="server-menu__role-flag">
-                                  <input type="checkbox" checked={editHoist} onChange={(e) => setEditHoist(e.target.checked)} />
-                                  <span>Display members separately</span>
-                                </label>
-                                <label className="server-menu__role-flag">
-                                  <input type="checkbox" checked={editMentionable} onChange={(e) => setEditMentionable(e.target.checked)} />
-                                  <span>Allow @role mentions</span>
-                                </label>
-                                <label className="server-menu__role-flag">
-                                  <input type="checkbox" checked={editDefaultOnJoin} onChange={(e) => setEditDefaultOnJoin(e.target.checked)} />
-                                  <span>Assign on join</span>
-                                </label>
-                              </div>
-                              <div style={{ display: 'flex', gap: '8px' }}>
-                                <button onClick={() => handleSaveRole(role.id)} disabled={savingRoleId === role.id}
-                                  className="server-menu__save-btn" style={{ fontSize: '10px' }}>
-                                  {savingRoleId === role.id ? '...' : 'save'}
-                                </button>
-                                <button onClick={() => setEditingRoleId(null)} className="server-menu__member-action-btn">
-                                  cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div>
-                              <div className="server-menu__role-header">
-                                <span className="server-menu__role-color-dot" style={{ backgroundColor: role.color }} />
-                                <span className="server-menu__role-name" style={{ color: role.color }}>{role.name}</span>
-                                {count > 0 && <span className="server-menu__role-count">{count} member{count !== 1 ? 's' : ''}</span>}
-                                {role.hoist && <span className="server-menu__role-tag">hoist</span>}
-                                {role.mentionable && <span className="server-menu__role-tag">@</span>}
-                                {role.default_on_join && <span className="server-menu__role-tag">join</span>}
-                                <div className="server-menu__role-actions">
-                                  {!role.is_admin && (
-                                    <>
-                                      <button
-                                        onClick={async () => {
-                                          if (!serverUrl) return
-                                          setReorderingRoles(true)
-                                          const newRoles = [...roles]
-                                          if (idx > 0) {
-                                            const prev = newRoles[idx - 1]
-                                            const prevPos = prev.position ?? 0
-                                            const myPos = role.position ?? 0
-                                            const order = [
-                                              { id: role.id, position: prevPos },
-                                              { id: prev.id, position: myPos },
-                                            ]
-                                            try {
-                                              await reorderRoles(serverUrl, order)
-                                              newRoles[idx] = { ...role, position: prevPos }
-                                              newRoles[idx - 1] = { ...prev, position: myPos }
-                                              newRoles.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-                                              setRoles(newRoles)
-                                            } catch (err) {
-                                              console.error('Failed to reorder role up:', err)
-                                            }
-                                          }
-                                          setReorderingRoles(false)
-                                        }}
-                                        disabled={idx === 0 || reorderingRoles}
-                                        className="server-menu__role-action-btn"
-                                        title="Move up"
-                                      >&#9650;</button>
-                                      <button
-                                        onClick={async () => {
-                                          if (!serverUrl) return
-                                          setReorderingRoles(true)
-                                          const newRoles = [...roles]
-                                          if (idx < newRoles.length - 1) {
-                                            const next = newRoles[idx + 1]
-                                            const nextPos = next.position ?? 0
-                                            const myPos = role.position ?? 0
-                                            const order = [
-                                              { id: role.id, position: nextPos },
-                                              { id: next.id, position: myPos },
-                                            ]
-                                            try {
-                                              await reorderRoles(serverUrl, order)
-                                              newRoles[idx] = { ...role, position: nextPos }
-                                              newRoles[idx + 1] = { ...next, position: myPos }
-                                              newRoles.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-                                              setRoles(newRoles)
-                                            } catch (err) {
-                                              console.error('Failed to reorder role down:', err)
-                                            }
-                                          }
-                                          setReorderingRoles(false)
-                                        }}
-                                        disabled={idx === roles.length - 1 || reorderingRoles}
-                                        className="server-menu__role-action-btn"
-                                        title="Move down"
-                                      >&#9660;</button>
-                                    </>
-                                  )}
-                                  <button onClick={() => handleStartEditRole(role)} className="server-menu__role-action-btn">edit</button>
-                                  <button onClick={() => handleDeleteRole(role.id)} className="server-menu__role-action-btn server-menu__role-action-btn--danger">delete</button>
-                                </div>
-                              </div>
-                              <div className="server-menu__perm-toggles">
-                                {ALL_PERMISSIONS.map(p => (
-                                  <span key={p.key}
-                                    className={`server-menu__perm-toggle ${role.permissions?.[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
-                                    style={{ cursor: 'default' }}
-                                    title={p.desc}
-                                  >
-                                    {p.label}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })
-                  )}
-                  {!showCreateRole && roleError && (
-                    <span className="server-menu__save-msg server-menu__save-msg--err" style={{ marginTop: '8px', display: 'block' }}>{roleError}</span>
-                  )}
-                </div>
-              )}
+              {section === 'roles' && <RolesSection serverUrl={serverUrl} />}
 
               {/* Custom CSS tab */}
               {section === 'css' && (
