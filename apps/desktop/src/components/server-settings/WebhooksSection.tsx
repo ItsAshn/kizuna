@@ -8,6 +8,7 @@ import {
 } from '@kizuna/shared'
 
 import { handleApiErr } from './common'
+import './WebhooksSection.css'
 
 export function WebhooksSection() {
   const session = useServerStore((s) => s.activeSession)

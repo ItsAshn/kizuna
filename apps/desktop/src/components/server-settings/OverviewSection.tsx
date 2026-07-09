@@ -8,6 +8,7 @@ import {
   fetchServerInfo,
 } from '@kizuna/shared'
 import { handleApiErr, useMountedRef, fileToDataUrl } from './common'
+import './OverviewSection.css'
 
 export function OverviewSection({ serverUrl, onBackgroundChanged }: { serverUrl: string | undefined; onBackgroundChanged?: () => void }) {
   const { activeSession: session, updateServerInfo, servers } = useServerStore()

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useServerStore } from '../../store/serverStore'
 import { updateServerSettings, fetchServerInfo } from '@kizuna/shared'
 import { handleApiErr, useMountedRef } from './common'
+import './CssSection.css'
 
 export function CssSection({ serverUrl, onBackgroundChanged }: { serverUrl: string | undefined; onBackgroundChanged?: () => void }) {
   const { activeSession: session } = useServerStore()

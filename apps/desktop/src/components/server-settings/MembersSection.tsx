@@ -15,6 +15,7 @@ import { useChatStore } from '../../store/chatStore'
 import { useVoiceStore } from '../../store/voiceStore'
 import { hexToRgba } from '../../utils/color'
 import { handleApiErr, useMountedRef } from './common'
+import './MembersSection.css'
 
 export function MembersSection({ serverUrl }: { serverUrl: string | undefined }) {
   const mountedRef = useMountedRef()

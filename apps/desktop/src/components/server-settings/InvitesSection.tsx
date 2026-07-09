@@ -3,6 +3,7 @@ import QRCode from 'qrcode'
 import { fetchInvites, createInvite, revokeInvite } from '@kizuna/shared'
 import type { InviteCode } from '@kizuna/shared'
 import { handleApiErr, useMountedRef } from './common'
+import './InvitesSection.css'
 
 const EXPIRY_OPTIONS = [
   { label: 'never', value: '0' },

@@ -7,6 +7,7 @@ import ToggleSwitch from '../ui/ToggleSwitch'
 import { useServerStore } from '../../store/serverStore'
 import { useSettingsStore } from '../../store/settingsStore'
 import { handleApiErr, fileToDataUrl } from './common'
+import './ProfileSection.css'
 
 export function ProfileSection({ onClose }: { onClose: () => void }) {
   const { activeSession: session } = useServerStore()

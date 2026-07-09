@@ -3,6 +3,7 @@ import { fetchRoles, createRole, updateRole, deleteRole, reorderRoles } from '@k
 import type { CustomRole, Permission } from '@kizuna/shared'
 import { useChatStore } from '../../store/chatStore'
 import { handleApiErr, useMountedRef } from './common'
+import './RolesSection.css'
 
 const ALL_PERMISSIONS: { key: Permission; label: string; desc: string }[] = [
   { key: 'send_messages', label: 'send', desc: 'Post messages in guild text channels' },

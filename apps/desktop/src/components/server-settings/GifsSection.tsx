@@ -18,6 +18,7 @@ import type { GifInfo, TaggerStatus } from '@kizuna/shared'
 import Modal from '../ui/Modal'
 import Tabs from '../ui/Tabs'
 import { handleApiErr, useMountedRef } from './common'
+import './GifsSection.css'
 
 const GIF_TABS: { key: 'gif' | 'sticker'; label: string }[] = [
   { key: 'gif', label: 'gif' },
