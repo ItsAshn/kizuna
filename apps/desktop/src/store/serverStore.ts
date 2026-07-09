@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import type { User, SavedServer } from '@kizuna/shared'
 import { getMe, setClientToken, clearClientToken, refreshToken, setTokenRefreshHandler } from '@kizuna/shared'
 
-interface ServerSession {
+export interface ServerSession {
   serverId: string
   url: string
   token: string

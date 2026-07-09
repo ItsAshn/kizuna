@@ -10,9 +10,6 @@ import { useMobile } from '../hooks/useMobile';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { useHaptics } from '../hooks/useHaptics';
 import {
-  fetchMessages,
-  fetchDMMessages,
-  fetchGroupDMMessages,
   sendMessage,
   sendDMMessage,
   sendGroupDMMessage,
@@ -22,26 +19,14 @@ import {
   deleteGroupDMMessage,
   editDMMessage,
   editGroupDMMessage,
-  uploadAttachment,
-  fetchChannelPermissions,
-  getUserPublicKey,
   fetchRoles,
   pinMessage,
   unpinMessage,
-  fetchPinnedMessages,
   createThread,
   createPoll,
   createDMPoll,
   createGroupDMPoll,
 } from '@kizuna/shared';
-import {
-  encryptDM,
-  decryptDM,
-  isEncryptedContent,
-  encryptGroupDM,
-  decryptGroupDM,
-  isGroupEncryptedContent,
-} from '@kizuna/shared/crypto';
 import { getSecretKey } from '../store/keyStore';
 import {
   Lock,
@@ -63,16 +48,14 @@ import {
   Image as ImageIcon,
   BarChart3,
 } from 'lucide-react';
-import type {
-  Message,
-  Member,
-  DMChannelData,
-  CustomRole,
-  PinnedMessage,
-} from '@kizuna/shared';
+import type { Message, Member, CustomRole } from '@kizuna/shared';
 import { runChatCommand } from '../lib/chatCommands';
 import { useComposerAutocomplete, MENTION_LIMIT } from '../hooks/useComposerAutocomplete';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
+import { useChatCrypto } from '../hooks/useChatCrypto';
+import { useChannelMessages } from '../hooks/useChannelMessages';
+import { useAttachmentUpload } from '../hooks/useAttachmentUpload';
+import { useFormattingToolbar } from '../hooks/useFormattingToolbar';
 import { useNotificationStore } from '../store/notificationStore';
 import MessageBubble from './MessageBubble';
 import GifPicker from './GifPicker';
@@ -201,7 +184,6 @@ export default function ChatArea({
   const pendingMention = useChatStore((s) => s.pendingMention);
   const setPendingMention = useChatStore((s) => s.setPendingMention);
   const pinnedMessages = useChatStore((s) => s.pinnedMessages);
-  const setPinned = useChatStore((s) => s.setPinnedMessages);
   const setActiveChannel = useChatStore((s) => s.setActiveChannel);
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel);
   const setActiveGroupDMChannel = useChatStore((s) => s.setActiveGroupDMChannel);
@@ -211,15 +193,7 @@ export default function ChatArea({
   const dmCallChannelId = useCallStore((s) => s.dmCallChannelId);
   const activeAnyChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId || null;
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [reloadNonce, setReloadNonce] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
-  const [pendingAttachmentId, setPendingAttachmentId] = useState<string | null>(null);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<{
     messageId: string;
@@ -231,19 +205,9 @@ export default function ChatArea({
   const [pollPanelOpen, setPollPanelOpen] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
-  const [formatSel, setFormatSel] = useState<{ start: number; end: number } | null>(null);
-  const [toolbarCoords, setToolbarCoords] = useState<{ top: number; left: number } | null>(null);
-  const mirrorRef = useRef<HTMLDivElement>(null);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [channelPerms, setChannelPerms] = useState<{
-    can_write: boolean;
-    locked: boolean;
-  } | null>(null);
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
   const sendingRef = useRef(false);
-  const uploadAbortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const lastCountAtBottom = useRef(0);
@@ -255,102 +219,9 @@ export default function ChatArea({
   const [showSearch, setShowSearch] = useState(false);
   const [showGroupDMSettings, setShowGroupDMSettings] = useState(false);
   const [mentionableRoles, setMentionableRoles] = useState<CustomRole[]>([]);
-  const newMessagesRef = useRef<string | null>(null);
   useKeyboard();
   const haptics = useHaptics();
-  const tryDecryptDM = useCallback((msg: Message): Message => {
-    if (!msg.encrypted) return msg;
-    const parsed = isEncryptedContent(msg.content);
-    if (!parsed) return msg;
-    const secKey = getSecretKey();
-    if (!secKey) return { ...msg, content: '[Encrypted - no key available]' };
-    const activeDM = useChatStore.getState().dmChannels.find((d) => d.id === msg.channel_id);
-    const otherPubKey = activeDM?.other_public_key;
-    if (!otherPubKey) return { ...msg, content: '[Encrypted - missing sender key]' };
-    try {
-      const decrypted = decryptDM(parsed, otherPubKey, secKey);
-      return { ...msg, content: decrypted };
-    } catch {
-      return { ...msg, content: '[Encrypted - unable to decrypt]' };
-    }
-  }, []);
-
-  const tryDecryptGroupDM = useCallback(
-    (msg: Message): Message => {
-      if (!msg.encrypted) return msg;
-      const parsed = isGroupEncryptedContent(msg.content);
-      if (!parsed) return msg;
-      const secKey = getSecretKey();
-      if (!secKey) return { ...msg, content: '[Encrypted - no key available]' };
-      const currentUserId = session?.user.id;
-      if (!currentUserId) return { ...msg, content: '[Encrypted - not authenticated]' };
-      const channel = useChatStore.getState().groupDMChannels.find((d) => d.id === msg.channel_id);
-      const senderMember = channel?.members.find((m) => m.user_id === msg.user_id);
-      const senderPubKey =
-        senderMember?.public_key ||
-        (msg as unknown as { sender_public_key?: string }).sender_public_key;
-      if (!senderPubKey) return { ...msg, content: '[Encrypted - missing sender key]' };
-      try {
-        const decrypted = decryptGroupDM(parsed, senderPubKey, currentUserId, secKey);
-        if (decrypted === null) return { ...msg, content: '[Encrypted - not a recipient]' };
-        return { ...msg, content: decrypted };
-      } catch {
-        return { ...msg, content: '[Encrypted - unable to decrypt]' };
-      }
-    },
-    [session],
-  );
-
-  const resolveRecipientPublicKey = useCallback(
-    async (dm: DMChannelData | undefined): Promise<string | null> => {
-      if (!dm || !session) return null;
-      try {
-        const freshKey = await getUserPublicKey(session.url, dm.other_user_id);
-        if (freshKey) return freshKey;
-      } catch (err) {
-        console.error('Failed to get user public key, falling back to cached:', err);
-      }
-      return dm.other_public_key ?? null;
-    },
-    [session],
-  );
-
-  // Encrypts outgoing content for the active DM / group DM; plaintext fallback when keys are unavailable.
-  const encryptOutgoing = useCallback(
-    async (plain: string): Promise<{ content: string; encrypted: boolean }> => {
-      const secKey = getSecretKey();
-      if (activeDMChannelId && secKey) {
-        const dm = dmChannels.find((d) => d.id === activeDMChannelId);
-        const otherPubKey = await resolveRecipientPublicKey(dm);
-        if (otherPubKey) {
-          return {
-            content: JSON.stringify(encryptDM(plain, otherPubKey, secKey)),
-            encrypted: true,
-          };
-        }
-      } else if (activeGroupDMChannelId && secKey) {
-        const channel = groupDMChannels.find((c) => c.id === activeGroupDMChannelId);
-        const memberKeys = new Map<string, string>();
-        for (const member of channel?.members || []) {
-          if (member.public_key) memberKeys.set(member.user_id, member.public_key);
-        }
-        if (memberKeys.size > 0) {
-          return {
-            content: JSON.stringify(encryptGroupDM(plain, memberKeys, secKey)),
-            encrypted: true,
-          };
-        }
-      }
-      return { content: plain, encrypted: false };
-    },
-    [
-      activeDMChannelId,
-      activeGroupDMChannelId,
-      dmChannels,
-      groupDMChannels,
-      resolveRecipientPublicKey,
-    ],
-  );
+  const { tryDecryptDM, tryDecryptGroupDM, encryptOutgoing } = useChatCrypto(session);
 
   const sendToActiveChannel = useCallback(
     async (plain: string, attIds?: string[], replyToId?: string): Promise<Message | null> => {
@@ -384,6 +255,51 @@ export default function ChatArea({
     },
     [session, activeChannelId, activeDMChannelId, activeGroupDMChannelId, encryptOutgoing],
   );
+
+  const {
+    loading,
+    loadError,
+    channelPerms,
+    newMessagesRef,
+    loadMoreMessages,
+    retryLoadMoreMessages,
+    reloadMessages,
+  } = useChannelMessages({ session, socketRef, tryDecryptDM, tryDecryptGroupDM });
+
+  const {
+    uploading,
+    uploadProgress,
+    pendingFile,
+    pendingPreviewUrl,
+    pendingAttachmentId,
+    setPendingAttachmentId,
+    isDragOver,
+    fileInputRef,
+    handleFileSelect,
+    cancelUpload,
+    clearPendingFile,
+    handleUpload,
+    handleVoiceRecordingComplete,
+    handleDragOver,
+    handleDragLeave,
+    handlePaste,
+    handleDrop,
+  } = useAttachmentUpload({
+    session,
+    activeAnyChannelId,
+    atBottom,
+    input,
+    setInput,
+    setSendError,
+    sendToActiveChannel,
+    addMessage,
+    virtuosoRef,
+    lastCountAtBottom,
+    inputRef,
+  });
+
+  const { formatSel, toolbarCoords, mirrorRef, applyFormat, handleSelect, clearSelection } =
+    useFormattingToolbar(inputRef, input, setInput);
 
   const activeChannel = channels.find((c) => c.id === activeChannelId);
   const activeDM = dmChannels.find((d) => d.id === activeDMChannelId);
@@ -422,195 +338,6 @@ export default function ChatArea({
     }
   }, [session]);
 
-  useEffect(() => {
-    if (activeChannelId) {
-      let cancelled = false;
-      setLoading(true);
-      setLoadError(null);
-      setChannelPerms(null);
-      fetchMessages(session!.url, activeChannelId)
-        .then(({ messages: msgs, hasMore }) => {
-          if (cancelled) return;
-          useChatStore.getState().setMessages(activeChannelId, msgs);
-          useChatStore.getState().setHasMoreMessages(activeChannelId, hasMore);
-          const lastRead = useChatStore.getState().channelLastReadAt[activeChannelId];
-          if (lastRead && msgs.length > 0) {
-            const firstNew = msgs.find((m) => m.created_at > lastRead);
-            newMessagesRef.current = firstNew ? firstNew.id : null;
-          } else {
-            newMessagesRef.current = null;
-          }
-        })
-        .catch((err) => {
-          console.error('Failed to load messages:', err);
-          if (!cancelled) setLoadError('Failed to load messages');
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-
-      fetchChannelPermissions(session!.url, activeChannelId)
-        .then((perms) => {
-          if (!cancelled) setChannelPerms(perms);
-        })
-        .catch((err) => {
-          console.error('Failed to fetch channel permissions:', err);
-          if (!cancelled) setChannelPerms(null);
-        });
-
-      useChatStore.setState((state) => ({
-        unreadCounts: { ...state.unreadCounts, [activeChannelId]: 0 },
-        mentionCounts: { ...state.mentionCounts, [activeChannelId]: 0 },
-      }));
-
-      fetchPinnedMessages(session!.url, activeChannelId)
-        .then((pins: Message[]) => {
-          if (cancelled) return;
-          setPinned(activeChannelId, pins as unknown as PinnedMessage[]);
-        })
-        .catch((err) => {
-          console.error('Failed to load pins:', err);
-        });
-
-      socketRef.current?.emit('channel:join', activeChannelId);
-      socketRef.current?.emit('mentions:read', { channelId: activeChannelId });
-      socketRef.current?.emit(
-        'channel:read',
-        { channelId: activeChannelId },
-        (res: { last_read_at?: number }) => {
-          if (cancelled) return;
-          if (res?.last_read_at) {
-            useChatStore.getState().setChannelLastReadAt(activeChannelId, res.last_read_at);
-          }
-        },
-      );
-
-      return () => {
-        cancelled = true;
-        socketRef.current?.emit('channel:leave', activeChannelId);
-        socketRef.current?.emit('typing:stop', { channelId: activeChannelId });
-      };
-    }
-  }, [activeChannelId, reloadNonce]);
-
-  useEffect(() => {
-    if (activeDMChannelId) {
-      let cancelled = false;
-      setLoading(true);
-      setLoadError(null);
-      setChannelPerms(null);
-      fetchDMMessages(session!.url, activeDMChannelId)
-        .then(({ messages: msgs, hasMore }) => {
-          if (cancelled) return;
-          const decrypted = msgs.map((m) => tryDecryptDM(m));
-          useChatStore.getState().setMessages(activeDMChannelId, decrypted);
-          useChatStore.getState().setHasMoreMessages(activeDMChannelId, hasMore);
-          const lastRead = useChatStore.getState().channelLastReadAt[activeDMChannelId];
-          if (lastRead && decrypted.length > 0) {
-            const firstNew = decrypted.find((m) => m.created_at > lastRead);
-            newMessagesRef.current = firstNew ? firstNew.id : null;
-          } else {
-            newMessagesRef.current = null;
-          }
-        })
-        .catch((err) => {
-          console.error('Failed to load messages:', err);
-          if (!cancelled) setLoadError('Failed to load messages');
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-
-      useChatStore.setState((state) => ({
-        unreadCounts: { ...state.unreadCounts, [activeDMChannelId]: 0 },
-        mentionCounts: { ...state.mentionCounts, [activeDMChannelId]: 0 },
-      }));
-
-      socketRef.current?.emit('channel:join', activeDMChannelId);
-      socketRef.current?.emit(
-        'dm:read',
-        { channelId: activeDMChannelId },
-        (res: { last_read_at?: number }) => {
-          if (cancelled) return;
-          if (res?.last_read_at) {
-            useChatStore.getState().setChannelLastReadAt(activeDMChannelId, res.last_read_at);
-          }
-        },
-      );
-
-      return () => {
-        cancelled = true;
-        socketRef.current?.emit('channel:leave', activeDMChannelId);
-        socketRef.current?.emit('typing:stop', { channelId: activeDMChannelId });
-      };
-    }
-  }, [activeDMChannelId, tryDecryptDM, reloadNonce]);
-
-  useEffect(() => {
-    if (!activeDMChannelId) return;
-    const store = useChatStore.getState();
-    const msgs = store.messages[activeDMChannelId];
-    if (!msgs || msgs.length === 0) return;
-    const decrypted = msgs.map((m) => tryDecryptDM(m));
-    const needsUpdate = decrypted.some((d, i) => d.content !== msgs[i].content);
-    if (needsUpdate) {
-      store.setMessages(activeDMChannelId, decrypted);
-    }
-  }, [dmChannels, tryDecryptDM, activeDMChannelId]);
-
-  useEffect(() => {
-    if (activeGroupDMChannelId) {
-      let cancelled = false;
-      setLoading(true);
-      setLoadError(null);
-      setChannelPerms(null);
-      fetchGroupDMMessages(session!.url, activeGroupDMChannelId)
-        .then(({ messages: msgs, hasMore }) => {
-          if (cancelled) return;
-          const decrypted = msgs.map((m) => tryDecryptGroupDM(m));
-          useChatStore.getState().setMessages(activeGroupDMChannelId, decrypted);
-          useChatStore.getState().setHasMoreMessages(activeGroupDMChannelId, hasMore);
-          const lastRead = useChatStore.getState().channelLastReadAt[activeGroupDMChannelId];
-          if (lastRead && decrypted.length > 0) {
-            const firstNew = decrypted.find((m) => m.created_at > lastRead);
-            newMessagesRef.current = firstNew ? firstNew.id : null;
-          } else {
-            newMessagesRef.current = null;
-          }
-        })
-        .catch((err) => {
-          console.error('Failed to load messages:', err);
-          if (!cancelled) setLoadError('Failed to load messages');
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-
-      useChatStore.setState((state) => ({
-        unreadCounts: { ...state.unreadCounts, [activeGroupDMChannelId]: 0 },
-        mentionCounts: { ...state.mentionCounts, [activeGroupDMChannelId]: 0 },
-      }));
-
-      socketRef.current?.emit('channel:join', activeGroupDMChannelId);
-      socketRef.current?.emit(
-        'group-dm:read',
-        { channelId: activeGroupDMChannelId },
-        (res: { last_read_at?: number }) => {
-          if (cancelled) return;
-          if (res?.last_read_at) {
-            useChatStore.getState().setChannelLastReadAt(activeGroupDMChannelId, res.last_read_at);
-          }
-        },
-      );
-
-      return () => {
-        cancelled = true;
-        socketRef.current?.emit('channel:leave', activeGroupDMChannelId);
-        socketRef.current?.emit('typing:stop', { channelId: activeGroupDMChannelId });
-      };
-    }
-  }, [activeGroupDMChannelId, tryDecryptGroupDM, reloadNonce]);
-
   // Draft persistence: save when leaving a channel, restore when entering
   useEffect(() => {
     const currentKey = activeAnyChannelId;
@@ -637,81 +364,10 @@ export default function ChatArea({
   }, [activeChannelId, activeDMChannelId, activeGroupDMChannelId]);
 
   useEffect(() => {
-    if (!activeGroupDMChannelId) return;
-    const store = useChatStore.getState();
-    const msgs = store.messages[activeGroupDMChannelId];
-    if (!msgs || msgs.length === 0) return;
-    const decrypted = msgs.map((m) => tryDecryptGroupDM(m));
-    const needsUpdate = decrypted.some((d, i) => d.content !== msgs[i].content);
-    if (needsUpdate) {
-      store.setMessages(activeGroupDMChannelId, decrypted);
-    }
-  }, [groupDMChannels, tryDecryptGroupDM, activeGroupDMChannelId]);
-
-  useEffect(() => {
     return () => {
       if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
     };
   }, [pendingPreviewUrl]);
-
-  const loadMoreMessages = useCallback(() => {
-    const channelId = activeAnyChannelId;
-    if (!channelId || !session) return;
-    const store = useChatStore.getState();
-    const channelMessages = store.messages[channelId] || [];
-    if (!store.hasMoreMessages[channelId] || channelMessages.length === 0) return;
-    if (store.loadingMoreMessages[channelId]) return;
-    const oldestId = channelMessages[0].id;
-    if (!oldestId) return;
-    store.setLoadingMoreMessages(channelId, true);
-    store.setLoadMoreError(channelId, null);
-    (async () => {
-      try {
-        const { messages: olderMsgs, hasMore } =
-          channelId === activeDMChannelId
-            ? await fetchDMMessages(session.url, channelId, 50, oldestId)
-            : channelId === activeGroupDMChannelId
-              ? await fetchGroupDMMessages(session.url, channelId, 50, oldestId)
-              : await fetchMessages(session.url, channelId, 50, oldestId);
-        if (olderMsgs.length === 0) {
-          store.setHasMoreMessages(channelId, false);
-          return;
-        }
-        const beforeLen = (store.messages[channelId] || []).length;
-        const decrypted =
-          channelId === activeDMChannelId
-            ? olderMsgs.map((m) => tryDecryptDM(m))
-            : channelId === activeGroupDMChannelId
-              ? olderMsgs.map((m) => tryDecryptGroupDM(m))
-              : olderMsgs;
-        store.prependMessages(channelId, decrypted);
-        const afterLen = (store.messages[channelId] || []).length;
-        store.setHasMoreMessages(channelId, hasMore && afterLen > beforeLen);
-      } catch (err) {
-        console.error('Failed to load more messages:', err);
-        store.setLoadMoreError(channelId, 'Failed to load older messages');
-        store.setHasMoreMessages(channelId, true);
-      } finally {
-        store.setLoadingMoreMessages(channelId, false);
-      }
-    })();
-  }, [
-    activeChannelId,
-    activeDMChannelId,
-    activeGroupDMChannelId,
-    session,
-    tryDecryptDM,
-    tryDecryptGroupDM,
-  ]);
-
-  const retryLoadMoreMessages = useCallback(() => {
-    const channelId = activeAnyChannelId;
-    if (!channelId) return;
-    const store = useChatStore.getState();
-    store.setHasMoreMessages(channelId, true);
-    store.setLoadMoreError(channelId, null);
-    loadMoreMessages();
-  }, [activeChannelId, activeDMChannelId, activeGroupDMChannelId, loadMoreMessages]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -777,22 +433,6 @@ export default function ChatArea({
       e.preventDefault();
       handleSend();
     }
-  };
-
-  const applyFormat = (prefix: string, suffix = prefix) => {
-    const ta = inputRef.current;
-    if (!ta || !formatSel) return;
-    const { start, end } = formatSel;
-    const newValue =
-      input.slice(0, start) + prefix + input.slice(start, end) + suffix + input.slice(end);
-    setInput(newValue);
-    setFormatSel(null);
-    setToolbarCoords(null);
-    requestAnimationFrame(() => {
-      ta.focus();
-      ta.selectionStart = start + prefix.length;
-      ta.selectionEnd = end + prefix.length;
-    });
   };
 
   const performSend = async () => {
@@ -919,105 +559,6 @@ export default function ChatArea({
     }
   };
 
-  const setPendingFileFromList = useCallback(
-    (files: File[]) => {
-      if (files.length === 0) return;
-      const [file, ...rest] = files;
-      setPendingFile(file);
-      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
-      const isImage = file.type.startsWith('image/');
-      setPendingPreviewUrl(isImage ? URL.createObjectURL(file) : null);
-      if (rest.length > 0) {
-        useNotificationStore.getState().addNotification({
-          type: 'announce',
-          title: 'One file at a time',
-          body: `Only "${file.name}" was attached. Send it, then attach the other ${rest.length} file${rest.length === 1 ? '' : 's'} separately.`,
-        });
-      }
-    },
-    [pendingPreviewUrl],
-  );
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    setPendingFileFromList(files);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const cancelUpload = useCallback(() => {
-    uploadAbortRef.current?.abort();
-  }, []);
-
-  const handleUpload = async () => {
-    if (!pendingFile || !session) return;
-
-    const targetChannelId = activeAnyChannelId;
-    if (!targetChannelId) return;
-
-    setUploading(true);
-    setUploadProgress(0);
-    const abortController = new AbortController();
-    uploadAbortRef.current = abortController;
-
-    const wasAtBottom = atBottom;
-
-    try {
-      const result = await uploadAttachment(
-        session.url,
-        targetChannelId,
-        pendingFile,
-        (pct) => setUploadProgress(pct),
-        abortController.signal,
-      );
-      setPendingAttachmentId(result.id);
-      const attachmentText = `![${result.filename}](${result.url})`;
-      const text = input.trim();
-      const finalText = text ? text + '\n' + attachmentText : attachmentText;
-
-      const message = await sendToActiveChannel(finalText, [result.id]);
-      if (!message) {
-        setUploading(false);
-        return;
-      }
-      addMessage(message.channel_id || targetChannelId, message);
-      setInput('');
-      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
-      setPendingFile(null);
-      setPendingPreviewUrl(null);
-      setPendingAttachmentId(null);
-      setSendError(null);
-      if (inputRef.current) {
-        inputRef.current.style.height = 'auto';
-        inputRef.current.focus();
-      }
-      if (!wasAtBottom) {
-        requestAnimationFrame(() => {
-          const msgs = useChatStore.getState().messages[targetChannelId] || [];
-          if (msgs.length > 0) {
-            virtuosoRef.current?.scrollToIndex(msgs.length - 1);
-          }
-          lastCountAtBottom.current = msgs.length;
-        });
-      }
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        // User-initiated cancel — clear the pending file instead of showing an error.
-        if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
-        setPendingFile(null);
-        setPendingPreviewUrl(null);
-        setPendingAttachmentId(null);
-      } else {
-        const e = err as { response?: { data?: { error?: string } }; message?: string };
-        setSendError(e?.response?.data?.error || e?.message || 'Failed to upload file');
-        if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
-        setPendingPreviewUrl(null);
-        setPendingAttachmentId(null);
-      }
-    }
-    uploadAbortRef.current = null;
-    setUploading(false);
-  };
-
   const handleDeleteMessage = useCallback(
     async (messageId: string) => {
       if (!session) return;
@@ -1071,80 +612,9 @@ export default function ChatArea({
     });
   }, []);
 
-  const handleVoiceRecordingComplete = useCallback(
-    async (file: File) => {
-      const targetChannelId = activeAnyChannelId;
-      if (!targetChannelId || !session) return;
-      setPendingFile(file);
-      setUploading(true);
-      setUploadProgress(0);
-      const abortController = new AbortController();
-      uploadAbortRef.current = abortController;
-      try {
-        const result = await uploadAttachment(
-          session.url,
-          targetChannelId,
-          file,
-          (pct) => setUploadProgress(pct),
-          abortController.signal,
-        );
-        // Read the composer at stop time, not at record-start time.
-        const msgText = (inputRef.current?.value ?? '').trim();
-        const attachmentText = msgText
-          ? `${msgText}\n![voice-message.webm](${result.url})`
-          : `![voice-message.webm](${result.url})`;
-
-        const message = await sendToActiveChannel(attachmentText, [result.id]);
-        if (message) {
-          addMessage(targetChannelId, message);
-          setInput('');
-        }
-      } catch (err) {
-        if (!(err instanceof DOMException && err.name === 'AbortError')) {
-          console.error('Failed to send voice message:', err);
-        }
-      }
-      uploadAbortRef.current = null;
-      setUploading(false);
-      setPendingFile(null);
-    },
-    [activeAnyChannelId, session, sendToActiveChannel, addMessage],
-  );
-
   const { recording, recordingTime, startRecording, stopRecording } = useVoiceRecorder(
     handleVoiceRecordingComplete,
   );
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.currentTarget === e.target) {
-      setIsDragOver(false);
-    }
-  };
-
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const imageFiles = Array.from(e.clipboardData?.files ?? []).filter((f) =>
-      f.type.startsWith('image/'),
-    );
-    if (imageFiles.length > 0) {
-      e.preventDefault();
-      setPendingFileFromList(imageFiles);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-    setPendingFileFromList(Array.from(e.dataTransfer.files));
-  };
 
   const handleEditMessage = useCallback(
     async (messageId: string, content: string) => {
@@ -1652,7 +1122,7 @@ export default function ChatArea({
               <p>{loadError}. Check your connection.</p>
               <button
                 className="chat-area__load-more-retry chat-area__load-more-retry--visible"
-                onClick={() => setReloadNonce((n) => n + 1)}
+                onClick={reloadMessages}
               >
                 Retry
               </button>
@@ -1885,12 +1355,7 @@ export default function ChatArea({
             ) : (
               <button
                 className="chat-area__upload-cancel"
-                onClick={() => {
-                  if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
-                  setPendingFile(null);
-                  setPendingPreviewUrl(null);
-                  setPendingAttachmentId(null);
-                }}
+                onClick={clearPendingFile}
               >
                 cancel
               </button>
@@ -2005,64 +1470,8 @@ export default function ChatArea({
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            onSelect={() => {
-              const ta = inputRef.current;
-              if (!ta) return;
-              const { selectionStart, selectionEnd } = ta;
-              if (
-                selectionStart !== null &&
-                selectionEnd !== null &&
-                selectionStart !== selectionEnd
-              ) {
-                setFormatSel({ start: selectionStart, end: selectionEnd });
-                requestAnimationFrame(() => {
-                  const mirror = mirrorRef.current;
-                  if (!mirror) return;
-                  const style = getComputedStyle(ta);
-                  const taRect = ta.getBoundingClientRect();
-                  mirror.style.fontFamily = style.fontFamily;
-                  mirror.style.fontSize = style.fontSize;
-                  mirror.style.fontWeight = style.fontWeight;
-                  mirror.style.lineHeight = style.lineHeight;
-                  mirror.style.letterSpacing = style.letterSpacing;
-                  mirror.style.textTransform = style.textTransform;
-                  mirror.style.textIndent = style.textIndent;
-                  mirror.style.whiteSpace = style.whiteSpace || 'pre-wrap';
-                  mirror.style.wordBreak = style.wordBreak || 'break-word';
-                  mirror.style.overflowWrap = style.overflowWrap || 'break-word';
-                  mirror.style.boxSizing = style.boxSizing || 'border-box';
-                  mirror.style.padding = style.padding;
-                  mirror.style.width = style.width;
-                  mirror.textContent = '';
-                  const text = ta.value;
-                  mirror.appendChild(document.createTextNode(text.slice(0, selectionStart)));
-                  const span = document.createElement('span');
-                  span.textContent = text.slice(selectionStart, selectionEnd);
-                  mirror.appendChild(span);
-                  mirror.appendChild(document.createTextNode(text.slice(selectionEnd)));
-                  const mirrorRect = mirror.getBoundingClientRect();
-                  const spanRect = span.getBoundingClientRect();
-                  const scrollTop = ta.scrollTop;
-                  const scrollLeft = ta.scrollLeft;
-                  let top = taRect.top + (spanRect.top - mirrorRect.top) - scrollTop - 44;
-                  let left = taRect.left + (spanRect.left - mirrorRect.left) - scrollLeft;
-                  const TOOLBAR_W = 230;
-                  if (left < 4) left = 4;
-                  if (left + TOOLBAR_W > window.innerWidth - 4)
-                    left = window.innerWidth - TOOLBAR_W - 4;
-                  if (top < 4)
-                    top = taRect.top + (spanRect.bottom - mirrorRect.top) - scrollTop + 6;
-                  setToolbarCoords({ top, left });
-                });
-              } else {
-                setFormatSel(null);
-                setToolbarCoords(null);
-              }
-            }}
-            onBlur={() => {
-              setFormatSel(null);
-              setToolbarCoords(null);
-            }}
+            onSelect={handleSelect}
+            onBlur={clearSelection}
             maxLength={inputMaxLen}
             disabled={cantWrite}
             aria-label={`Message ${composerTarget}`}
