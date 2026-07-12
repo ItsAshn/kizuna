@@ -3,49 +3,13 @@ import { X } from 'lucide-react'
 import { fetchGifs, fetchStickerPacks } from '@kizuna/shared'
 import type { GifInfo } from '@kizuna/shared'
 import IconButton from './ui/IconButton'
-import BottomSheet from './ui/BottomSheet'
+import PickerSurface from './ui/PickerSurface'
 import { useMobile } from '../hooks/useMobile'
 
 interface ReactionPickerProps {
   serverUrl: string
   onSelect: (key: string, type: 'emoji' | 'sticker') => void
   onClose: () => void
-}
-
-/** Anchored floating panel on desktop, native bottom sheet on phones. */
-function PickerSurface({
-  isMobile,
-  onClose,
-  children,
-}: {
-  isMobile: boolean
-  onClose: () => void
-  children: React.ReactNode
-}) {
-  if (isMobile) {
-    return (
-      <BottomSheet
-        open
-        onClose={onClose}
-        className="reaction-picker-sheet"
-        overlayClassName="reaction-picker-sheet-overlay"
-      >
-        {children}
-      </BottomSheet>
-    )
-  }
-  return (
-    <div
-      className="reaction-picker__overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div className="reaction-picker" onClick={e => e.stopPropagation()}>
-        {children}
-      </div>
-    </div>
-  )
 }
 
 const EMOJI_GRID = [
@@ -89,18 +53,8 @@ export default function ReactionPicker({ serverUrl, onSelect, onClose }: Reactio
     }
   }, [tab, activePack, serverUrl])
 
-  useEffect(() => {
-    // The mobile BottomSheet handles Escape itself (with exit animation).
-    if (isMobile) return
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [onClose, isMobile])
-
   return (
-    <PickerSurface isMobile={isMobile} onClose={onClose}>
+    <PickerSurface base="reaction-picker" isMobile={isMobile} onClose={onClose}>
         <div className="reaction-picker__header">
           <div className="reaction-picker__tabs">
             <button

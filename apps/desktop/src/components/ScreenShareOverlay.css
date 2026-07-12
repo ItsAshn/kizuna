@@ -70,7 +70,7 @@
 }
 
 /* Monitor Picker Modal */
-.monitor-picker-backdrop {
+.monitor-picker__overlay {
   position: fixed;
   inset: 0;
   z-index: 200;
