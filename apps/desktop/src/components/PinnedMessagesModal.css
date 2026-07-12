@@ -1,52 +1,13 @@
-.pins-modal__overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Shell chrome (overlay/header/close, mobile sheet) comes from ui/Modal;
+   className="pins-modal" sizes it and strips the default body padding. */
+.pins-modal {
+  width: 480px;
 }
 
-.pins-modal {
-  background: var(--bg-primary);
-  border-radius: var(--radius-lg);
-  width: 480px;
-  max-width: 90vw;
-  max-height: 80vh;
+.pins-modal .modal__body {
+  padding: 0;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-}
-
-.pins-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border-color);
-  flex-shrink: 0;
-}
-
-.pins-modal__header-left {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-primary);
-}
-
-.pins-modal__title {
-  font-size: 15px;
-  font-weight: 600;
-  margin: 0;
-}
-
-.pins-modal__count {
-  font-size: 12px;
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-sm);
-  padding: 1px 6px;
 }
 
 .pins-modal__list {
@@ -198,19 +159,6 @@
 }
 
 @media (max-width: 767px) {
-  /* Present pinned messages as a bottom sheet on mobile. */
-  .pins-modal__overlay {
-    align-items: flex-end;
-  }
-
-  .pins-modal {
-    width: 100%;
-    max-width: 100%;
-    max-height: 85dvh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
   .pins-modal__item-unpin {
     min-width: 44px;
     min-height: 44px;
