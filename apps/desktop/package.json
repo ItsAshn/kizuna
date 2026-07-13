@@ -15,6 +15,7 @@
   "dependencies": {
     "@kizuna/shared": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-notification": "^2",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.0.0",
     "dompurify": "^3.4.9",

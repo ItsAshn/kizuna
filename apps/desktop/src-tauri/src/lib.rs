@@ -39,6 +39,8 @@ static VOICE_CONTROLLER: Mutex<Option<VoiceController>> = Mutex::new(None);
 static VOICE_DECODERS: Mutex<Option<HashMap<String, opus2::Decoder>>> = Mutex::new(None);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 static AUDIO_OUTPUT: Mutex<Option<AudioOutput>> = Mutex::new(None);
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+static BACKGROUND_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn get_session_type() -> SessionType {
@@ -170,6 +172,12 @@ fn list_audio_output_devices() -> Result<Vec<AudioDeviceInfo>, String> {
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}!", name)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn set_background_enabled(enabled: bool) {
+    BACKGROUND_ENABLED.store(enabled, std::sync::atomic::Ordering::Relaxed);
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -609,6 +617,7 @@ pub fn run() {
                     voice_remove_peer,
                     voice_screen_share_start,
                     voice_screen_share_stop,
+                    set_background_enabled,
                 ]
             }
             #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -623,7 +632,58 @@ pub fn run() {
                 let window = _app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
+
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                use tauri::menu::{Menu, MenuItem};
+                use tauri::tray::TrayIconBuilder;
+                use tauri::Manager;
+
+                let show_item = MenuItem::with_id(_app, "show", "Open Kizuna", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(_app, "quit", "Quit", true, None::<&str>)?;
+                let tray_menu = Menu::with_items(_app, &[&show_item, &quit_item])?;
+
+                TrayIconBuilder::new()
+                    .icon(_app.default_window_icon().unwrap().clone())
+                    .menu(&tray_menu)
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => app.exit(0),
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if let tauri::tray::TrayIconEvent::Click {
+                            button: tauri::tray::MouseButton::Left,
+                            button_state: tauri::tray::MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            let app = tray.app_handle();
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    })
+                    .build(_app)?;
+            }
+
             Ok(())
+        })
+        .on_window_event(|_window, _event| {
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            if let tauri::WindowEvent::CloseRequested { api, .. } = _event {
+                if BACKGROUND_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+                    api.prevent_close();
+                    let _ = _window.hide();
+                }
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3,6 +3,7 @@ import { useChatStore } from '../store/chatStore'
 import { useServerStore } from '../store/serverStore'
 import { useSettingsStore } from '../store/settingsStore'
 import type { NotificationLevel } from '../store/settingsStore'
+import { isTauri } from './platform'
 
 interface ShowNotificationOptions {
   type: 'announce' | 'mention' | 'message' | 'dmcall'
@@ -38,6 +39,35 @@ function playNotificationSound() {
     osc.start(now)
     osc.stop(now + 0.3)
   } catch { /* AudioContext not available */ }
+}
+
+export async function ensureNotificationPermission(): Promise<void> {
+  if (isTauri()) {
+    try {
+      const { isPermissionGranted, requestPermission } = await import('@tauri-apps/plugin-notification')
+      if (!(await isPermissionGranted())) await requestPermission()
+    } catch { /* plugin unavailable */ }
+    return
+  }
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission()
+  }
+}
+
+function sendOSNotification(title: string, body: string, tag: string) {
+  if (isTauri()) {
+    import('@tauri-apps/plugin-notification')
+      .then(async ({ isPermissionGranted, sendNotification }) => {
+        if (await isPermissionGranted()) sendNotification({ title, body })
+      })
+      .catch(() => { /* plugin unavailable */ })
+    return
+  }
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification(title, { body, icon: '/Logo.webp', tag })
+    } catch { /* not supported */ }
+  }
 }
 
 export function showNotification(opts: ShowNotificationOptions) {
@@ -76,11 +106,7 @@ export function showNotification(opts: ShowNotificationOptions) {
               opts.type === 'dmcall' ? 'dmcall' :
               `message-${opts.channelId ?? 'unknown'}`
 
-  if ('Notification' in window && Notification.permission === 'granted') {
-    try {
-      new Notification(opts.title, { body: opts.body, icon: '/Logo.webp', tag })
-    } catch { /* not supported */ }
-  }
+  sendOSNotification(opts.title, opts.body, tag)
 }
 
 export function showErrorToast(context: string) {

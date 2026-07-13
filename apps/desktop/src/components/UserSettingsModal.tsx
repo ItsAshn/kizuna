@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { Mic, Eye, Database, Download } from 'lucide-react'
+import { Mic, Eye, Database, Download, Bell } from 'lucide-react'
 import { useVoiceStore } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useUpdaterActions } from '../hooks/useUpdater'
@@ -10,6 +10,7 @@ import SettingsLayout, { type SettingsNavGroup } from './ui/SettingsLayout'
 import { SettingsActionRow } from './user-settings/rows'
 import { VoiceSection } from './user-settings/VoiceSection'
 import { PrivacySection } from './user-settings/PrivacySection'
+import { NotificationsSection } from './user-settings/NotificationsSection'
 import './UserSettingsModal.css'
 
 interface Props {
@@ -19,6 +20,7 @@ interface Props {
 const SECTION_LABELS: Record<string, string> = {
   voice: 'voice',
   privacy: 'privacy',
+  notifications: 'notifications',
   data: 'data',
   updates: 'updates',
 }
@@ -38,6 +40,7 @@ export default function UserSettingsModal({ onClose }: Props) {
 
   const navGroups = useMemo<SettingsNavGroup[]>(() => {
     const tauri = isTauri()
+    const desktopTauri = tauri && !isMobileTauri()
     return [
       {
         label: 'media',
@@ -47,6 +50,7 @@ export default function UserSettingsModal({ onClose }: Props) {
         label: 'app',
         items: [
           ...(tauri ? [{ key: 'privacy', label: 'privacy', icon: <Eye size={15} /> }] : []),
+          ...(desktopTauri ? [{ key: 'notifications', label: 'notifications', icon: <Bell size={15} /> }] : []),
           { key: 'data', label: 'data', icon: <Database size={15} /> },
           ...(tauri ? [{ key: 'updates', label: 'updates', icon: <Download size={15} /> }] : []),
         ],
@@ -121,6 +125,8 @@ export default function UserSettingsModal({ onClose }: Props) {
       )}
 
       {activeTab === 'privacy' && <PrivacySection />}
+
+      {activeTab === 'notifications' && <NotificationsSection />}
 
       {activeTab === 'data' && (
         <div className="settings-tab-content">

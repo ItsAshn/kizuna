@@ -16,6 +16,7 @@ interface RecentChannel {
 interface SettingsState {
   serverBackgroundEnabled: boolean;
   customCssEnabled: boolean;
+  runInBackground: boolean;
   notificationSettings: Record<string, NotificationSettings>;
   recentChannels: RecentChannel[];
   channelNotificationLevels: Record<string, NotificationLevel>;
@@ -36,6 +37,7 @@ interface SettingsState {
 
   setServerBackgroundEnabled: (enabled: boolean) => void;
   setCustomCssEnabled: (enabled: boolean) => void;
+  setRunInBackground: (enabled: boolean) => void;
   setNotificationSettings: (serverId: string, settings: NotificationSettings) => void;
   pushRecentChannel: (channel: RecentChannel) => void;
   setChannelNotificationLevel: (channelId: string, level: NotificationLevel | null) => void;
@@ -62,6 +64,7 @@ export const useSettingsStore = create<SettingsState>()(
     (set, _get) => ({
       serverBackgroundEnabled: true,
       customCssEnabled: true,
+      runInBackground: true,
       notificationSettings: {},
       recentChannels: [] as RecentChannel[],
       channelNotificationLevels: {},
@@ -82,6 +85,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       setServerBackgroundEnabled: (serverBackgroundEnabled) => set({ serverBackgroundEnabled }),
       setCustomCssEnabled: (customCssEnabled) => set({ customCssEnabled }),
+      setRunInBackground: (runInBackground) => set({ runInBackground }),
       setNotificationSettings: (serverId, settings) =>
         set((s) => ({
           notificationSettings: { ...s.notificationSettings, [serverId]: settings },
@@ -136,6 +140,7 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (state) => ({
         serverBackgroundEnabled: state.serverBackgroundEnabled,
         customCssEnabled: state.customCssEnabled,
+        runInBackground: state.runInBackground,
         notificationSettings: state.notificationSettings,
         recentChannels: state.recentChannels,
         channelNotificationLevels: state.channelNotificationLevels,
