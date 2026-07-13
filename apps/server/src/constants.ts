@@ -10,7 +10,6 @@ export const COOKIE_OPTIONS = {
 };
 
 export const ADMIN_ROLE_ID = 'admin-role';
-export const NOTIFICATIONS_ROOM = '__notifications__';
 
 export const MAX_MESSAGE_LENGTH = 4000;
 export const MAX_PINS_PER_CHANNEL = 50;

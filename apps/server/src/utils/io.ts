@@ -1,5 +1,6 @@
 import type { Context } from 'hono'
 import type { Server as IoServer } from 'socket.io'
+import { getEligibleNotifyUserIds } from '../middleware/auth'
 
 export function getIo(c: Context): IoServer | undefined {
   return c.get('io' as never) as IoServer | undefined
@@ -17,10 +18,16 @@ export function emitToRoom(c: Context, room: string, event: string, data: unknow
   } catch { /* best-effort */ }
 }
 
-// Channel events also go to the __notifications__ room so clients not in the
-// channel can update unread state.
-export function emitToChannel(c: Context, channelId: string, event: string, data: unknown): void {
+// Channel events also fan out to eligible members' personal rooms (skipping
+// the actor, muted users, and anyone who can't view the channel) so clients
+// not actively viewing the channel can still be notified.
+export function emitToChannel(c: Context, channelId: string, event: string, data: unknown, actorUserId: string): void {
   try {
-    getIo(c)?.to(channelId).to('__notifications__').emit(event, data)
+    const io = getIo(c)
+    if (!io) return
+    io.to(channelId).emit(event, data)
+    for (const uid of getEligibleNotifyUserIds(channelId, actorUserId)) {
+      io.to(`user:${uid}`).emit(event, data)
+    }
   } catch { /* best-effort */ }
 }

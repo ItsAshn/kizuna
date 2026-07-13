@@ -264,6 +264,27 @@ export function canViewChannel(userId: string, channelId: string): boolean {
   return !hiddenRoleIds.some(roleId => userRoleIds.has(roleId))
 }
 
+// Members who should receive a background/off-channel notification for an event
+// in this channel: everyone except the actor, muted users, and anyone who can't
+// view the channel. Used to fan out to per-user rooms instead of broadcasting to
+// every connected socket regardless of membership/visibility.
+export function getEligibleNotifyUserIds(channelId: string, excludeUserId: string): string[] {
+  const db = getDb()
+  const members = db.prepare('SELECT user_id FROM server_members WHERE user_id != ?').all(excludeUserId) as { user_id: string }[]
+
+  const now = Math.floor(Date.now() / 1000)
+  const muted = new Set(
+    (db.prepare(
+      `SELECT user_id FROM channel_mutes
+       WHERE channel_id = ? AND (muted_until IS NULL OR muted_until > ?)`
+    ).all(channelId, now) as { user_id: string }[]).map((r) => r.user_id)
+  )
+
+  return members
+    .map((m) => m.user_id)
+    .filter((userId) => !muted.has(userId) && canViewChannel(userId, channelId))
+}
+
 export function getUserChannelPermissions(userId: string, channelId: string): { can_write: boolean; locked: boolean; can_view: boolean; hidden: boolean } {
   const db = getDb()
   const channel = db.prepare('SELECT locked, hidden FROM channels WHERE id = ?').get(channelId) as { locked: number; hidden: number } | undefined

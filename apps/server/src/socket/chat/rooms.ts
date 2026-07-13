@@ -3,12 +3,7 @@ import { getDb } from '../../db'
 import { getSocketUserId } from './helpers'
 
 export function registerRoomHandlers(_io: Server, socket: Socket): void {
-  const NOTIFICATION_ROOM = '__notifications__'
   const userId = getSocketUserId(socket)
-
-  socket.on('notification:subscribe', () => {
-    socket.join(NOTIFICATION_ROOM)
-  })
 
   socket.on('channel:mute:sync', () => {
     if (!userId) return

@@ -206,7 +206,7 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   const message = mapMessage(row)
   message.reactions = []
 
-  emitToChannel(c, channelId, 'message:new', message)
+  emitToChannel(c, channelId, 'message:new', message, user.userId)
 
   const mentions = parseMentions(content.trim())
   try {
@@ -251,7 +251,7 @@ messageRoutes.delete('/:messageId', authMiddleware, async (c) => {
   db.prepare('DELETE FROM message_edits WHERE message_id = ?').run(messageId)
   db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
 
-  emitToChannel(c, message.channel_id as string, 'message:delete', { id: messageId, channel_id: message.channel_id as string })
+  emitToChannel(c, message.channel_id as string, 'message:delete', { id: messageId, channel_id: message.channel_id as string }, user.userId)
 
   return c.json({ ok: true })
 })
@@ -291,7 +291,7 @@ messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
   const result = mapMessage(row)
   result.reactions = fetchReactionsForMessages(db, [messageId])[messageId] || []
 
-  emitToChannel(c, message.channel_id as string, 'message:edit', result)
+  emitToChannel(c, message.channel_id as string, 'message:edit', result, user.userId)
 
   return c.json({ message: result })
 })

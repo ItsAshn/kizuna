@@ -1,6 +1,7 @@
 import type { Server } from 'socket.io'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../../db'
+import { getEligibleNotifyUserIds } from '../../middleware/auth'
 import { type MentionResult, type ProcessMentionsMessage } from './infra'
 
 export function parseMentions(content: string): MentionResult[] {
@@ -53,10 +54,12 @@ export function processMentions(io: Server, message: ProcessMentionsMessage, men
          VALUES (?, ?, ?, ?, ?, ?, ?)`
       ).run(mentionId, message.id, message.channel_id, base.author_id, base.author_username, message.content, mention.type)
 
-      io.to('__notifications__').emit('message:mention', {
-        ...base,
-        mentionedUserId: null,
-      })
+      for (const uid of getEligibleNotifyUserIds(message.channel_id, base.author_id!)) {
+        io.to(`user:${uid}`).emit('message:mention', {
+          ...base,
+          mentionedUserId: null,
+        })
+      }
     } else {
       // Check if this matches a mentionable role first
       const role = db.prepare(

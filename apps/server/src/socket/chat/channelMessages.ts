@@ -1,7 +1,7 @@
 import type { Server, Socket } from 'socket.io'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../../db'
-import { getUserPermissions, hasPermission, canWriteToChannel, isUserAdmin } from '../../middleware/auth'
+import { getUserPermissions, hasPermission, canWriteToChannel, isUserAdmin, getEligibleNotifyUserIds } from '../../middleware/auth'
 import path from 'node:path'
 import fs from 'node:fs'
 import { checkSpam } from '../../services/spamFilter'
@@ -11,7 +11,6 @@ import { getSocketUserId, getSocketUsername } from './helpers'
 import { parseMentions, processMentions } from './mentions'
 
 export function registerChannelMessageHandlers(io: Server, socket: Socket): void {
-  const NOTIFICATION_ROOM = '__notifications__'
   const userId = getSocketUserId(socket)
   const username = getSocketUsername(socket)
 
@@ -84,7 +83,10 @@ export function registerChannelMessageHandlers(io: Server, socket: Socket): void
       reply_to_content: row.reply_to_content || null,
     }
 
-    io.to(channelId).to(NOTIFICATION_ROOM).emit('message:new', message)
+    io.to(channelId).emit('message:new', message)
+    for (const uid of getEligibleNotifyUserIds(channelId, userId)) {
+      io.to(`user:${uid}`).emit('message:new', message)
+    }
 
     const mentions = parseMentions(content.trim())
     processMentions(io, { ...message, author_id: row.author_id, author_username: row.author_username }, mentions)
@@ -137,7 +139,10 @@ export function registerChannelMessageHandlers(io: Server, socket: Socket): void
       created_at: row.created_at * 1000,
     }
 
-    io.to(existing.channel_id).to(NOTIFICATION_ROOM).emit('message:edit', updated)
+    io.to(existing.channel_id).emit('message:edit', updated)
+    for (const uid of getEligibleNotifyUserIds(existing.channel_id, userId)) {
+      io.to(`user:${uid}`).emit('message:edit', updated)
+    }
   })
 
   socket.on('message:delete', ({ messageId }: { messageId: string }) => {
@@ -160,7 +165,10 @@ export function registerChannelMessageHandlers(io: Server, socket: Socket): void
     db.prepare('DELETE FROM mentions WHERE message_id = ?').run(messageId)
     db.prepare('DELETE FROM attachments WHERE message_id = ?').run(messageId)
     db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
-    io.to(message.channel_id).to(NOTIFICATION_ROOM).emit('message:delete', { id: messageId, channel_id: message.channel_id })
+    io.to(message.channel_id).emit('message:delete', { id: messageId, channel_id: message.channel_id })
+    for (const uid of getEligibleNotifyUserIds(message.channel_id, userId)) {
+      io.to(`user:${uid}`).emit('message:delete', { id: messageId, channel_id: message.channel_id })
+    }
   })
 
   socket.on('mentions:read', ({ channelId }: { channelId?: string }) => {

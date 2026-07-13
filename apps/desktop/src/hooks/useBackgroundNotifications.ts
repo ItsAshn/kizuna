@@ -3,14 +3,25 @@ import { io } from 'socket.io-client'
 import type { Socket } from 'socket.io-client'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
+import { useSettingsStore } from '../store/settingsStore'
 import type { Message, Channel } from '@kizuna/shared'
-import { showNotification } from '../utils/showNotification'
+import { showNotification, ensureNotificationPermission } from '../utils/showNotification'
+import { tryDecryptSocketDM, tryDecryptGroupDM } from '../utils/decryptSocketMessage'
+import { isTauri, isMobileTauri } from '../utils/platform'
 
 export function useBackgroundNotifications(): void {
   const servers = useServerStore((s) => s.servers)
   const sessions = useServerStore((s) => s.sessions)
   const activeServerId = useServerStore((s) => s.activeServerId)
+  const runInBackground = useSettingsStore((s) => s.runInBackground)
   const socketsRef = useRef<Map<string, Socket>>(new Map())
+
+  useEffect(() => {
+    if (!isTauri() || isMobileTauri()) return
+    import('@tauri-apps/api/core').then(({ invoke }) => {
+      invoke('set_background_enabled', { enabled: runInBackground }).catch(() => {})
+    })
+  }, [runInBackground])
 
   useEffect(() => {
     const newSockets = new Map<string, Socket>()
@@ -32,11 +43,8 @@ export function useBackgroundNotifications(): void {
 
       socket.on('connect', () => {
         socket.emit('user:subscribe')
-        socket.emit('notification:subscribe')
         socket.emit('channel:mute:sync')
-        if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission()
-        }
+        ensureNotificationPermission()
       })
 
       socket.on('message:new', (message: Message) => {
@@ -70,6 +78,36 @@ export function useBackgroundNotifications(): void {
           title: mention.author_username || 'Someone',
           body: mention.content ? (mention.content.length > 100 ? mention.content.slice(0, 100) + '...' : mention.content) : '',
           channelId: mention.channel_id,
+        })
+      })
+
+      socket.on('dm:received', (message: Message) => {
+        const currentUserId = useServerStore.getState().sessions[server.id]?.user.id
+        if (message.user_id === currentUserId) return
+        if (activeServerId === server.id) return // useSocket.ts already handles the active server
+        const decrypted = tryDecryptSocketDM(message)
+        const store = useChatStore.getState()
+        const sender = decrypted.display_name || decrypted.username || 'Someone'
+        const body = decrypted.content.length > 100 ? decrypted.content.slice(0, 100) + '...' : decrypted.content
+        showNotification({ type: 'message', title: sender, body, channelId: message.channel_id })
+        store.setUnreadCounts({
+          ...store.unreadCounts,
+          [message.channel_id]: (store.unreadCounts[message.channel_id] || 0) + 1,
+        })
+      })
+
+      socket.on('group-dm:received', (message: Message) => {
+        const currentUserId = useServerStore.getState().sessions[server.id]?.user.id
+        if (message.user_id === currentUserId) return
+        if (activeServerId === server.id) return // useSocket.ts already handles the active server
+        const decrypted = tryDecryptGroupDM(message)
+        const store = useChatStore.getState()
+        const sender = decrypted.display_name || decrypted.username || 'Someone'
+        const body = decrypted.content.length > 100 ? decrypted.content.slice(0, 100) + '...' : decrypted.content
+        showNotification({ type: 'message', title: sender, body, channelId: message.channel_id })
+        store.setUnreadCounts({
+          ...store.unreadCounts,
+          [message.channel_id]: (store.unreadCounts[message.channel_id] || 0) + 1,
         })
       })
 

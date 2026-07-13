@@ -294,7 +294,7 @@ serverInfoRoutes.post('/announce', authMiddleware, adminMiddleware, async (c) =>
   try {
     const io = getIo(c)
     if (!io) return c.json({ error: 'Socket.IO not available' }, 500)
-    io.to('__notifications__').emit('server:announce', { title, body: announceBody })
+    io.emit('server:announce', { title, body: announceBody })
     return c.json({ ok: true })
   } catch {
     return c.json({ error: 'Socket.IO not available' }, 500)
