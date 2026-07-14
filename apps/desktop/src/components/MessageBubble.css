@@ -172,9 +172,9 @@
 }
 
 .msg-bubble__bubble--own {
-  background: var(--brand);
+  background: var(--bg-tertiary);
   border-top-right-radius: 4px;
-  box-shadow: 0 1px 2px rgba(76, 110, 245, 0.25);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .msg-bubble__bubble--editing {
@@ -186,13 +186,9 @@
 .msg-bubble__author {
   font-size: 12px;
   font-weight: 600;
-  color: var(--brand);
+  color: var(--text-secondary);
   margin-bottom: 2px;
   line-height: 1.3;
-}
-
-.msg-bubble__bubble--own .msg-bubble__author {
-  color: rgba(255, 255, 255, 0.8);
 }
 
 /* ── Text ─────────────────────────────────────────────────── */
@@ -331,7 +327,7 @@
 /* ── Markdown: blockquote ─────────────────────────────────── */
 
 .msg-bubble__text blockquote {
-  border-left: 3px solid var(--brand);
+  border-left: 3px solid var(--border-color);
   padding-left: 10px;
   margin: 8px 0;
   color: var(--text-secondary);
@@ -372,31 +368,6 @@
   border: none;
   border-top: 1px solid var(--border-color);
   margin: 10px 0;
-}
-
-/* ── Markdown: own-message overrides ──────────────────────── */
-
-.msg-bubble__bubble--own .msg-bubble__text code {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.msg-bubble__bubble--own .msg-bubble__text pre {
-  background: rgba(0, 0, 0, 0.2);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.msg-bubble__bubble--own .msg-bubble__text pre code {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.msg-bubble__bubble--own .msg-bubble__text blockquote {
-  border-left-color: rgba(255, 255, 255, 0.3);
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.msg-bubble__bubble--own .msg-bubble__text a {
-  color: rgba(255, 255, 255, 0.9);
 }
 
 /* ── Bubble row ───────────────────────────────────────────── */
@@ -460,17 +431,9 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-.msg-bubble__bubble--own .msg-bubble__time {
-  color: rgba(255, 255, 255, 0.65);
-}
-
 .msg-bubble__edited {
   font-size: 10px;
   color: var(--text-muted);
-}
-
-.msg-bubble__bubble--own .msg-bubble__edited {
-  color: rgba(255, 255, 255, 0.5);
 }
 
 /* ── Delete button ────────────────────────────────────────── */
@@ -491,15 +454,6 @@
 .msg-bubble__delete-btn:hover {
   color: var(--red);
   background: var(--red-dim);
-}
-
-.msg-bubble__bubble--own .msg-bubble__meta .msg-bubble__delete-btn {
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.msg-bubble__bubble--own .msg-bubble__meta .msg-bubble__delete-btn:hover {
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.1);
 }
 
 /* ── Delete confirm ───────────────────────────────────────── */
@@ -557,15 +511,6 @@
   background: var(--brand-dim);
 }
 
-.msg-bubble__bubble--own .msg-bubble__meta .msg-bubble__edit-btn {
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.msg-bubble__bubble--own .msg-bubble__meta .msg-bubble__edit-btn:hover {
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.1);
-}
-
 /* ── Edit input ───────────────────────────────────────────── */
 
 .msg-bubble__edit-input {
@@ -588,16 +533,6 @@
 
 .msg-bubble__edit-input:focus {
   border-color: var(--brand);
-}
-
-.msg-bubble__bubble--own .msg-bubble__edit-input {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.msg-bubble__bubble--own .msg-bubble__edit-input:focus {
-  border-color: rgba(255, 255, 255, 0.5);
 }
 
 /* ── Edit actions ─────────────────────────────────────────── */
@@ -633,24 +568,6 @@
 
 .msg-bubble__edit-action-btn--cancel:hover {
   background: var(--bg-hover);
-}
-
-.msg-bubble__bubble--own .msg-bubble__edit-action-btn--save {
-  background: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.msg-bubble__bubble--own .msg-bubble__edit-action-btn--save:hover {
-  background: rgba(255, 255, 255, 0.25);
-}
-
-.msg-bubble__bubble--own .msg-bubble__edit-action-btn--cancel {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.msg-bubble__bubble--own .msg-bubble__edit-action-btn--cancel:hover {
-  background: rgba(255, 255, 255, 0.15);
 }
 
 /* ── Mention highlighting ─────────────────────────────────── */
