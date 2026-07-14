@@ -1,0 +1,28 @@
+/* Surface — the shared card/panel recipe. Background + border are the
+   .nav-panel / .chat-main__content look, now in one place. */
+.ui-surface {
+  background: var(--modal-bg);
+  border: 1px solid var(--border-color);
+  min-width: 0;
+  min-height: 0;
+}
+
+.ui-surface--inset {
+  background: var(--bg-secondary);
+}
+
+/* Elevation */
+.ui-surface--elev-0 { box-shadow: var(--elev-0); }
+.ui-surface--elev-1 { box-shadow: var(--elev-1); }
+.ui-surface--elev-2 { box-shadow: var(--elev-2); }
+.ui-surface--elev-3 { box-shadow: var(--elev-3); }
+
+/* Radius */
+.ui-surface--radius-md { border-radius: var(--radius-md); }
+.ui-surface--radius-lg { border-radius: var(--radius-lg); }
+.ui-surface--radius-xl { border-radius: var(--radius-xl); }
+
+/* Padding */
+.ui-surface--pad-none { padding: 0; }
+.ui-surface--pad-sm { padding: var(--space-3); }
+.ui-surface--pad-md { padding: var(--space-4); }

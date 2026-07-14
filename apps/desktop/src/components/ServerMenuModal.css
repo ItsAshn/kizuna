@@ -2,8 +2,8 @@
    Section-specific styles live in server-settings/<Section>.css */
 
 .server-menu {
-  width: min(920px, 92vw);
-  height: min(700px, 88vh);
+  width: var(--settings-modal-w);
+  height: var(--settings-modal-h);
 }
 
 /* The two-pane SettingsLayout fills the modal body and owns its own scrolling

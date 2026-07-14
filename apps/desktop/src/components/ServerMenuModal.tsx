@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, type ReactNode } from 'react'
 import {
   User, Bell, SlidersHorizontal, Users, Link2, Shield, Code, Image as ImageIcon, Trash2,
 } from 'lucide-react'
@@ -47,7 +47,12 @@ const SECTION_LABELS: Record<Section, string> = {
   logs: 'logs & data',
 }
 
-export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props) {
+/**
+ * The "Server" settings body — SettingsLayout + sections, without the Modal
+ * chrome. Rendered by the unified SettingsModal and by the thin ServerMenuModal
+ * wrapper below.
+ */
+export function ServerSettingsBody({ onClose, onBackgroundChanged, navHeader }: Props & { navHeader?: ReactNode }) {
   const { activeSession: session } = useServerStore()
   const serverUrl = session?.url
   const isAdmin = session?.user?.role === 'admin'
@@ -89,20 +94,12 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
   }, [])
 
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title="// server menu"
-      className="server-menu"
-      footer={(handleClose) => (
-        <button onClick={handleClose} className="server-menu__done-btn">done</button>
-      )}
-    >
       <SettingsLayout
         groups={navGroups}
         activeKey={section}
         onChange={handleSectionChange}
         activeLabel={SECTION_LABELS[section]}
+        navHeader={navHeader}
       >
         {section === 'profile' && <ProfileSection onClose={onClose} />}
 
@@ -139,6 +136,21 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
           </div>
         )}
       </SettingsLayout>
+  )
+}
+
+export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="// server menu"
+      className="server-menu"
+      footer={(handleClose) => (
+        <button onClick={handleClose} className="server-menu__done-btn">done</button>
+      )}
+    >
+      <ServerSettingsBody onClose={onClose} onBackgroundChanged={onBackgroundChanged} />
     </Modal>
   )
 }

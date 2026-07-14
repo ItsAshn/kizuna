@@ -47,6 +47,7 @@ import {
   Settings,
   Image as ImageIcon,
   BarChart3,
+  MoreHorizontal,
 } from 'lucide-react';
 import type { Message, Member, CustomRole } from '@kizuna/shared';
 import { runChatCommand } from '../lib/chatCommands';
@@ -66,6 +67,8 @@ import PinnedMessagesModal from './PinnedMessagesModal';
 import EnvStatus from './EnvStatus';
 import GroupDMSettingsModal from './GroupDMSettingsModal';
 import IconButton from './ui/IconButton';
+import ActionSheet from './ui/ActionSheet';
+import type { ActionSheetItem } from './ui/ActionSheet';
 import MediaGallery from './MediaGallery';
 import PollPanel from './PollPanel';
 import './ChatArea.css';
@@ -218,6 +221,7 @@ export default function ChatArea({
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [showSearch, setShowSearch] = useState(false);
   const [showGroupDMSettings, setShowGroupDMSettings] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const [mentionableRoles, setMentionableRoles] = useState<CustomRole[]>([]);
   useKeyboard();
   const haptics = useHaptics();
@@ -684,6 +688,24 @@ export default function ChatArea({
   const activeGroupDM = groupDMChannels.find((g) => g.id === activeGroupDMChannelId);
   const headerTitle =
     activeChannel?.name || activeDM?.other_display_name || activeGroupDM?.name || 'Kizuna';
+
+  // The header fits ~3 actions on a phone. Call/Members/Search stay inline as
+  // icons; the rest collapse into an overflow sheet. These open rather than
+  // toggle — the sheet dismisses on tap, so a toggle would let you "close" a
+  // panel you can't see. Desktop renders all of them inline instead.
+  const overflowActions: ActionSheetItem[] = [];
+  if (activeGroupDMChannelId && activeGroupDM && activeGroupDM.owner_id === session?.user.id) {
+    overflowActions.push({ label: 'Group settings', onClick: () => setShowGroupDMSettings(true) });
+  }
+  if (activeChannelId) {
+    overflowActions.push({ label: 'Threads', onClick: () => setThreadPanelVisible(true) });
+    overflowActions.push({ label: 'Pinned messages', onClick: () => setPinsOpen(true) });
+  }
+  if (activeAnyChannelId) {
+    overflowActions.push({ label: 'Media', onClick: () => setMediaGalleryOpen(true) });
+    overflowActions.push({ label: 'Polls', onClick: () => setPollPanelOpen(true) });
+  }
+
   const displayMessages = activeDMChannelId
     ? dmMessages
     : activeGroupDMChannelId
@@ -1013,7 +1035,7 @@ export default function ChatArea({
               <Phone className="icon-xs" />
             </button>
           )}
-          {onToggleMembers && activeChannelId && (
+          {onToggleMembers && (
             <button
               className={`chat-area__header-members-btn${membersOpen ? ' chat-area__header-members-btn--active' : ''}`}
               onClick={onToggleMembers}
@@ -1032,52 +1054,66 @@ export default function ChatArea({
               onClick={() => setShowSearch((v) => !v)}
             />
           )}
-          {activeGroupDMChannelId &&
-            activeGroupDM &&
-            activeGroupDM.owner_id === session?.user.id && (
+          {isMobile ? (
+            overflowActions.length > 0 && (
               <IconButton
-                icon={<Settings className="icon-sm" />}
-                label="Group settings"
-                title="Group Settings"
-                active={showGroupDMSettings}
-                onClick={() => setShowGroupDMSettings((v) => !v)}
+                icon={<MoreHorizontal className="icon-sm" />}
+                label="More actions"
+                title="More"
+                active={overflowOpen}
+                onClick={() => setOverflowOpen(true)}
               />
-            )}
-          {activeChannelId && (
-            <IconButton
-              icon={<Pin className="icon-sm" />}
-              label="Pinned messages"
-              title="Pinned Messages"
-              active={pinsOpen}
-              onClick={() => setPinsOpen(true)}
-            />
-          )}
-          {activeAnyChannelId && (
-            <IconButton
-              icon={<ImageIcon className="icon-sm" />}
-              label="Media gallery"
-              title="Media"
-              active={mediaGalleryOpen}
-              onClick={() => setMediaGalleryOpen(true)}
-            />
-          )}
-          {activeAnyChannelId && (
-            <IconButton
-              icon={<BarChart3 className="icon-sm" />}
-              label="Toggle polls"
-              title="Polls"
-              active={pollPanelOpen}
-              onClick={() => setPollPanelOpen((v) => !v)}
-            />
-          )}
-          {activeChannelId && (
-            <IconButton
-              icon={<MessageSquare className="icon-sm" />}
-              label="Toggle threads"
-              title="Threads"
-              active={threadPanelVisible}
-              onClick={() => setThreadPanelVisible(!threadPanelVisible)}
-            />
+            )
+          ) : (
+            <>
+              {activeGroupDMChannelId &&
+                activeGroupDM &&
+                activeGroupDM.owner_id === session?.user.id && (
+                  <IconButton
+                    icon={<Settings className="icon-sm" />}
+                    label="Group settings"
+                    title="Group Settings"
+                    active={showGroupDMSettings}
+                    onClick={() => setShowGroupDMSettings((v) => !v)}
+                  />
+                )}
+              {activeChannelId && (
+                <IconButton
+                  icon={<Pin className="icon-sm" />}
+                  label="Pinned messages"
+                  title="Pinned Messages"
+                  active={pinsOpen}
+                  onClick={() => setPinsOpen(true)}
+                />
+              )}
+              {activeAnyChannelId && (
+                <IconButton
+                  icon={<ImageIcon className="icon-sm" />}
+                  label="Media gallery"
+                  title="Media"
+                  active={mediaGalleryOpen}
+                  onClick={() => setMediaGalleryOpen(true)}
+                />
+              )}
+              {activeAnyChannelId && (
+                <IconButton
+                  icon={<BarChart3 className="icon-sm" />}
+                  label="Toggle polls"
+                  title="Polls"
+                  active={pollPanelOpen}
+                  onClick={() => setPollPanelOpen((v) => !v)}
+                />
+              )}
+              {activeChannelId && (
+                <IconButton
+                  icon={<MessageSquare className="icon-sm" />}
+                  label="Toggle threads"
+                  title="Threads"
+                  active={threadPanelVisible}
+                  onClick={() => setThreadPanelVisible(!threadPanelVisible)}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1547,6 +1583,14 @@ export default function ChatArea({
             setLightboxIndex(i);
           }}
           onClose={() => setMediaGalleryOpen(false)}
+        />
+      )}
+
+      {overflowOpen && (
+        <ActionSheet
+          title={headerTitle}
+          sections={[{ items: overflowActions }]}
+          onClose={() => setOverflowOpen(false)}
         />
       )}
     </div>

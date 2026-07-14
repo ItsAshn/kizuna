@@ -2,11 +2,8 @@
   display: flex;
   flex-direction: column;
   width: 360px;
-  margin: 8px 8px 8px 0;
   background: var(--modal-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  border-left: 1px solid var(--border-color);
   flex-shrink: 0;
   min-width: 0;
   overflow: hidden;
@@ -339,13 +336,20 @@
 /* ── Mobile ────────────────────────────────────────────────── */
 
 @media (max-width: 767px) {
+  /* Full-screen view rather than a side panel. It sits above the layout, so it
+     has to track the keyboard itself the way .chat-layout--mobile does —
+     without this the composer ends up behind the keyboard. */
   .thread-panel {
     position: fixed;
-    inset: 0;
-    z-index: 100;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: var(--keyboard-height, 0px);
+    z-index: var(--z-overlay);
     margin: 0;
     width: 100%;
-    border-radius: 0;
+    border: none;
+    transition: bottom 0.2s ease-out;
   }
 
   .thread-panel__header {
@@ -405,6 +409,12 @@
     padding: 10px 12px;
     padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     gap: 8px;
+  }
+
+  /* With the keyboard up the panel already stops at its top edge, so the home
+     indicator inset would just be a dead strip between input and keyboard. */
+  :root[data-keyboard-open] .thread-panel__composer {
+    padding-bottom: 10px;
   }
 
   .thread-panel__input {

@@ -6,6 +6,9 @@ export { default as Slider } from './Slider'
 export { default as Input } from './Input'
 export { default as Textarea } from './Textarea'
 
+// Layout / surface primitives
+export { default as Surface } from './Surface'
+
 // Existing primitives
 export { default as Modal } from './Modal'
 export { default as BottomSheet } from './BottomSheet'

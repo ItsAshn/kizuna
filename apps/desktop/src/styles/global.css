@@ -60,6 +60,49 @@
   --radius-full: 9999px;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
   --focus-ring: 0 0 0 2px var(--bg-primary), 0 0 0 3.5px var(--brand);
+
+  /* Elevation scale — the single source for surface shadows. Replaces the
+     inline box-shadow literals that were scattered across component CSS. */
+  --elev-0: none;
+  --elev-1: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --elev-2: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --elev-3: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --elev-4: 0 -8px 32px rgba(0, 0, 0, 0.5);
+
+  /* Z-index scale — named layers so stacking is legible instead of magic
+     numbers. Keep component z-index values pinned to these. */
+  --z-base: 1;
+  --z-panel: 10;
+  --z-drawer: 40;
+  --z-banner: 50;
+  --z-overlay: 100;
+  --z-popover: 1000;
+  --z-modal: 2000;
+  --z-toast: 3000;
+  --z-tooltip: 9999;
+
+  /* Typography scale — sizes were hardcoded per component; adopt these as
+     files are touched (not a big-bang sweep). */
+  --fs-xs: 0.6875rem;
+  --fs-sm: 0.75rem;
+  --fs-base: 0.875rem;
+  --fs-md: 0.9375rem;
+  --fs-lg: 1.0625rem;
+  --fs-xl: 1.25rem;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* Shared modal dimensions — modals reference these instead of hand-picking
+     one-off sizes, so related dialogs stay consistent. Every width clamps to
+     92vw so no dialog overflows a narrow window. The two-pane settings shell
+     keeps a fixed size across every scope so it never resizes. */
+  --modal-w-xs: min(400px, 92vw);
+  --modal-w-sm: min(460px, 92vw);
+  --modal-w-md: min(520px, 92vw);
+  --modal-w-lg: min(600px, 92vw);
+  --settings-modal-w: min(920px, 92vw);
+  --settings-modal-h: min(700px, 88vh);
 }
 
 *,

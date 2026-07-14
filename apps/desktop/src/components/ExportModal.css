@@ -1,5 +1,5 @@
 .export-modal {
-  width: 380px;
+  width: var(--modal-w-xs);
 }
 
 

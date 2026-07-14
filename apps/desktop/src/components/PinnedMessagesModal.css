@@ -1,7 +1,7 @@
 /* Shell chrome (overlay/header/close, mobile sheet) comes from ui/Modal;
    className="pins-modal" sizes it and strips the default body padding. */
 .pins-modal {
-  width: 480px;
+  width: var(--modal-w-md);
 }
 
 .pins-modal .modal__body {

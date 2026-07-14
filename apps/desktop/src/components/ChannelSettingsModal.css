@@ -1,5 +1,5 @@
 .channel-settings {
-  width: 560px;
+  width: var(--modal-w-lg);
 }
 
 

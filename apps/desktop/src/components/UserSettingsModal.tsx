@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, type ReactNode } from 'react'
 import { Mic, Eye, Database, Download, Bell } from 'lucide-react'
 import { useVoiceStore } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
@@ -25,7 +25,12 @@ const SECTION_LABELS: Record<string, string> = {
   updates: 'updates',
 }
 
-export default function UserSettingsModal({ onClose }: Props) {
+/**
+ * The "You" settings body — the SettingsLayout + sections, without the Modal
+ * chrome. Rendered directly by SettingsModal (unified settings hub) and by the
+ * thin UserSettingsModal wrapper below for any standalone use.
+ */
+export function UserSettingsBody({ onClose, navHeader }: { onClose: () => void; navHeader?: ReactNode }) {
   const { setAudioInputDeviceId, setAudioOutputDeviceId, setPushToTalkKey } = useVoiceStore()
   const {
     updateState, updateProgress, updateVersion, updateError,
@@ -104,20 +109,12 @@ export default function UserSettingsModal({ onClose }: Props) {
   }, [])
 
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title="// user settings"
-      className="settings-modal"
-      footer={(handleClose) => (
-        <button onClick={handleClose} className="settings-modal__done-btn">done</button>
-      )}
-    >
       <SettingsLayout
         groups={navGroups}
         activeKey={activeTab}
         onChange={setActiveTab}
         activeLabel={SECTION_LABELS[activeTab]}
+        navHeader={navHeader}
       >
 
       {activeTab === 'voice' && (
@@ -192,6 +189,21 @@ export default function UserSettingsModal({ onClose }: Props) {
         </div>
       )}
       </SettingsLayout>
+  )
+}
+
+export default function UserSettingsModal({ onClose }: Props) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="// user settings"
+      className="settings-modal"
+      footer={(handleClose) => (
+        <button onClick={handleClose} className="settings-modal__done-btn">done</button>
+      )}
+    >
+      <UserSettingsBody onClose={onClose} />
     </Modal>
   )
 }

@@ -7,7 +7,7 @@ import { useUpdater } from './hooks/useUpdater'
 import { useBackgroundNotifications } from './hooks/useBackgroundNotifications'
 import ErrorBoundary from './components/ErrorBoundary'
 import SetupWizard from './components/SetupWizard'
-import UserSettingsModal from './components/UserSettingsModal'
+import SettingsModal from './components/SettingsModal'
 import './styles/global.css'
 import './styles/app.css'
 import './styles/mobile.css'
@@ -57,11 +57,11 @@ function AppContent() {
           <Route path="/" element={activeSession ? <Navigate to="/chat" replace /> : <Welcome isLanding={__VERCEL__} onOpenSettings={handleOpenSettings} />} />
           <Route path="/login/:serverId" element={<Login />} />
           <Route path="/reset-password/:serverId" element={<ResetPassword />} />
-          <Route path="/chat" element={activeSession ? <Chat onOpenSettings={handleOpenSettings} /> : <Navigate to="/" replace />} />
+          <Route path="/chat" element={activeSession ? <Chat /> : <Navigate to="/" replace />} />
         </Routes>
       </Suspense>
       {showWizard && <SetupWizard onClose={() => setShowWizard(false)} />}
-      {showSettings && <UserSettingsModal onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   )
 }

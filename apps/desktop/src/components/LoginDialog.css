@@ -1,7 +1,7 @@
 
 
 .login-dialog {
-  width: 448px;
+  width: var(--modal-w-sm);
 }
 
 @media (max-width: 767px) {

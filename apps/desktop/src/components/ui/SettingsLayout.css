@@ -11,6 +11,29 @@
 
 /* ── Left rail ─────────────────────────────────────────────── */
 
+/* Rail wrapper — used when a navHeader (e.g. scope switcher) is pinned above
+   the nav. Owns the border/background so the nav below can sit flush. */
+.settings-layout__rail {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.settings-layout__rail-header {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.settings-layout__rail .settings-nav {
+  flex: 1 1 auto;
+  border-right: none;
+  background: transparent;
+}
+
 .settings-nav {
   flex: 0 0 200px;
   display: flex;
@@ -119,6 +142,12 @@
 
 .settings-layout--mobile {
   flex-direction: column;
+}
+
+.settings-layout--mobile .settings-layout__rail {
+  flex: 1 1 auto;
+  border-right: none;
+  background: transparent;
 }
 
 .settings-layout--mobile .settings-nav {

@@ -18,21 +18,20 @@
     opacity: 0;
     transform: translateX(32px);
     width: 0;
-    margin: 8px 0;
   }
 }
 
+/* Desktop: the member list is an inline column *inside* the chat panel,
+   separated by a divider rather than being its own floating card. The tablet
+   media query below turns it back into a floating overlay drawer. */
 .member-list {
-  width: clamp(180px, 18vw, 220px);
-  background: var(--modal-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
+  width: clamp(200px, 18vw, 240px);
+  background: transparent;
+  border-left: 1px solid var(--border-color);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  margin: 8px;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
   animation: memberSlideInRight 0.25s ease-out;
 }
 
@@ -41,7 +40,12 @@
   pointer-events: none;
 }
 
+/* Title + close sit on one row; the search wraps onto its own line below. */
 .member-list__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   padding: 12px;
   border-bottom: 1px solid var(--border-color);
 }
@@ -52,11 +56,13 @@
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin-bottom: 10px;
+  flex: 1;
+  min-width: 0;
 }
 
 .member-list__search {
   width: 100%;
+  order: 3;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
@@ -307,11 +313,12 @@
     right: 4px;
     bottom: 4px;
     left: 4px;
-    z-index: 100;
+    z-index: var(--z-overlay);
     margin: 0;
+    background: var(--modal-bg);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--elev-3);
   }
 
   .member-list__header {
@@ -342,20 +349,6 @@
 
   .member-list__title {
     font-size: 13px;
-    flex: 1;
-    margin-bottom: 0;
-  }
-
-  .member-list__header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .member-list__search {
-    width: 100%;
-    order: 3;
   }
 
   .member-list__group-header {
@@ -367,15 +360,19 @@
   }
 }
 
-/* Tablet: anchor the overlay as a right-side drawer instead of full-screen. */
+/* Tablet: anchor the overlay as a right-side drawer instead of full-screen.
+   Flush to the window edges like the rest of the shell — it reads as a panel
+   that slid in, with only the shadow marking it as above the content. */
 @media (min-width: 768px) and (max-width: 1023px) {
   .member-list {
-    top: 8px;
-    right: 8px;
-    bottom: 8px;
+    top: 0;
+    right: 0;
+    bottom: 0;
     left: auto;
     width: min(320px, 70vw);
-    border-radius: var(--radius-xl);
+    border: none;
+    border-left: 1px solid var(--border-color);
+    border-radius: 0;
   }
 
   .member-list__header {

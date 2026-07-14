@@ -22,7 +22,7 @@ import MemberList from '../components/MemberList'
 import VoiceOverlay from '../components/VoiceOverlay'
 import ScreenShareOverlay from '../components/ScreenShareOverlay'
 import VoiceChannelView from '../components/VoiceChannelView'
-import ServerMenuModal from '../components/ServerMenuModal'
+import SettingsModal, { type SettingsScope } from '../components/SettingsModal'
 import SetupWizard from '../components/SetupWizard'
 import LoginDialog from '../components/LoginDialog'
 import NotificationContainer from '../components/NotificationContainer'
@@ -35,7 +35,7 @@ import { MobileShell } from '../components/mobile'
 import { useNavigate } from 'react-router-dom'
 import './Chat.css'
 
-export default function Chat({ onOpenSettings }: { onOpenSettings: () => void }) {
+export default function Chat() {
   const navigate = useNavigate()
   const isMobile = useMobile()
   const isTablet = useTablet()
@@ -95,7 +95,8 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
   const dmCallConnectedRef = useRef(false)
   // Member list is inline only on full desktop; on tablet/phone it opens as an overlay drawer.
   const [showMembers, setShowMembers] = useState(!isMobile && !isTablet)
-  const [showMenu, setShowMenu] = useState(false)
+  // Unified settings hub: null = closed, otherwise the scope to open on.
+  const [settingsScope, setSettingsScope] = useState<SettingsScope | null>(null)
   const [showEnvWizard, setShowEnvWizard] = useState(false)
   const [loginForServerId, setLoginForServerId] = useState<string | null>(null)
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false)
@@ -332,8 +333,8 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
           videoElRef={videoElRef}
           startDMCall={startDMCall}
           endDMCall={endDMCall}
-          onOpenSettings={onOpenSettings}
-          onOpenMenu={() => setShowMenu(true)}
+          onOpenSettings={() => setSettingsScope('you')}
+          onOpenMenu={() => setSettingsScope('server')}
           onOpenExport={() => setShowExport(true)}
           onOpenConnect={() => setShowConnect(true)}
           onOpenEnvWizard={() => setShowEnvWizard(true)}
@@ -344,7 +345,7 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         <UpdateBanner />
         {showExport && <ExportModal onClose={() => setShowExport(false)} />}
         {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}
-        {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} onBackgroundChanged={handleBackgroundChanged} />}
+        {settingsScope && <SettingsModal initialScope={settingsScope} onClose={() => setSettingsScope(null)} onBackgroundChanged={handleBackgroundChanged} />}
         {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
         {loginForServerId && <LoginDialog serverId={loginForServerId} onClose={() => setLoginForServerId(null)} />}
         {showQuickSwitcher && <QuickSwitcher onClose={() => setShowQuickSwitcher(false)} />}
@@ -387,13 +388,13 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
         </div>
       )}
       <div className="nav-panel">
-        {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={onOpenSettings} onOpenExport={() => setShowExport(true)} onAddServer={() => setShowConnect(true)} />}
+        {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={() => setSettingsScope('you')} onOpenExport={() => setShowExport(true)} onAddServer={() => setShowConnect(true)} />}
         <div className="sidebar-shell">
           <Sidebar
             joinVoice={joinVoice}
             leaveVoice={leaveVoice}
             socketRef={socketRef}
-            onOpenMenu={() => setShowMenu(true)}
+            onOpenMenu={() => setSettingsScope('server')}
             voicePanel={
               <VoiceOverlay
                 leaveVoice={leaveVoice}
@@ -412,55 +413,65 @@ export default function Chat({ onOpenSettings }: { onOpenSettings: () => void })
       <div className="chat-main">
         <UpdateBanner />
         <div className="chat-main__content">
-          {viewedVoiceChannelId ? (
-            <VoiceChannelView
-              channelId={viewedVoiceChannelId}
-              joinVoice={joinVoice}
-              leaveVoice={leaveVoice}
-              toggleMute={toggleMute}
-              toggleCamera={toggleCamera}
-              startScreenshare={startScreenshare}
-              stopScreenshare={stopScreenshare}
-              isCameraOn={isCameraOn}
-              cameraStreamRef={cameraStreamRef}
-              videoElRef={videoElRef}
-            />
-          ) : chatOpen ? (
-            <ChatArea
-              socketRef={socketRef}
-              onStartDMCall={startDMCall}
-              onEndDMCall={endDMCall}
-              onToggleMembers={() => setShowMembers((v) => !v)}
-              membersOpen={showMembers}
-              onOpenEnvWizard={() => setShowEnvWizard(true)}
-            />
-          ) : (
-            <div className="chat-placeholder">
-              <div className="chat-placeholder__icon">
-                {servers.find(s => s.id === session.serverId)?.icon ? (
-                  <img src={servers.find(s => s.id === session.serverId)!.icon} alt="" className="chat-placeholder__icon-img" />
-                ) : serverName.slice(0, 2).toUpperCase()}
-              </div>
-              <h1 className="chat-placeholder__title">Welcome to {serverName}</h1>
-              <p className="chat-placeholder__subtitle">Select a channel or direct message to start chatting</p>
-              <div className="chat-placeholder__stats">
-                <div className="chat-placeholder__stat">
-                  <span className="chat-placeholder__stat-value">{members.length}</span>
-                  <span className="chat-placeholder__stat-label">Members</span>
+          <div className="chat-main__stage">
+            {viewedVoiceChannelId ? (
+              <VoiceChannelView
+                channelId={viewedVoiceChannelId}
+                joinVoice={joinVoice}
+                leaveVoice={leaveVoice}
+                toggleMute={toggleMute}
+                toggleCamera={toggleCamera}
+                startScreenshare={startScreenshare}
+                stopScreenshare={stopScreenshare}
+                isCameraOn={isCameraOn}
+                cameraStreamRef={cameraStreamRef}
+                videoElRef={videoElRef}
+              />
+            ) : chatOpen ? (
+              <ChatArea
+                socketRef={socketRef}
+                onStartDMCall={startDMCall}
+                onEndDMCall={endDMCall}
+                onToggleMembers={() => setShowMembers((v) => !v)}
+                membersOpen={showMembers}
+                onOpenEnvWizard={() => setShowEnvWizard(true)}
+              />
+            ) : (
+              <div className="chat-placeholder">
+                <div className="chat-placeholder__icon">
+                  {servers.find(s => s.id === session.serverId)?.icon ? (
+                    <img src={servers.find(s => s.id === session.serverId)!.icon} alt="" className="chat-placeholder__icon-img" />
+                  ) : serverName.slice(0, 2).toUpperCase()}
+                </div>
+                <h1 className="chat-placeholder__title">Welcome to {serverName}</h1>
+                <p className="chat-placeholder__subtitle">Select a channel or direct message to start chatting</p>
+                <div className="chat-placeholder__stats">
+                  <button
+                    className="chat-placeholder__stat"
+                    onClick={() => setShowMembers((v) => !v)}
+                    aria-pressed={showMembers}
+                    title="Toggle member list"
+                  >
+                    <span className="chat-placeholder__stat-value">{members.length}</span>
+                    <span className="chat-placeholder__stat-label">Members</span>
+                  </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+          {/* Members live inside the chat panel as a divided column. Its
+              visibility is owned solely by showMembers, independent of what the
+              stage shows; on tablet the same component becomes an overlay. */}
+          <MemberList visible={showMembers} onClose={() => setShowMembers(false)} />
         </div>
       </div>
-      <MemberList visible={showMembers} onClose={() => setShowMembers(false)} />
       {!stageOwnsScreenshare && <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />}
       <ThreadPanel channelId={activeChannelId!} />
       <NotificationContainer />
     </div>
     {showExport && <ExportModal onClose={() => setShowExport(false)} />}
     {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}
-    {showMenu && <ServerMenuModal onClose={() => setShowMenu(false)} onBackgroundChanged={handleBackgroundChanged} />}
+    {settingsScope && <SettingsModal initialScope={settingsScope} onClose={() => setSettingsScope(null)} onBackgroundChanged={handleBackgroundChanged} />}
     {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
     {loginForServerId && <LoginDialog serverId={loginForServerId} onClose={() => setLoginForServerId(null)} />}
     {showQuickSwitcher && <QuickSwitcher onClose={() => setShowQuickSwitcher(false)} />}

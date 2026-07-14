@@ -3,8 +3,8 @@
    ══════════════════════════════════════════════════════════════ */
 
 .settings-modal {
-  width: min(900px, 92vw);
-  height: min(640px, 86vh);
+  width: var(--settings-modal-w);
+  height: var(--settings-modal-h);
 }
 
 /* The two-pane SettingsLayout fills the modal body and owns its own scrolling

@@ -1,5 +1,5 @@
 .connect-dialog {
-  width: 480px;
+  width: var(--modal-w-md);
 }
 
 @media (max-width: 767px) {

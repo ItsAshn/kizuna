@@ -3,8 +3,8 @@
   display: flex;
   height: 100%;
   overflow: hidden;
-  padding: clamp(var(--space-1), 1vw, var(--space-2));
-  gap: clamp(var(--space-1), 1vw, var(--space-2));
+  /* Edge to edge: panels run flush to the window and to each other, split by
+     1px dividers rather than a gutter. No padding, no gap, no panel margins. */
   position: relative;
   /* Own stacking context so the blurred bg ::before (z-index: -1) stays
      contained and every child can stack in natural tree order. Avoid forcing
@@ -32,13 +32,8 @@
   flex-shrink: 0;
   min-height: 0;
   background: var(--modal-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.5),
-    0 2px 8px rgba(0, 0, 0, 0.3);
+  border-right: 1px solid var(--border-color);
   overflow: hidden;
-  margin: var(--space-2);
 }
 
 .sidebar-shell {
@@ -54,20 +49,28 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  margin: 8px;
   gap: 0;
 }
 
 .chat-main__content {
   flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   min-height: 0;
   position: relative;
-  border-radius: var(--radius-xl);
   overflow: hidden;
   background: var(--modal-bg);
-  border: 1px solid var(--border-color);
+}
+
+/* The chat stage (messages/voice/placeholder) fills the panel; the member
+   column sits beside it inside the same card, split by a divider. */
+.chat-main__stage {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
 }
 
 /* ── Placeholder (no channel selected) ────────────────────── */
@@ -128,6 +131,21 @@
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.chat-placeholder__stat:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+}
+
+.chat-placeholder__stat[aria-pressed='true'] {
+  border-color: var(--brand-dim-border);
 }
 
 .chat-placeholder__stat-value {
@@ -686,11 +704,6 @@
 /* ── Tablet layout: compact sidebar always visible ─────────── */
 
 @media (min-width: 768px) and (max-width: 1023px) {
-  .chat-layout {
-    padding: var(--space-1);
-    gap: var(--space-1);
-  }
-
   .sidebar {
     width: 200px;
     flex-shrink: 0;
@@ -701,7 +714,6 @@
     bottom: auto;
     z-index: auto;
     margin: 0;
-    border-radius: var(--radius-lg);
     transform: none;
     opacity: 1;
     pointer-events: auto;
@@ -715,10 +727,6 @@
 
   .chat-main {
     margin: 0;
-  }
-
-  .chat-main__content {
-    border-radius: var(--radius-lg);
   }
 
   .chat-placeholder {

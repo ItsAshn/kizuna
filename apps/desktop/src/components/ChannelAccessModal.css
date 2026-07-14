@@ -1,6 +1,5 @@
 .channel-access {
-  width: 420px;
-  max-width: 90vw;
+  width: var(--modal-w-sm);
 }
 
 .channel-access__section {

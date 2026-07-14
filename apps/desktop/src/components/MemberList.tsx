@@ -216,11 +216,11 @@ export default function MemberList({ visible, onClose }: Props) {
       {isOverlay && <div className="member-list__drag-handle" />}
       <div className="member-list__header">
         <h3 className="member-list__title">Members — {onlineCount(members)}/{members.length}</h3>
-        {isOverlay && onClose && (
+        {onClose && (
           <IconButton
-            icon={<X size={20} />}
+            icon={<X size={isOverlay ? 20 : 14} />}
             label="Close member list"
-            size="lg"
+            size={isOverlay ? 'lg' : 'sm'}
             onClick={onClose}
           />
         )}

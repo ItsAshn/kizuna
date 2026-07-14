@@ -12,6 +12,8 @@ interface SettingsLayoutProps {
   onChange: (key: string) => void
   /** Label of the active item, shown in the mobile detail header. */
   activeLabel?: string
+  /** Optional content pinned above the nav rail (e.g. a scope switcher). */
+  navHeader?: ReactNode
   children: ReactNode
 }
 
@@ -24,6 +26,7 @@ export default function SettingsLayout({
   activeKey,
   onChange,
   activeLabel,
+  navHeader,
   children,
 }: SettingsLayoutProps) {
   const isMobile = useMobile()
@@ -50,7 +53,10 @@ export default function SettingsLayout({
             {children}
           </div>
         ) : (
-          <SettingsNav groups={groups} activeKey={activeKey} onChange={handleChange} />
+          <div className="settings-layout__rail">
+            {navHeader && <div className="settings-layout__rail-header">{navHeader}</div>}
+            <SettingsNav groups={groups} activeKey={activeKey} onChange={handleChange} />
+          </div>
         )}
       </div>
     )
@@ -58,7 +64,14 @@ export default function SettingsLayout({
 
   return (
     <div className="settings-layout">
-      <SettingsNav groups={groups} activeKey={activeKey} onChange={handleChange} />
+      {navHeader ? (
+        <div className="settings-layout__rail">
+          <div className="settings-layout__rail-header">{navHeader}</div>
+          <SettingsNav groups={groups} activeKey={activeKey} onChange={handleChange} />
+        </div>
+      ) : (
+        <SettingsNav groups={groups} activeKey={activeKey} onChange={handleChange} />
+      )}
       <div className="settings-layout__content" role="tabpanel">
         {children}
       </div>

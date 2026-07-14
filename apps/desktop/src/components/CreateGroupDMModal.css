@@ -1,6 +1,6 @@
 /* Desktop width (mobile is overridden to a full-width sheet by ui/Modal). */
 .cgdm-modal {
-  width: 440px;
+  width: var(--modal-w-sm);
 }
 
 .cgdm__field {
