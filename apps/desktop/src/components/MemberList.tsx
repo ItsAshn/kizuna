@@ -24,6 +24,9 @@ interface HoistGroup {
 
 export default function MemberList({ visible, onClose }: Props) {
   const members = useChatStore((s) => s.members)
+  const activeDMChannelId = useChatStore((s) => s.activeDMChannelId)
+  const activeGroupDMChannelId = useChatStore((s) => s.activeGroupDMChannelId)
+  const groupDMChannels = useChatStore((s) => s.groupDMChannels)
   const session = useServerStore((s) => s.activeSession)
   const isMobile = useMobile()
   const isTablet = useTablet()
@@ -38,9 +41,32 @@ export default function MemberList({ visible, onClose }: Props) {
   const prevVisible = useRef(visible)
   const [hasLoaded, setHasLoaded] = useState(false)
 
+  const activeGroupDM = groupDMChannels.find((g) => g.id === activeGroupDMChannelId)
+  // Scope the list to the active conversation: a group DM shows only its
+  // members, a server channel everyone. 1:1 DMs render no list at all.
+  const scope: 'dm' | 'group' | 'server' = activeDMChannelId
+    ? 'dm'
+    : activeGroupDM
+      ? 'group'
+      : 'server'
+
+  const scopedMembers = useMemo(() => {
+    if (!activeGroupDM) return members
+    const byId = new Map(members.map((m) => [m.id, m]))
+    return activeGroupDM.members.map(
+      (gm) =>
+        byId.get(gm.user_id) ?? {
+          id: gm.user_id,
+          username: gm.username,
+          display_name: gm.display_name,
+          avatar: gm.avatar ?? undefined,
+        },
+    )
+  }, [members, activeGroupDM])
+
   useEffect(() => {
-    if (members.length > 0) setHasLoaded(true)
-  }, [members.length])
+    if (scopedMembers.length > 0) setHasLoaded(true)
+  }, [scopedMembers.length])
 
   if (prevVisible.current !== visible) {
     if (!visible) {
@@ -66,6 +92,9 @@ export default function MemberList({ visible, onClose }: Props) {
 
   const hoistGroups = useMemo(() => {
     const groups: HoistGroup[] = []
+    // Role groupings only make sense for the server-wide list; DMs and group
+    // DMs render a flat participant list.
+    if (scope !== 'server') return groups
     const seenRoleIds = new Set<string>()
 
     const hoistedRoles = new Map<string, CustomRole>()
@@ -98,23 +127,27 @@ export default function MemberList({ visible, onClose }: Props) {
     }
 
     return groups
-  }, [members])
+  }, [members, scope])
 
   const ungroupedMembers = useMemo(() => {
     const hoistedRoleIds = new Set(hoistGroups.flatMap(g => g.members.map(m => m.id)))
-    return members
+    return scopedMembers
       .filter(m => !hoistedRoleIds.has(m.id))
       .sort((a, b) => {
         const r = memberRank(a) - memberRank(b)
         if (r !== 0) return r
         return (a.display_name || a.username).localeCompare(b.display_name || b.username)
       })
-  }, [members, hoistGroups])
+  }, [scopedMembers, hoistGroups])
 
+  // A 1:1 DM has no member list — it's just you and the other person.
+  if (scope === 'dm') return null
   if (!visible && !closing) return null
 
-  const filteredMembers = search.trim()
-    ? members.filter(m =>
+  const isSearching = search.trim().length > 0
+
+  const filteredMembers = isSearching
+    ? scopedMembers.filter(m =>
         m.username.toLowerCase().includes(search.toLowerCase()) ||
         m.display_name.toLowerCase().includes(search.toLowerCase()),
       ).sort((a, b) => {
@@ -123,8 +156,6 @@ export default function MemberList({ visible, onClose }: Props) {
         return a.username.localeCompare(b.username)
       })
     : []
-
-  const isSearching = search.trim().length > 0
 
   function isOnline(m: Member): boolean {
     return userStatuses[m.id] != null && userStatuses[m.id] !== 'offline' && userStatuses[m.id] !== 'invisible'
@@ -215,7 +246,10 @@ export default function MemberList({ visible, onClose }: Props) {
     <div className={`member-list${closing ? ' member-list--closing' : ''}`} role="complementary" aria-label="Members">
       {isOverlay && <div className="member-list__drag-handle" />}
       <div className="member-list__header">
-        <h3 className="member-list__title">Members — {onlineCount(members)}/{members.length}</h3>
+        <h3 className="member-list__title">
+          {scope === 'group' ? 'Group Members' : 'Members'}
+          {' — '}{onlineCount(scopedMembers)}/{scopedMembers.length}
+        </h3>
         {onClose && (
           <IconButton
             icon={<X size={isOverlay ? 20 : 14} />}
@@ -233,7 +267,7 @@ export default function MemberList({ visible, onClose }: Props) {
       </div>
 
       <div className="member-list__body">
-        {!hasLoaded && members.length === 0 ? (
+        {!hasLoaded && scopedMembers.length === 0 ? (
           Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="skeleton--member">
               <Skeleton variant="circle" width={32} height={32} />
@@ -250,8 +284,8 @@ export default function MemberList({ visible, onClose }: Props) {
           <>
             {renderSection(m => isOnline(m))}
             {(() => {
-              const offlineTotal = members.filter(m => !isOnline(m)).length
-              const onlineTotal = members.filter(m => isOnline(m)).length
+              const offlineTotal = scopedMembers.filter(m => !isOnline(m)).length
+              const onlineTotal = scopedMembers.filter(m => isOnline(m)).length
               if (offlineTotal > 0 && onlineTotal > 0) {
                 return <div className="member-list__offline-divider"><span>offline — {offlineTotal}</span></div>
               }

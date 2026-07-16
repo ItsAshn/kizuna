@@ -50,6 +50,32 @@
   margin-bottom: 16px;
 }
 
+/* Edge-to-edge rule with a centered label, splitting the server's channels
+   from the user's private conversations. */
+.sidebar__conversations-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 20px -8px 12px;
+  color: var(--text-muted);
+}
+
+.sidebar__conversations-divider::before,
+.sidebar__conversations-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.sidebar__conversations-divider span {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
 .sidebar__section-title {
   font-size: 10px;
   font-weight: 600;

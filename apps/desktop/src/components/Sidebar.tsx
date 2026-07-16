@@ -441,6 +441,12 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
           )
         })()}
 
+        {/* Personal conversations are separated from the server's channels so
+            DMs/group DMs don't read as just more channels. */}
+        <div className="sidebar__conversations-divider" role="separator">
+          <span>Private Conversations</span>
+        </div>
+
         {dmChannels.length > 0 && (
           <div className="sidebar__section">
             <h3 className="sidebar__section-title">Direct Messages</h3>

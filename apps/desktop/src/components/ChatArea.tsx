@@ -688,6 +688,11 @@ export default function ChatArea({
   const activeGroupDM = groupDMChannels.find((g) => g.id === activeGroupDMChannelId);
   const headerTitle =
     activeChannel?.name || activeDM?.other_display_name || activeGroupDM?.name || 'Kizuna';
+  // Members button counts only the people who can see this conversation, not
+  // the whole server. 1:1 DMs don't show it at all.
+  const headerMemberCount = activeGroupDMChannelId
+    ? (activeGroupDM?.members.length ?? 0)
+    : members.length;
 
   // The header fits ~3 actions on a phone. Call/Members/Search stay inline as
   // icons; the rest collapse into an overflow sheet. These open rather than
@@ -985,9 +990,20 @@ export default function ChatArea({
           </div>
         )}
         <span className="chat-area__header-prefix">
-          {activeDMChannelId || activeGroupDMChannelId ? '@' : '#'}
+          {activeGroupDMChannelId ? (
+            <Users className="icon-xs" />
+          ) : activeDMChannelId ? (
+            '@'
+          ) : (
+            '#'
+          )}
         </span>
         <h2 className="chat-area__header-title">{headerTitle}</h2>
+        {(activeDMChannelId || activeGroupDMChannelId) && (
+          <span className="chat-area__scope-badge">
+            {activeGroupDMChannelId ? 'Group DM' : 'DM'}
+          </span>
+        )}
         {activeDMChannelId && dmHasKey && (
           <span className="chat-area__encrypted-badge" title="End-to-end encrypted">
             <ShieldCheck size={14} />
@@ -1035,14 +1051,14 @@ export default function ChatArea({
               <Phone className="icon-xs" />
             </button>
           )}
-          {onToggleMembers && (
+          {onToggleMembers && !activeDMChannelId && (
             <button
               className={`chat-area__header-members-btn${membersOpen ? ' chat-area__header-members-btn--active' : ''}`}
               onClick={onToggleMembers}
               aria-label="Show members"
             >
               <Users className="icon-sm" />
-              <span>{members.length}</span>
+              <span>{headerMemberCount}</span>
             </button>
           )}
           {activeAnyChannelId && (
