@@ -514,6 +514,93 @@
   font-family: var(--font-mono);
 }
 
+.settings-update-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.settings-update-progress__bar {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-hover);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.settings-update-progress__fill {
+  height: 100%;
+  background: var(--accent-color);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.settings-update-progress__value {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  min-width: 34px;
+  text-align: right;
+}
+
+.settings-release-notes {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-color);
+}
+
+.settings-release-notes__title {
+  margin: 0 0 var(--space-2);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-release-notes__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.settings-release-notes__list li {
+  position: relative;
+  padding-left: 12px;
+}
+
+.settings-release-notes__list li::before {
+  content: '·';
+  position: absolute;
+  left: 3px;
+  color: var(--text-muted);
+}
+
+.settings-release-notes__more {
+  margin-top: var(--space-2);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.settings-release-notes__more:hover {
+  color: var(--text-primary);
+}
+
 /* ── Processing items (within cards) ───────────────────────── */
 
 .settings-processing-item-title {

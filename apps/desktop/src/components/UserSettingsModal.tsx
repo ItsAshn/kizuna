@@ -1,8 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, type ReactNode } from 'react'
 import { Mic, Eye, Database, Download, Bell } from 'lucide-react'
 import { useVoiceStore } from '../store/voiceStore'
-import { useSettingsStore } from '../store/settingsStore'
-import { useUpdaterActions } from '../hooks/useUpdater'
 import { isTauri, isMobileTauri } from '../utils/platform'
 import { clearCryptoState } from '../store/keyStore'
 import Modal from './ui/Modal'
@@ -11,6 +9,7 @@ import { SettingsActionRow } from './user-settings/rows'
 import { VoiceSection } from './user-settings/VoiceSection'
 import { PrivacySection } from './user-settings/PrivacySection'
 import { NotificationsSection } from './user-settings/NotificationsSection'
+import { UpdatesSection } from './user-settings/UpdatesSection'
 import './UserSettingsModal.css'
 
 interface Props {
@@ -32,14 +31,8 @@ const SECTION_LABELS: Record<string, string> = {
  */
 export function UserSettingsBody({ onClose, navHeader }: { onClose: () => void; navHeader?: ReactNode }) {
   const { setAudioInputDeviceId, setAudioOutputDeviceId, setPushToTalkKey } = useVoiceStore()
-  const {
-    updateState, updateProgress, updateVersion, updateError,
-  } = useSettingsStore()
-  const { checkForUpdates, installUpdate, getVersion } = useUpdaterActions()
 
   const [activeTab, setActiveTab] = useState('voice')
-  const [appVersion, setAppVersion] = useState('0.1.0')
-  const [isDev, setIsDev] = useState(true)
   const [listeningForKey, setListeningForKey] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
 
@@ -84,17 +77,6 @@ export function UserSettingsBody({ onClose, navHeader }: { onClose: () => void; 
     window.addEventListener('keydown', handleKey, true)
     return () => window.removeEventListener('keydown', handleKey, true)
   }, [onClose, listeningForKey, handleKeyCapture])
-
-  useEffect(() => {
-    let cancelled = false
-    getVersion().then(v => {
-      if (!cancelled) {
-        setAppVersion(v)
-        setIsDev(false)
-      }
-    })
-    return () => { cancelled = true }
-  }, [getVersion])
 
   const handleResetAudio = useCallback(() => {
     setAudioInputDeviceId(null)
@@ -148,46 +130,7 @@ export function UserSettingsBody({ onClose, navHeader }: { onClose: () => void; 
         </div>
       )}
 
-      {activeTab === 'updates' && isTauri() && (
-        <div className="settings-tab-content">
-          <div className="settings-card">
-            <p className="settings-card-title">version</p>
-            <div className="settings-version-row">
-              <span className="settings-version-text">
-                Kizuna v{appVersion}{isDev && <span className="settings-version-dev"> (dev)</span>}
-              </span>
-              <button
-                onClick={() => checkForUpdates()}
-                disabled={updateState === 'checking' || updateState === 'downloading'}
-                className="settings-btn"
-              >
-                {updateState === 'checking'
-                  ? 'checking...'
-                  : updateState === 'downloading'
-                    ? `${updateProgress}%`
-                    : 'check for updates'}
-              </button>
-            </div>
-            {updateState === 'ready' && (
-              <div className="settings-version-row">
-                <span className="settings-alert settings-alert--success">
-                  {isMobileTauri()
-                    ? `update ${updateVersion} available`
-                    : `update ${updateVersion} ready — restart to apply`}
-                </span>
-                <button onClick={installUpdate} className="settings-btn">
-                  {isMobileTauri() ? 'download' : 'restart now'}
-                </button>
-              </div>
-            )}
-            {updateState === 'error' && (
-              <p className="settings-alert settings-alert--error">
-                {updateError || 'update check failed'}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
+      {activeTab === 'updates' && isTauri() && <UpdatesSection />}
       </SettingsLayout>
   )
 }

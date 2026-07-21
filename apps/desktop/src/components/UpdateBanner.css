@@ -1,95 +1,133 @@
-.update-banner-card {
-  background: var(--modal-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  margin: 0 0 8px 0;
-  position: relative;
-  flex-shrink: 0;
-}
-
-.update-banner-card__close-btn {
-  position: absolute;
-  top: 12px;
-  right: 16px;
-  z-index: 10;
-  color: var(--text-muted);
-  font-size: 11px;
-  font-family: var(--font-mono);
-  border: none;
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-sm);
-  padding: 4px 10px;
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.update-banner-card__close-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
-.update-banner-card__content {
-  padding: 16px 20px;
-  font-size: 12px;
-  font-family: var(--font-mono);
+.update-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-
-.update-banner-card__content--checking {
+  flex-shrink: 0;
+  padding: 7px 14px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--text-secondary);
 }
 
-.update-banner-card__content--downloading {
-  flex-direction: column;
-  align-items: stretch;
+.update-banner--docked {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-banner);
+  padding-top: calc(7px + env(safe-area-inset-top));
 }
 
-.update-banner-card__content--ready {
-  color: var(--green);
+/* Notes turn the single line into a block, so stop centring the rows. */
+.update-banner--expanded {
+  align-items: flex-start;
 }
 
-.update-banner-card__content--error {
-  color: var(--red);
-}
-
-.update-banner-card__row {
+.update-banner__body {
+  min-width: 0;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 5px;
 }
 
-.update-banner-card__progress {
-  width: 100%;
-  height: 4px;
-  background: var(--bg-hover);
-  border-radius: 2px;
+.update-banner__text {
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.update-banner-card__progress-fill {
-  height: 100%;
-  background: var(--accent-color);
-  transition: width 0.3s ease;
-  border-radius: 2px;
-}
-
-.update-banner-card__restart-btn {
-  background: var(--green);
-  color: var(--bg-primary);
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 4px 14px;
+.update-banner__notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-muted);
   font-size: 11px;
+  line-height: 1.5;
+}
+
+.update-banner__notes li {
+  padding-left: 11px;
+  position: relative;
+}
+
+.update-banner__notes li::before {
+  content: '·';
+  position: absolute;
+  left: 2px;
+}
+
+.update-banner__notes-toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
   font-family: var(--font-mono);
-  font-weight: 500;
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.update-banner__notes-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.update-banner__chevron {
+  transition: transform 0.15s ease;
+}
+
+.update-banner__chevron--open {
+  transform: rotate(180deg);
+}
+
+.update-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   flex-shrink: 0;
 }
 
-.update-banner-card__restart-btn:hover {
+.update-banner__action {
+  border: none;
+  background: var(--accent-color);
+  color: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  padding: 3px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.update-banner__action:hover {
   opacity: 0.85;
+}
+
+.update-banner__dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.update-banner__dismiss:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }

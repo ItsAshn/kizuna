@@ -89,7 +89,7 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
   }, [servers.length])
 
   useEffect(() => {
-    getVersion().then(setAppVersion)
+    getVersion().then((v) => setAppVersion(v ?? ''))
   }, [getVersion])
 
   async function handleConnect(urlToUse: string) {

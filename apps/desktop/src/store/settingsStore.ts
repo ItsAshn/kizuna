@@ -13,6 +13,20 @@ interface RecentChannel {
   type: 'text' | 'voice' | 'dm';
 }
 
+export interface PostUpdateNote {
+  version: string;
+  notes: string | null;
+}
+
+export type UpdateState =
+  | 'idle'
+  | 'checking'
+  | 'upToDate'
+  | 'available'
+  | 'downloading'
+  | 'ready'
+  | 'error';
+
 interface SettingsState {
   serverBackgroundEnabled: boolean;
   customCssEnabled: boolean;
@@ -27,10 +41,21 @@ interface SettingsState {
   customAppActivity: string | null;
   recentMediaActivities: string[];
   recentAppActivities: string[];
-  updateState: 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
+  /**
+   * `available` is distinct from `downloading`: finding an update never starts
+   * a download. The user opts in, so discovery and installation stay separate.
+   */
+  updateState: UpdateState;
   updateProgress: number;
   updateVersion: string | null;
   updateError: string | null;
+  /** Release notes for the pending update, shown before installing. */
+  updateNotes: string | null;
+  /**
+   * Set on the first launch after an update landed, so the app can report what
+   * changed. Cleared once shown.
+   */
+  postUpdateNote: PostUpdateNote | null;
   socketConnected: boolean;
   socketReconnecting: boolean;
   socketReconnectAttempts: number;
@@ -50,10 +75,12 @@ interface SettingsState {
   addRecentAppActivity: (name: string) => void;
   removeRecentMediaActivity: (name: string) => void;
   removeRecentAppActivity: (name: string) => void;
-  setUpdateState: (state: 'idle' | 'checking' | 'downloading' | 'ready' | 'error') => void;
+  setUpdateState: (state: UpdateState) => void;
   setUpdateProgress: (progress: number) => void;
   setUpdateVersion: (version: string | null) => void;
   setUpdateError: (error: string | null) => void;
+  setUpdateNotes: (notes: string | null) => void;
+  setPostUpdateNote: (note: PostUpdateNote | null) => void;
   setSocketConnected: (connected: boolean) => void;
   setSocketReconnecting: (reconnecting: boolean) => void;
   setSocketReconnectAttempts: (attempts: number) => void;
@@ -79,6 +106,8 @@ export const useSettingsStore = create<SettingsState>()(
       updateProgress: 0,
       updateVersion: null,
       updateError: null,
+      updateNotes: null,
+      postUpdateNote: null,
       socketConnected: true,
       socketReconnecting: false,
       socketReconnectAttempts: 0,
@@ -129,6 +158,8 @@ export const useSettingsStore = create<SettingsState>()(
       setUpdateProgress: (updateProgress) => set({ updateProgress }),
       setUpdateVersion: (updateVersion) => set({ updateVersion }),
       setUpdateError: (updateError) => set({ updateError }),
+      setUpdateNotes: (updateNotes) => set({ updateNotes }),
+      setPostUpdateNote: (postUpdateNote) => set({ postUpdateNote }),
       setSocketConnected: (socketConnected) =>
         set({ socketConnected, socketReconnecting: false, socketReconnectAttempts: 0 }),
       setSocketReconnecting: (socketReconnecting) =>
