@@ -31,6 +31,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+
+  /* Shared slider geometry — every slider row aligns to these columns.
+     The label column fits the longest label ("threshold"), the value column
+     fits the widest readout ("200%"). */
+  --settings-slider-label-w: 72px;
+  --settings-slider-value-w: 38px;
 }
 
 /* ── Cards ─────────────────────────────────────────────────── */
@@ -227,37 +233,47 @@
   margin-top: var(--space-3);
 }
 
-.settings-toggle-row + .settings-slider-row,
+.settings-toggle-row + .settings-slider-control,
 .settings-toggle-row + .settings-hint {
   margin-top: var(--space-2);
 }
 
 /* ── Sliders ───────────────────────────────────────────────── */
 
+/* Fixed label and value columns keep every slider track the same length and
+   starting at the same x, however long the individual labels are. */
+.settings-slider-control {
+  display: grid;
+  grid-template-columns: var(--settings-slider-label-w) 1fr var(--settings-slider-value-w);
+  align-items: center;
+  column-gap: var(--space-3);
+}
+
+.settings-slider-control + .settings-slider-control {
+  margin-top: var(--space-3);
+}
+
 .settings-slider-label {
   font-size: 11px;
   color: var(--text-muted);
   font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.settings-slider-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.settings-slider-row + .settings-slider-row {
-  margin-top: var(--space-3);
-}
-
 .settings-slider-value {
-  font-size: 10px;
+  font-size: 11px;
   font-family: var(--font-mono);
   color: var(--text-muted);
-  min-width: 38px;
   text-align: right;
-  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hint sits in the track column, under the slider it describes. */
+.settings-slider-hint {
+  grid-column: 2 / -1;
+  margin-top: var(--space-1);
 }
 
 /* ── Meter bar ─────────────────────────────────────────────── */
@@ -299,6 +315,8 @@
   top: -1px;
   bottom: -1px;
   width: 2px;
+  /* Center the marker on its position so 0% and 100% stay visible. */
+  margin-left: -1px;
   background: var(--text-primary);
   opacity: 0.4;
   border-radius: 1px;
@@ -543,6 +561,9 @@
 
 .settings-mode-btn {
   flex: 1;
+  /* Without this the longest desc ("rnnoise suppression…") widens its button
+     past the equal 1fr-style split and the three stop matching. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -581,12 +602,6 @@
   margin-top: var(--space-2);
 }
 
-.settings-processing-grid {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
 /* ── Footer ────────────────────────────────────────────────── */
 
 .settings-modal__done-btn {
@@ -615,8 +630,10 @@
   margin-bottom: 4px;
 }
 
-.settings-select-label + .settings-select-label {
-  margin-top: var(--space-2);
+/* A <select> always sits between two labels, so space off the select. */
+.settings-select + .settings-select-label,
+.settings-alert + .settings-select-label {
+  margin-top: var(--space-3);
 }
 
 /* ── Mobile ────────────────────────────────────────────────── */
@@ -665,7 +682,14 @@
     padding: 10px 28px;
   }
 
-  .settings-slider-label {
+  .settings-tab-content {
+    /* Labels and readouts scale up on mobile — widen the columns to match. */
+    --settings-slider-label-w: 88px;
+    --settings-slider-value-w: 46px;
+  }
+
+  .settings-slider-label,
+  .settings-slider-value {
     font-size: 14px;
   }
 }
