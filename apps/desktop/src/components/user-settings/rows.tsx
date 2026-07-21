@@ -43,22 +43,21 @@ export function SettingsSlider({
   hint?: string
 }) {
   return (
+    // Grid, not flex: the label column is a fixed width so every slider in the
+    // panel starts its track at the same x, and the hint lines up under it.
     <div className="settings-slider-control">
-      <div className="settings-slider-row">
-        <span className="settings-slider-label">{label}</span>
-        <Slider
-          min={min}
-          max={max}
-          value={value}
-          onChange={onChange}
-          fillFromStart
-          style={{ flex: 1 }}
-          disabled={disabled}
-          ariaLabel={label}
-        />
-        <span className="settings-slider-value">{value}%</span>
-      </div>
-      {hint && <div className="settings-hint">{hint}</div>}
+      <span className="settings-slider-label">{label}</span>
+      <Slider
+        min={min}
+        max={max}
+        value={value}
+        onChange={onChange}
+        fillFromStart
+        disabled={disabled}
+        ariaLabel={label}
+      />
+      <span className="settings-slider-value">{value}%</span>
+      {hint && <div className="settings-hint settings-slider-hint">{hint}</div>}
     </div>
   )
 }

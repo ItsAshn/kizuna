@@ -393,7 +393,9 @@ export function VoiceSection({
               )}
             </div>
             <div className="settings-meter-hint">
-              green bar = your current mic level
+              {voiceProcessingMode === 'custom' && noiseGateEnabled
+                ? 'bar = your live mic level · marker = gate threshold'
+                : 'bar = your live mic level'}
             </div>
           </div>
         </div>
