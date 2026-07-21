@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, type ReactNode } from 'react'
-import { Mic, Eye, Database, Download, Bell } from 'lucide-react'
+import { Mic, Eye, Database, Download, Bell, Activity } from 'lucide-react'
 import { useVoiceStore } from '../store/voiceStore'
 import { isTauri, isMobileTauri } from '../utils/platform'
 import { clearCryptoState } from '../store/keyStore'
@@ -10,6 +10,7 @@ import { VoiceSection } from './user-settings/VoiceSection'
 import { PrivacySection } from './user-settings/PrivacySection'
 import { NotificationsSection } from './user-settings/NotificationsSection'
 import { UpdatesSection } from './user-settings/UpdatesSection'
+import { EnvironmentSection } from './user-settings/EnvironmentSection'
 import './UserSettingsModal.css'
 
 interface Props {
@@ -21,6 +22,7 @@ const SECTION_LABELS: Record<string, string> = {
   privacy: 'privacy',
   notifications: 'notifications',
   data: 'data',
+  environment: 'environment',
   updates: 'updates',
 }
 
@@ -50,6 +52,7 @@ export function UserSettingsBody({ onClose, navHeader }: { onClose: () => void; 
           ...(tauri ? [{ key: 'privacy', label: 'privacy', icon: <Eye size={15} /> }] : []),
           ...(desktopTauri ? [{ key: 'notifications', label: 'notifications', icon: <Bell size={15} /> }] : []),
           { key: 'data', label: 'data', icon: <Database size={15} /> },
+          ...(desktopTauri ? [{ key: 'environment', label: 'environment', icon: <Activity size={15} /> }] : []),
           ...(tauri ? [{ key: 'updates', label: 'updates', icon: <Download size={15} /> }] : []),
         ],
       },
@@ -106,6 +109,8 @@ export function UserSettingsBody({ onClose, navHeader }: { onClose: () => void; 
       {activeTab === 'privacy' && <PrivacySection />}
 
       {activeTab === 'notifications' && <NotificationsSection />}
+
+      {activeTab === 'environment' && <EnvironmentSection />}
 
       {activeTab === 'data' && (
         <div className="settings-tab-content">
