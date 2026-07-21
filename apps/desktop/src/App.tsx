@@ -35,12 +35,13 @@ function AppContent() {
     if (dismissed || !inTauri) return
     // The setup wizard only exists to guide Linux users through PipeWire/portal
     // setup. On macOS and Windows screen capture uses native APIs with nothing
-    // to configure, so don't auto-pop the dialog there.
+    // to configure, so don't auto-pop the dialog there. A clean Linux box has
+    // nothing to fix either — the diagnostic stays in settings › environment.
     let cancelled = false
     import('@tauri-apps/api/core')
-      .then(({ invoke }) => invoke<{ os: string }>('get_environment'))
+      .then(({ invoke }) => invoke<{ os: string; issues: unknown[] }>('get_environment'))
       .then((env) => {
-        if (!cancelled && env.os === 'linux') setShowWizard(true)
+        if (!cancelled && env.os === 'linux' && env.issues.length > 0) setShowWizard(true)
       })
       .catch(() => {})
     return () => {

@@ -1,70 +1,56 @@
-import { useEffect, useState, useCallback } from 'react'
-import { isTauri } from '../utils/platform'
+import { useEffect, useState } from 'react'
+import { fetchEnvironment, type EnvDiagnostic } from './user-settings/EnvironmentSection'
 
-interface EnvDiagnostic {
-  os: string
-  session_type: string
-  compositor: string
-  pipewire_ok: boolean
-  pipewire_pulse_ok: boolean
-  portal_ok: boolean
-  portal_backend: string
-  issues: Array<{ severity: string; component: string; message: string }>
-}
-
+/**
+ * Header badge for a *broken* environment only. A healthy environment needs no
+ * chat-header real estate — the full diagnostic lives in settings › environment
+ * and can be opened from there at any time.
+ */
 export default function EnvStatus({ onOpenWizard }: { onOpenWizard: () => void }) {
   const [diagnostic, setDiagnostic] = useState<EnvDiagnostic | null>(null)
 
-  const refresh = useCallback(() => {
-    if (!isTauri()) return
-    import('@tauri-apps/api/core')
-      .then(({ invoke }) => invoke<EnvDiagnostic>('get_environment'))
-      .then(setDiagnostic)
-      .catch(() => {})
-  }, [])
-
   useEffect(() => {
-    refresh()
-  }, [refresh])
+    let cancelled = false
+    fetchEnvironment().then((env) => {
+      if (!cancelled) setDiagnostic(env)
+    })
+    return () => { cancelled = true }
+  }, [])
 
   if (!diagnostic) return null
 
   const errorCount = diagnostic.issues.filter(i => i.severity === 'error').length
   const warnCount = diagnostic.issues.filter(i => i.severity === 'warning').length
-  const hasIssues = errorCount > 0 || warnCount > 0
+  if (errorCount + warnCount === 0) return null
+
   const label = diagnostic.os === 'linux' ? diagnostic.compositor : diagnostic.os
 
   return (
     <button
       onClick={onOpenWizard}
-      title={
-        hasIssues
-          ? `${errorCount} error(s), ${warnCount} warning(s) — click for details`
-          : `${label} (${diagnostic.session_type}) — environment OK`
-      }
+      title={`${errorCount} error(s), ${warnCount} warning(s) — click for details`}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: 4,
-        background: hasIssues ? 'var(--error-bg)' : 'var(--success-bg)',
+        background: 'var(--error-bg)',
         border: 'none',
         borderRadius: 6,
         padding: '3px 8px',
         cursor: 'pointer',
         fontSize: 10,
         fontFamily: 'monospace',
-        color: hasIssues ? 'var(--error-faded)' : 'var(--success-faded)',
+        color: 'var(--error-faded)',
       }}
     >
       <span style={{
         width: 6,
         height: 6,
         borderRadius: '50%',
-        background: hasIssues ? 'var(--error)' : 'var(--success)',
+        background: 'var(--error)',
         flexShrink: 0,
       }} />
-      {label}
-      {hasIssues && ` (${errorCount + warnCount})`}
+      {label} ({errorCount + warnCount})
     </button>
   )
 }
