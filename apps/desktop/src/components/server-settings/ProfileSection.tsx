@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { updateProfile, deleteAccount } from '@kizuna/shared'
+import { Camera, ImagePlus } from 'lucide-react'
 import Modal from '../ui/Modal'
 import Checkbox from '../ui/Checkbox'
 import ToggleSwitch from '../ui/ToggleSwitch'
@@ -16,13 +17,11 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
 
   const [displayName, setDisplayName] = useState(session?.user?.display_name ?? '')
   const [avatarPreview, setAvatarPreview] = useState<string | null>(session?.user?.avatar ?? null)
-  const [avatarChanged, setAvatarChanged] = useState(false)
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileMsg, setProfileMsg] = useState<string | null>(null)
   const profileFileRef = useRef<HTMLInputElement>(null)
   const pendingAvatarFile = useRef<File | null>(null)
   const [bannerPreview, setBannerPreview] = useState<string | null>(session?.user?.banner ?? null)
-  const [bannerChanged, setBannerChanged] = useState(false)
   const bannerFileRef = useRef<HTMLInputElement>(null)
   const pendingBannerFile = useRef<File | null>(null)
 
@@ -63,7 +62,6 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
     pendingAvatarFile.current = file
     const url = URL.createObjectURL(file)
     setAvatarPreview(url)
-    setAvatarChanged(true)
     e.target.value = ''
   }
 
@@ -74,7 +72,6 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
     pendingBannerFile.current = file
     const url = URL.createObjectURL(file)
     setBannerPreview(url)
-    setBannerChanged(true)
     e.target.value = ''
   }
 
@@ -83,30 +80,18 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
     setProfileSaving(true)
     setProfileMsg(null)
     try {
-      let avatarPayload: string | null | undefined = undefined
-      if (avatarChanged) {
-        if (avatarPreview === null) {
-          avatarPayload = null
-          pendingAvatarFile.current = null
-        } else if (pendingAvatarFile.current) {
-          avatarPayload = await fileToDataUrl(pendingAvatarFile.current)
-        }
+      let avatarPayload: string | undefined = undefined
+      if (pendingAvatarFile.current) {
+        avatarPayload = await fileToDataUrl(pendingAvatarFile.current)
       }
-      let bannerPayload: string | null | undefined = undefined
-      if (bannerChanged) {
-        if (bannerPreview === null) {
-          bannerPayload = null
-          pendingBannerFile.current = null
-        } else if (pendingBannerFile.current) {
-          bannerPayload = await fileToDataUrl(pendingBannerFile.current, 800)
-        }
+      let bannerPayload: string | undefined = undefined
+      if (pendingBannerFile.current) {
+        bannerPayload = await fileToDataUrl(pendingBannerFile.current, 800)
       }
       const updated = await updateProfile(serverUrl, displayName, avatarPayload, bannerPayload)
       useServerStore.getState().setActiveSession({ ...session, user: updated })
       useServerStore.getState().updateServerInfo(session.serverId, { name: updated.display_name })
-      setAvatarChanged(false)
       pendingAvatarFile.current = null
-      setBannerChanged(false)
       pendingBannerFile.current = null
       setProfileMsg('saved')
       setTimeout(() => setProfileMsg(null), 3000)
@@ -121,37 +106,48 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
     <section className="server-menu__section">
 
         <div className="server-menu__profile-preview">
-          <div className="server-menu__profile-banner" onClick={() => bannerFileRef.current?.click()} title="change banner">
+          <button
+            type="button"
+            className="server-menu__profile-banner"
+            onClick={() => bannerFileRef.current?.click()}
+            aria-label={bannerPreview ? 'change banner' : 'add banner'}
+          >
             {bannerPreview ? (
               <img src={bannerPreview} alt="" className="server-menu__profile-banner-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
             ) : (
               <div className="server-menu__profile-banner-empty" />
             )}
             <div className="server-menu__profile-banner-overlay">
-              <span>{bannerPreview ? 'change banner' : 'add banner'}</span>
+              <span><ImagePlus size={12} />{bannerPreview ? 'change banner' : 'add banner'}</span>
             </div>
-          </div>
+          </button>
 
-          <div className="server-menu__profile-avatar-wrap">
-            <div className="server-menu__profile-avatar" onClick={() => profileFileRef.current?.click()} title="change avatar">
-              <span className="server-menu__profile-avatar-letter">{(displayName || session?.user?.display_name || '?')[0]?.toUpperCase()}</span>
-              {avatarPreview && (
-                <img src={avatarPreview} alt="" className="server-menu__profile-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-              )}
-              <div className="server-menu__profile-avatar-overlay">
-                <span>+</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="server-menu__profile-actions">
-            <button onClick={() => profileFileRef.current?.click()} className="server-menu__profile-action">avatar</button>
+          <button
+            type="button"
+            className="server-menu__profile-avatar"
+            onClick={() => profileFileRef.current?.click()}
+            aria-label={avatarPreview ? 'change avatar' : 'add avatar'}
+          >
+            <span className="server-menu__profile-avatar-letter">{(displayName || session?.user?.display_name || '?')[0]?.toUpperCase()}</span>
             {avatarPreview && (
-              <button onClick={() => { pendingAvatarFile.current = null; setAvatarPreview(null); setAvatarChanged(true) }} className="server-menu__profile-action server-menu__profile-action--remove">clear avatar</button>
+              <img src={avatarPreview} alt="" className="server-menu__profile-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
             )}
-            <button onClick={() => bannerFileRef.current?.click()} className="server-menu__profile-action">{bannerPreview ? 'banner' : 'set banner'}</button>
-            {bannerPreview && (
-              <button onClick={() => { pendingBannerFile.current = null; setBannerPreview(null); setBannerChanged(true) }} className="server-menu__profile-action server-menu__profile-action--remove">clear</button>
+            <div className="server-menu__profile-avatar-overlay">
+              <Camera size={18} />
+            </div>
+          </button>
+
+          <div className="server-menu__profile-identity">
+            <div className="server-menu__profile-nameline">
+              <h3 className="server-menu__profile-name">
+                {displayName || session?.user?.display_name || session?.user?.username}
+              </h3>
+              {session?.user?.role === 'admin' && (
+                <span className="server-menu__profile-badge">admin</span>
+              )}
+            </div>
+            {session?.user?.username && (
+              <p className="server-menu__profile-username">@{session.user.username}</p>
             )}
           </div>
         </div>
