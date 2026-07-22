@@ -216,6 +216,22 @@
   color: var(--text-muted);
   font-size: 12px;
   margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.poll-panel__closes {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.poll-panel__closes--closed {
+  color: var(--red);
 }
 
 .poll-panel__card--compact .poll-panel__footer {
