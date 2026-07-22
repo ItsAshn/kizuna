@@ -2,6 +2,7 @@
 
 .server-menu__profile-preview {
   position: relative;
+  flex-shrink: 0;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
   background: var(--bg-secondary);
