@@ -117,6 +117,10 @@ export interface PollData {
   createdByDisplayName: string;
   createdByAvatar: string | null;
   createdAt: number;
+  /** Epoch ms when the poll auto-closes, or null if it never closes. */
+  closesAt: number | null;
+  /** Whether voters may select more than one option. */
+  allowMultiple: boolean;
 }
 
 export type ReactionType = 'emoji' | 'sticker';

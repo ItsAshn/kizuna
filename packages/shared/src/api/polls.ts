@@ -1,12 +1,20 @@
 import { client } from './core'
+import type { PollData } from '../types'
+
+/** Optional poll settings: auto-close duration (seconds) and multi-select. */
+export interface PollCreateOptions {
+  durationSeconds?: number | null
+  allowMultiple?: boolean
+}
 
 export async function createPoll(
   serverUrl: string,
   channelId: string,
   question: string,
   options: string[],
+  opts?: PollCreateOptions,
 ): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] } }> {
-  const res = await client(serverUrl).post(`/api/channels/${channelId}/polls`, { question, options })
+  const res = await client(serverUrl).post(`/api/channels/${channelId}/polls`, { question, options, ...opts })
   return res.data
 }
 
@@ -15,8 +23,9 @@ export async function createDMPoll(
   channelId: string,
   question: string,
   options: string[],
+  opts?: PollCreateOptions,
 ): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] } }> {
-  const res = await client(serverUrl).post(`/api/dms/channel/${channelId}/polls`, { question, options })
+  const res = await client(serverUrl).post(`/api/dms/channel/${channelId}/polls`, { question, options, ...opts })
   return res.data
 }
 
@@ -25,8 +34,25 @@ export async function createGroupDMPoll(
   channelId: string,
   question: string,
   options: string[],
+  opts?: PollCreateOptions,
 ): Promise<{ poll: { id: string; question: string; options: { id: string; label: string; position: number }[] } }> {
-  const res = await client(serverUrl).post(`/api/group-dms/${channelId}/polls`, { question, options })
+  const res = await client(serverUrl).post(`/api/group-dms/${channelId}/polls`, { question, options, ...opts })
+  return res.data
+}
+
+/** Fetch all polls in a channel (with vote counts and the current user's votes) for hydration. */
+export async function fetchChannelPolls(
+  serverUrl: string,
+  channelId: string,
+  channelType: 'channel' | 'dm' | 'group-dm',
+): Promise<{ polls: (PollData & { userVoteIds: string[] })[] }> {
+  const path =
+    channelType === 'dm'
+      ? `/api/dms/channel/${channelId}/polls`
+      : channelType === 'group-dm'
+        ? `/api/group-dms/${channelId}/polls`
+        : `/api/channels/${channelId}/polls`
+  const res = await client(serverUrl).get(path)
   return res.data
 }
 

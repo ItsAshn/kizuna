@@ -26,6 +26,7 @@ import {
   createPoll,
   createDMPoll,
   createGroupDMPoll,
+  fetchChannelPolls,
 } from '@kizuna/shared';
 import { getSecretKey } from '../store/keyStore';
 import {
@@ -71,6 +72,7 @@ import ActionSheet from './ui/ActionSheet';
 import type { ActionSheetItem } from './ui/ActionSheet';
 import MediaGallery from './MediaGallery';
 import PollPanel from './PollPanel';
+import PollComposerModal from './PollComposerModal';
 import './ChatArea.css';
 
 interface ChatAreaProps {
@@ -180,6 +182,7 @@ export default function ChatArea({
     (s) => (activeGroupDMChannelId ? s.messages[activeGroupDMChannelId] : undefined) ?? EMPTY_MSGS,
   );
   const addMessage = useChatStore((s) => s.addMessage);
+  const setPolls = useChatStore((s) => s.setPolls);
   const typingUsers = useChatStore((s) => s.typingUsers);
   const hasMoreMessages = useChatStore((s) => s.hasMoreMessages);
   const loadingMoreMessages = useChatStore((s) => s.loadingMoreMessages);
@@ -195,6 +198,27 @@ export default function ChatArea({
   const dmCallStatus = useCallStore((s) => s.dmCallStatus);
   const dmCallChannelId = useCallStore((s) => s.dmCallChannelId);
   const activeAnyChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId || null;
+  const activeChannelType: 'channel' | 'dm' | 'group-dm' = activeDMChannelId
+    ? 'dm'
+    : activeGroupDMChannelId
+      ? 'group-dm'
+      : 'channel';
+
+  // Hydrate polls when the active channel changes so pre-existing polls (created
+  // in prior sessions) appear in the panel and can be voted on / deleted.
+  useEffect(() => {
+    const url = session?.url;
+    if (!url || !activeAnyChannelId) return;
+    let cancelled = false;
+    fetchChannelPolls(url, activeAnyChannelId, activeChannelType)
+      .then((res) => {
+        if (!cancelled) setPolls(activeAnyChannelId, res.polls);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.url, activeAnyChannelId, activeChannelType, setPolls]);
   const [input, setInput] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
@@ -206,6 +230,7 @@ export default function ChatArea({
   const [pinsOpen, setPinsOpen] = useState(false);
   const [mediaGalleryOpen, setMediaGalleryOpen] = useState(false);
   const [pollPanelOpen, setPollPanelOpen] = useState(false);
+  const [pollComposerOpen, setPollComposerOpen] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
@@ -474,17 +499,20 @@ export default function ChatArea({
         const pollArgs = trimmedInput.slice(6);
         const parts = parsePollArgs(pollArgs);
         if (parts.length < 3) {
-          setSendError('Usage: /poll "question" option1 option2 [option3 ...]');
+          setSendError(
+            'Usage: /poll question | option one | option two — or use “Create poll” for timers & multi-select.',
+          );
           return;
         }
         const [question, ...options] = parts;
+        const pollOpts = { durationSeconds: null, allowMultiple: false };
         try {
           if (activeDMChannelId) {
-            await createDMPoll(session.url, activeDMChannelId, question, options);
+            await createDMPoll(session.url, activeDMChannelId, question, options, pollOpts);
           } else if (activeGroupDMChannelId) {
-            await createGroupDMPoll(session.url, activeGroupDMChannelId, question, options);
+            await createGroupDMPoll(session.url, activeGroupDMChannelId, question, options, pollOpts);
           } else {
-            await createPoll(session.url, activeChannelId!, question, options);
+            await createPoll(session.url, activeChannelId!, question, options, pollOpts);
           }
           setInput('');
           setSendError(null);
@@ -708,6 +736,7 @@ export default function ChatArea({
   }
   if (activeAnyChannelId) {
     overflowActions.push({ label: 'Media', onClick: () => setMediaGalleryOpen(true) });
+    overflowActions.push({ label: 'Create poll', onClick: () => setPollComposerOpen(true) });
     overflowActions.push({ label: 'Polls', onClick: () => setPollPanelOpen(true) });
   }
 
@@ -1147,6 +1176,15 @@ export default function ChatArea({
         channelId={activeAnyChannelId}
         isOpen={pollPanelOpen}
         onClose={() => setPollPanelOpen(false)}
+        onCreatePoll={() => setPollComposerOpen(true)}
+      />
+
+      <PollComposerModal
+        open={pollComposerOpen}
+        onClose={() => setPollComposerOpen(false)}
+        serverUrl={session?.url ?? ''}
+        channelId={activeAnyChannelId}
+        channelType={activeChannelType}
       />
 
       <div className="chat-area__sr-only" aria-live="polite" aria-atomic="true">
