@@ -11,6 +11,7 @@ import {
   fetchRoles,
 } from '@kizuna/shared'
 import type { ChatCommand, Member, Permission } from '@kizuna/shared'
+import { useChatStore } from '../store/chatStore'
 
 export interface CommandUser {
   id: string
@@ -138,6 +139,8 @@ export async function runChatCommand(input: string, ctx: CommandContext): Promis
         const target = resolveMember(ctx.members, args[0] ?? '')
         if (!target) return notFound(ctx, args[0])
         await kickMember(ctx.serverUrl, target.id)
+        const store = useChatStore.getState()
+        store.setMembers(store.members.filter(m => m.id !== target.id))
         ctx.notify('Member kicked', `@${target.username} was removed from the server.`)
         return { kind: 'handled' }
       }
@@ -146,6 +149,8 @@ export async function runChatCommand(input: string, ctx: CommandContext): Promis
         if (!target) return notFound(ctx, args[0])
         const reason = args.slice(1).join(' ') || undefined
         await banUser(ctx.serverUrl, target.id, reason)
+        const store = useChatStore.getState()
+        store.setMembers(store.members.filter(m => m.id !== target.id))
         ctx.notify('Member banned', `@${target.username} was banned${reason ? `: ${reason}` : '.'}`)
         return { kind: 'handled' }
       }

@@ -331,13 +331,13 @@ authRoutes.get('/users', authMiddleware, (c) => {
   const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0)
   const limit = Math.min(200, Math.max(1, parseInt(c.req.query('limit') || '50', 10) || 50))
 
-  const total = (db.prepare('SELECT COUNT(*) as n FROM users').get() as { n: number }).n
+  const total = (db.prepare('SELECT COUNT(*) as n FROM server_members').get() as { n: number }).n
 
   const users = db
     .prepare(
        `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at, u.status_text, u.status_emoji, u.status_sticker_id, u.reset_requested_at, sm.is_host
        FROM users u
-       LEFT JOIN server_members sm ON sm.user_id = u.id
+       JOIN server_members sm ON sm.user_id = u.id
        ORDER BY u.username
        LIMIT ? OFFSET ?`,
     )
