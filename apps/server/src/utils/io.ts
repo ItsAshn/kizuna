@@ -8,14 +8,28 @@ export function getIo(c: Context): IoServer | undefined {
 
 export function emitIo(c: Context, event: string, data: unknown): void {
   try {
-    getIo(c)?.emit(event, data)
-  } catch { /* best-effort */ }
+    const io = getIo(c)
+    if (!io) {
+      console.warn(`[emitIo] Socket.IO instance not available for event: ${event}`)
+      return
+    }
+    io.emit(event, data)
+  } catch (err) {
+    console.warn(`[emitIo] Failed to emit "${event}":`, err)
+  }
 }
 
 export function emitToRoom(c: Context, room: string, event: string, data: unknown): void {
   try {
-    getIo(c)?.to(room).emit(event, data)
-  } catch { /* best-effort */ }
+    const io = getIo(c)
+    if (!io) {
+      console.warn(`[emitToRoom] Socket.IO instance not available for event: ${event}`)
+      return
+    }
+    io.to(room).emit(event, data)
+  } catch (err) {
+    console.warn(`[emitToRoom] Failed to emit "${event}" to room "${room}":`, err)
+  }
 }
 
 // Channel events also fan out to eligible members' personal rooms (skipping
@@ -24,10 +38,15 @@ export function emitToRoom(c: Context, room: string, event: string, data: unknow
 export function emitToChannel(c: Context, channelId: string, event: string, data: unknown, actorUserId: string): void {
   try {
     const io = getIo(c)
-    if (!io) return
+    if (!io) {
+      console.warn(`[emitToChannel] Socket.IO instance not available for event: ${event}`)
+      return
+    }
     io.to(channelId).emit(event, data)
     for (const uid of getEligibleNotifyUserIds(channelId, actorUserId)) {
       io.to(`user:${uid}`).emit(event, data)
     }
-  } catch { /* best-effort */ }
+  } catch (err) {
+    console.warn(`[emitToChannel] Failed to emit "${event}" to channel "${channelId}":`, err)
+  }
 }

@@ -89,6 +89,7 @@ export function MembersSection({ serverUrl }: { serverUrl: string | undefined })
     if (!serverUrl) return
     try {
       await kickMember(serverUrl, m.id)
+      setMembers(members.filter(mb => mb.id !== m.id))
       setKickConfirmMember(null)
     } catch (err) {
       setMemberMsg(prev => ({ ...prev, [m.id]: handleApiErr(err) }))
@@ -153,12 +154,17 @@ export function MembersSection({ serverUrl }: { serverUrl: string | undefined })
   const handleBulkKick = async () => {
     if (!serverUrl) return
     const targets = members.filter(m => selectedMembers.has(m.id) && m.id !== session?.user?.id)
+    const kickedIds = new Set<string>()
     for (const m of targets) {
       try {
         await kickMember(serverUrl, m.id)
+        kickedIds.add(m.id)
       } catch (err) {
         console.error('Bulk kick failed for member:', m.id, err)
       }
+    }
+    if (kickedIds.size > 0) {
+      setMembers(members.filter(m => !kickedIds.has(m.id)))
     }
     clearSelection()
   }
