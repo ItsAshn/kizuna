@@ -167,7 +167,7 @@ fn run_single_pipewire_loop(
 ) -> Result<bool, String> {
     pw::init();
 
-    let mainloop = pw::main_loop::MainLoopBox::new(None)
+    let mainloop = pw::main_loop::MainLoopRc::new(None)
         .map_err(|e| format!("Failed to create PipeWire mainloop: {e}"))?;
 
     let context = pw::context::ContextBox::new(mainloop.loop_(), None)
@@ -207,7 +207,14 @@ fn run_single_pipewire_loop(
                 let stride = data.chunk().stride() as u32;
                 if let Some(raw) = data.data() {
                     if data_size > 0 && raw.len() >= data_size {
-                        if let Ok(payload) = encode_frame(&raw[..data_size], stride) {
+                        // With a native encoder attached the frame goes out as
+                        // raw pixels; JPEG + base64 + IPC is only for the
+                        // webview path.
+                        if super::video_sink_active() {
+                            if let Some(frame) = pack_frame(&raw[..data_size], stride) {
+                                super::publish_raw_frame(frame);
+                            }
+                        } else if let Ok(payload) = encode_frame(&raw[..data_size], stride) {
                             let _ = app.emit("screen:frame", payload);
                         }
                     }
@@ -215,6 +222,27 @@ fn run_single_pipewire_loop(
             }
         })
         .register();
+
+    // `mainloop.run()` blocks until something quits it, and nothing else does:
+    // without this the capture thread outlives `stop()` and joining it hangs.
+    // A timer rather than the frame callback, because a still screen produces
+    // no frames at all — PipeWire only sends on damage.
+    let quit_loop = mainloop.downgrade();
+    let quit_cancel = cancel.clone();
+    let quit_timer = mainloop.loop_().add_timer(move |_| {
+        if quit_cancel.load(Ordering::Relaxed) {
+            if let Some(mainloop) = quit_loop.upgrade() {
+                mainloop.quit();
+            }
+        }
+    });
+    quit_timer
+        .update_timer(
+            Some(Duration::from_millis(100)),
+            Some(Duration::from_millis(100)),
+        )
+        .into_result()
+        .map_err(|e| format!("Failed to arm capture shutdown timer: {e}"))?;
 
     stream
         .set_active(true)
@@ -233,6 +261,41 @@ fn run_single_pipewire_loop(
     mainloop.run();
 
     Ok(cancel.load(Ordering::Relaxed))
+}
+
+/// Copies a PipeWire buffer into a tightly packed BGRA frame for the native
+/// encoder. Only row padding is removed — colour conversion and scaling are
+/// left to the encoder pipeline, which does both with SIMD.
+fn pack_frame(raw: &[u8], stride: u32) -> Option<super::RawFrame> {
+    if stride < 4 {
+        return None;
+    }
+    let row_bytes = stride as usize;
+    let height = raw.len() / row_bytes;
+    let width = (stride / 4) as usize;
+
+    // VP8 chroma subsampling needs even dimensions; cropping a line or column
+    // is invisible and avoids the encoder rejecting the frame outright.
+    let width = width & !1;
+    let height = height & !1;
+    if width == 0 || height == 0 {
+        return None;
+    }
+
+    let tight_row = width * 4;
+    let mut data = vec![0u8; tight_row * height];
+    for y in 0..height {
+        let src = y * row_bytes;
+        let dst = y * tight_row;
+        data[dst..dst + tight_row].copy_from_slice(&raw[src..src + tight_row]);
+    }
+
+    Some(super::RawFrame {
+        width: width as u32,
+        height: height as u32,
+        format: super::PixelFormat::Bgra,
+        data,
+    })
 }
 
 fn encode_frame(raw: &[u8], stride: u32) -> Result<ScreenFramePayload, String> {

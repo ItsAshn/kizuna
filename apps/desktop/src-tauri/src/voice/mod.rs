@@ -4,6 +4,10 @@ mod signaling;
 pub mod transport;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod encode;
+// Screenshare is encoded natively only on Linux, where the WebKitGTK webview
+// has no WebRTC stack to encode it for us.
+#[cfg(target_os = "linux")]
+pub mod video;
 pub mod dsp;
 pub mod rnnoise;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -15,6 +19,11 @@ pub mod output;
 pub use signaling::VoiceController;
 
 use serde::Serialize;
+
+/// Screenshare bitrate. Declared to the server in the video producer's RTP
+/// parameters and used to configure the native encoder, so what we announce and
+/// what we send agree.
+pub const SCREEN_SHARE_BITRATE_BPS: u32 = 2_500_000;
 
 #[derive(Debug, Clone, Serialize)]
 #[allow(dead_code)]

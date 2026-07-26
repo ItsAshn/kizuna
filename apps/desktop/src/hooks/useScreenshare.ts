@@ -3,7 +3,8 @@ import type { Socket } from 'socket.io-client'
 import type { Transport, Producer, Device } from 'mediasoup-client/types'
 import { useCallStore } from '../store/callStore'
 import { useVoiceStore } from '../store/voiceStore'
-import { isTauri } from '../utils/platform'
+import { isTauri, isLinuxDesktop } from '../utils/platform'
+import type { NativeVideoProducer } from './useVoice'
 
 interface ScreenFramePayload {
   jpeg_base64: string
@@ -14,12 +15,14 @@ interface ScreenFramePayload {
 export function useScreenshare(
   socketRef: React.MutableRefObject<Socket | null>,
   sendTransportRef: React.MutableRefObject<Transport | null>,
+  nativeVideoRef: React.MutableRefObject<NativeVideoProducer | null>,
 ) {
   const videoProducerRef = useRef<Producer | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const unlistenRef = useRef<(() => void) | null>(null)
   const localTransportRef = useRef(false)
+  const nativeActiveRef = useRef(false)
 
   const callStore = useCallStore
   const voiceStore = useVoiceStore
@@ -34,6 +37,17 @@ export function useScreenshare(
   }
 
   const cleanupLocal = useCallback(() => {
+    // Native path: the encoder and capture session both live in Rust, and the
+    // video producer is kept alive for reuse on the next share.
+    if (nativeActiveRef.current) {
+      nativeActiveRef.current = false
+      import('@tauri-apps/api/core').then(({ invoke }) =>
+        invoke('voice_screen_share_stop').catch(() => {})
+      )
+      callStore.getState().setIsScreenSharing(false)
+      return
+    }
+
     videoProducerRef.current?.close()
     videoProducerRef.current = null
 
@@ -60,6 +74,61 @@ export function useScreenshare(
     callStore.getState().setScreenShareVideoProducerId(null)
   }, [])
 
+  /**
+   * Linux path: the WebKitGTK webview has no WebRTC stack, so Rust captures,
+   * VP8-encodes and sends the frames on the video track the native voice
+   * transport already carries. The webview only drives signalling.
+   */
+  const startNativeScreenshare = useCallback(async (
+    channelId: string,
+    monitorIndex: number,
+    fps: number,
+  ): Promise<string | null> => {
+    const socket = socketRef.current!
+    const native = nativeVideoRef.current
+    if (!native) return 'Voice connection not established. Join a voice channel first.'
+
+    const { invoke } = await import('@tauri-apps/api/core')
+
+    try {
+      // The video track lives for the whole call, so it only needs producing
+      // once: re-sharing reuses the same producer rather than leaking a new one
+      // on the server every time.
+      if (!native.producerId) {
+        const produceResult: { id?: string; error?: string } = await new Promise((resolve) =>
+          socket.emit('voice:produce', {
+            channelId,
+            transportId: native.transportId,
+            kind: 'video',
+            rtpParameters: native.rtpParameters,
+            source: 'screen',
+          }, resolve),
+        )
+        if (produceResult?.error) return `Video produce failed: ${produceResult.error}`
+        native.producerId = produceResult?.id ?? null
+      }
+
+      // Bitrate is left to Rust so the encoder and the RTP parameters already
+      // announced to the server cannot disagree.
+      await invoke('voice_screen_share_start', { monitorIndex, fps })
+
+      await new Promise<void>((resolve, reject) => {
+        socket.emit('screen:start', { channelId }, (result: { error?: string } | undefined) => {
+          if (result?.error) reject(new Error(result.error))
+          else resolve()
+        })
+      })
+
+      nativeActiveRef.current = true
+      callStore.getState().setIsScreenSharing(true)
+      return null
+    } catch (err: unknown) {
+      await invoke('voice_screen_share_stop').catch(() => {})
+      const e = err as { message?: string; toString?: () => string }
+      return e?.message || e?.toString?.() || 'Failed to start screenshare'
+    }
+  }, [socketRef, nativeVideoRef])
+
   const startScreenshare = useCallback(async (
     channelId: string,
     monitorIndex: number,
@@ -70,6 +139,11 @@ export function useScreenshare(
 
     if (!socket) return 'No socket connection'
     if (!isTauri()) return 'Screensharing only works in the Tauri desktop app'
+
+    if (isLinuxDesktop()) {
+      return startNativeScreenshare(channelId, monitorIndex, fps)
+    }
+
     if (typeof RTCPeerConnection === 'undefined') return 'WebRTC is not supported in this webview. On Linux, ensure webkit2gtk is built with WebRTC support.'
 
     if (!sendTransport) {
@@ -175,7 +249,7 @@ export function useScreenshare(
       const e = err as { message?: string; toString?: () => string }
       return e?.message || e?.toString?.() || 'Failed to start screenshare'
     }
-  }, [socketRef, sendTransportRef, cleanupLocal])
+  }, [socketRef, sendTransportRef, cleanupLocal, startNativeScreenshare])
 
   const stopScreenshare = useCallback(() => {
     const socket = socketRef.current

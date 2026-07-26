@@ -400,6 +400,15 @@ fn voice_add_peer(peer_id: String, ssrc: u32) -> Result<(), String> {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn voice_leave() -> Result<(), String> {
+    // A screenshare cannot outlive the call it was being sent on: leaving with
+    // one running would otherwise leave the capture thread (and the portal's
+    // "screen is being shared" indicator) alive with nowhere to send frames.
+    if let Ok(mut capture) = CAPTURE_SESSION.lock() {
+        if let Some(mut session) = capture.take() {
+            session.stop();
+        }
+    }
+
     let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
     if let Some(ref mut controller) = *guard {
         controller.leave();
@@ -533,24 +542,58 @@ fn camera_stop() -> Result<(), String> {
     }
 }
 
+/// Starts screensharing over the native WebRTC send transport.
+///
+/// On Linux the webview has no WebRTC stack of its own (see voice/video.rs), so
+/// captured frames are VP8-encoded here and written to the call's video track.
+/// The encoder is attached *before* capture starts so the first frames are not
+/// wasted on the webview JPEG path.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-async fn voice_screen_share_start(app: tauri::AppHandle, monitor_index: usize, fps: u32) -> Result<(), String> {
+async fn voice_screen_share_start(
+    app: tauri::AppHandle,
+    monitor_index: usize,
+    fps: u32,
+    #[allow(unused_variables)] bitrate_kbps: Option<u32>,
+) -> Result<(), String> {
     {
         let guard = CAPTURE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
         if guard.is_some() {
             return Err("Screen capture already active".into());
         }
     }
+
+    #[cfg(target_os = "linux")]
+    {
+        let bitrate_bps = bitrate_kbps
+            .map(|kbps| kbps * 1000)
+            .unwrap_or(voice::SCREEN_SHARE_BITRATE_BPS);
+        let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+        let controller = guard.as_mut().ok_or("Voice is not connected")?;
+        controller.start_screen_share(fps.max(1), bitrate_bps)?;
+    }
+
     let session = match get_session_type() {
         #[cfg(target_os = "linux")]
-        SessionType::Wayland => capture::wayland::start_capture(app, monitor_index, fps).await?,
+        SessionType::Wayland => capture::wayland::start_capture(app, monitor_index, fps).await,
         #[cfg(target_os = "macos")]
-        SessionType::MacOS => capture::macos::start_capture(app.clone(), monitor_index, fps)?,
+        SessionType::MacOS => capture::macos::start_capture(app.clone(), monitor_index, fps),
         #[cfg(not(target_os = "windows"))]
-        SessionType::X11 => capture::x11::start_capture(app.clone(), monitor_index, fps)?,
-        _ => capture::windows::start_capture(app, monitor_index, fps)?,
+        SessionType::X11 => capture::x11::start_capture(app.clone(), monitor_index, fps),
+        _ => capture::windows::start_capture(app, monitor_index, fps),
     };
+
+    let session = match session {
+        Ok(session) => session,
+        Err(e) => {
+            // Portal dialog cancelled or capture failed: don't leave the
+            // encoder running against a sink that will never be fed.
+            #[cfg(target_os = "linux")]
+            stop_native_screen_encode();
+            return Err(e);
+        }
+    };
+
     let mut guard = CAPTURE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
     *guard = Some(session);
     Ok(())
@@ -559,12 +602,24 @@ async fn voice_screen_share_start(app: tauri::AppHandle, monitor_index: usize, f
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn voice_screen_share_stop() -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    stop_native_screen_encode();
+
     let mut guard = CAPTURE_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
     if let Some(mut session) = guard.take() {
         session.stop();
         Ok(())
     } else {
         Err("No active screen capture".into())
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn stop_native_screen_encode() {
+    if let Ok(mut guard) = VOICE_CONTROLLER.lock() {
+        if let Some(controller) = guard.as_mut() {
+            controller.stop_screen_share();
+        }
     }
 }
 
@@ -631,6 +686,28 @@ pub fn run() {
                 use tauri::Manager;
                 let window = _app.get_webview_window("main").unwrap();
                 window.open_devtools();
+            }
+
+            // WebKitGTK keeps `enable-webrtc` (and `enable-media-stream`, which
+            // it depends on) off by default and wry never turns them on, so
+            // RTCPeerConnection is undefined in the webview. Screenshare no
+            // longer needs it (see voice/video.rs), but camera and any other
+            // webview-side WebRTC do. Note this only helps where the distro
+            // built WebKitGTK with ENABLE_WEB_RTC=ON — Arch, among others, does
+            // not, which is why screenshare stopped relying on the webview.
+            #[cfg(target_os = "linux")]
+            {
+                use tauri::Manager;
+                use webkit2gtk::{SettingsExt, WebViewExt};
+
+                if let Some(window) = _app.get_webview_window("main") {
+                    let _ = window.with_webview(|webview| {
+                        if let Some(settings) = WebViewExt::settings(&webview.inner()) {
+                            settings.set_enable_media_stream(true);
+                            settings.set_enable_webrtc(true);
+                        }
+                    });
+                }
             }
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]

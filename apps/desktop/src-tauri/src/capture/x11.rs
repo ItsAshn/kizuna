@@ -83,10 +83,21 @@ pub fn start_capture(
 
             let start = std::time::Instant::now();
 
-            match capture_and_encode(&monitor) {
-                Ok(payload) => {
-                    consecutive_errors = 0;
+            // With a native encoder attached the frame goes out as raw pixels;
+            // JPEG + base64 + IPC is only for the webview path.
+            let result = if super::video_sink_active() {
+                capture_raw(&monitor).map(|frame| {
+                    super::publish_raw_frame(frame);
+                })
+            } else {
+                capture_and_encode(&monitor).map(|payload| {
                     let _ = app.emit("screen:frame", payload);
+                })
+            };
+
+            match result {
+                Ok(()) => {
+                    consecutive_errors = 0;
                 }
                 Err(e) => {
                     consecutive_errors += 1;
@@ -114,6 +125,45 @@ pub fn start_capture(
     Ok(CaptureSession {
         cancel,
         handle: Some(handle),
+    })
+}
+
+/// Captures a frame as raw pixels for the native encoder. Colour conversion and
+/// scaling are left to the encoder pipeline, which does both with SIMD.
+fn capture_raw(monitor: &Monitor) -> Result<super::RawFrame, String> {
+    let image = monitor
+        .capture_image()
+        .map_err(|e| format!("Capture failed: {e}"))?;
+
+    let (width, height) = (image.width(), image.height());
+    // VP8 chroma subsampling needs even dimensions; cropping a line or column
+    // is invisible and avoids the encoder rejecting the frame outright.
+    let (even_w, even_h) = (width & !1, height & !1);
+    if even_w == 0 || even_h == 0 {
+        return Err("Invalid frame dimensions".into());
+    }
+
+    let src = image.as_raw();
+    let data = if even_w == width {
+        let mut data = src.clone();
+        data.truncate((even_w * even_h * 4) as usize);
+        data
+    } else {
+        let tight_row = (even_w * 4) as usize;
+        let src_row = (width * 4) as usize;
+        let mut data = vec![0u8; tight_row * even_h as usize];
+        for y in 0..even_h as usize {
+            data[y * tight_row..(y + 1) * tight_row]
+                .copy_from_slice(&src[y * src_row..y * src_row + tight_row]);
+        }
+        data
+    };
+
+    Ok(super::RawFrame {
+        width: even_w,
+        height: even_h,
+        format: super::PixelFormat::Rgba,
+        data,
     })
 }
 

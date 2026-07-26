@@ -31,6 +31,14 @@ futures-util = "0.3"
 [target.'cfg(target_os = "linux")'.dependencies]
 pipewire = "0.9"
 ashpd = { version = "0.13", features = ["screencast", "tokio"] }
+# WebKitGTK ships WebRTC support but leaves it off by default, so wry's webview
+# has no RTCPeerConnection. We flip the setting on at startup (see lib.rs).
+webkit2gtk = { version = "2.0", features = ["v2_38"] }
+# Screenshare is VP8-encoded natively because the webview cannot do it (see
+# voice/video.rs). GStreamer is already required by WebKitGTK, so this adds no
+# runtime dependency users don't already have.
+gstreamer = "0.25"
+gstreamer-app = "0.25"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", features = [

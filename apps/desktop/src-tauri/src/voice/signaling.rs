@@ -21,6 +21,12 @@ pub struct ActiveCall {
     pub video_track: Option<Arc<TrackLocalStaticSample>>,
     pub audio_send: Option<AudioSendSession>,
     pub processor: Option<Arc<tokio::sync::Mutex<AudioProcessor>>>,
+    #[cfg(target_os = "linux")]
+    pub video_sender: Arc<webrtc::rtp_transceiver::rtp_sender::RTCRtpSender>,
+    #[cfg(target_os = "linux")]
+    pub video_send: Option<super::video::VideoSendSession>,
+    #[cfg(target_os = "linux")]
+    pub video_rtcp: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl ActiveCall {
@@ -65,6 +71,18 @@ impl Drop for ActiveCall {
     fn drop(&mut self) {
         if let Some(ref mut s) = self.audio_send {
             s.stop();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            // Detach the capture sink before the encoder goes away so capture
+            // threads stop handing frames to a dead pipeline.
+            crate::capture::clear_video_sink();
+            if let Some(handle) = self.video_rtcp.take() {
+                handle.abort();
+            }
+            if let Some(ref mut s) = self.video_send {
+                s.stop();
+            }
         }
         tokio::task::block_in_place(|| {
             tauri::async_runtime::block_on(async {
@@ -207,7 +225,7 @@ impl VoiceController {
             "headerExtensions": [],
             "encodings": [{
                 "ssrc": video_ssrc,
-                "maxBitrate": 300_000,
+                "maxBitrate": super::SCREEN_SHARE_BITRATE_BPS,
             }],
             "rtcp": {
                 "cname": "",
@@ -223,6 +241,12 @@ impl VoiceController {
             video_track: Some(transport_pair.video_track),
             audio_send: None,
             processor: None,
+            #[cfg(target_os = "linux")]
+            video_sender,
+            #[cfg(target_os = "linux")]
+            video_send: None,
+            #[cfg(target_os = "linux")]
+            video_rtcp: None,
         });
 
         eprintln!("[VoiceNative] begin_join OK: audio_ssrc={ssrc} video_ssrc={video_ssrc}");
@@ -356,6 +380,69 @@ impl VoiceController {
         if let Some(ref call) = self.active_call {
             call.set_auto_gain(enabled).await;
         }
+    }
+
+    /// Starts encoding captured screen frames onto the call's video track.
+    /// The caller is responsible for having produced the video track on the
+    /// server first, and for starting the capture session that fills the sink.
+    #[cfg(target_os = "linux")]
+    pub fn start_screen_share(&mut self, fps: u32, bitrate_bps: u32) -> Result<(), String> {
+        use webrtc::rtcp::payload_feedbacks::full_intra_request::FullIntraRequest;
+        use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
+
+        let call = self
+            .active_call
+            .as_mut()
+            .ok_or("Not connected to a voice channel")?;
+        if call.video_send.is_some() {
+            return Err("Screen share is already active".into());
+        }
+        let track = call
+            .video_track
+            .clone()
+            .ok_or("This call has no video track")?;
+
+        // Two frames of slack: enough to absorb a scheduling hiccup, small
+        // enough that a slow encoder drops frames instead of adding latency.
+        let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel(2);
+        let session = super::video::VideoSendSession::start(track, frame_rx, bitrate_bps, fps)?;
+
+        let requester = session.keyframe_requester();
+        let video_sender = call.video_sender.clone();
+        let rtcp = tokio::spawn(async move {
+            while let Ok((packets, _)) = video_sender.read_rtcp().await {
+                for packet in packets {
+                    let any = packet.as_any();
+                    if any.downcast_ref::<PictureLossIndication>().is_some()
+                        || any.downcast_ref::<FullIntraRequest>().is_some()
+                    {
+                        requester.request();
+                    }
+                }
+            }
+        });
+
+        crate::capture::set_video_sink(frame_tx);
+        call.video_send = Some(session);
+        call.video_rtcp = Some(rtcp);
+        eprintln!("[VoiceNative] screen share encoding started");
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn stop_screen_share(&mut self) {
+        // Detach the sink first: capture threads then stop producing frames for
+        // a pipeline that is about to be torn down.
+        crate::capture::clear_video_sink();
+        if let Some(call) = self.active_call.as_mut() {
+            if let Some(handle) = call.video_rtcp.take() {
+                handle.abort();
+            }
+            if let Some(mut session) = call.video_send.take() {
+                session.stop();
+            }
+        }
+        eprintln!("[VoiceNative] screen share encoding stopped");
     }
 
     pub async fn set_muted(&self, muted: bool) {

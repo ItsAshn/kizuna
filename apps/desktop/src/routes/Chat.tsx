@@ -74,6 +74,7 @@ export default function Chat() {
     leaveVoice,
     toggleMute,
     sendTransportRef,
+    nativeVideoRef,
     videoElRef,
     startDMCall,
     acceptDMCall,
@@ -82,7 +83,7 @@ export default function Chat() {
     connectDMCall,
   } = useVoice(socketRef)
   useActivityDetector(socketRef)
-  const { startScreenshare, stopScreenshare } = useScreenshare(socketRef, sendTransportRef)
+  const { startScreenshare, stopScreenshare } = useScreenshare(socketRef, sendTransportRef, nativeVideoRef)
   const { toggleCamera, cameraStreamRef } = useCamera(socketRef, sendTransportRef)
   const isCameraOn = useCallStore((s) => s.isCameraOn)
   const dmCallStatus = useCallStore((s) => s.dmCallStatus)
