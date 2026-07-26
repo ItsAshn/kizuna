@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { Socket } from 'socket.io-client'
 import { createPortal } from 'react-dom'
 import { useServerStore } from '../store/serverStore'
@@ -7,6 +7,7 @@ import { useVoiceStore } from '../store/voiceStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useMobile } from '../hooks/useMobile'
 import { useHaptics } from '../hooks/useHaptics'
+import { useLongPressItems } from '../hooks/useLongPressItems'
 import { isTauri } from '../utils/platform'
 import { useNavigate } from 'react-router-dom'
 import { createChannel, setChannelMute, deleteChannelMute, deleteChannel, reorderChannels } from '@kizuna/shared'
@@ -167,6 +168,20 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
     setContextMenuChannelId(channelId)
   }
 
+  // Touch equivalent of the right-click menu above (ContextMenu renders as an
+  // ActionSheet on mobile).
+  const channelLongPress = useLongPressItems({
+    enabled: isMobile,
+    onLongPress: useCallback(
+      (channelId: string, pos: { x: number; y: number }) => {
+        haptics.longPress()
+        setContextMenuPos(pos)
+        setContextMenuChannelId(channelId)
+      },
+      [haptics],
+    ),
+  })
+
   function getMuteMenuItems(channelId: string) {
     const ch = channels.find(c => c.id === channelId)
     const isMuted = channelMutes[channelId] !== undefined
@@ -244,7 +259,9 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
           draggable={isAdmin && !isMobile}
           onDragStart={(e) => { if (isAdmin && !isMobile) handleDragStart(e, ch) }}
           onDragEnd={handleDragEnd}
+          {...channelLongPress.bind(ch.id)}
           onClick={() => {
+            if (channelLongPress.consumedTap()) return
             haptics.tap()
             if (isText) {
               setActiveChannel(ch.id); onOpenChat?.()

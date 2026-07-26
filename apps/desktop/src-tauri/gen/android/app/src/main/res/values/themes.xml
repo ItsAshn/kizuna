@@ -1,6 +1,8 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Theme.kizuna" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+        <!-- Dark even in day mode: the web app has no light theme, so the
+             Material default (white) shows as a flash on every cold start. -->
+        <item name="android:windowBackground">@color/kizuna_background</item>
     </style>
 </resources>

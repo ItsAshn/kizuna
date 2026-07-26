@@ -106,6 +106,6 @@
   a:active,
   [role='button']:active {
     opacity: 0.6;
-    transition: opacity 0.04s ease-out;
+    transition: opacity var(--dur-tap) var(--ease-out);
   }
 }

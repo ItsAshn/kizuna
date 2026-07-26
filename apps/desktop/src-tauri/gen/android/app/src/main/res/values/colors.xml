@@ -7,4 +7,8 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Matches --bg-primary in styles/global.css. The web app is dark-only, so
+         the window background must be dark in day mode too or a light-mode
+         device flashes white before the WebView paints. -->
+    <color name="kizuna_background">#FF0A0A0A</color>
 </resources>

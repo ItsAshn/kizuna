@@ -20,7 +20,6 @@ import { useMobileNavigation } from '../../hooks/useMobileNavigation'
 import { useMobileNavStore } from '../../store/mobileNavStore'
 import { useSwipeBack } from '../../hooks/useSwipeBack'
 import { useKeyboard } from '../../hooks/useKeyboard'
-import { supportsNavTransitions } from '../../lib/navTransitions'
 import './MobileShell.css'
 
 interface MobileShellProps {
@@ -171,22 +170,37 @@ export default function MobileShell({
     popView()
   }, [showMembers, onCloseMembers, popView])
 
-  // Hardware back button
+  /* Hardware back button.
+   *
+   * A sentinel history entry makes the platform back gesture fire a popstate we
+   * can intercept rather than leaving the app; each consumed back re-pushes it.
+   * Registered exactly once — the effect used to depend on goBack/showMembers
+   * and pushed a fresh sentinel on every run, so every members-panel toggle
+   * leaked an entry and back presses piled up. The current handler is reached
+   * through refs instead.
+   *
+   * Falling through without re-pushing is deliberate: at a tab root there is
+   * nothing left to pop, so the next back should exit the app. */
+  const goBackRef = useRef(goBack)
+  goBackRef.current = goBack
+  const showMembersRef = useRef(showMembers)
+  showMembersRef.current = showMembers
+
   useEffect(() => {
-    const goBackFn = () => {
+    const onPopState = () => {
       const canGoBack =
         useChatStore.getState().threadPanelVisible ||
-        showMembers ||
+        showMembersRef.current ||
         navStackRef.current.length > 0
       if (canGoBack) {
-        goBack()
+        goBackRef.current()
         window.history.pushState(null, '', window.location.href)
       }
     }
     window.history.pushState(null, '', window.location.href)
-    window.addEventListener('popstate', goBackFn)
-    return () => window.removeEventListener('popstate', goBackFn)
-  }, [goBack, showMembers])
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [navStackRef])
 
   const pushToChat = () => {
     const state = useChatStore.getState()
@@ -331,12 +345,11 @@ export default function MobileShell({
         )}
 
         <div className="mobile-content" ref={contentRef}>
-          {/* Keyed so each navigation mounts a fresh view; when the View
-              Transitions API drives the animation the fallback mount class
-              must stay off or both would animate at once. */}
+          {/* Keyed so each navigation mounts a fresh view, which is what makes
+              the direction-specific mount animation play exactly once. */}
           <div
             key={viewKey}
-            className={`mobile-content__view${supportsNavTransitions ? '' : ` mobile-content__view--${navAnim}`}`}
+            className={`mobile-content__view mobile-content__view--${navAnim}`}
           >
             {renderCurrentView()}
           </div>

@@ -43,19 +43,31 @@ export function useChannelMessages({
     locked: boolean;
   } | null>(null);
   const newMessagesRef = useRef<string | null>(null);
+  // Which channel the current channelPerms belong to, so re-entering the same
+  // channel can keep them instead of flashing the composer's locked state.
+  const permsChannelRef = useRef<string | null>(null);
+
+  /* Skeletons are for a cold channel only. chatStore.messages is a per-channel
+   * cache that survives navigation, so re-entry renders instantly and the
+   * fetch below revalidates behind it. */
+  const beginLoad = useCallback((channelId: string) => {
+    const cached = useChatStore.getState().messages[channelId];
+    setLoading(!cached || cached.length === 0);
+    setLoadError(null);
+  }, []);
 
   const reloadMessages = useCallback(() => setReloadNonce((n) => n + 1), []);
 
   useEffect(() => {
     if (activeChannelId) {
       let cancelled = false;
-      setLoading(true);
-      setLoadError(null);
-      setChannelPerms(null);
+      beginLoad(activeChannelId);
+      if (permsChannelRef.current !== activeChannelId) setChannelPerms(null);
+      permsChannelRef.current = activeChannelId;
       fetchMessages(session!.url, activeChannelId)
         .then(({ messages: msgs, hasMore }) => {
           if (cancelled) return;
-          useChatStore.getState().setMessages(activeChannelId, msgs);
+          useChatStore.getState().reconcileMessages(activeChannelId, msgs);
           useChatStore.getState().setHasMoreMessages(activeChannelId, hasMore);
           const lastRead = useChatStore.getState().channelLastReadAt[activeChannelId];
           if (lastRead && msgs.length > 0) {
@@ -120,14 +132,14 @@ export function useChannelMessages({
   useEffect(() => {
     if (activeDMChannelId) {
       let cancelled = false;
-      setLoading(true);
-      setLoadError(null);
+      beginLoad(activeDMChannelId);
       setChannelPerms(null);
+      permsChannelRef.current = null;
       fetchDMMessages(session!.url, activeDMChannelId)
         .then(({ messages: msgs, hasMore }) => {
           if (cancelled) return;
           const decrypted = msgs.map((m) => tryDecryptDM(m));
-          useChatStore.getState().setMessages(activeDMChannelId, decrypted);
+          useChatStore.getState().reconcileMessages(activeDMChannelId, decrypted);
           useChatStore.getState().setHasMoreMessages(activeDMChannelId, hasMore);
           const lastRead = useChatStore.getState().channelLastReadAt[activeDMChannelId];
           if (lastRead && decrypted.length > 0) {
@@ -186,14 +198,14 @@ export function useChannelMessages({
   useEffect(() => {
     if (activeGroupDMChannelId) {
       let cancelled = false;
-      setLoading(true);
-      setLoadError(null);
+      beginLoad(activeGroupDMChannelId);
       setChannelPerms(null);
+      permsChannelRef.current = null;
       fetchGroupDMMessages(session!.url, activeGroupDMChannelId)
         .then(({ messages: msgs, hasMore }) => {
           if (cancelled) return;
           const decrypted = msgs.map((m) => tryDecryptGroupDM(m));
-          useChatStore.getState().setMessages(activeGroupDMChannelId, decrypted);
+          useChatStore.getState().reconcileMessages(activeGroupDMChannelId, decrypted);
           useChatStore.getState().setHasMoreMessages(activeGroupDMChannelId, hasMore);
           const lastRead = useChatStore.getState().channelLastReadAt[activeGroupDMChannelId];
           if (lastRead && decrypted.length > 0) {

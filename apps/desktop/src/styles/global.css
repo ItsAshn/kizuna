@@ -93,6 +93,24 @@
   --fw-semibold: 600;
   --fw-bold: 700;
 
+  /* Motion scale — durations and easings were hardcoded per component (12
+     distinct durations across ~220 declarations); adopt these as files are
+     touched (not a big-bang sweep). lib/motion.ts mirrors them for the
+     JS-driven animations, which can't cheaply read custom properties.
+     Every easing but --ease-standard and --ease-in was already in use. */
+  --dur-tap: 40ms; /* press feedback only */
+  --dur-fast: 120ms; /* small control state changes */
+  --dur-base: 150ms; /* the house default */
+  --dur-slow: 200ms; /* panels, list reorders, tab crossfade */
+  --dur-sheet: 280ms; /* bottom sheets and modals entering */
+  --dur-nav: 320ms; /* mobile stack push/pop */
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-decel: cubic-bezier(0.2, 0.8, 0.4, 1);
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+
   /* Shared modal dimensions — modals reference these instead of hand-picking
      one-off sizes, so related dialogs stay consistent. Every width clamps to
      92vw so no dialog overflows a narrow window. The two-pane settings shell
@@ -440,6 +458,18 @@ select:focus:not(:focus-visible) {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Collapse the scale too, so anything reading a duration token — including
+     lib/motion.ts via getComputedStyle — sees the reduced value rather than
+     relying on the blanket override below. */
+  :root {
+    --dur-tap: 1ms;
+    --dur-fast: 1ms;
+    --dur-base: 1ms;
+    --dur-slow: 1ms;
+    --dur-sheet: 1ms;
+    --dur-nav: 1ms;
+  }
+
   *,
   *::before,
   *::after {
