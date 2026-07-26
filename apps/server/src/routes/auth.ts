@@ -3,11 +3,11 @@ import { v4 as uuidv4 } from 'uuid'
 import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { getDb, deleteUserAccount } from '../db'
-import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getUserPermissions, getJwtSecret, assignDefaultRoles } from '../middleware/auth'
+import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getUserPermissions, getJwtSecret, assignDefaultRoles, isRemovedMember, clearMemberRemoval } from '../middleware/auth'
 import type { JwtPayload } from '../middleware/auth'
 import { generateChallenge, verifyPoW } from '../middleware/pow'
 import { sensitiveAuthLimiter } from '../middleware/rateLimiter'
-import { getMemberById } from '../routes/serverInfo'
+import { getMemberById, consumeInviteCode } from '../routes/serverInfo'
 import jwt from 'jsonwebtoken'
 import { getAuth } from '../utils/auth'
 import { getIo, emitIo } from '../utils/io'
@@ -118,7 +118,7 @@ authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
 })
 
 authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
-  const { username, password } = await c.req.json()
+  const { username, password, inviteCode } = await c.req.json()
 
   if (!username || !password) {
     return c.json({ error: 'username and password required' }, 400)
@@ -146,6 +146,18 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
   let member = db
     .prepare('SELECT role, is_host FROM server_members WHERE user_id = ?')
     .get(user.id) as { role: string; is_host: number } | undefined
+
+  // A kicked user still has an account, so logging back in must not silently
+  // re-add them — they need an invite to rejoin (or an admin to re-add them).
+  if (!member && isRemovedMember(user.id)) {
+    if (!inviteCode || typeof inviteCode !== 'string' || !consumeInviteCode(inviteCode.trim())) {
+      return c.json({
+        error: 'You have been removed from this server. You need a valid invite code to rejoin.',
+        code: 'removed_from_server',
+      }, 403)
+    }
+    clearMemberRemoval(user.id)
+  }
 
   if (!member) {
     db.transaction(() => {
@@ -331,6 +343,8 @@ authRoutes.get('/users', authMiddleware, (c) => {
   const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0)
   const limit = Math.min(200, Math.max(1, parseInt(c.req.query('limit') || '50', 10) || 50))
 
+  // Membership, not account existence, defines the member list — a kicked user
+  // keeps their `users` row but must not show up here.
   const total = (db.prepare('SELECT COUNT(*) as n FROM server_members').get() as { n: number }).n
 
   const users = db
@@ -588,7 +602,7 @@ authRoutes.delete('/me', authMiddleware, async (c) => {
   deleteUserAccount(auth.userId, deleteData)
 
   c.header('Set-Cookie', 'kizuna_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
-  emitIo(c, 'member:removed', auth.userId)
+  emitIo(c, 'member:removed', { userId: auth.userId })
   return c.json({ ok: true })
 })
 

@@ -149,6 +149,15 @@ export const SCHEMA_SQL = `
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
 
+  -- Users who were kicked or banned. Presence of a row blocks the implicit
+  -- "auto-join on next request/login" paths, so a removal actually sticks.
+  CREATE TABLE IF NOT EXISTS removed_members (
+    user_id TEXT PRIMARY KEY,
+    removed_by TEXT DEFAULT NULL,
+    removed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
   CREATE TABLE IF NOT EXISTS member_roles (
     user_id TEXT NOT NULL,
     role_id TEXT NOT NULL,

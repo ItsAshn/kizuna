@@ -114,6 +114,34 @@ export function assignDefaultRoles(userId: string): void {
   }
 }
 
+// Kicked/banned users keep their `users` row, so membership alone can't tell
+// "never joined" (legacy account predating server_members) from "was removed".
+// The removed_members marker draws that line: legacy accounts still auto-heal
+// into membership, removed ones stay out until they rejoin or are re-added.
+export function isRemovedMember(userId: string): boolean {
+  const db = getDb()
+  return !!db.prepare('SELECT 1 FROM removed_members WHERE user_id = ?').get(userId)
+}
+
+export function markMemberRemoved(userId: string, removedBy: string | null): void {
+  const db = getDb()
+  db.prepare(
+    'INSERT OR REPLACE INTO removed_members (user_id, removed_by, removed_at) VALUES (?, ?, unixepoch())'
+  ).run(userId, removedBy)
+}
+
+export function clearMemberRemoval(userId: string): void {
+  const db = getDb()
+  db.prepare('DELETE FROM removed_members WHERE user_id = ?').run(userId)
+}
+
+// Ends every REST session for a user; authMiddleware rejects revoked token ids.
+export function revokeUserSessions(userId: string): void {
+  const db = getDb()
+  db.prepare('UPDATE sessions SET revoked_at = unixepoch() WHERE user_id = ? AND revoked_at IS NULL').run(userId)
+  db.prepare('UPDATE users SET token_invalidated_at = unixepoch() WHERE id = ?').run(userId)
+}
+
 export function getUserInfo(userId: string): AuthUser | null {
   const db = getDb()
   const user = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(userId) as { id: string; username: string; display_name: string } | undefined
@@ -137,6 +165,7 @@ export function getUserPermissions(userId: string): { role: string; permissions:
   if (!member) {
     const userExists = db.prepare('SELECT 1 FROM users WHERE id = ?').get(userId)
     if (!userExists) return null
+    if (isRemovedMember(userId)) return null
 
     try {
       db.prepare('INSERT OR IGNORE INTO server_members (user_id, role) VALUES (?, ?)').run(userId, 'member')

@@ -98,6 +98,7 @@ export function deleteUserAccount(userId: string, deleteData: boolean): void {
     db.prepare('DELETE FROM identity_links WHERE user_id = ?').run(userId)
     db.prepare('DELETE FROM verification_tokens WHERE user_id = ?').run(userId)
     db.prepare('DELETE FROM member_roles WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM removed_members WHERE user_id = ?').run(userId)
     db.prepare('DELETE FROM server_members WHERE user_id = ?').run(userId)
     db.prepare('DELETE FROM users WHERE id = ?').run(userId)
   })()
@@ -116,6 +117,7 @@ const EXPECTED_SCHEMA: Record<string, string[]> = {
   server_members: ['user_id', 'role', 'is_host', 'custom_role_id', 'joined_at'],
   roles: ['id', 'name', 'color', 'permissions', 'is_admin', 'position', 'hoist', 'mentionable', 'default_on_join', 'created_at'],
   member_roles: ['user_id', 'role_id'],
+  removed_members: ['user_id', 'removed_by', 'removed_at'],
   dm_channels: ['id', 'user1_id', 'user2_id', 'last_message_at', 'created_at'],
   mentions: ['id', 'message_id', 'channel_id', 'author_id', 'author_username',
     'mentioned_user_id', 'mention_type', 'content', 'read', 'created_at'],

@@ -1,10 +1,10 @@
 import { Hono } from 'hono'
 import { getDb } from '../db'
-import { authMiddleware, adminMiddleware, hasPermissionForUser, getUserInfo, isUserAdmin } from '../middleware/auth'
+import { authMiddleware, adminMiddleware, hasPermissionForUser, getUserInfo, isUserAdmin, markMemberRemoved, clearMemberRemoval, revokeUserSessions, clearPermissionCache } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 import { logAuditEvent } from '../routes/audit'
 import { getAuth } from '../utils/auth'
-import { emitIo } from '../utils/io'
+import { emitIo, disconnectUserSockets } from '../utils/io'
 
 const banRoutes = new Hono()
 
@@ -64,8 +64,16 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
   } catch {}
 
   const id = uuidv4()
-  db.prepare('INSERT INTO bans (id, user_id, banned_by, reason) VALUES (?, ?, ?, ?)').run(id, targetUserId, user.userId, reason)
-  db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
+  db.transaction(() => {
+    db.prepare('INSERT INTO bans (id, user_id, banned_by, reason) VALUES (?, ?, ?, ?)').run(id, targetUserId, user.userId, reason)
+    db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
+    db.prepare('DELETE FROM member_roles WHERE user_id = ?').run(targetUserId)
+    markMemberRemoved(targetUserId, user.userId)
+  })()
+
+  revokeUserSessions(targetUserId)
+  clearPermissionCache(targetUserId)
+  disconnectUserSockets(c, targetUserId, 'banned')
   emitIo(c, 'member:removed', { userId: targetUserId })
 
   logAuditEvent(db, 'member_ban', user.userId, targetUserId, JSON.stringify({ reason }))
@@ -75,7 +83,7 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
 
 banRoutes.delete('/:userId', authMiddleware, (c) => {
   const user = getAuth(c)
-  const targetUserId = c.req.param('userId')
+  const targetUserId = c.req.param('userId') || ''
   const db = getDb()
 
   if (!hasPermissionForUser(user.userId, 'ban_members')) {
@@ -86,6 +94,8 @@ banRoutes.delete('/:userId', authMiddleware, (c) => {
   if (!ban) return c.json({ error: 'Ban not found' }, 404)
 
   db.prepare('DELETE FROM bans WHERE user_id = ?').run(targetUserId)
+  // Lifting the ban restores their ability to log back in and rejoin.
+  clearMemberRemoval(targetUserId)
 
   logAuditEvent(db, 'member_unban', user.userId, targetUserId, null)
 

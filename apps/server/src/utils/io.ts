@@ -19,6 +19,22 @@ export function emitIo(c: Context, event: string, data: unknown): void {
   }
 }
 
+// Tells every live socket belonging to a user why they're being cut off, then
+// closes them. Sockets authenticate at handshake time only, so a removed user
+// would otherwise keep a working realtime connection until their token expired.
+export function disconnectUserSockets(c: Context, userId: string, reason: 'kicked' | 'banned'): void {
+  try {
+    const io = getIo(c)
+    if (!io) return
+    for (const socket of io.sockets.sockets.values()) {
+      if (socket.data?.userId !== userId) continue
+      socket.emit('server:removed', { reason })
+      // Give the packet a tick to flush before tearing down the transport.
+      setTimeout(() => socket.disconnect(true), 100)
+    }
+  } catch { /* best-effort */ }
+}
+
 export function emitToRoom(c: Context, room: string, event: string, data: unknown): void {
   try {
     const io = getIo(c)

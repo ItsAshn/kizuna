@@ -5,10 +5,21 @@ import jwt from 'jsonwebtoken'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb, getDbPath } from '../db'
-import { requirePermission, adminMiddleware, authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin, isUserHost, assignDefaultRoles, clearPermissionCache } from '../middleware/auth'
+import { requirePermission, adminMiddleware, authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin, isUserHost, assignDefaultRoles, clearPermissionCache, markMemberRemoved, clearMemberRemoval, revokeUserSessions } from '../middleware/auth'
 import { getAllPeers } from '../socket/voiceHandler'
 import { getAuth } from '../utils/auth'
-import { getIo, emitIo } from '../utils/io'
+import { getIo, emitIo, disconnectUserSockets } from '../utils/io'
+import { logAuditEvent } from './audit'
+
+// Atomically claims one use of an invite. Returns false when the code is
+// missing, expired, or exhausted.
+export function consumeInviteCode(code: string): boolean {
+  const db = getDb()
+  const result = db.prepare(
+    'UPDATE invite_codes SET uses = uses + 1 WHERE code = ? AND (max_uses IS NULL OR uses < max_uses) AND (expires_at IS NULL OR expires_at > unixepoch())'
+  ).run(code.toUpperCase())
+  return result.changes > 0
+}
 
 export function getMemberById(userId: string) {
   const db = getDb()
@@ -402,14 +413,12 @@ serverInfoRoutes.post('/join/:code', async (c) => {
     const existing = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(userId)
     if (existing) return c.json({ ok: true, alreadyMember: true })
 
-    const result = db.prepare(
-      'UPDATE invite_codes SET uses = uses + 1 WHERE code = ? AND (max_uses IS NULL OR uses < max_uses) AND (expires_at IS NULL OR expires_at > unixepoch())'
-    ).run(code)
-    if (result.changes === 0) {
+    if (!consumeInviteCode(code)) {
       return c.json({ error: 'Invite has expired or reached maximum uses' }, 400)
     }
 
     db.prepare('INSERT OR REPLACE INTO server_members (user_id, role) VALUES (?, ?)').run(userId, 'member')
+    clearMemberRemoval(userId)
     assignDefaultRoles(userId)
     emitIo(c, 'member:added', getMemberById(userId))
     return c.json({ ok: true, alreadyMember: false })
@@ -489,8 +498,19 @@ serverInfoRoutes.delete('/members/:userId', authMiddleware, requirePermission('k
     return c.json({ error: 'Cannot kick an admin' }, 403)
   }
 
-  db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
+  db.transaction(() => {
+    db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
+    db.prepare('DELETE FROM member_roles WHERE user_id = ?').run(targetUserId)
+    markMemberRemoved(targetUserId, user.userId)
+  })()
+
+  // Without this the kicked client keeps its token and socket, and the next
+  // request would silently re-create the membership row.
+  revokeUserSessions(targetUserId)
   clearPermissionCache(targetUserId)
+  disconnectUserSockets(c, targetUserId, 'kicked')
+
+  logAuditEvent(db, 'member_kick', user.userId, targetUserId, null)
   emitIo(c, 'member:removed', { userId: targetUserId })
   return c.json({ ok: true })
 })

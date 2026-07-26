@@ -505,6 +505,19 @@ export function useSocket(): MutableRefObject<Socket | null> {
       store.setMembers(store.members.filter(m => m.id !== userId))
     })
 
+    // We're the one who got kicked/banned — the server has already revoked our
+    // token, so drop the session instead of reconnect-looping against it.
+    socket.on('server:removed', ({ reason }: { reason: 'kicked' | 'banned' }) => {
+      showNotification({
+        type: 'announce',
+        title: reason === 'banned' ? 'You were banned' : 'You were kicked',
+        body: 'You are no longer a member of this server.',
+      })
+      socket.disconnect()
+      useServerStore.getState().setActiveSession(null)
+      window.location.href = '/'
+    })
+
     socket.on('voice:userJoinedChannel', ({ channelId, userId, username }: { channelId: string; userId: string; username: string }) => {
       useVoiceStore.getState().addVoiceChannelUser(channelId, { userId, username })
     })

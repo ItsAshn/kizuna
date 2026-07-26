@@ -7,7 +7,7 @@ import jwt from 'jsonwebtoken';
 import type { HonoEnv } from './types';
 import { registerChatHandlers } from './socket/chatHandler';
 import { registerVoiceHandlers } from './socket/voiceHandler';
-import { getUserInfo } from './middleware/auth';
+import { getUserInfo, isRemovedMember } from './middleware/auth';
 import { COOKIE_REGEX } from './constants';
 import { createLogger } from './utils/logger';
 
@@ -236,6 +236,9 @@ export function createApp(httpPort: number) {
       const userInfo = getUserInfo(payload.userId);
       if (!userInfo) {
         return next(new Error('User not found'));
+      }
+      if (isRemovedMember(payload.userId)) {
+        return next(new Error('You are no longer a member of this server'));
       }
       socket.data.userId = userInfo.userId;
       socket.data.username = userInfo.username;
