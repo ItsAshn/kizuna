@@ -4,6 +4,8 @@ import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { Settings, LayoutDashboard, Ellipsis, Plus, ChevronDown } from 'lucide-react'
 import { useMobile } from '../hooks/useMobile'
+import { useHaptics } from '../hooks/useHaptics'
+import { useLongPressItems } from '../hooks/useLongPressItems'
 import ContextMenu from './ContextMenu'
 import type { ContextMenuSection } from './ContextMenu'
 import './ServerPanel.css'
@@ -26,6 +28,11 @@ interface ServerIconProps {
   draggable: boolean
   onDragStart: (e: React.DragEvent) => void
   onDragEnd: () => void
+  /** Long-press handlers — the touch equivalent of onContextMenu. */
+  touchHandlers?: Pick<
+    React.DOMAttributes<HTMLButtonElement>,
+    'onTouchStart' | 'onTouchMove' | 'onTouchEnd' | 'onTouchCancel'
+  >
 }
 
 const ServerIcon = memo(function ServerIcon({
@@ -38,10 +45,12 @@ const ServerIcon = memo(function ServerIcon({
   draggable,
   onDragStart,
   onDragEnd,
+  touchHandlers,
 }: ServerIconProps) {
   return (
     <button
       className={`server-panel__icon${isActive ? ' server-panel__icon--active' : ''}`}
+      {...touchHandlers}
       onClick={() => onClick(server.id)}
       aria-label={`${server.name}${isConnected ? ' — connected' : ' — not connected'}${mentions > 0 ? ` — ${mentions} mentions` : ''}`}
       aria-current={isActive ? 'page' : undefined}
@@ -76,6 +85,7 @@ const ServerIcon = memo(function ServerIcon({
 export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExport, onAddServer, onBackToServers: _onBackToServers }: ServerPanelProps) {
   const navigate = useNavigate()
   const isMobile = useMobile()
+  const haptics = useHaptics()
   const {
     servers,
     sessions,
@@ -95,7 +105,18 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
     navigate('/')
   }
 
+  // Touch equivalent of the right-click menu below (ContextMenu renders as an
+  // ActionSheet on mobile).
+  const serverLongPress = useLongPressItems({
+    enabled: isMobile,
+    onLongPress: useCallback((serverId: string, pos: { x: number; y: number }) => {
+      haptics.longPress()
+      setContextMenu({ serverId, x: pos.x, y: pos.y })
+    }, [haptics]),
+  })
+
   const handleServerClick = useCallback((serverId: string) => {
+    if (serverLongPress.consumedTap()) return
     if (sessions[serverId]) {
       setActiveServer(serverId)
       navigate('/chat')
@@ -104,7 +125,7 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
     } else {
       navigate('/login/' + encodeURIComponent(serverId))
     }
-  }, [sessions, setActiveServer, navigate, onLoginRequired])
+  }, [sessions, setActiveServer, navigate, onLoginRequired, serverLongPress])
 
   const handleContextMenu = useCallback((e: React.MouseEvent, serverId: string) => {
     e.preventDefault()
@@ -185,6 +206,7 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
           isConnected={!!sessions[serverId]}
           mentions={serverMentionCounts[serverId] ?? 0}
           onContextMenu={(e) => handleContextMenu(e, serverId)}
+          touchHandlers={serverLongPress.bind(serverId)}
           onClick={handleServerClick}
           draggable={!isMobile}
           onDragStart={(e) => handleDragStart(e, serverId)}

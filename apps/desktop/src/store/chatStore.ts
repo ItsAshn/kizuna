@@ -39,6 +39,7 @@ interface ChatState {
   setDMChannels: (channels: DMChannelData[]) => void;
   setGroupDMChannels: (channels: GroupDMChannelData[]) => void;
   setMessages: (channelId: string, messages: Message[]) => void;
+  reconcileMessages: (channelId: string, messages: Message[]) => void;
   addMessage: (channelId: string, message: Message) => void;
   updateMessage: (channelId: string, messageId: string, message: Message) => void;
   addPoll: (channelId: string, poll: PollData) => void;
@@ -117,6 +118,38 @@ export const useChatStore = create<ChatState>()(
       setGroupDMChannels: (groupDMChannels) => set({ groupDMChannels }),
       setMessages: (channelId, messages) =>
         set((state) => ({ messages: { ...state.messages, [channelId]: messages } })),
+      /* Merge a freshly fetched newest-page into whatever is already cached,
+       * instead of replacing it. Re-entering a channel used to discard every
+       * older page the user had scrolled back through.
+       *
+       * Only merges when the incoming page overlaps the cache by at least one
+       * id. No overlap means more than a page of messages arrived while we
+       * were away, so the cache and the new page are separated by a gap —
+       * splicing them would render a contiguous history that never happened.
+       * In that case the stale cache is dropped.
+       *
+       * Trade-off: a message deleted server-side while we were away survives
+       * in the cached half. The socket delete event corrects it. */
+      reconcileMessages: (channelId, messages) =>
+        set((state) => {
+          const existing = state.messages[channelId] || [];
+          if (existing.length === 0) {
+            return { messages: { ...state.messages, [channelId]: messages } };
+          }
+          const existingIds = new Set(existing.map((m) => m.id));
+          const overlaps = messages.some((m) => existingIds.has(m.id));
+          if (!overlaps) {
+            return { messages: { ...state.messages, [channelId]: messages } };
+          }
+          // Incoming wins on conflict — it carries fresher edits and reactions.
+          const byId = new Map(existing.map((m) => [m.id, m]));
+          for (const m of messages) byId.set(m.id, m);
+          const merged = [...byId.values()].sort((a, b) => a.created_at - b.created_at);
+          const MAX_MESSAGES = 500;
+          const trimmed =
+            merged.length > MAX_MESSAGES ? merged.slice(-MAX_MESSAGES) : merged;
+          return { messages: { ...state.messages, [channelId]: trimmed } };
+        }),
       addMessage: (channelId, message) =>
         set((state) => {
           const existing = state.messages[channelId] || [];

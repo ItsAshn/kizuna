@@ -7,7 +7,6 @@ import { useServerStore } from '../store/serverStore';
 import { useChatStore } from '../store/chatStore';
 import { useCallStore } from '../store/callStore';
 import { useMobile } from '../hooks/useMobile';
-import { useKeyboard } from '../hooks/useKeyboard';
 import { useHaptics } from '../hooks/useHaptics';
 import {
   sendMessage,
@@ -248,7 +247,9 @@ export default function ChatArea({
   const [showGroupDMSettings, setShowGroupDMSettings] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [mentionableRoles, setMentionableRoles] = useState<CustomRole[]>([]);
-  useKeyboard();
+  // Virtual-keyboard tracking is owned by MobileShell — it writes document-level
+  // globals, so a second mount here meant whichever unmounted first tore them
+  // down for both. Desktop never needed it.
   const haptics = useHaptics();
   const { tryDecryptDM, tryDecryptGroupDM, encryptOutgoing } = useChatCrypto(session);
 

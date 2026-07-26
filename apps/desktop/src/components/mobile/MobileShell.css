@@ -21,7 +21,7 @@
 }
 
 .mobile-content__view--push {
-  animation: mobilePushSpringIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: mobilePushSpringIn var(--dur-nav) var(--ease-emphasized);
 }
 
 /* Pop (back) — the revealed view slides in from the left so the motion
@@ -46,7 +46,7 @@
 }
 
 .mobile-content__view--pop {
-  animation: mobilePopSpringIn 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: mobilePopSpringIn var(--dur-nav) var(--ease-emphasized);
 }
 
 /* Tab transition - crossfade when switching tabs */
@@ -62,5 +62,5 @@
 }
 
 .mobile-content__view--tab {
-  animation: mobileTabFadeIn 0.2s ease-out;
+  animation: mobileTabFadeIn var(--dur-slow) var(--ease-out);
 }

@@ -297,16 +297,24 @@ function MessageBubble({
   const session = useServerStore((s) => s.activeSession)
   const authorStickerId = useChatStore((s) => s.members.find((m) => m.id === message.user_id)?.status_sticker_id)
 
+  /* Single source of truth for "the reaction bar is showing". The mount effect
+   * and the bar's own `visible` prop have to agree: they drifted before, and
+   * because `hovered` is only ever set from onMouseEnter (suppressed on touch)
+   * a tap mounted the portal while the bar stayed at opacity 0 — the quick
+   * reaction bar was unreachable on mobile. */
+  const reactionBarVisible = isMobile
+    ? mobileActionsVisible || pickerOpen
+    : hovered || pickerOpen || barHovered
+
   useEffect(() => {
-    const show = isMobile ? mobileActionsVisible || pickerOpen : (hovered || pickerOpen || barHovered)
-    if (show) {
+    if (reactionBarVisible) {
       clearTimeout(barTimer.current)
       setBarMounted(true)
     } else {
       barTimer.current = setTimeout(() => setBarMounted(false), 180)
     }
     return () => clearTimeout(barTimer.current)
-  }, [hovered, pickerOpen, barHovered, isMobile, mobileActionsVisible])
+  }, [reactionBarVisible])
 
   useEffect(() => {
     if (!barMounted || !contentRef.current) { setBarPos(null); return }
@@ -617,7 +625,7 @@ function MessageBubble({
               
               onReact={handleToggleReaction}
               onAddClick={() => setPickerOpen(true)}
-              visible={hovered || pickerOpen || barHovered}
+              visible={reactionBarVisible}
             />
           </div>,
           document.body,
