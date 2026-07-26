@@ -144,14 +144,22 @@
 .chat-area__messages {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* Virtuoso renders its own scroller inside this box. Leaving overflow-y:auto here
+     too made a second, nested scroll container: the outer one could take the wheel
+     event and drift, while Virtuoso still believed it was pinned to the bottom. */
+  overflow: hidden;
   padding: 8px 0 16px;
   display: flex;
   flex-direction: column;
   gap: 0;
   position: relative;
+}
+
+/* The gutter has to be reserved on the element that actually scrolls, otherwise
+   messages reflow sideways the moment the scrollbar appears. */
+.chat-area__messages [data-virtuoso-scroller='true'] {
   scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 
 .chat-area__scroll-bottom {
