@@ -533,7 +533,6 @@ export default function ChatArea({
 
     socketRef.current?.emit('typing:stop', { channelId });
 
-    const wasAtBottom = atBottom;
     const rawInput = input;
     const outgoing = commandContent ?? rawInput.trim();
     const attIds = pendingAttachmentId ? [pendingAttachmentId] : undefined;
@@ -553,15 +552,16 @@ export default function ChatArea({
       setReplyTo(null);
       haptics.tap();
       inputRef.current?.focus();
-      if (!wasAtBottom) {
-        requestAnimationFrame(() => {
-          const msgs = useChatStore.getState().messages[channelId] || [];
-          if (msgs.length > 0) {
-            virtuosoRef.current?.scrollToIndex(msgs.length - 1);
-          }
-          lastCountAtBottom.current = msgs.length;
-        });
-      }
+      // Sending always returns you to the bottom, whether or not you'd scrolled up —
+      // you just wrote it, you should see it land. Unconditional rather than relying on
+      // followOutput, which only fires while already anchored at the bottom.
+      requestAnimationFrame(() => {
+        const msgs = useChatStore.getState().messages[channelId] || [];
+        if (msgs.length > 0) {
+          virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end' });
+        }
+        lastCountAtBottom.current = msgs.length;
+      });
     } catch (err: unknown) {
       // Restore the message so a failed send doesn't lose it.
       setInput(rawInput);
@@ -888,9 +888,44 @@ export default function ChatArea({
     ],
   );
 
+  /* Virtuoso keeps the viewport anchored across a prepend only if `firstItemIndex`
+   * shrinks by exactly the number of items added to the front, in the same render as
+   * the longer `data`. Without it, loading older history yanked the reader to a
+   * different message. Derived from the data itself (not the fetch count) because
+   * prependMessages dedupes and trims to MAX_MESSAGES, so the net front delta is not
+   * the number of rows the request returned. Computed during render, not in an
+   * effect, since an effect lands a commit too late. */
+  const FIRST_ITEM_BASE = 100_000;
+  const firstItemIndexRef = useRef(FIRST_ITEM_BASE);
+  const prevMessagesRef = useRef<Message[]>([]);
+  const indexChannelKeyRef = useRef<string | null>(null);
+  if (indexChannelKeyRef.current !== activeAnyChannelId) {
+    // Virtuoso is keyed by channel, so a switch remounts it with fresh internal state.
+    indexChannelKeyRef.current = activeAnyChannelId;
+    firstItemIndexRef.current = FIRST_ITEM_BASE;
+    prevMessagesRef.current = displayMessages;
+  } else if (displayMessages !== prevMessagesRef.current) {
+    const prev = prevMessagesRef.current;
+    const prevFirstId = prev[0]?.id;
+    const nextFirstId = displayMessages[0]?.id;
+    if (prevFirstId !== nextFirstId) {
+      const prepended = prevFirstId ? displayMessages.findIndex((m) => m.id === prevFirstId) : -1;
+      if (prepended > 0) {
+        firstItemIndexRef.current -= prepended;
+      } else {
+        // Front items were dropped (MAX_MESSAGES trim) rather than added.
+        const trimmed = nextFirstId ? prev.findIndex((m) => m.id === nextFirstId) : -1;
+        if (trimmed > 0) firstItemIndexRef.current += trimmed;
+      }
+    }
+    prevMessagesRef.current = displayMessages;
+  }
+  const firstItemIndex = firstItemIndexRef.current;
+
   const renderMessageItem = useCallback(
     (_index: number, msg: Message) => {
-      const msgIdx = _index;
+      // `_index` is absolute (offset by firstItemIndex); displayMessages is not.
+      const msgIdx = _index - firstItemIndex;
       const prevMsg = msgIdx > 0 ? displayMessages[msgIdx - 1] : null;
       const msgDate = new Date(msg.created_at).toDateString();
       const prevDate = prevMsg ? new Date(prevMsg.created_at).toDateString() : '';
@@ -951,6 +986,7 @@ export default function ChatArea({
     },
     [
       displayMessages,
+      firstItemIndex,
       session,
       canDeleteAny,
       activeChannelId,
@@ -1227,12 +1263,29 @@ export default function ChatArea({
               key={activeAnyChannelId}
               ref={virtuosoRef}
               data={displayMessages}
+              firstItemIndex={firstItemIndex}
               itemContent={renderMessageItem}
-              followOutput={(isAtBottom) => (isAtBottom ? 'smooth' : false)}
+              /* Keyed by message id, not index: a prepend shifts every index, which
+               * would remount each bubble and flash reloading avatars/images. */
+              computeItemKey={(_i, msg) => msg.id}
+              /* 'auto' (instant), not 'smooth'. A smooth follow is an interruptible
+               * animation — a burst of messages, or a bubble growing after its image
+               * decodes, cancels it partway. The list then rests a few px off the
+               * bottom, atBottom latches false, and auto-follow stays dead for every
+               * later message. That was the "chat won't scroll down" bug. */
+              followOutput={(isAtBottom) => (isAtBottom ? 'auto' : false)}
               atBottomStateChange={(isAtBottom) => setAtBottom(isAtBottom)}
+              /* Default is 4px, tight enough that any late layout shift (avatar load,
+               * embed, the typing footer mounting) reads as "scrolled away". */
+              atBottomThreshold={120}
               startReached={loadMoreMessages}
               increaseViewportBy={{ top: 400, bottom: 200 }}
-              initialTopMostItemIndex={displayMessages.length > 0 ? displayMessages.length - 1 : 0}
+              /* align 'end' — a bare index pins the last message to the *top* of the
+               * viewport, so opening a channel left dead space under it. */
+              initialTopMostItemIndex={{ index: 'LAST', align: 'end' }}
+              /* Short conversations rest on the composer instead of hanging from the
+               * header, matching how every other chat client behaves. */
+              alignToBottom
               style={{ flex: 1 }}
               components={{
                 Header: () => {
@@ -1278,7 +1331,11 @@ export default function ChatArea({
           <button
             className="chat-area__scroll-bottom"
             onClick={() => {
-              virtuosoRef.current?.scrollToIndex(displayMessages.length - 1);
+              virtuosoRef.current?.scrollToIndex({
+                index: 'LAST',
+                align: 'end',
+                behavior: 'smooth',
+              });
               lastCountAtBottom.current = displayMessages.length;
             }}
             title="Jump to bottom"
