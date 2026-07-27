@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { unfurlUrls } from '@kizuna/shared'
 import type { LinkEmbed } from '@kizuna/shared'
 import { useServerStore } from '../store/serverStore'
+import { openExternalLink } from '../utils/platform'
 import Skeleton from './Skeleton'
 import './EmbedCard.css'
 
@@ -49,6 +50,7 @@ export default function EmbedCard({ urls }: EmbedCardProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="embed-card"
+            onClick={(e) => { e.preventDefault(); openExternalLink(url) }}
           >
             <div className="embed-card__accent" />
             <div className="embed-card__body">
