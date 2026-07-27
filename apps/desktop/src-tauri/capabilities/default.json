@@ -8,6 +8,7 @@
     "core:event:default",
     "updater:default",
     "notification:default",
-    "process:default"
+    "process:default",
+    "shell:default"
   ]
 }

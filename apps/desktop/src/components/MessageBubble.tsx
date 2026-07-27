@@ -23,6 +23,7 @@ import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { Avatar } from './ui'
 import { useMobile } from '../hooks/useMobile'
+import { openExternalLink } from '../utils/platform'
 import { useHaptics } from '../hooks/useHaptics'
 import { useLongPress } from '../hooks/useLongPress'
 import ReactionPills from './ReactionPills'
@@ -185,7 +186,7 @@ function AttachmentPreview({ url, filename, serverUrl, isMediaOnly, onImageClick
 
   if (loadError) {
     return (
-      <a href={resolvedUrl} target="_blank" rel="noopener noreferrer" className="msg-bubble__attachment-link">
+      <a href={resolvedUrl} target="_blank" rel="noopener noreferrer" className="msg-bubble__attachment-link" onClick={(e) => { e.preventDefault(); openExternalLink(resolvedUrl) }}>
         <span className="msg-bubble__attachment-filename">{displayFilename}</span>
       </a>
     )
@@ -283,8 +284,15 @@ function MessageBubble({
   const { text, attachments } = useMemo(() => parseAttachments(message.content), [message.content])
   const renderedHtml = useMemo(() => renderMessageHtml(text, currentUsername), [text, currentUsername])
 
-  const handleSpoilerClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const spoiler = (e.target as HTMLElement).closest('.msg-bubble__spoiler')
+  const handleTextClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement
+    const link = target.closest('a')
+    if (link) {
+      e.preventDefault()
+      openExternalLink(link.href)
+      return
+    }
+    const spoiler = target.closest('.msg-bubble__spoiler')
     if (spoiler) spoiler.classList.toggle('msg-bubble__spoiler--revealed')
   }
   const isMediaOnly = !text && attachments.length > 0
@@ -548,7 +556,7 @@ function MessageBubble({
                 onKeyDown={handleEditKeyDown}
               />
             ) : (
-              text ? <div className="msg-bubble__text" onClick={handleSpoilerClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} /> : null
+              text ? <div className="msg-bubble__text" onClick={handleTextClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} /> : null
             )}
             {attachments.length > 0 && attachments.map((att, i) => (
               <AttachmentPreview key={i} url={att.url} filename={att.filename} serverUrl={serverUrl} isMediaOnly={isMediaOnly} onImageClick={onImageClick} />
