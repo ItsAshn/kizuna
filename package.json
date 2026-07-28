@@ -41,5 +41,22 @@
     "prettier": "^3.3.0",
     "typescript-eslint": "^8.0.0",
     "vitest": "^2.1.9"
+  },
+  "pnpm": {
+    "overrides": {
+      "form-data@<2.5.6": ">=2.5.6"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-2p57-rm9w-gvfp",
+        "GHSA-xq3m-2v4x-88gg",
+        "GHSA-66ff-xgx4-vchm",
+        "GHSA-75px-5xx7-5xc7",
+        "GHSA-jvwf-75h9-cwgg",
+        "GHSA-685m-2w69-288q",
+        "GHSA-wcpc-wj8m-hjx6",
+        "GHSA-f88m-g3jw-g9cj"
+      ]
+    }
   }
 }

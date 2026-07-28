@@ -15,7 +15,7 @@
     "@hono/node-server": "^1.12.0",
     "@kizuna/shared": "workspace:*",
     "@xenova/transformers": "^2.17.2",
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",
     "dotenv": "^16.4.5",
