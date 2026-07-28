@@ -109,3 +109,12 @@ export const useMobileNavStore = create<MobileNavState>((set, get) => ({
     set({ tab, stack: [], anim: popToRoot ? 'pop' : 'tab' })
   },
 }))
+
+// Losing the active server (log out, kick, expired session) leaves the stack
+// pointing at channels of a server we can no longer read. Drop it so the user
+// lands back at the tab root instead of on a view that renders empty.
+useServerStore.subscribe((state) => {
+  if (state.activeServerId === null && useMobileNavStore.getState().stack.length > 0) {
+    useMobileNavStore.setState({ stack: [], anim: 'pop' })
+  }
+})

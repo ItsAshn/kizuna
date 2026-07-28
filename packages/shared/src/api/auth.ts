@@ -64,6 +64,17 @@ export async function refreshToken(
   }
 }
 
+// Ends this device's session server-side: revokes the token and clears the
+// refresh cookie. Without the cookie clear a "logged out" client silently
+// re-authenticates — any 401 triggers the refresh interceptor, which mints a
+// fresh token from the cookie alone.
+//
+// The token is passed explicitly because callers drop it from the token store
+// before logging out, so the interceptor's implicit lookup would come up empty.
+export async function logout(serverUrl: string, token?: string): Promise<void> {
+  await client(serverUrl, token).post('/api/auth/logout')
+}
+
 export async function getMe(serverUrl: string): Promise<User> {
   const res = await client(serverUrl).get('/api/auth/me')
   return res.data.user

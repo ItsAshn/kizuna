@@ -75,7 +75,9 @@ export function useSocket(): MutableRefObject<Socket | null> {
               token: newToken,
             })
           } else {
-            useServerStore.getState().setActiveSession(null)
+            // Refresh failed, so the session is genuinely dead — drop it
+            // instead of leaving a stale entry that shows as "connected".
+            useServerStore.getState().clearSession(session.serverId)
             window.location.href = '/'
           }
         })()
@@ -514,7 +516,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
         body: 'You are no longer a member of this server.',
       })
       socket.disconnect()
-      useServerStore.getState().setActiveSession(null)
+      useServerStore.getState().clearSession(session.serverId)
       window.location.href = '/'
     })
 

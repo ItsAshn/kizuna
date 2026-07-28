@@ -1,9 +1,13 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import type { SavedServer } from '@kizuna/shared'
 import { Settings, Plus, RefreshCw } from 'lucide-react'
 import { useHaptics } from '../../hooks/useHaptics'
+import { useLongPressItems } from '../../hooks/useLongPressItems'
 import { usePullToRefresh } from '../../hooks/usePullToRefresh'
 import { useMobile } from '../../hooks/useMobile'
+import { useServerStore } from '../../store/serverStore'
+import ContextMenu from '../ContextMenu'
+import type { ContextMenuSection } from '../ContextMenu'
 import type { NavEntry } from '../../hooks/useMobileNavigation'
 import './MobileServersTab.css'
 
@@ -28,6 +32,9 @@ export default function MobileServersTab({
 }: MobileServersTabProps) {
   const haptics = useHaptics()
   const isMobile = useMobile()
+  const logoutServer = useServerStore((s) => s.logoutServer)
+  const removeServer = useServerStore((s) => s.removeServer)
+  const [contextMenu, setContextMenu] = useState<{ serverId: string; x: number; y: number } | null>(null)
 
   const handleRefresh = useCallback(async () => {
     // Refresh is handled by parent; pull-to-refresh provides the gesture
@@ -39,8 +46,19 @@ export default function MobileServersTab({
       disabled: !isMobile,
     })
 
+  // Long-press is the mobile equivalent of the desktop server rail's right-click
+  // menu — the only place a session can actually be ended on mobile.
+  const serverLongPress = useLongPressItems({
+    enabled: isMobile,
+    onLongPress: useCallback((serverId: string, pos: { x: number; y: number }) => {
+      haptics.longPress()
+      setContextMenu({ serverId, x: pos.x, y: pos.y })
+    }, [haptics]),
+  })
+
   const handleServerTap = useCallback(
     (server: SavedServer) => {
+      if (serverLongPress.consumedTap()) return
       haptics.tap()
       if (sessions[server.id]) {
         onPushView({ type: 'server', serverId: server.id })
@@ -48,8 +66,32 @@ export default function MobileServersTab({
         onLoginRequired(server.id)
       }
     },
-    [sessions, onPushView, onLoginRequired, haptics],
+    [sessions, onPushView, onLoginRequired, haptics, serverLongPress],
   )
+
+  const contextMenuSections: ContextMenuSection[] = contextMenu
+    ? [{
+        items: [
+          ...(sessions[contextMenu.serverId]
+            ? [{
+                label: 'Log Out',
+                onClick: () => {
+                  void logoutServer(contextMenu.serverId)
+                  setContextMenu(null)
+                },
+              }]
+            : []),
+          {
+            label: 'Remove Server',
+            onClick: () => {
+              removeServer(contextMenu.serverId)
+              setContextMenu(null)
+            },
+            danger: true,
+          },
+        ],
+      }]
+    : []
 
   return (
     <div className="mobile-tab mobile-servers-tab">
@@ -110,6 +152,7 @@ export default function MobileServersTab({
                 <button
                   key={server.id}
                   className={`mobile-server-card${isConnected ? ' mobile-server-card--connected' : ''}`}
+                  {...serverLongPress.bind(server.id)}
                   onClick={() => handleServerTap(server)}
                 >
                   <div className="mobile-server-card__icon">
@@ -175,6 +218,16 @@ export default function MobileServersTab({
           Connect to Server
         </button>
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          sections={contextMenuSections}
+          onClose={() => setContextMenu(null)}
+          title={servers.find((s) => s.id === contextMenu.serverId)?.name}
+        />
+      )}
     </div>
   )
 }

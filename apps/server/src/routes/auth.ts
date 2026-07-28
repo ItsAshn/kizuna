@@ -610,23 +610,37 @@ authRoutes.delete('/me', authMiddleware, async (c) => {
   return c.json({ ok: true })
 })
 
+// Logging out is per-device: it revokes the session this request authenticated
+// with and clears the refresh cookie. It deliberately does not touch
+// `token_invalidated_at` — that is the global "kill every session" switch
+// (revokeUserSessions), and using it here would sign the user out of their
+// phone because they disconnected on their desktop.
 authRoutes.post('/logout', authMiddleware, (c) => {
   const auth = getAuth(c)
   const db = getDb()
   const now = Math.floor(Date.now() / 1000)
-  db.prepare('UPDATE users SET token_invalidated_at = ? WHERE id = ?').run(now, auth.userId)
 
+  // Mirrors authMiddleware's lookup order: the cookie is the primary credential
+  // and the bearer header the fallback, so a client that only ever sends the
+  // header (the Tauri app) still revokes the right session.
+  let token: string | undefined
   const cookieHeader = c.req.header('Cookie')
   if (cookieHeader) {
     const match = cookieHeader.match(/(?:^|;\s*)kizuna_token=([^;]*)/)
-    if (match) {
-      try {
-        const payload = jwt.decode(match[1]!) as { tokenId?: string } | null
-        if (payload?.tokenId) {
-          db.prepare('UPDATE sessions SET revoked_at = ? WHERE token_id = ?').run(now, payload.tokenId)
-        }
-      } catch { /* ignore decode errors */ }
-    }
+    if (match) token = match[1]
+  }
+  if (!token) {
+    const authHeader = c.req.header('Authorization')
+    if (authHeader?.startsWith('Bearer ')) token = authHeader.slice(7)
+  }
+
+  if (token) {
+    try {
+      const payload = jwt.decode(token) as { tokenId?: string; userId?: string } | null
+      if (payload?.tokenId && payload.userId === auth.userId) {
+        db.prepare('UPDATE sessions SET revoked_at = ? WHERE token_id = ? AND user_id = ?').run(now, payload.tokenId, auth.userId)
+      }
+    } catch { /* ignore decode errors */ }
   }
 
   c.header('Set-Cookie', 'kizuna_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')

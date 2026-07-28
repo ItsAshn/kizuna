@@ -40,7 +40,9 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
     setDeleteError('')
     try {
       await deleteAccount(serverUrl, deletePassword, deleteAllData)
-      useServerStore.getState().setActiveSession(null)
+      // The account is gone, so there is no session left to log out of — just
+      // drop it locally. The delete route already cleared the cookie.
+      if (session) useServerStore.getState().clearSession(session.serverId)
       onClose()
       navigate('/')
     } catch (err: unknown) {
@@ -53,7 +55,7 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
     } finally {
       setDeleting(false)
     }
-  }, [serverUrl, deletePassword, deleteAllData, onClose, navigate])
+  }, [serverUrl, session, deletePassword, deleteAllData, onClose, navigate])
 
   const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]

@@ -287,6 +287,9 @@
 
 .sidebar__logout {
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   text-align: left;
   padding: 6px 8px;
   border-radius: var(--radius-sm);
@@ -301,51 +304,6 @@
 .sidebar__logout:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
-}
-
-.sidebar__disconnect-confirm {
-  padding: 6px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.sidebar__disconnect-label {
-  font-size: 12px;
-  color: var(--red);
-  font-weight: 500;
-}
-
-.sidebar__disconnect-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.sidebar__disconnect-btn {
-  flex: 1;
-  padding: 4px 8px;
-  border: none;
-  border-radius: var(--radius-xs);
-  font-size: 12px;
-  cursor: pointer;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  transition: background 0.15s, color 0.15s;
-}
-
-.sidebar__disconnect-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.sidebar__disconnect-btn--confirm {
-  background: var(--red-dim);
-  color: var(--red);
-}
-
-.sidebar__disconnect-btn--confirm:hover {
-  background: var(--red-dim-border);
-  color: var(--red);
 }
 
 /* ── User info in header ───────────────────────────────────── */
@@ -794,11 +752,6 @@
   .sidebar__logout {
     padding: 14px 10px;
     font-size: 15px;
-  }
-
-  .sidebar__disconnect-btn {
-    padding: 10px 16px;
-    font-size: 14px;
     min-height: 44px;
   }
 
