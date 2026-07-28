@@ -9,6 +9,7 @@ import { checkMessageContent } from '../../moderation'
 import { prep, checkSocketRateLimit, type MessageRow } from './infra'
 import { getSocketUserId, getSocketUsername } from './helpers'
 import { parseMentions, processMentions } from './mentions'
+import { dispatchOutgoing } from '../../services/outgoingWebhooks'
 
 export function registerChannelMessageHandlers(io: Server, socket: Socket): void {
   const userId = getSocketUserId(socket)
@@ -87,6 +88,11 @@ export function registerChannelMessageHandlers(io: Server, socket: Socket): void
     for (const uid of getEligibleNotifyUserIds(channelId, userId)) {
       io.to(`user:${uid}`).emit('message:new', message)
     }
+    dispatchOutgoing('message.created', {
+      channel: { id: channelId },
+      user: { id: userId, username },
+      message: { id, content: content.trim() },
+    }, { channelId })
 
     const mentions = parseMentions(content.trim())
     processMentions(io, { ...message, author_id: row.author_id, author_username: row.author_username }, mentions)
@@ -143,6 +149,11 @@ export function registerChannelMessageHandlers(io: Server, socket: Socket): void
     for (const uid of getEligibleNotifyUserIds(existing.channel_id, userId)) {
       io.to(`user:${uid}`).emit('message:edit', updated)
     }
+    dispatchOutgoing('message.updated', {
+      channel: { id: existing.channel_id },
+      user: { id: userId, username },
+      message: { id: messageId, content: content.trim() },
+    }, { channelId: existing.channel_id })
   })
 
   socket.on('message:delete', ({ messageId }: { messageId: string }) => {
@@ -169,6 +180,11 @@ export function registerChannelMessageHandlers(io: Server, socket: Socket): void
     for (const uid of getEligibleNotifyUserIds(message.channel_id, userId)) {
       io.to(`user:${uid}`).emit('message:delete', { id: messageId, channel_id: message.channel_id })
     }
+    dispatchOutgoing('message.deleted', {
+      channel: { id: message.channel_id },
+      user: { id: userId, username },
+      message: { id: messageId },
+    }, { channelId: message.channel_id })
   })
 
   socket.on('mentions:read', ({ channelId }: { channelId?: string }) => {

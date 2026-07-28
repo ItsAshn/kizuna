@@ -189,6 +189,7 @@ export function getUserPermissions(userId: string): { role: string; permissions:
         upload_attachments: true,
         delete_messages: true,
         manage_channels: true,
+        manage_webhooks: true,
         manage_roles: true,
         kick_members: true,
         manage_invites: true,

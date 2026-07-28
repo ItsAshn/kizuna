@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, type ReactNode } from 'react'
 import {
-  User, Bell, SlidersHorizontal, Users, Link2, Shield, Code, Image as ImageIcon, Trash2,
+  User, Bell, SlidersHorizontal, Users, Link2, Shield, Code, Image as ImageIcon, Trash2, Webhook,
 } from 'lucide-react'
 import Modal from './ui/Modal'
 import SettingsLayout, { type SettingsNavGroup } from './ui/SettingsLayout'
@@ -56,6 +56,9 @@ export function ServerSettingsBody({ onClose, onBackgroundChanged, navHeader }: 
   const { activeSession: session } = useServerStore()
   const serverUrl = session?.url
   const isAdmin = session?.user?.role === 'admin'
+  // Webhooks are the one admin-area section reachable without being an admin —
+  // manage_webhooks grants it on its own, and the API agrees.
+  const canManageWebhooks = isAdmin || session?.user?.permissions?.manage_webhooks === true
 
   const [section, setSection] = useState<Section>('profile')
 
@@ -71,6 +74,7 @@ export function ServerSettingsBody({ onClose, onBackgroundChanged, navHeader }: 
         ],
       },
     ]
+    const webhooksItem = { key: 'webhooks', label: 'webhooks', icon: <Webhook size={15} /> }
     if (isAdmin) {
       groups.push({
         label: 'admin',
@@ -81,13 +85,15 @@ export function ServerSettingsBody({ onClose, onBackgroundChanged, navHeader }: 
           { key: 'roles', label: 'roles', icon: <Shield size={15} /> },
           { key: 'css', label: 'custom css', icon: <Code size={15} /> },
           { key: 'gifs', label: 'gifs & stickers', icon: <ImageIcon size={15} /> },
-          { key: 'webhooks', label: 'webhooks', icon: <Link2 size={15} /> },
+          webhooksItem,
           { key: 'logs', label: 'logs & data', icon: <Trash2 size={15} /> },
         ],
       })
+    } else if (canManageWebhooks) {
+      groups.push({ label: 'server', items: [webhooksItem] })
     }
     return groups
-  }, [isAdmin])
+  }, [isAdmin, canManageWebhooks])
 
   const handleSectionChange = useCallback((key: string) => {
     setSection(key as Section)

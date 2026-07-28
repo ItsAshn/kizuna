@@ -145,6 +145,10 @@ const EXPECTED_SCHEMA: Record<string, string[]> = {
   group_dm_reads: ['user_id', 'channel_id', 'last_read_at'],
   group_dm_voice_participants: ['id', 'channel_id', 'user_id', 'joined_at', 'left_at'],
   registry_servers: ['url', 'name', 'description', 'icon', 'password_protected', 'player_count', 'last_heartbeat'],
+  outgoing_webhooks: ['id', 'name', 'url', 'secret', 'channel_id', 'events', 'format', 'enabled',
+    'skip_webhook_messages', 'created_by', 'created_at', 'last_delivery_at', 'last_status',
+    'last_error', 'consecutive_failures', 'disabled_reason'],
+  outgoing_webhook_deliveries: ['id', 'webhook_id', 'event', 'status', 'error', 'duration_ms', 'attempt', 'created_at'],
   _migrations: ['name', 'applied_at'],
 }
 
@@ -764,6 +768,53 @@ function runMigrations(database: Database.Database): void {
         SELECT id, channel_id, 'channel', message_id, question, allow_multiple, closes_at, created_by, created_at FROM polls;
       DROP TABLE polls;
       ALTER TABLE polls_new RENAME TO polls;
+    ` },
+    // Webhook management moved off manage_channels onto its own permission.
+    // Back-fill so nobody who could manage webhooks yesterday loses the ability
+    // today. Runs after seed_admin_role, so fresh installs get it too.
+    { name: 'roles_backfill_manage_webhooks', sql: `
+      UPDATE roles
+      SET permissions = json_set(permissions, '$.manage_webhooks', json('true'))
+      WHERE json_valid(permissions) AND json_extract(permissions, '$.manage_channels') = 1;
+    ` },
+    { name: 'outgoing_webhooks_table', sql: `
+      CREATE TABLE IF NOT EXISTS outgoing_webhooks (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        secret TEXT NOT NULL,
+        -- NULL = server-wide (every channel, plus member/channel events).
+        -- Set = only that channel's events.
+        channel_id TEXT DEFAULT NULL REFERENCES channels(id) ON DELETE CASCADE,
+        events TEXT NOT NULL DEFAULT '[]',
+        format TEXT NOT NULL DEFAULT 'kizuna',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        -- Bridging guard: skip messages that themselves arrived via an incoming
+        -- webhook, so two bridged servers can't echo at each other forever.
+        skip_webhook_messages INTEGER NOT NULL DEFAULT 0,
+        -- SET NULL rather than CASCADE (unlike incoming webhooks): a server
+        -- integration should outlive the admin account that happened to add it.
+        created_by TEXT DEFAULT NULL REFERENCES users(id) ON DELETE SET NULL,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        last_delivery_at INTEGER DEFAULT NULL,
+        last_status INTEGER DEFAULT NULL,
+        last_error TEXT DEFAULT NULL,
+        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+        disabled_reason TEXT DEFAULT NULL
+      );
+    ` },
+    { name: 'outgoing_webhook_deliveries_table', sql: `
+      CREATE TABLE IF NOT EXISTS outgoing_webhook_deliveries (
+        id TEXT PRIMARY KEY,
+        webhook_id TEXT NOT NULL REFERENCES outgoing_webhooks(id) ON DELETE CASCADE,
+        event TEXT NOT NULL,
+        status INTEGER DEFAULT NULL,
+        error TEXT DEFAULT NULL,
+        duration_ms INTEGER DEFAULT NULL,
+        attempt INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE INDEX IF NOT EXISTS idx_owd_hook ON outgoing_webhook_deliveries(webhook_id, created_at);
     ` },
   ]
 

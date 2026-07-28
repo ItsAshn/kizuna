@@ -10,6 +10,7 @@ import type { CustomRole, Permission, Channel } from '@kizuna/shared'
 import Modal from './ui/Modal'
 import Tabs from './ui/Tabs'
 import WebhookManager from './webhooks/WebhookManager'
+import OutgoingWebhookManager from './webhooks/OutgoingWebhookManager'
 import './ChannelSettingsModal.css'
 
 interface Props {
@@ -36,6 +37,7 @@ export default function ChannelSettingsModal({ channel, onClose }: Props) {
   const session = useServerStore((s) => s.activeSession)
   const serverUrl = session?.url
   const [tab, setTab] = useState<'overview' | 'permissions' | 'integrations'>('permissions')
+  const [integrationTab, setIntegrationTab] = useState('incoming')
   const [roles, setRoles] = useState<CustomRole[]>([])
   const [overrides, setOverrides] = useState<Record<string, { allow: Record<string, boolean>; deny: Record<string, boolean> }>>({})
   const [loading, setLoading] = useState(true)
@@ -192,7 +194,14 @@ export default function ChannelSettingsModal({ channel, onClose }: Props) {
 
       {tab === 'integrations' && (
         <div style={{ marginTop: '16px' }}>
-          <WebhookManager serverUrl={serverUrl} channel={channel} />
+          <Tabs
+            tabs={[{ key: 'incoming', label: 'incoming' }, { key: 'outgoing', label: 'outgoing' }]}
+            activeKey={integrationTab}
+            onChange={setIntegrationTab}
+          />
+          {integrationTab === 'incoming'
+            ? <WebhookManager serverUrl={serverUrl} channel={channel} />
+            : <OutgoingWebhookManager serverUrl={serverUrl} channel={channel} />}
         </div>
       )}
     </Modal>
