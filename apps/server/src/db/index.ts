@@ -200,6 +200,14 @@ function seedPreExistingMigrations(database: Database.Database): void {
   const row = database.prepare('SELECT 1 FROM _migrations LIMIT 1').get()
   if (row) return
 
+  // Back-filling only makes sense for installs that predate migration
+  // tracking. A brand-new database also has an empty _migrations table, and
+  // marking migrations "already applied" there skips the data seeds (notably
+  // seed_admin_role) — which left fresh servers with no roles at all, so
+  // registering the first user failed on the admin-role foreign key.
+  const preExisting = database.prepare('SELECT 1 FROM users LIMIT 1').get()
+  if (!preExisting) return
+
   const insert = database.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)')
 
   const checks: [string, boolean][] = [
@@ -739,6 +747,7 @@ function runMigrations(database: Database.Database): void {
     { name: 'messages_add_author_display_name', sql: `ALTER TABLE messages ADD COLUMN author_display_name TEXT DEFAULT NULL` },
     { name: 'messages_add_author_avatar', sql: `ALTER TABLE messages ADD COLUMN author_avatar TEXT DEFAULT NULL` },
     { name: 'messages_add_webhook_id', sql: `ALTER TABLE messages ADD COLUMN webhook_id TEXT REFERENCES webhooks(id) ON DELETE SET NULL` },
+    { name: 'webhooks_add_last_used_at', sql: `ALTER TABLE webhooks ADD COLUMN last_used_at INTEGER DEFAULT NULL` },
     { name: 'polls_remove_channel_fk', sql: `
       CREATE TABLE IF NOT EXISTS polls_new (
         id TEXT PRIMARY KEY,

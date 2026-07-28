@@ -79,5 +79,3 @@ export async function deletePoll(
 ): Promise<void> {
   await client(serverUrl).delete(`/api/polls/${pollId}`)
 }
-
-// Webhooks

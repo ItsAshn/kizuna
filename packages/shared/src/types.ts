@@ -251,6 +251,24 @@ export interface InviteCode {
   created_at?: number;
 }
 
+/** An incoming webhook — an external service posting into a text channel. */
+export interface Webhook {
+  id: string;
+  channel_id: string;
+  /** Channel name at fetch time (`null` if the channel is gone). */
+  channel_name?: string | null;
+  name: string;
+  /** Secret used to build the incoming URL. Only visible to webhook managers. */
+  token: string;
+  avatar: string | null;
+  created_by: string | null;
+  created_by_username?: string | null;
+  /** Epoch seconds. */
+  created_at: number;
+  /** Epoch seconds of the last delivery (`null` = never used). */
+  last_used_at: number | null;
+}
+
 /** Authenticated session on a server. */
 export interface ServerSession {
   serverId: string;

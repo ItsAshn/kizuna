@@ -1,0 +1,253 @@
+/* Shared webhook management UI — used by channel settings and server settings. */
+
+.webhook-mgr {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.webhook-mgr__intro {
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.webhook-mgr__create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.webhook-mgr__create-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.webhook-mgr__create-fields:only-child,
+.webhook-mgr__create-fields:has(.ui-field:only-child) {
+  grid-template-columns: 1fr;
+}
+
+.webhook-mgr__select {
+  width: 100%;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.webhook-mgr__select:focus {
+  border-color: var(--brand);
+}
+
+.webhook-mgr__error {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--error);
+  background: var(--error-bg);
+  border: 1px solid var(--red-dim-border);
+  border-radius: var(--radius-sm);
+}
+
+.webhook-mgr__list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-1);
+}
+
+.webhook-mgr__list-title {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.webhook-mgr__empty {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.webhook-mgr__empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  color: var(--text-muted);
+  text-align: center;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.webhook-mgr__empty-state p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  max-width: 42ch;
+  line-height: 1.5;
+}
+
+.webhook-mgr__item {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.webhook-mgr__item--open {
+  border-color: var(--brand-dim-border);
+}
+
+.webhook-mgr__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.webhook-mgr__meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.webhook-mgr__name {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webhook-mgr__sub {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webhook-mgr__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.webhook-mgr__chevron--open {
+  transform: rotate(180deg);
+}
+
+.webhook-mgr__details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.webhook-mgr__url-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.webhook-mgr__url {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.webhook-mgr__hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.webhook-mgr__hint code {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.webhook-mgr__snippet {
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.webhook-mgr__edit,
+.webhook-mgr__edit-actions,
+.webhook-mgr__detail-actions,
+.webhook-mgr__confirm-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.webhook-mgr__edit {
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.webhook-mgr__detail-actions {
+  flex-wrap: wrap;
+}
+
+.webhook-mgr__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--red-dim-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .webhook-mgr__create-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .webhook-mgr__detail-actions > * {
+    flex: 1;
+  }
+}
