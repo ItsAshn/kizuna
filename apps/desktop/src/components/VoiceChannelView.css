@@ -207,7 +207,9 @@
   justify-content: center;
   background: var(--bg-secondary, #2b2d31);
   color: var(--text-primary, #f2f3f5);
-  transition: background 0.12s ease, opacity 0.12s ease;
+  transition:
+    background 0.12s ease,
+    opacity 0.12s ease;
 }
 
 .vcv__ctrl:hover {

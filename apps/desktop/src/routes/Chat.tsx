@@ -11,7 +11,15 @@ import { useScreenshare } from '../hooks/useScreenshare'
 import { useCamera } from '../hooks/useCamera'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useMobile, useTablet } from '../hooks/useMobile'
-import { fetchChannels, fetchMembers, fetchDMChannels, fetchGroupDMChannels, fetchServerInfo, fetchChannelMutes, fetchCategories } from '@kizuna/shared'
+import {
+  fetchChannels,
+  fetchMembers,
+  fetchDMChannels,
+  fetchGroupDMChannels,
+  fetchServerInfo,
+  fetchChannelMutes,
+  fetchCategories,
+} from '@kizuna/shared'
 import { restoreFromSession } from '../store/keyStore'
 import { Loader2 } from 'lucide-react'
 import ServerPanel from '../components/ServerPanel'
@@ -83,7 +91,11 @@ export default function Chat() {
     connectDMCall,
   } = useVoice(socketRef)
   useActivityDetector(socketRef)
-  const { startScreenshare, stopScreenshare } = useScreenshare(socketRef, sendTransportRef, nativeVideoRef)
+  const { startScreenshare, stopScreenshare } = useScreenshare(
+    socketRef,
+    sendTransportRef,
+    nativeVideoRef,
+  )
   const { toggleCamera, cameraStreamRef } = useCamera(socketRef, sendTransportRef)
   const isCameraOn = useCallStore((s) => s.isCameraOn)
   const dmCallStatus = useCallStore((s) => s.dmCallStatus)
@@ -103,64 +115,87 @@ export default function Chat() {
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false)
   const [showExport, setShowExport] = useState(false)
   const [showConnect, setShowConnect] = useState(false)
-  const [bgInfo, setBgInfo] = useState<{ hasBackground: boolean; backgroundBlur: number; customCss: string | null } | null>(null)
+  const [bgInfo, setBgInfo] = useState<{
+    hasBackground: boolean
+    backgroundBlur: number
+    customCss: string | null
+  } | null>(null)
   const [, setInitialLoading] = useState(true)
 
   const chatOpen = !!(activeChannelId || activeDMChannelId || activeGroupDMChannelId)
-  const stageOwnsScreenshare = !!viewedVoiceChannelId && viewedVoiceChannelId === activeVoiceChannelId
+  const stageOwnsScreenshare =
+    !!viewedVoiceChannelId && viewedVoiceChannelId === activeVoiceChannelId
 
   const channelNavList = useMemo(() => {
     const list: { id: string; type: 'channel' | 'dm' | 'group-dm' }[] = [
-      ...channels.filter(c => c.type === 'text').map(c => ({ id: c.id, type: 'channel' as const })),
-      ...dmChannels.map(d => ({ id: d.id, type: 'dm' as const })),
-      ...groupDMChannels.map(g => ({ id: g.id, type: 'group-dm' as const })),
+      ...channels
+        .filter((c) => c.type === 'text')
+        .map((c) => ({ id: c.id, type: 'channel' as const })),
+      ...dmChannels.map((d) => ({ id: d.id, type: 'dm' as const })),
+      ...groupDMChannels.map((g) => ({ id: g.id, type: 'group-dm' as const })),
     ]
     return list
   }, [channels, dmChannels, groupDMChannels])
 
-  useKeyboardShortcuts(useMemo(() => [
-    {
-      key: 'k',
-      ctrl: true,
-      handler: () => setShowQuickSwitcher(true),
-    },
-    {
-      key: 'e',
-      ctrl: true,
-      handler: () => setShowMembers(v => !v),
-    },
-    {
-      key: 'Escape',
-      handler: () => {},
-      allowInInput: true,
-    },
-    {
-      key: 'ArrowUp',
-      alt: true,
-      handler: () => {
-        if (!channelNavList.length) return
-        const currentId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
-        const idx = channelNavList.findIndex(c => c.id === currentId)
-        const prev = idx <= 0 ? channelNavList[channelNavList.length - 1] : channelNavList[idx - 1]
-        if (prev.type === 'channel') setActiveChannel(prev.id)
-        else if (prev.type === 'group-dm') setActiveGroupDMChannel(prev.id)
-        else setActiveDMChannel(prev.id)
-      },
-    },
-    {
-      key: 'ArrowDown',
-      alt: true,
-      handler: () => {
-        if (!channelNavList.length) return
-        const currentId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
-        const idx = channelNavList.findIndex(c => c.id === currentId)
-        const next = idx < 0 || idx >= channelNavList.length - 1 ? channelNavList[0] : channelNavList[idx + 1]
-        if (next.type === 'channel') setActiveChannel(next.id)
-        else if (next.type === 'group-dm') setActiveGroupDMChannel(next.id)
-        else setActiveDMChannel(next.id)
-      },
-    },
-  ], [channelNavList, activeChannelId, activeDMChannelId, setActiveChannel, setActiveDMChannel, setShowMembers]))
+  useKeyboardShortcuts(
+    useMemo(
+      () => [
+        {
+          key: 'k',
+          ctrl: true,
+          handler: () => setShowQuickSwitcher(true),
+        },
+        {
+          key: 'e',
+          ctrl: true,
+          handler: () => setShowMembers((v) => !v),
+        },
+        {
+          key: 'Escape',
+          handler: () => {},
+          allowInInput: true,
+        },
+        {
+          key: 'ArrowUp',
+          alt: true,
+          handler: () => {
+            if (!channelNavList.length) return
+            const currentId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
+            const idx = channelNavList.findIndex((c) => c.id === currentId)
+            const prev =
+              idx <= 0 ? channelNavList[channelNavList.length - 1] : channelNavList[idx - 1]
+            if (prev.type === 'channel') setActiveChannel(prev.id)
+            else if (prev.type === 'group-dm') setActiveGroupDMChannel(prev.id)
+            else setActiveDMChannel(prev.id)
+          },
+        },
+        {
+          key: 'ArrowDown',
+          alt: true,
+          handler: () => {
+            if (!channelNavList.length) return
+            const currentId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
+            const idx = channelNavList.findIndex((c) => c.id === currentId)
+            const next =
+              idx < 0 || idx >= channelNavList.length - 1
+                ? channelNavList[0]
+                : channelNavList[idx + 1]
+            if (next.type === 'channel') setActiveChannel(next.id)
+            else if (next.type === 'group-dm') setActiveGroupDMChannel(next.id)
+            else setActiveDMChannel(next.id)
+          },
+        },
+      ],
+      [
+        channelNavList,
+        activeChannelId,
+        activeDMChannelId,
+        setActiveChannel,
+        setActiveDMChannel,
+        setShowMembers,
+      ],
+    ),
+  )
 
   useEffect(() => {
     if (!session) {
@@ -185,7 +220,15 @@ export default function Chat() {
           fetchGroupDMChannels(session!.url),
         ])
 
-        const [channelsResult, membersResult, dmsResult, infoResult, mutesResult, categoriesResult, groupDMsResult] = results
+        const [
+          channelsResult,
+          membersResult,
+          dmsResult,
+          infoResult,
+          mutesResult,
+          categoriesResult,
+          groupDMsResult,
+        ] = results
 
         if (channelsResult.status === 'fulfilled') {
           setChannels(channelsResult.value)
@@ -216,7 +259,11 @@ export default function Chat() {
         }
 
         if (infoResult.status === 'fulfilled') {
-          setBgInfo({ hasBackground: infoResult.value.hasBackground, backgroundBlur: infoResult.value.backgroundBlur, customCss: infoResult.value.customCss })
+          setBgInfo({
+            hasBackground: infoResult.value.hasBackground,
+            backgroundBlur: infoResult.value.backgroundBlur,
+            customCss: infoResult.value.customCss,
+          })
         } else {
           console.error('[Chat] Failed to fetch server info:', infoResult.reason)
         }
@@ -292,7 +339,11 @@ export default function Chat() {
     if (!session) return
     try {
       const info = await fetchServerInfo(session.url)
-      setBgInfo({ hasBackground: info.hasBackground, backgroundBlur: info.backgroundBlur, customCss: info.customCss })
+      setBgInfo({
+        hasBackground: info.hasBackground,
+        backgroundBlur: info.backgroundBlur,
+        customCss: info.customCss,
+      })
     } catch (err) {
       console.error('[Chat] Failed to refresh server info:', err)
     }
@@ -301,7 +352,7 @@ export default function Chat() {
   if (!session) return null
 
   const showBg = bgInfo?.hasBackground && serverBackgroundEnabled
-  const serverName = servers.find(s => s.id === session.serverId)?.name || 'Kizuna'
+  const serverName = servers.find((s) => s.id === session.serverId)?.name || 'Kizuna'
 
   if (isMobile) {
     return (
@@ -346,14 +397,28 @@ export default function Chat() {
         <UpdateBanner />
         {showExport && <ExportModal onClose={() => setShowExport(false)} />}
         {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}
-        {settingsScope && <SettingsModal initialScope={settingsScope} onClose={() => setSettingsScope(null)} onBackgroundChanged={handleBackgroundChanged} />}
+        {settingsScope && (
+          <SettingsModal
+            initialScope={settingsScope}
+            onClose={() => setSettingsScope(null)}
+            onBackgroundChanged={handleBackgroundChanged}
+          />
+        )}
         {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
-        {loginForServerId && <LoginDialog serverId={loginForServerId} onClose={() => setLoginForServerId(null)} />}
+        {loginForServerId && (
+          <LoginDialog serverId={loginForServerId} onClose={() => setLoginForServerId(null)} />
+        )}
         {showQuickSwitcher && <QuickSwitcher onClose={() => setShowQuickSwitcher(false)} />}
         {incomingCall && (
           <IncomingCallModal
             incomingCall={incomingCall}
-            onAccept={() => acceptDMCall(incomingCall.dmChannelId, incomingCall.callerUserId, incomingCall.callerUsername)}
+            onAccept={() =>
+              acceptDMCall(
+                incomingCall.dmChannelId,
+                incomingCall.callerUserId,
+                incomingCall.callerUsername,
+              )
+            }
             onReject={() => rejectDMCall(incomingCall.dmChannelId)}
           />
         )}
@@ -363,126 +428,167 @@ export default function Chat() {
 
   return (
     <>
-    <div
-      className={`chat-layout${showBg ? ' chat-layout--has-bg' : ''}`}
-      style={showBg && session ? {
-        '--bg-image': `url(${session.url}/api/server/background)`,
-        '--bg-blur': `${bgInfo?.backgroundBlur ?? 0}px`,
-      } as React.CSSProperties : undefined}
-      data-voice={activeVoiceChannelId ? 'true' : undefined}
-    >
-      {!socketConnected && (
-        <div className={`connection-banner${socketReconnecting ? ' connection-banner--reconnecting' : ''}`}>
-          {socketReconnecting ? (
-            <>
-              <Loader2 size={14} className="connection-banner__spinner" />
-              Reconnecting{socketReconnectAttempts > 0 ? ` (attempt ${socketReconnectAttempts})` : ''}...
-            </>
-          ) : (
-            <>
-              Disconnected from server
-              <button className="connection-banner__reconnect" onClick={() => socketRef.current?.connect()}>
-                Reconnect
-              </button>
-            </>
-          )}
-        </div>
-      )}
-      <div className="nav-panel">
-        {servers.length > 0 && <ServerPanel onLoginRequired={setLoginForServerId} onOpenSettings={() => setSettingsScope('you')} onOpenExport={() => setShowExport(true)} onAddServer={() => setShowConnect(true)} />}
-        <div className="sidebar-shell">
-          <Sidebar
-            joinVoice={joinVoice}
-            leaveVoice={leaveVoice}
-            socketRef={socketRef}
-            onOpenMenu={() => setSettingsScope('server')}
-            voicePanel={
-              <VoiceOverlay
-                leaveVoice={leaveVoice}
-                toggleMute={toggleMute}
-                socketRef={socketRef}
-                startScreenshare={startScreenshare}
-                stopScreenshare={stopScreenshare}
-                dmCallOtherUsername={dmCallOtherUsername}
-                toggleCamera={toggleCamera}
-                isCameraOn={isCameraOn}
-              />
-            }
-          />
-        </div>
-      </div>
-      <div className="chat-main">
-        <UpdateBanner />
-        <div className="chat-main__content">
-          <div className="chat-main__stage">
-            {viewedVoiceChannelId ? (
-              <VoiceChannelView
-                channelId={viewedVoiceChannelId}
-                joinVoice={joinVoice}
-                leaveVoice={leaveVoice}
-                toggleMute={toggleMute}
-                toggleCamera={toggleCamera}
-                startScreenshare={startScreenshare}
-                stopScreenshare={stopScreenshare}
-                isCameraOn={isCameraOn}
-                cameraStreamRef={cameraStreamRef}
-                videoElRef={videoElRef}
-              />
-            ) : chatOpen ? (
-              <ChatArea
-                socketRef={socketRef}
-                onStartDMCall={startDMCall}
-                onEndDMCall={endDMCall}
-                onToggleMembers={() => setShowMembers((v) => !v)}
-                membersOpen={showMembers}
-                onOpenEnvWizard={() => setShowEnvWizard(true)}
-              />
+      <div
+        className={`chat-layout${showBg ? ' chat-layout--has-bg' : ''}`}
+        style={
+          showBg && session
+            ? ({
+                '--bg-image': `url(${session.url}/api/server/background)`,
+                '--bg-blur': `${bgInfo?.backgroundBlur ?? 0}px`,
+              } as React.CSSProperties)
+            : undefined
+        }
+        data-voice={activeVoiceChannelId ? 'true' : undefined}
+      >
+        {!socketConnected && (
+          <div
+            className={`connection-banner${socketReconnecting ? ' connection-banner--reconnecting' : ''}`}
+          >
+            {socketReconnecting ? (
+              <>
+                <Loader2 size={14} className="connection-banner__spinner" />
+                Reconnecting
+                {socketReconnectAttempts > 0 ? ` (attempt ${socketReconnectAttempts})` : ''}...
+              </>
             ) : (
-              <div className="chat-placeholder">
-                <div className="chat-placeholder__icon">
-                  {servers.find(s => s.id === session.serverId)?.icon ? (
-                    <img src={servers.find(s => s.id === session.serverId)!.icon} alt="" className="chat-placeholder__icon-img" />
-                  ) : serverName.slice(0, 2).toUpperCase()}
-                </div>
-                <h1 className="chat-placeholder__title">Welcome to {serverName}</h1>
-                <p className="chat-placeholder__subtitle">Select a channel or direct message to start chatting</p>
-                <div className="chat-placeholder__stats">
-                  <button
-                    className="chat-placeholder__stat"
-                    onClick={() => setShowMembers((v) => !v)}
-                    aria-pressed={showMembers}
-                    title="Toggle member list"
-                  >
-                    <span className="chat-placeholder__stat-value">{members.length}</span>
-                    <span className="chat-placeholder__stat-label">Members</span>
-                  </button>
-                </div>
-              </div>
+              <>
+                Disconnected from server
+                <button
+                  className="connection-banner__reconnect"
+                  onClick={() => socketRef.current?.connect()}
+                >
+                  Reconnect
+                </button>
+              </>
             )}
           </div>
-          {/* Members live inside the chat panel as a divided column. Its
+        )}
+        <div className="nav-panel">
+          {servers.length > 0 && (
+            <ServerPanel
+              onLoginRequired={setLoginForServerId}
+              onOpenSettings={() => setSettingsScope('you')}
+              onOpenExport={() => setShowExport(true)}
+              onAddServer={() => setShowConnect(true)}
+            />
+          )}
+          <div className="sidebar-shell">
+            <Sidebar
+              joinVoice={joinVoice}
+              leaveVoice={leaveVoice}
+              socketRef={socketRef}
+              onOpenMenu={() => setSettingsScope('server')}
+              voicePanel={
+                <VoiceOverlay
+                  leaveVoice={leaveVoice}
+                  toggleMute={toggleMute}
+                  socketRef={socketRef}
+                  startScreenshare={startScreenshare}
+                  stopScreenshare={stopScreenshare}
+                  dmCallOtherUsername={dmCallOtherUsername}
+                  toggleCamera={toggleCamera}
+                  isCameraOn={isCameraOn}
+                />
+              }
+            />
+          </div>
+        </div>
+        <div className="chat-main">
+          <UpdateBanner />
+          <div className="chat-main__content">
+            <div className="chat-main__stage">
+              {viewedVoiceChannelId ? (
+                <VoiceChannelView
+                  channelId={viewedVoiceChannelId}
+                  joinVoice={joinVoice}
+                  leaveVoice={leaveVoice}
+                  toggleMute={toggleMute}
+                  toggleCamera={toggleCamera}
+                  startScreenshare={startScreenshare}
+                  stopScreenshare={stopScreenshare}
+                  isCameraOn={isCameraOn}
+                  cameraStreamRef={cameraStreamRef}
+                  videoElRef={videoElRef}
+                />
+              ) : chatOpen ? (
+                <ChatArea
+                  socketRef={socketRef}
+                  onStartDMCall={startDMCall}
+                  onEndDMCall={endDMCall}
+                  onToggleMembers={() => setShowMembers((v) => !v)}
+                  membersOpen={showMembers}
+                  onOpenEnvWizard={() => setShowEnvWizard(true)}
+                />
+              ) : (
+                <div className="chat-placeholder">
+                  <div className="chat-placeholder__icon">
+                    {servers.find((s) => s.id === session.serverId)?.icon ? (
+                      <img
+                        src={servers.find((s) => s.id === session.serverId)!.icon}
+                        alt=""
+                        className="chat-placeholder__icon-img"
+                      />
+                    ) : (
+                      serverName.slice(0, 2).toUpperCase()
+                    )}
+                  </div>
+                  <h1 className="chat-placeholder__title">Welcome to {serverName}</h1>
+                  <p className="chat-placeholder__subtitle">
+                    Select a channel or direct message to start chatting
+                  </p>
+                  <div className="chat-placeholder__stats">
+                    <button
+                      className="chat-placeholder__stat"
+                      onClick={() => setShowMembers((v) => !v)}
+                      aria-pressed={showMembers}
+                      title="Toggle member list"
+                    >
+                      <span className="chat-placeholder__stat-value">{members.length}</span>
+                      <span className="chat-placeholder__stat-label">Members</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* Members live inside the chat panel as a divided column. Its
               visibility is owned solely by showMembers, independent of what the
               stage shows; on tablet the same component becomes an overlay. */}
-          <MemberList visible={showMembers} onClose={() => setShowMembers(false)} />
+            <MemberList visible={showMembers} onClose={() => setShowMembers(false)} />
+          </div>
         </div>
+        {!stageOwnsScreenshare && (
+          <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
+        )}
+        <ThreadPanel channelId={activeChannelId!} />
+        <NotificationContainer />
       </div>
-      {!stageOwnsScreenshare && <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />}
-      <ThreadPanel channelId={activeChannelId!} />
-      <NotificationContainer />
-    </div>
-    {showExport && <ExportModal onClose={() => setShowExport(false)} />}
-    {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}
-    {settingsScope && <SettingsModal initialScope={settingsScope} onClose={() => setSettingsScope(null)} onBackgroundChanged={handleBackgroundChanged} />}
-    {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
-    {loginForServerId && <LoginDialog serverId={loginForServerId} onClose={() => setLoginForServerId(null)} />}
-    {showQuickSwitcher && <QuickSwitcher onClose={() => setShowQuickSwitcher(false)} />}
-    {incomingCall && (
-      <IncomingCallModal
-        incomingCall={incomingCall}
-        onAccept={() => acceptDMCall(incomingCall.dmChannelId, incomingCall.callerUserId, incomingCall.callerUsername)}
-        onReject={() => rejectDMCall(incomingCall.dmChannelId)}
-      />
-    )}
+      {showExport && <ExportModal onClose={() => setShowExport(false)} />}
+      {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}
+      {settingsScope && (
+        <SettingsModal
+          initialScope={settingsScope}
+          onClose={() => setSettingsScope(null)}
+          onBackgroundChanged={handleBackgroundChanged}
+        />
+      )}
+      {showEnvWizard && <SetupWizard onClose={() => setShowEnvWizard(false)} />}
+      {loginForServerId && (
+        <LoginDialog serverId={loginForServerId} onClose={() => setLoginForServerId(null)} />
+      )}
+      {showQuickSwitcher && <QuickSwitcher onClose={() => setShowQuickSwitcher(false)} />}
+      {incomingCall && (
+        <IncomingCallModal
+          incomingCall={incomingCall}
+          onAccept={() =>
+            acceptDMCall(
+              incomingCall.dmChannelId,
+              incomingCall.callerUserId,
+              incomingCall.callerUsername,
+            )
+          }
+          onReject={() => rejectDMCall(incomingCall.dmChannelId)}
+        />
+      )}
     </>
   )
 }

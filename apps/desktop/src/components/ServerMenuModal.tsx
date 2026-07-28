@@ -1,6 +1,15 @@
 import { useState, useCallback, useMemo, type ReactNode } from 'react'
 import {
-  User, Bell, SlidersHorizontal, Users, Link2, Shield, Code, Image as ImageIcon, Trash2, Webhook,
+  User,
+  Bell,
+  SlidersHorizontal,
+  Users,
+  Link2,
+  Shield,
+  Code,
+  Image as ImageIcon,
+  Trash2,
+  Webhook,
 } from 'lucide-react'
 import Modal from './ui/Modal'
 import SettingsLayout, { type SettingsNavGroup } from './ui/SettingsLayout'
@@ -52,7 +61,11 @@ const SECTION_LABELS: Record<Section, string> = {
  * chrome. Rendered by the unified SettingsModal and by the thin ServerMenuModal
  * wrapper below.
  */
-export function ServerSettingsBody({ onClose, onBackgroundChanged, navHeader }: Props & { navHeader?: ReactNode }) {
+export function ServerSettingsBody({
+  onClose,
+  onBackgroundChanged,
+  navHeader,
+}: Props & { navHeader?: ReactNode }) {
   const { activeSession: session } = useServerStore()
   const serverUrl = session?.url
   const isAdmin = session?.user?.role === 'admin'
@@ -100,48 +113,52 @@ export function ServerSettingsBody({ onClose, onBackgroundChanged, navHeader }: 
   }, [])
 
   return (
-      <SettingsLayout
-        groups={navGroups}
-        activeKey={section}
-        onChange={handleSectionChange}
-        activeLabel={SECTION_LABELS[section]}
-        navHeader={navHeader}
-      >
-        {section === 'profile' && <ProfileSection onClose={onClose} />}
+    <SettingsLayout
+      groups={navGroups}
+      activeKey={section}
+      onChange={handleSectionChange}
+      activeLabel={SECTION_LABELS[section]}
+      navHeader={navHeader}
+    >
+      {section === 'profile' && <ProfileSection onClose={onClose} />}
 
-        {section === 'notifications' && (
-          <section className="server-menu__section">
-            <div className="server-menu__settings-group">
-              <p className="server-menu__settings-group-title">notifications</p>
-              <NotificationSettings />
-            </div>
-          </section>
-        )}
-
-        {section === 'overview' && <OverviewSection serverUrl={serverUrl} onBackgroundChanged={onBackgroundChanged} />}
-
-        {section === 'members' && <MembersSection serverUrl={serverUrl} />}
-
-        {section === 'invites' && <InvitesSection serverUrl={serverUrl} />}
-
-        {section === 'roles' && <RolesSection serverUrl={serverUrl} />}
-
-        {section === 'css' && <CssSection serverUrl={serverUrl} onBackgroundChanged={onBackgroundChanged} />}
-
-        {section === 'gifs' && <GifsSection serverUrl={serverUrl} />}
-
-        {section === 'webhooks' && (
-          <div className="server-menu__section">
-            <WebhooksSection />
+      {section === 'notifications' && (
+        <section className="server-menu__section">
+          <div className="server-menu__settings-group">
+            <p className="server-menu__settings-group-title">notifications</p>
+            <NotificationSettings />
           </div>
-        )}
+        </section>
+      )}
 
-        {section === 'logs' && (
-          <div className="server-menu__section">
-            <LogsSection />
-          </div>
-        )}
-      </SettingsLayout>
+      {section === 'overview' && (
+        <OverviewSection serverUrl={serverUrl} onBackgroundChanged={onBackgroundChanged} />
+      )}
+
+      {section === 'members' && <MembersSection serverUrl={serverUrl} />}
+
+      {section === 'invites' && <InvitesSection serverUrl={serverUrl} />}
+
+      {section === 'roles' && <RolesSection serverUrl={serverUrl} />}
+
+      {section === 'css' && (
+        <CssSection serverUrl={serverUrl} onBackgroundChanged={onBackgroundChanged} />
+      )}
+
+      {section === 'gifs' && <GifsSection serverUrl={serverUrl} />}
+
+      {section === 'webhooks' && (
+        <div className="server-menu__section">
+          <WebhooksSection />
+        </div>
+      )}
+
+      {section === 'logs' && (
+        <div className="server-menu__section">
+          <LogsSection />
+        </div>
+      )}
+    </SettingsLayout>
   )
 }
 
@@ -153,7 +170,9 @@ export default function ServerMenuModal({ onClose, onBackgroundChanged }: Props)
       title="// server menu"
       className="server-menu"
       footer={(handleClose) => (
-        <button onClick={handleClose} className="server-menu__done-btn">done</button>
+        <button onClick={handleClose} className="server-menu__done-btn">
+          done
+        </button>
       )}
     >
       <ServerSettingsBody onClose={onClose} onBackgroundChanged={onBackgroundChanged} />

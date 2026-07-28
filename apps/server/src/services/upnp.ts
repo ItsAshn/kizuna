@@ -3,7 +3,9 @@ import natUpnp from 'nat-upnp'
 const client = natUpnp.createClient()
 export const upnpClient: ReturnType<typeof natUpnp.createClient> = client
 const mappedPorts: { public: number; private: { host: string; port: number }; ttl: number }[] = []
-export function getMappedPorts() { return mappedPorts }
+export function getMappedPorts() {
+  return mappedPorts
+}
 
 export async function openPorts(options: {
   httpPort: number
@@ -26,32 +28,38 @@ export async function openPorts(options: {
 
     // Map HTTP port
     await new Promise<void>((resolve, _reject) => {
-      client.portMapping({
-        public: options.httpPort,
-        private: options.httpPort,
-        ttl: 0, // indefinite
-      }, (err: Error | null) => {
-        if (err) console.warn(`[UPnP] HTTP port ${options.httpPort} mapping failed:`, err.message)
-        else console.log(`[UPnP] Mapped TCP ${options.httpPort}`)
-        resolve()
-      })
+      client.portMapping(
+        {
+          public: options.httpPort,
+          private: options.httpPort,
+          ttl: 0, // indefinite
+        },
+        (err: Error | null) => {
+          if (err) console.warn(`[UPnP] HTTP port ${options.httpPort} mapping failed:`, err.message)
+          else console.log(`[UPnP] Mapped TCP ${options.httpPort}`)
+          resolve()
+        },
+      )
     })
 
     // Map RTC port range (UDP)
     for (let port = options.rtcMinPort; port <= options.rtcMaxPort; port++) {
       await new Promise<void>((resolve) => {
-        client.portMapping({
-          public: { port },
-          private: { port },
-          ttl: 0,
-          protocol: 'udp',
-        }, (err: Error | null) => {
-          if (err) {
-            // Stop mapping if we hit the limit
-          }
-          mappedPorts.push({ public: port, private: { host: '', port }, ttl: 0 })
-          resolve()
-        })
+        client.portMapping(
+          {
+            public: { port },
+            private: { port },
+            ttl: 0,
+            protocol: 'udp',
+          },
+          (err: Error | null) => {
+            if (err) {
+              // Stop mapping if we hit the limit
+            }
+            mappedPorts.push({ public: port, private: { host: '', port }, ttl: 0 })
+            resolve()
+          },
+        )
       })
     }
     console.log(`[UPnP] Mapped UDP ${options.rtcMinPort}-${options.rtcMaxPort}`)

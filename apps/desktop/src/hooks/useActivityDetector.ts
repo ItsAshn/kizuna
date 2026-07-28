@@ -18,21 +18,32 @@ function getInvoke(): Promise<InvokeFn> {
 
 // Minimal set of processes that should never show as user activity.
 const SUPPRESSED_APPS = new Set([
-  'keepassxc', 'keepass', 'bitwarden', '1password',
-  'hyprlock', 'swaylock', 'i3lock', 'gtklock',
-  'kizuna', 'kizuna-desktop', 'com.kizuna.desktop',
-  'plasmashell', 'gnome-shell',
+  'keepassxc',
+  'keepass',
+  'bitwarden',
+  '1password',
+  'hyprlock',
+  'swaylock',
+  'i3lock',
+  'gtklock',
+  'kizuna',
+  'kizuna-desktop',
+  'com.kizuna.desktop',
+  'plasmashell',
+  'gnome-shell',
 ])
 
 function isSuppressedApp(processName: string): boolean {
   return SUPPRESSED_APPS.has(processName.toLowerCase())
 }
 
-function detectMediaActivity(metadata: {
-  title?: string
-  artist?: string
-  album?: string
-} | null): UserActivity | null {
+function detectMediaActivity(
+  metadata: {
+    title?: string
+    artist?: string
+    album?: string
+  } | null,
+): UserActivity | null {
   if (!metadata) return null
 
   const title = metadata.title?.trim() || ''
@@ -102,12 +113,7 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
       return { type: 'other', name: customMediaActivity }
     }
     return null
-  }, [
-    shareAppActivity,
-    shareMediaActivity,
-    customAppActivity,
-    customMediaActivity,
-  ])
+  }, [shareAppActivity, shareMediaActivity, customAppActivity, customMediaActivity])
 
   useEffect(() => {
     if (!shareMediaActivity && !shareAppActivity) return
@@ -148,9 +154,7 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
                 if (elapsed >= SWITCH_DELAY_MS) {
                   const isGame = details.category === 'game'
                   const type: UserActivityType = isGame ? 'game' : 'app'
-                  const name = isGame
-                    ? details.title.trim()
-                    : details.display_name
+                  const name = isGame ? details.title.trim() : details.display_name
 
                   bestActivity = {
                     type,
@@ -298,11 +302,5 @@ export function useActivityDetector(socketRef: React.MutableRefObject<Socket | n
     return () => {
       socket.off('connect', onConnect)
     }
-  }, [
-    socketRef,
-    shareMediaActivity,
-    shareAppActivity,
-    resolveActivity,
-    emitActivity,
-  ])
+  }, [socketRef, shareMediaActivity, shareAppActivity, resolveActivity, emitActivity])
 }

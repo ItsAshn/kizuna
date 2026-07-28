@@ -36,7 +36,10 @@ export default function ServerBrowser({ onConnect, registryUrl = DEFAULT_REGISTR
     }
     load()
     const interval = setInterval(load, 60_000)
-    return () => { cancelled = true; clearInterval(interval) }
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
   }, [registryUrl])
 
   const filtered = useMemo(() => {
@@ -80,7 +83,9 @@ export default function ServerBrowser({ onConnect, registryUrl = DEFAULT_REGISTR
         <button
           className={`server-browser__filter ${!showPasswordProtected ? 'server-browser__filter--off' : ''}`}
           onClick={() => setShowPasswordProtected((v) => !v)}
-          title={showPasswordProtected ? 'Showing all servers' : 'Hiding password-protected servers'}
+          title={
+            showPasswordProtected ? 'Showing all servers' : 'Hiding password-protected servers'
+          }
         >
           <Lock size={12} />
           <span className="server-browser__filter-label">Password</span>
@@ -108,27 +113,37 @@ export default function ServerBrowser({ onConnect, registryUrl = DEFAULT_REGISTR
             <div className="server-browser__card-header">
               <div className="server-browser__card-icon">
                 {server.icon ? (
-                  <img src={server.icon} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                  <img
+                    src={server.icon}
+                    alt=""
+                    onError={(e) => {
+                      ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                    }}
+                  />
                 ) : (
                   server.name.slice(0, 2).toUpperCase()
                 )}
               </div>
               <div className="server-browser__card-badges">
                 {server.passwordProtected && (
-                  <span className="server-browser__badge server-browser__badge--lock" title="Password protected">
+                  <span
+                    className="server-browser__badge server-browser__badge--lock"
+                    title="Password protected"
+                  >
                     <Lock size={10} />
                   </span>
                 )}
-                <span className="server-browser__badge server-browser__badge--players" title={`${server.playerCount} active user${server.playerCount !== 1 ? 's' : ''}`}>
+                <span
+                  className="server-browser__badge server-browser__badge--players"
+                  title={`${server.playerCount} active user${server.playerCount !== 1 ? 's' : ''}`}
+                >
                   <Users size={10} />
                   {server.playerCount}
                 </span>
               </div>
             </div>
             <h3 className="server-browser__card-name">{server.name}</h3>
-            <p className="server-browser__card-desc">
-              {server.description || 'No description'}
-            </p>
+            <p className="server-browser__card-desc">{server.description || 'No description'}</p>
             <div className="server-browser__card-connect">
               <Globe size={12} />
               Connect

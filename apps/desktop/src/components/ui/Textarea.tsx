@@ -8,7 +8,7 @@ interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
 
 const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
   { label, error, id, className = '', ...props },
-  ref
+  ref,
 ) {
   const autoId = useId()
   const textareaId = id ?? autoId

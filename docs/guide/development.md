@@ -52,20 +52,20 @@ pnpm --filter @kizuna/shared test
 
 ## Tech Stack
 
-| Component | Technology |
-|---|---|
-| Server runtime | Node.js 22 |
-| HTTP framework | Hono v4 |
-| WebSocket | Socket.IO v4 |
-| WebRTC SFU | mediasoup v3 |
-| Database | SQLite (better-sqlite3) |
-| Auth | JWT + bcryptjs |
-| Validation | Zod v3 |
-| Desktop shell | Tauri v2 (Rust) |
-| Frontend | React 18 + Vite 5 |
-| State management | Zustand v4 |
-| Routing | react-router-dom v6 |
-| Monorepo | pnpm workspaces + Turborepo |
+| Component        | Technology                  |
+| ---------------- | --------------------------- |
+| Server runtime   | Node.js 22                  |
+| HTTP framework   | Hono v4                     |
+| WebSocket        | Socket.IO v4                |
+| WebRTC SFU       | mediasoup v3                |
+| Database         | SQLite (better-sqlite3)     |
+| Auth             | JWT + bcryptjs              |
+| Validation       | Zod v3                      |
+| Desktop shell    | Tauri v2 (Rust)             |
+| Frontend         | React 18 + Vite 5           |
+| State management | Zustand v4                  |
+| Routing          | react-router-dom v6         |
+| Monorepo         | pnpm workspaces + Turborepo |
 
 ## Environment Variables
 

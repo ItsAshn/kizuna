@@ -1,6 +1,4 @@
-import type {
-  FileAttachment,
-} from '../types'
+import type { FileAttachment } from '../types'
 import { client, normalizeUrl, tokenStore } from './core'
 
 // ─── Attachments ──────────────────────────────────────────
@@ -46,7 +44,12 @@ export async function uploadAttachment(
           }
         } else {
           let message = 'Upload failed'
-          try { const err = JSON.parse(xhr.responseText); message = err.error || message } catch { /* ignore */ }
+          try {
+            const err = JSON.parse(xhr.responseText)
+            message = err.error || message
+          } catch {
+            /* ignore */
+          }
           reject(new Error(message))
         }
       }
@@ -66,4 +69,3 @@ export async function fetchAttachments(
   const res = await client(serverUrl).get(`/api/attachments/message/${messageId}`)
   return res.data.attachments ?? res.data
 }
-

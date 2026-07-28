@@ -30,20 +30,31 @@ export default function PinnedMessagesModal({ pins, open, onClose, onJump, onUnp
           <div key={pin.id} className="pins-modal__item-row">
             <button
               className="pins-modal__item"
-              onClick={() => { onJump(pin.messageId); onClose() }}
+              onClick={() => {
+                onJump(pin.messageId)
+                onClose()
+              }}
             >
               <div className="pins-modal__item-header">
                 <div className="pins-modal__item-author">
                   <div className="pins-modal__item-avatar">
                     {pin.authorAvatar ? (
-                      <img src={pin.authorAvatar} alt={pin.authorUsername} className="pins-modal__item-avatar-img" />
+                      <img
+                        src={pin.authorAvatar}
+                        alt={pin.authorUsername}
+                        className="pins-modal__item-avatar-img"
+                      />
                     ) : (
                       <span className="pins-modal__item-avatar-placeholder">
-                        {(pin.authorDisplayName || pin.authorUsername || '?').charAt(0).toUpperCase()}
+                        {(pin.authorDisplayName || pin.authorUsername || '?')
+                          .charAt(0)
+                          .toUpperCase()}
                       </span>
                     )}
                   </div>
-                  <span className="pins-modal__item-name">{pin.authorDisplayName || pin.authorUsername}</span>
+                  <span className="pins-modal__item-name">
+                    {pin.authorDisplayName || pin.authorUsername}
+                  </span>
                 </div>
                 <span className="pins-modal__item-time">
                   {new Date(pin.pinnedAt).toLocaleDateString()}
@@ -55,7 +66,10 @@ export default function PinnedMessagesModal({ pins, open, onClose, onJump, onUnp
             </button>
             <button
               className="pins-modal__item-unpin"
-              onClick={(e) => { e.stopPropagation(); onUnpin(pin.messageId) }}
+              onClick={(e) => {
+                e.stopPropagation()
+                onUnpin(pin.messageId)
+              }}
               aria-label="Unpin message"
               title="Unpin message"
             >

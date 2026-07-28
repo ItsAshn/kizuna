@@ -3,6 +3,7 @@
 ## [0.1.0] - Unreleased
 
 ### Added
+
 - Initial release of Kizuna — self-hosted Discord alternative
 - Real-time text chat with channels, categories, and direct messages
 - Voice channels via WebRTC with mediasoup SFU

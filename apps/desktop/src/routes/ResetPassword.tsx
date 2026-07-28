@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useServerStore } from '../store/serverStore'
-import { requestPasswordReset, validateResetToken, resetPassword, resetWithBackupToken, getAdminList, fetchServerInfo } from '@kizuna/shared'
+import {
+  requestPasswordReset,
+  validateResetToken,
+  resetPassword,
+  resetWithBackupToken,
+  getAdminList,
+  fetchServerInfo,
+} from '@kizuna/shared'
 import type { AdminInfo } from '@kizuna/shared'
 import BackupTokenModal from '../components/BackupTokenModal'
 import Button from '../components/ui/Button'
@@ -66,7 +73,9 @@ export default function ResetPassword() {
     return (
       <div className="login">
         <div className="login__card">
-          <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>Loading server info...</p>
+          <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
+            Loading server info...
+          </p>
         </div>
       </div>
     )
@@ -76,8 +85,12 @@ export default function ResetPassword() {
     return (
       <div className="login">
         <div className="login__card">
-          <p style={{ color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '12px' }}>Server not found</p>
-          <Button fullWidth onClick={() => navigate('/')}>Go back</Button>
+          <p style={{ color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '12px' }}>
+            Server not found
+          </p>
+          <Button fullWidth onClick={() => navigate('/')}>
+            Go back
+          </Button>
         </div>
       </div>
     )
@@ -113,7 +126,12 @@ export default function ResetPassword() {
     setLoading(true)
     setError('')
     try {
-      const result = await resetWithBackupToken(resolvedServer.url, username.trim(), backuptoken.trim(), newPassword)
+      const result = await resetWithBackupToken(
+        resolvedServer.url,
+        username.trim(),
+        backuptoken.trim(),
+        newPassword,
+      )
       setNewBackupToken(result.backuptoken)
       setPhase('done')
     } catch (err: unknown) {
@@ -155,9 +173,15 @@ export default function ResetPassword() {
     setLoading(true)
     setError('')
     try {
-      const result = resetMethod === 'admin'
-        ? await resetPassword(resolvedServer.url, adminToken.trim(), newPassword)
-        : await resetWithBackupToken(resolvedServer.url, validatedUsername || username.trim(), backuptoken.trim(), newPassword)
+      const result =
+        resetMethod === 'admin'
+          ? await resetPassword(resolvedServer.url, adminToken.trim(), newPassword)
+          : await resetWithBackupToken(
+              resolvedServer.url,
+              validatedUsername || username.trim(),
+              backuptoken.trim(),
+              newPassword,
+            )
 
       setNewBackupToken(result.backuptoken)
       setPhase('done')
@@ -171,10 +195,7 @@ export default function ResetPassword() {
   return (
     <div className="login">
       {newBackupToken && phase === 'done' && (
-        <BackupTokenModal
-          backuptoken={newBackupToken}
-          onComplete={() => setNewBackupToken(null)}
-        />
+        <BackupTokenModal backuptoken={newBackupToken} onComplete={() => setNewBackupToken(null)} />
       )}
       <div className="login__card">
         <h2 className="auth-form__server-name">{resolvedServer.name}</h2>
@@ -194,20 +215,26 @@ export default function ResetPassword() {
 
             {adminList.length > 0 && (
               <div style={{ marginBottom: '12px' }}>
-                <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginBottom: '4px' }}>Server admins:</p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginBottom: '4px' }}>
+                  Server admins:
+                </p>
                 {adminList.map((admin) => (
-                  <span key={admin.username} style={{ display: 'inline-block', marginRight: '8px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                  <span
+                    key={admin.username}
+                    style={{
+                      display: 'inline-block',
+                      marginRight: '8px',
+                      color: 'var(--text-secondary)',
+                      fontSize: '12px',
+                    }}
+                  >
                     @{admin.username}
                   </span>
                 ))}
               </div>
             )}
 
-            <Button
-              type="submit"
-              fullWidth
-              disabled={loading || !username.trim()}
-            >
+            <Button type="submit" fullWidth disabled={loading || !username.trim()}>
               {loading ? 'Checking...' : 'Continue'}
             </Button>
 
@@ -216,7 +243,18 @@ export default function ResetPassword() {
             </button>
 
             {error && <p className="auth-form__error">{error}</p>}
-            {success && <p style={{ marginTop: '16px', color: 'var(--green)', fontSize: '13px', textAlign: 'center' }}>{success}</p>}
+            {success && (
+              <p
+                style={{
+                  marginTop: '16px',
+                  color: 'var(--green)',
+                  fontSize: '13px',
+                  textAlign: 'center',
+                }}
+              >
+                {success}
+              </p>
+            )}
           </form>
         )}
 
@@ -249,7 +287,14 @@ export default function ResetPassword() {
               </Button>
             </div>
 
-            <button type="button" className="auth-form__back-btn" onClick={() => { setPhase('username'); setError('') }}>
+            <button
+              type="button"
+              className="auth-form__back-btn"
+              onClick={() => {
+                setPhase('username')
+                setError('')
+              }}
+            >
               Back
             </button>
           </div>
@@ -257,16 +302,40 @@ export default function ResetPassword() {
 
         {phase === 'adminToken' && (
           <form onSubmit={handleAdminTokenSubmit} noValidate>
-            <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '12px', lineHeight: '1.5' }}>
-              To reset your password, you need a reset token from a server admin.
-              Contact one of the admins listed below and ask them to generate a password reset token for you.
+            <p
+              style={{
+                color: 'var(--text-muted)',
+                fontSize: '13px',
+                marginBottom: '12px',
+                lineHeight: '1.5',
+              }}
+            >
+              To reset your password, you need a reset token from a server admin. Contact one of the
+              admins listed below and ask them to generate a password reset token for you.
             </p>
 
             {adminList.length > 0 && (
-              <div style={{ marginBottom: '12px', padding: '8px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)' }}>
-                <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginBottom: '4px' }}>Server admins:</p>
+              <div
+                style={{
+                  marginBottom: '12px',
+                  padding: '8px',
+                  background: 'var(--bg-tertiary)',
+                  borderRadius: 'var(--radius-md)',
+                }}
+              >
+                <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginBottom: '4px' }}>
+                  Server admins:
+                </p>
                 {adminList.map((admin) => (
-                  <span key={admin.username} style={{ display: 'inline-block', marginRight: '8px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                  <span
+                    key={admin.username}
+                    style={{
+                      display: 'inline-block',
+                      marginRight: '8px',
+                      color: 'var(--text-secondary)',
+                      fontSize: '12px',
+                    }}
+                  >
                     @{admin.username}
                   </span>
                 ))}
@@ -280,15 +349,18 @@ export default function ResetPassword() {
               value={adminToken}
               onChange={(e) => setAdminToken(e.target.value)}
             />
-            <Button
-              type="submit"
-              fullWidth
-              disabled={loading || !adminToken.trim()}
-            >
+            <Button type="submit" fullWidth disabled={loading || !adminToken.trim()}>
               {loading ? 'Validating...' : 'Continue'}
             </Button>
 
-            <button type="button" className="auth-form__back-btn" onClick={() => { setPhase('choice'); setError('') }}>
+            <button
+              type="button"
+              className="auth-form__back-btn"
+              onClick={() => {
+                setPhase('choice')
+                setError('')
+              }}
+            >
               Back
             </button>
 
@@ -297,11 +369,15 @@ export default function ResetPassword() {
         )}
 
         {phase === 'newPassword' && (
-          <form onSubmit={resetMethod === 'backuptoken' ? handleBackupTokenSubmit : handleSetPassword} noValidate>
+          <form
+            onSubmit={resetMethod === 'backuptoken' ? handleBackupTokenSubmit : handleSetPassword}
+            noValidate
+          >
             {resetMethod === 'backuptoken' && (
               <>
                 <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '12px' }}>
-                  Enter your backup token and new password to reset your account for <strong>{username}</strong>.
+                  Enter your backup token and new password to reset your account for{' '}
+                  <strong>{username}</strong>.
                 </p>
                 <input
                   className="input-field auth-form__input-spacer"
@@ -339,12 +415,24 @@ export default function ResetPassword() {
             <Button
               type="submit"
               fullWidth
-              disabled={loading || (resetMethod === 'backuptoken' ? (!backuptoken.trim() || !newPassword || !confirmPassword) : (!newPassword || !confirmPassword))}
+              disabled={
+                loading ||
+                (resetMethod === 'backuptoken'
+                  ? !backuptoken.trim() || !newPassword || !confirmPassword
+                  : !newPassword || !confirmPassword)
+              }
             >
               {loading ? 'Setting password...' : 'Set New Password'}
             </Button>
 
-            <button type="button" className="auth-form__back-btn" onClick={() => { setPhase(resetMethod === 'admin' ? 'adminToken' : 'choice'); setError('') }}>
+            <button
+              type="button"
+              className="auth-form__back-btn"
+              onClick={() => {
+                setPhase(resetMethod === 'admin' ? 'adminToken' : 'choice')
+                setError('')
+              }}
+            >
               Back
             </button>
 

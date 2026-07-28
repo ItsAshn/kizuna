@@ -42,7 +42,10 @@ function StatusSurface({
     )
   }
   return createPortal(
-    <div className="status-picker__dropdown" style={{ top: coords.top, left: coords.left, position: 'fixed' }}>
+    <div
+      className="status-picker__dropdown"
+      style={{ top: coords.top, left: coords.left, position: 'fixed' }}
+    >
       {children}
     </div>,
     document.body,
@@ -74,7 +77,7 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
   const [loadingStickers, setLoadingStickers] = useState(false)
 
   const userId = session?.user?.id
-  const currentStatus: UserStatus = userId ? (userStatuses[userId] || 'online') : 'online'
+  const currentStatus: UserStatus = userId ? userStatuses[userId] || 'online' : 'online'
 
   const updateCoords = useCallback(() => {
     if (wrapperRef.current) {
@@ -101,7 +104,10 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
       }
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { setOpen(false); setShowStickerPicker(false) }
+      if (e.key === 'Escape') {
+        setOpen(false)
+        setShowStickerPicker(false)
+      }
     }
     document.addEventListener('click', handleClick)
     window.addEventListener('keydown', handleKey)
@@ -117,7 +123,9 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
       const packs = await fetchStickerPacks(session.url)
       setStickerPacks(packs)
       if (packs.length > 0 && !activePack) setActivePack(packs[0])
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [session, activePack])
 
   useEffect(() => {
@@ -167,7 +175,9 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
   }
 
   const hasCustomStatus = statusText || statusStickerId
-  const isDirty = statusText !== (session?.user?.status_text || '') || statusStickerId !== (session?.user?.status_sticker_id || '')
+  const isDirty =
+    statusText !== (session?.user?.status_text || '') ||
+    statusStickerId !== (session?.user?.status_sticker_id || '')
 
   return (
     <div
@@ -182,13 +192,19 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
         <StatusSurface
           isMobile={isMobile}
           coords={coords}
-          onClose={() => { setOpen(false); setShowStickerPicker(false) }}
+          onClose={() => {
+            setOpen(false)
+            setShowStickerPicker(false)
+          }}
         >
           {STATUS_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               className={`status-picker__option${currentStatus === opt.value ? ' status-picker__option--active' : ''}`}
-              onClick={(e) => { e.stopPropagation(); handleSelect(opt.value) }}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleSelect(opt.value)
+              }}
             >
               <span className={`status-picker__dot status-picker__dot--${opt.value}`} />
               {opt.label}
@@ -199,7 +215,10 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
             <div className="status-picker__custom-row">
               <button
                 className={`status-picker__sticker-btn${statusStickerId ? ' status-picker__sticker-btn--has' : ''}`}
-                onClick={(e) => { e.stopPropagation(); setShowStickerPicker(!showStickerPicker) }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowStickerPicker(!showStickerPicker)
+                }}
                 title="Pick sticker"
               >
                 {statusStickerId && session ? (
@@ -207,7 +226,9 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
                     src={`${session.url}/api/gifs/${statusStickerId}/file`}
                     alt=""
                     className="status-picker__sticker-thumb"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                    onError={(e) => {
+                      ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                    }}
                   />
                 ) : (
                   <Sticker size={14} />
@@ -226,11 +247,14 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
               <div className="status-picker__sticker-panel">
                 {stickerPacks.length > 0 && (
                   <div className="status-picker__packs">
-                    {stickerPacks.map(pack => (
+                    {stickerPacks.map((pack) => (
                       <button
                         key={pack}
                         className={`status-picker__pack-btn${activePack === pack ? ' status-picker__pack-btn--active' : ''}`}
-                        onClick={(e) => { e.stopPropagation(); setActivePack(pack) }}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setActivePack(pack)
+                        }}
                       >
                         {pack}
                       </button>
@@ -238,30 +262,46 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
                   </div>
                 )}
                 <div className="status-picker__sticker-grid">
-                  {loadingStickers && <div className="status-picker__sticker-status">Loading...</div>}
+                  {loadingStickers && (
+                    <div className="status-picker__sticker-status">Loading...</div>
+                  )}
                   {!loadingStickers && stickers.length === 0 && (
                     <div className="status-picker__sticker-status">No stickers in this pack</div>
                   )}
-                  {!loadingStickers && stickers.map(s => {
-                    const url = s.file_url.startsWith('/') ? `${session?.url}${s.file_url}` : s.file_url
-                    return (
-                      <button
-                        key={s.id}
-                        className={`status-picker__sticker-option${statusStickerId === s.id ? ' status-picker__sticker-option--active' : ''}`}
-                        onClick={(e) => { e.stopPropagation(); handleStickerSelect(s.id) }}
-                        title={s.display_name}
-                      >
-                        <img src={url} alt={s.display_name} className="status-picker__sticker-img" loading="lazy" />
-                      </button>
-                    )
-                  })}
+                  {!loadingStickers &&
+                    stickers.map((s) => {
+                      const url = s.file_url.startsWith('/')
+                        ? `${session?.url}${s.file_url}`
+                        : s.file_url
+                      return (
+                        <button
+                          key={s.id}
+                          className={`status-picker__sticker-option${statusStickerId === s.id ? ' status-picker__sticker-option--active' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleStickerSelect(s.id)
+                          }}
+                          title={s.display_name}
+                        >
+                          <img
+                            src={url}
+                            alt={s.display_name}
+                            className="status-picker__sticker-img"
+                            loading="lazy"
+                          />
+                        </button>
+                      )
+                    })}
                 </div>
               </div>
             )}
             {isDirty && (
               <button
                 className="status-picker__save-btn"
-                onClick={(e) => { e.stopPropagation(); handleSave() }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleSave()
+                }}
               >
                 Save
               </button>

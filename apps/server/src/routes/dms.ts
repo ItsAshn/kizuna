@@ -7,20 +7,30 @@ import { getIo } from '../utils/io'
 
 function getOrCreateDMChannel(db: ReturnType<typeof getDb>, userId: string, otherUserId: string) {
   const sortedIds = [userId, otherUserId].sort()
-  let channel = db.prepare(
-    'SELECT * FROM dm_channels WHERE user1_id = ? AND user2_id = ?'
-  ).get(sortedIds[0], sortedIds[1])
+  let channel = db
+    .prepare('SELECT * FROM dm_channels WHERE user1_id = ? AND user2_id = ?')
+    .get(sortedIds[0], sortedIds[1])
 
   if (!channel) {
     const id = uuidv4()
-    db.prepare('INSERT OR IGNORE INTO dm_channels (id, user1_id, user2_id) VALUES (?, ?, ?)').run(id, sortedIds[0], sortedIds[1])
-    channel = db.prepare('SELECT * FROM dm_channels WHERE user1_id = ? AND user2_id = ?').get(sortedIds[0], sortedIds[1])
+    db.prepare('INSERT OR IGNORE INTO dm_channels (id, user1_id, user2_id) VALUES (?, ?, ?)').run(
+      id,
+      sortedIds[0],
+      sortedIds[1],
+    )
+    channel = db
+      .prepare('SELECT * FROM dm_channels WHERE user1_id = ? AND user2_id = ?')
+      .get(sortedIds[0], sortedIds[1])
   }
 
   return channel
 }
 
-function formatDMChannel(channel: Record<string, unknown>, currentUserId: string, userCache?: Map<string, Record<string, unknown>>) {
+function formatDMChannel(
+  channel: Record<string, unknown>,
+  currentUserId: string,
+  userCache?: Map<string, Record<string, unknown>>,
+) {
   const otherUserId = channel.user1_id === currentUserId ? channel.user2_id : channel.user1_id
 
   let otherUser: Record<string, unknown> | undefined
@@ -28,7 +38,9 @@ function formatDMChannel(channel: Record<string, unknown>, currentUserId: string
     otherUser = userCache.get(otherUserId as string)
   } else {
     const db = getDb()
-    otherUser = db.prepare('SELECT id, username, display_name, avatar, public_key FROM users WHERE id = ?').get(otherUserId) as Record<string, unknown> | undefined
+    otherUser = db
+      .prepare('SELECT id, username, display_name, avatar, public_key FROM users WHERE id = ?')
+      .get(otherUserId) as Record<string, unknown> | undefined
   }
 
   return {
@@ -43,13 +55,18 @@ function formatDMChannel(channel: Record<string, unknown>, currentUserId: string
   }
 }
 
-function batchFetchUsers(db: ReturnType<typeof getDb>, userIds: string[]): Map<string, Record<string, unknown>> {
+function batchFetchUsers(
+  db: ReturnType<typeof getDb>,
+  userIds: string[],
+): Map<string, Record<string, unknown>> {
   const cache = new Map<string, Record<string, unknown>>()
   if (userIds.length === 0) return cache
   const placeholders = userIds.map(() => '?').join(',')
-  const rows = db.prepare(
-    `SELECT id, username, display_name, avatar, public_key FROM users WHERE id IN (${placeholders})`
-  ).all(...userIds) as Record<string, unknown>[]
+  const rows = db
+    .prepare(
+      `SELECT id, username, display_name, avatar, public_key FROM users WHERE id IN (${placeholders})`,
+    )
+    .all(...userIds) as Record<string, unknown>[]
   for (const r of rows) cache.set(r.id as string, r)
   return cache
 }
@@ -60,16 +77,20 @@ const dmRoutes = new Hono()
 dmRoutes.get('/', authMiddleware, (c) => {
   const user = getAuth(c)
   const db = getDb()
-  const channels = db.prepare(
-    'SELECT * FROM dm_channels WHERE user1_id = ? OR user2_id = ? ORDER BY last_message_at DESC'
-  ).all(user.userId, user.userId) as Record<string, unknown>[]
+  const channels = db
+    .prepare(
+      'SELECT * FROM dm_channels WHERE user1_id = ? OR user2_id = ? ORDER BY last_message_at DESC',
+    )
+    .all(user.userId, user.userId) as Record<string, unknown>[]
 
   const otherUserIds = channels.map((ch: Record<string, unknown>) =>
-    ch.user1_id === user.userId ? ch.user2_id : ch.user1_id
+    ch.user1_id === user.userId ? ch.user2_id : ch.user1_id,
   ) as string[]
   const userCache = batchFetchUsers(db, otherUserIds)
 
-  const result = channels.map((ch: Record<string, unknown>) => formatDMChannel(ch, user.userId, userCache))
+  const result = channels.map((ch: Record<string, unknown>) =>
+    formatDMChannel(ch, user.userId, userCache),
+  )
   return c.json({ channels: result })
 })
 
@@ -81,7 +102,9 @@ dmRoutes.get('/:userId', authMiddleware, (c) => {
   if (targetUserId === user.userId) return c.json({ error: 'Cannot DM yourself' }, 400)
 
   const db = getDb()
-  const targetUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(targetUserId) as Record<string, unknown> | undefined
+  const targetUser = db
+    .prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?')
+    .get(targetUserId) as Record<string, unknown> | undefined
   if (!targetUser) return c.json({ error: 'User not found' }, 404)
 
   const channel = getOrCreateDMChannel(db, user.userId, targetUserId) as Record<string, unknown>
@@ -96,7 +119,9 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
   const before = c.req.query('before')
   const db = getDb()
 
-  const channel = db.prepare('SELECT * FROM dm_channels WHERE id = ?').get(channelId) as Record<string, unknown> | undefined
+  const channel = db.prepare('SELECT * FROM dm_channels WHERE id = ?').get(channelId) as
+    | Record<string, unknown>
+    | undefined
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
   if (channel.user1_id !== user.userId && channel.user2_id !== user.userId) {
     return c.json({ error: 'Not authorized' }, 403)
@@ -104,23 +129,29 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
 
   let rows: Record<string, unknown>[]
   if (before) {
-    const anchor = db.prepare('SELECT created_at FROM direct_messages WHERE id = ?').get(before) as { created_at: number } | undefined
+    const anchor = db.prepare('SELECT created_at FROM direct_messages WHERE id = ?').get(before) as
+      | { created_at: number }
+      | undefined
     rows = anchor
-      ? db.prepare(
-          `SELECT dm.*, u.display_name, u.avatar FROM direct_messages dm
+      ? (db
+          .prepare(
+            `SELECT dm.*, u.display_name, u.avatar FROM direct_messages dm
            LEFT JOIN users u ON dm.from_id = u.id
            WHERE dm.channel_id = ? AND dm.created_at < ?
-           ORDER BY dm.created_at DESC LIMIT ?`
-        ).all(channelId, anchor.created_at, limit) as Record<string, unknown>[]
+           ORDER BY dm.created_at DESC LIMIT ?`,
+          )
+          .all(channelId, anchor.created_at, limit) as Record<string, unknown>[])
       : []
     rows = rows.reverse()
   } else {
-    rows = db.prepare(
-      `SELECT dm.*, u.display_name, u.avatar FROM direct_messages dm
+    rows = db
+      .prepare(
+        `SELECT dm.*, u.display_name, u.avatar FROM direct_messages dm
        LEFT JOIN users u ON dm.from_id = u.id
        WHERE dm.channel_id = ?
-       ORDER BY dm.created_at DESC LIMIT ?`
-    ).all(channelId, limit) as Record<string, unknown>[]
+       ORDER BY dm.created_at DESC LIMIT ?`,
+      )
+      .all(channelId, limit) as Record<string, unknown>[]
     rows = rows.reverse()
   }
 
@@ -145,14 +176,20 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
 dmRoutes.post('/channel/:channelId/messages', authMiddleware, async (c) => {
   const user = getAuth(c)
   const channelId = c.req.param('channelId')
-  const body = await c.req.json() as { content: string; encrypted?: boolean; attachment_ids?: string[] }
+  const body = (await c.req.json()) as {
+    content: string
+    encrypted?: boolean
+    attachment_ids?: string[]
+  }
   const { content, encrypted, attachment_ids } = body
   if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)
   const maxLen = encrypted ? 8000 : 4000
   if (content.length > maxLen) return c.json({ error: 'Message too long' }, 400)
 
   const db = getDb()
-  const channel = db.prepare('SELECT * FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)').get(channelId, user.userId, user.userId) as Record<string, unknown> | undefined
+  const channel = db
+    .prepare('SELECT * FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)')
+    .get(channelId, user.userId, user.userId) as Record<string, unknown> | undefined
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
 
   const userPerms = getUserPermissions(user.userId)
@@ -169,11 +206,13 @@ dmRoutes.post('/channel/:channelId/messages', authMiddleware, async (c) => {
   const now = Math.floor(Date.now() / 1000)
 
   db.prepare(
-    'INSERT INTO direct_messages (id, channel_id, from_id, from_username, to_id, content, encrypted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO direct_messages (id, channel_id, from_id, from_username, to_id, content, encrypted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
   ).run(id, channelId, user.userId, user.username, toId, content.trim(), encrypted ? 1 : 0, now)
 
   if (attachment_ids && attachment_ids.length > 0) {
-    const updateStmt = db.prepare('UPDATE attachments SET message_id = ? WHERE id = ? AND message_id IS NULL')
+    const updateStmt = db.prepare(
+      'UPDATE attachments SET message_id = ? WHERE id = ? AND message_id IS NULL',
+    )
     const tx = db.transaction(() => {
       for (const attId of attachment_ids) {
         updateStmt.run(id, attId)
@@ -201,7 +240,9 @@ dmRoutes.post('/channel/:channelId/messages', authMiddleware, async (c) => {
       io.to(`dm:${toId}`).emit('dm:received', message)
       io.to(`user:${user.userId}`).emit('dm:sent', message)
     }
-  } catch { /* emit is best-effort */ }
+  } catch {
+    /* emit is best-effort */
+  }
 
   return c.json({ message }, 201)
 })
@@ -212,12 +253,16 @@ dmRoutes.delete('/messages/:messageId', authMiddleware, (c) => {
   const messageId = c.req.param('messageId')
   const db = getDb()
 
-  const dm = db.prepare(`
+  const dm = db
+    .prepare(
+      `
     SELECT dm.*, dc.user1_id, dc.user2_id
     FROM direct_messages dm
     JOIN dm_channels dc ON dc.id = dm.channel_id
     WHERE dm.id = ?
-  `).get(messageId) as Record<string, unknown> | undefined
+  `,
+    )
+    .get(messageId) as Record<string, unknown> | undefined
   if (!dm) return c.json({ error: 'Message not found' }, 404)
   if (dm.from_id !== user.userId) return c.json({ error: 'Forbidden' }, 403)
 
@@ -228,10 +273,12 @@ dmRoutes.delete('/messages/:messageId', authMiddleware, (c) => {
     const io = getIo(c)
     if (io) {
       const toId = dm.user1_id === user.userId ? dm.user2_id : dm.user1_id
-      ;io.to(`dm:${toId}`).emit('dm:delete', { id: messageId, channel_id: dm.channel_id })
-      ;io.to(`user:${user.userId}`).emit('dm:delete', { id: messageId, channel_id: dm.channel_id })
+      io.to(`dm:${toId}`).emit('dm:delete', { id: messageId, channel_id: dm.channel_id })
+      io.to(`user:${user.userId}`).emit('dm:delete', { id: messageId, channel_id: dm.channel_id })
     }
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
 
   return c.json({ ok: true })
 })
@@ -240,24 +287,32 @@ dmRoutes.delete('/messages/:messageId', authMiddleware, (c) => {
 dmRoutes.patch('/messages/:messageId', authMiddleware, async (c) => {
   const user = getAuth(c)
   const messageId = c.req.param('messageId')
-  const body = await c.req.json() as { content: string; encrypted?: boolean }
+  const body = (await c.req.json()) as { content: string; encrypted?: boolean }
   const { content, encrypted } = body
   if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)
   const maxLen = encrypted ? 8000 : 4000
   if (content.length > maxLen) return c.json({ error: 'Message too long' }, 400)
 
   const db = getDb()
-  const dm = db.prepare(`
+  const dm = db
+    .prepare(
+      `
     SELECT dm.*, dc.user1_id, dc.user2_id
     FROM direct_messages dm
     JOIN dm_channels dc ON dc.id = dm.channel_id
     WHERE dm.id = ?
-  `).get(messageId) as Record<string, unknown> | undefined
+  `,
+    )
+    .get(messageId) as Record<string, unknown> | undefined
   if (!dm) return c.json({ error: 'Message not found' }, 404)
   if (dm.from_id !== user.userId) return c.json({ error: 'Forbidden' }, 403)
 
   const now = Math.floor(Date.now() / 1000)
-  db.prepare('UPDATE direct_messages SET content = ?, edited_at = ? WHERE id = ?').run(content.trim(), now, messageId)
+  db.prepare('UPDATE direct_messages SET content = ?, edited_at = ? WHERE id = ?').run(
+    content.trim(),
+    now,
+    messageId,
+  )
 
   const message = {
     id: dm.id,
@@ -275,10 +330,12 @@ dmRoutes.patch('/messages/:messageId', authMiddleware, async (c) => {
     const io = getIo(c)
     if (io) {
       const toId = dm.user1_id === user.userId ? dm.user2_id : dm.user1_id
-      ;io.to(`dm:${toId}`).emit('dm:edit', message)
-      ;io.to(`user:${user.userId}`).emit('dm:edit', message)
+      io.to(`dm:${toId}`).emit('dm:edit', message)
+      io.to(`user:${user.userId}`).emit('dm:edit', message)
     }
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
 
   return c.json({ message })
 })

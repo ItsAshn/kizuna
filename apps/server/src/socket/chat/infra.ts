@@ -15,13 +15,21 @@ export function prep(sql: string): Database.Statement {
 const MAX_SOCKET_RATE_STORE = 50_000
 const socketRateLimits = new Map<string, { count: number; resetAt: number }>()
 
-export function checkSocketRateLimit(socket: Socket, event: string, max: number, windowMs: number): boolean {
+export function checkSocketRateLimit(
+  socket: Socket,
+  event: string,
+  max: number,
+  windowMs: number,
+): boolean {
   const key = `${socket.id}:${event}`
   const now = Date.now()
   const entry = socketRateLimits.get(key)
   if (!entry || entry.resetAt <= now) {
     if (socketRateLimits.size >= MAX_SOCKET_RATE_STORE) {
-      const oldestKeys = Array.from(socketRateLimits.keys()).slice(0, Math.floor(MAX_SOCKET_RATE_STORE * 0.1))
+      const oldestKeys = Array.from(socketRateLimits.keys()).slice(
+        0,
+        Math.floor(MAX_SOCKET_RATE_STORE * 0.1),
+      )
       for (const k of oldestKeys) socketRateLimits.delete(k)
     }
     socketRateLimits.set(key, { count: 1, resetAt: now + windowMs })
@@ -81,8 +89,8 @@ setInterval(() => {
 }, 60_000).unref()
 
 export interface MentionResult {
-  type: 'everyone' | 'here' | 'user' | 'role';
-  target: string | null;
+  type: 'everyone' | 'here' | 'user' | 'role'
+  target: string | null
 }
 
 export interface ProcessMentionsMessage {

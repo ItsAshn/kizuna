@@ -9,7 +9,10 @@ import Database from 'better-sqlite3'
 
 env.allowLocalModels = false
 
-type TaggerFn = (path: string, candidates: string[]) => Promise<Array<{ label: string; score: number }>>
+type TaggerFn = (
+  path: string,
+  candidates: string[],
+) => Promise<Array<{ label: string; score: number }>>
 
 let taggerPromise: Promise<TaggerFn> | null = null
 let modelLoaded = false
@@ -58,12 +61,13 @@ export function getTaggerStatus(): { loaded: boolean; loading: boolean } {
 }
 
 async function getTagger(): Promise<TaggerFn> {
-  if (!taggerPromise) throw new Error('Tagging model is not loaded. Call POST /api/gifs/load-tagger first.')
+  if (!taggerPromise)
+    throw new Error('Tagging model is not loaded. Call POST /api/gifs/load-tagger first.')
   return taggerPromise
 }
 
 function formatTags(suggested: { tag: string; confidence: number }[]): string {
-  return suggested.map(s => s.tag).join(', ')
+  return suggested.map((s) => s.tag).join(', ')
 }
 
 export async function generateTags(
@@ -79,27 +83,32 @@ export async function generateTags(
   try {
     if (metadata.format === 'gif') {
       tmpPath = path.join(os.tmpdir(), `kizuna-tag-${uuidv4()}.png`)
-      await sharp(imageBuffer, { animated: true, page: 0 })
-        .png()
-        .toFile(tmpPath)
+      await sharp(imageBuffer, { animated: true, page: 0 }).png().toFile(tmpPath)
     } else {
       tmpPath = path.join(os.tmpdir(), `kizuna-tag-${uuidv4()}.png`)
       await sharp(imageBuffer).png().toFile(tmpPath)
     }
 
     const tagger = await getTagger()
-    const results = (await tagger(tmpPath, TAG_CANDIDATES)) as Array<{ label: string; score: number }>
+    const results = (await tagger(tmpPath, TAG_CANDIDATES)) as Array<{
+      label: string
+      score: number
+    }>
 
     return results
-      .filter(r => r.score >= threshold)
+      .filter((r) => r.score >= threshold)
       .slice(0, topK)
-      .map(r => ({
+      .map((r) => ({
         tag: r.label,
         confidence: Math.round(r.score * 100) / 100,
       }))
   } finally {
     if (tmpPath) {
-      try { fs.unlinkSync(tmpPath) } catch { /* ignore */ }
+      try {
+        fs.unlinkSync(tmpPath)
+      } catch {
+        /* ignore */
+      }
     }
   }
 }

@@ -1,14 +1,9 @@
-import type {
-  Channel,
-  ChannelMute,
-} from '../types'
+import type { Channel, ChannelMute } from '../types'
 import { client } from './core'
 
 // ─── Channels ─────────────────────────────────────────────
 
-export async function fetchChannels(
-  serverUrl: string,
-): Promise<Channel[]> {
+export async function fetchChannels(serverUrl: string): Promise<Channel[]> {
   const res = await client(serverUrl).get('/api/channels')
   return res.data.channels ?? res.data
 }
@@ -21,14 +16,17 @@ export async function createChannel(
   hidden = false,
   hidden_role_ids?: string[] | null,
 ): Promise<Channel> {
-  const res = await client(serverUrl).post('/api/channels', { name, type, locked, hidden, hidden_role_ids })
+  const res = await client(serverUrl).post('/api/channels', {
+    name,
+    type,
+    locked,
+    hidden,
+    hidden_role_ids,
+  })
   return res.data.channel ?? res.data
 }
 
-export async function deleteChannel(
-  serverUrl: string,
-  id: string,
-): Promise<void> {
+export async function deleteChannel(serverUrl: string, id: string): Promise<void> {
   await client(serverUrl).delete(`/api/channels/${id}`)
 }
 
@@ -61,7 +59,13 @@ export async function hideChannel(
 export async function fetchChannelPermissions(
   serverUrl: string,
   channelId: string,
-): Promise<{ can_write: boolean; locked: boolean; can_view: boolean; hidden: boolean; permissions?: Record<string, boolean> }> {
+): Promise<{
+  can_write: boolean
+  locked: boolean
+  can_view: boolean
+  hidden: boolean
+  permissions?: Record<string, boolean>
+}> {
   const res = await client(serverUrl).get(`/api/channels/${channelId}/permissions`)
   return res.data
 }
@@ -69,7 +73,17 @@ export async function fetchChannelPermissions(
 export async function fetchChannelOverrides(
   serverUrl: string,
   channelId: string,
-): Promise<{ channel_id: string; role_id: string; role_name: string; role_color: string; role_position: number; allow_permissions: Record<string, boolean>; deny_permissions: Record<string, boolean> }[]> {
+): Promise<
+  {
+    channel_id: string
+    role_id: string
+    role_name: string
+    role_color: string
+    role_position: number
+    allow_permissions: Record<string, boolean>
+    deny_permissions: Record<string, boolean>
+  }[]
+> {
   const res = await client(serverUrl).get(`/api/channels/${channelId}/overrides`)
   return res.data.overrides ?? []
 }
@@ -97,9 +111,7 @@ export async function deleteChannelOverride(
 
 // ─── Channel Mutes ─────────────────────────────────────────
 
-export async function fetchChannelMutes(
-  serverUrl: string,
-): Promise<ChannelMute[]> {
+export async function fetchChannelMutes(serverUrl: string): Promise<ChannelMute[]> {
   const res = await client(serverUrl).get('/api/mutes')
   return res.data.mutes ?? res.data
 }
@@ -113,10 +125,7 @@ export async function setChannelMute(
   return res.data.mute ?? res.data
 }
 
-export async function deleteChannelMute(
-  serverUrl: string,
-  channelId: string,
-): Promise<void> {
+export async function deleteChannelMute(serverUrl: string, channelId: string): Promise<void> {
   await client(serverUrl).delete(`/api/mutes/${channelId}`)
 }
 
@@ -143,10 +152,6 @@ export async function updateCategory(
   await client(serverUrl).patch(`/api/categories/${categoryId}`, { name })
 }
 
-export async function deleteCategory(
-  serverUrl: string,
-  categoryId: string,
-): Promise<void> {
+export async function deleteCategory(serverUrl: string, categoryId: string): Promise<void> {
   await client(serverUrl).delete(`/api/categories/${categoryId}`)
 }
-

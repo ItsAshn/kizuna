@@ -8,7 +8,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 
 const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   { label, error, id, className = '', ...props },
-  ref
+  ref,
 ) {
   const autoId = useId()
   const inputId = id ?? autoId

@@ -62,9 +62,7 @@ export default function ChannelAccessModal({ channel, onClose }: Props) {
 
   function toggleRole(roleId: string) {
     setHiddenRoleIds((prev) => {
-      const next = prev.includes(roleId)
-        ? prev.filter((id) => id !== roleId)
-        : [...prev, roleId]
+      const next = prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId]
       handleHideChange(true, next)
       return next
     })
@@ -113,18 +111,21 @@ export default function ChannelAccessModal({ channel, onClose }: Props) {
               <span className="channel-access__roles-label">Hidden from:</span>
               {loading && <span className="channel-access__loading">Loading roles...</span>}
               {!loading && roles.length === 0 && (
-                <span className="channel-access__empty">No roles. Create roles in Server Settings.</span>
+                <span className="channel-access__empty">
+                  No roles. Create roles in Server Settings.
+                </span>
               )}
-              {!loading && roles.map((r) => (
-                <Checkbox
-                  key={r.id}
-                  checked={hiddenRoleIds.includes(r.id)}
-                  onChange={() => toggleRole(r.id)}
-                  disabled={savingHide}
-                  label={r.name}
-                  ariaLabel={`Hide from ${r.name}`}
-                />
-              ))}
+              {!loading &&
+                roles.map((r) => (
+                  <Checkbox
+                    key={r.id}
+                    checked={hiddenRoleIds.includes(r.id)}
+                    onChange={() => toggleRole(r.id)}
+                    disabled={savingHide}
+                    label={r.name}
+                    ariaLabel={`Hide from ${r.name}`}
+                  />
+                ))}
             </div>
           )}
         </div>

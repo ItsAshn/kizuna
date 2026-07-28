@@ -39,32 +39,35 @@ export function usePullToRefresh({
   const lastY = useRef(0)
   const lastTime = useRef(0)
 
-  const animateSpring = useCallback((fromDistance: number) => {
-    let d = fromDistance
-    let v = velocity.current
+  const animateSpring = useCallback(
+    (fromDistance: number) => {
+      let d = fromDistance
+      let v = velocity.current
 
-    function step() {
-      const force = -SPRING_TENSION * d
-      const damping = SPRING_FRICTION * v
-      const acceleration = (force - damping) / 1
-      v += acceleration * (1 / 60)
-      d += v * (1 / 60)
+      function step() {
+        const force = -SPRING_TENSION * d
+        const damping = SPRING_FRICTION * v
+        const acceleration = (force - damping) / 1
+        v += acceleration * (1 / 60)
+        d += v * (1 / 60)
 
-      if (Math.abs(d) < 0.5 && Math.abs(v) < 1) {
-        setState((s) => ({ ...s, pulling: false, pullDistance: 0, indicatorOpacity: 0 }))
-        return
+        if (Math.abs(d) < 0.5 && Math.abs(v) < 1) {
+          setState((s) => ({ ...s, pulling: false, pullDistance: 0, indicatorOpacity: 0 }))
+          return
+        }
+
+        setState((s) => ({
+          ...s,
+          pullDistance: Math.max(0, d),
+          indicatorOpacity: Math.max(0, Math.min(1, d / threshold)),
+        }))
+        animFrame.current = requestAnimationFrame(step)
       }
 
-      setState((s) => ({
-        ...s,
-        pullDistance: Math.max(0, d),
-        indicatorOpacity: Math.max(0, Math.min(1, d / threshold)),
-      }))
       animFrame.current = requestAnimationFrame(step)
-    }
-
-    animFrame.current = requestAnimationFrame(step)
-  }, [threshold])
+    },
+    [threshold],
+  )
 
   const containerRef = useCallback(
     (el: HTMLElement | null) => {
@@ -72,75 +75,81 @@ export function usePullToRefresh({
       if (!el || disabled) return
       const target = el
 
-    function handleTouchStart(e: TouchEvent) {
-      if (disabled || state.refreshing) return
-      // Only trigger pull when at the very top of the scroll
-      if (target.scrollTop > 2) return
-      if (e.touches.length !== 1) return
+      function handleTouchStart(e: TouchEvent) {
+        if (disabled || state.refreshing) return
+        // Only trigger pull when at the very top of the scroll
+        if (target.scrollTop > 2) return
+        if (e.touches.length !== 1) return
 
-      const touch = e.touches[0]
-      startY.current = touch.clientY
-      currentY.current = touch.clientY
-      lastY.current = touch.clientY
-      lastTime.current = Date.now()
-      pulling.current = false
-    }
-
-    function handleTouchMove(e: TouchEvent) {
-      if (disabled || state.refreshing) return
-      if (e.touches.length !== 1) return
-
-      const touch = e.touches[0]
-      currentY.current = touch.clientY
-
-      const dy = touch.clientY - startY.current
-      if (dy > 5 && !pulling.current && target.scrollTop <= 0) {
-        pulling.current = true
-      }
-      if (!pulling.current) return
-
-      const now = Date.now()
-      const dt = now - lastTime.current
-      if (dt > 0) {
-        velocity.current = (touch.clientY - lastY.current) / dt * 16
-      }
-      lastY.current = touch.clientY
-      lastTime.current = now
-
-      if (dy > 5) {
-        e.preventDefault()
+        const touch = e.touches[0]
+        startY.current = touch.clientY
+        currentY.current = touch.clientY
+        lastY.current = touch.clientY
+        lastTime.current = Date.now()
+        pulling.current = false
       }
 
-      // Rubber-band damping: resistance increases as pull grows
-      const damped = Math.min(dy * 0.5, MAX_PULL)
-      setState({
-        pulling: true,
-        refreshing: false,
-        pullDistance: damped,
-        indicatorOpacity: Math.min(1, damped / threshold),
-      })
-    }
+      function handleTouchMove(e: TouchEvent) {
+        if (disabled || state.refreshing) return
+        if (e.touches.length !== 1) return
 
-    function handleTouchEnd() {
-      if (!pulling.current) return
-      pulling.current = false
+        const touch = e.touches[0]
+        currentY.current = touch.clientY
 
-      if (state.pullDistance >= threshold && !state.refreshing) {
-        setState((s) => ({ ...s, pulling: false, refreshing: true, pullDistance: threshold, indicatorOpacity: 1 }))
-        const result = onRefresh()
-        if (result instanceof Promise) {
-          result.finally(() => {
-            animateSpring(threshold)
-            setState((s) => ({ ...s, refreshing: false }))
-          })
-        } else {
-          setState((s) => ({ ...s, refreshing: false }))
-          animateSpring(threshold)
+        const dy = touch.clientY - startY.current
+        if (dy > 5 && !pulling.current && target.scrollTop <= 0) {
+          pulling.current = true
         }
-      } else {
-        animateSpring(state.pullDistance)
+        if (!pulling.current) return
+
+        const now = Date.now()
+        const dt = now - lastTime.current
+        if (dt > 0) {
+          velocity.current = ((touch.clientY - lastY.current) / dt) * 16
+        }
+        lastY.current = touch.clientY
+        lastTime.current = now
+
+        if (dy > 5) {
+          e.preventDefault()
+        }
+
+        // Rubber-band damping: resistance increases as pull grows
+        const damped = Math.min(dy * 0.5, MAX_PULL)
+        setState({
+          pulling: true,
+          refreshing: false,
+          pullDistance: damped,
+          indicatorOpacity: Math.min(1, damped / threshold),
+        })
       }
-    }
+
+      function handleTouchEnd() {
+        if (!pulling.current) return
+        pulling.current = false
+
+        if (state.pullDistance >= threshold && !state.refreshing) {
+          setState((s) => ({
+            ...s,
+            pulling: false,
+            refreshing: true,
+            pullDistance: threshold,
+            indicatorOpacity: 1,
+          }))
+          const result = onRefresh()
+          if (result instanceof Promise) {
+            result.finally(() => {
+              animateSpring(threshold)
+              setState((s) => ({ ...s, refreshing: false }))
+            })
+          } else {
+            setState((s) => ({ ...s, refreshing: false }))
+            animateSpring(threshold)
+          }
+        } else {
+          animateSpring(state.pullDistance)
+        }
+      }
 
       target.addEventListener('touchstart', handleTouchStart, { passive: false })
       target.addEventListener('touchmove', handleTouchMove, { passive: false })

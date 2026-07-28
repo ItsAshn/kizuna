@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  Check, ChevronDown, Copy, Eye, EyeOff, Pencil, RefreshCw, Trash2, Webhook as WebhookIcon,
+  Check,
+  ChevronDown,
+  Copy,
+  Eye,
+  EyeOff,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  Webhook as WebhookIcon,
 } from 'lucide-react'
 import {
   createWebhook,
@@ -64,7 +72,10 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [editing, setEditing] = useState<{ id: string; name: string; avatar: string } | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
-  const [pendingAction, setPendingAction] = useState<{ id: string; kind: 'delete' | 'regenerate' } | null>(null)
+  const [pendingAction, setPendingAction] = useState<{
+    id: string
+    kind: 'delete' | 'regenerate'
+  } | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -77,7 +88,9 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
     if (!serverUrl) return
     setLoading(true)
     try {
-      const list = channel ? await fetchWebhooks(serverUrl, channel.id) : await fetchAllWebhooks(serverUrl)
+      const list = channel
+        ? await fetchWebhooks(serverUrl, channel.id)
+        : await fetchAllWebhooks(serverUrl)
       if (!mountedRef.current) return
       setWebhooks(list)
       setError('')
@@ -90,17 +103,25 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
     }
   }, [serverUrl, channel?.id])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
-  const channelName = useCallback((webhook: Webhook) =>
-    webhook.channel_name ?? channels.find((ch) => ch.id === webhook.channel_id)?.name ?? 'unknown',
-  [channels])
+  const channelName = useCallback(
+    (webhook: Webhook) =>
+      webhook.channel_name ??
+      channels.find((ch) => ch.id === webhook.channel_id)?.name ??
+      'unknown',
+    [channels],
+  )
 
   const handleCopy = async (id: string, text: string) => {
     try {
       await navigator.clipboard.writeText(text)
       setCopiedId(id)
-      setTimeout(() => { if (mountedRef.current) setCopiedId(null) }, 2000)
+      setTimeout(() => {
+        if (mountedRef.current) setCopiedId(null)
+      }, 2000)
     } catch {
       setError('clipboard unavailable — reveal the url and copy it manually')
     }
@@ -109,7 +130,8 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
   const handleCreate = async () => {
     const targetChannel = channel?.id ?? newChannelId
     if (!serverUrl || !newName.trim() || !targetChannel) return
-    setCreating(true); setError('')
+    setCreating(true)
+    setError('')
     try {
       const webhook = await createWebhook(serverUrl, targetChannel, newName.trim())
       if (!mountedRef.current) return
@@ -127,7 +149,8 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
 
   const handleSaveEdit = async () => {
     if (!serverUrl || !editing || !editing.name.trim()) return
-    setSavingEdit(true); setError('')
+    setSavingEdit(true)
+    setError('')
     try {
       const updated = await updateWebhook(serverUrl, editing.id, {
         name: editing.name.trim(),
@@ -145,7 +168,8 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
 
   const handleRegenerate = async (id: string) => {
     if (!serverUrl) return
-    setBusyId(id); setError('')
+    setBusyId(id)
+    setError('')
     try {
       const updated = await regenerateWebhookToken(serverUrl, id)
       if (!mountedRef.current) return
@@ -155,13 +179,17 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
     } catch (err) {
       if (mountedRef.current) setError(handleApiErr(err))
     } finally {
-      if (mountedRef.current) { setBusyId(null); setPendingAction(null) }
+      if (mountedRef.current) {
+        setBusyId(null)
+        setPendingAction(null)
+      }
     }
   }
 
   const handleDelete = async (id: string) => {
     if (!serverUrl) return
-    setBusyId(id); setError('')
+    setBusyId(id)
+    setError('')
     try {
       await deleteWebhook(serverUrl, id)
       if (!mountedRef.current) return
@@ -169,7 +197,10 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
     } catch (err) {
       if (mountedRef.current) setError(handleApiErr(err))
     } finally {
-      if (mountedRef.current) { setBusyId(null); setPendingAction(null) }
+      if (mountedRef.current) {
+        setBusyId(null)
+        setPendingAction(null)
+      }
     }
   }
 
@@ -192,11 +223,15 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
             value={newName}
             maxLength={80}
             onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && canCreate) handleCreate() }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && canCreate) handleCreate()
+            }}
           />
           {!channel && (
             <div className="ui-field webhook-mgr__channel-field">
-              <label className="ui-field__label" htmlFor="webhook-channel">channel</label>
+              <label className="ui-field__label" htmlFor="webhook-channel">
+                channel
+              </label>
               <select
                 id="webhook-channel"
                 className="webhook-mgr__select"
@@ -204,7 +239,11 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
                 onChange={(e) => setNewChannelId(e.target.value)}
               >
                 {textChannels.length === 0 && <option value="">no text channels</option>}
-                {textChannels.map((ch) => <option key={ch.id} value={ch.id}>#{ch.name}</option>)}
+                {textChannels.map((ch) => (
+                  <option key={ch.id} value={ch.id}>
+                    #{ch.name}
+                  </option>
+                ))}
               </select>
             </div>
           )}
@@ -214,7 +253,11 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
         </Button>
       </div>
 
-      {error && <p className="webhook-mgr__error" role="alert">{error}</p>}
+      {error && (
+        <p className="webhook-mgr__error" role="alert">
+          {error}
+        </p>
+      )}
 
       <div className="webhook-mgr__list-head">
         <span className="webhook-mgr__list-title">
@@ -238,7 +281,10 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
           const confirm = pendingAction?.id === webhook.id ? pendingAction.kind : null
 
           return (
-            <div key={webhook.id} className={`webhook-mgr__item${isExpanded ? ' webhook-mgr__item--open' : ''}`}>
+            <div
+              key={webhook.id}
+              className={`webhook-mgr__item${isExpanded ? ' webhook-mgr__item--open' : ''}`}
+            >
               <div className="webhook-mgr__row">
                 <Avatar src={webhook.avatar} name={webhook.name} size={32} serverUrl={serverUrl} />
                 <div className="webhook-mgr__meta">
@@ -246,7 +292,8 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
                   <span className="webhook-mgr__sub">
                     #{channelName(webhook)}
                     {webhook.created_by_username && <> · by @{webhook.created_by_username}</>}
-                    {' · last used '}{relativeTime(webhook.last_used_at)}
+                    {' · last used '}
+                    {relativeTime(webhook.last_used_at)}
                   </span>
                 </div>
                 <div className="webhook-mgr__actions">
@@ -259,7 +306,12 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
                   />
                   <IconButton
                     size="sm"
-                    icon={<ChevronDown size={14} className={isExpanded ? 'webhook-mgr__chevron--open' : ''} />}
+                    icon={
+                      <ChevronDown
+                        size={14}
+                        className={isExpanded ? 'webhook-mgr__chevron--open' : ''}
+                      />
+                    }
                     label={isExpanded ? 'hide details' : 'show details'}
                     title="details"
                     active={isExpanded}
@@ -295,10 +347,17 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
                         onChange={(e) => setEditing({ ...editing, avatar: e.target.value })}
                       />
                       <div className="webhook-mgr__edit-actions">
-                        <Button size="sm" onClick={handleSaveEdit} loading={savingEdit} disabled={!editing.name.trim()}>
+                        <Button
+                          size="sm"
+                          onClick={handleSaveEdit}
+                          loading={savingEdit}
+                          disabled={!editing.name.trim()}
+                        >
                           save
                         </Button>
-                        <Button size="sm" variant="secondary" onClick={() => setEditing(null)}>cancel</Button>
+                        <Button size="sm" variant="secondary" onClick={() => setEditing(null)}>
+                          cancel
+                        </Button>
                       </div>
                     </div>
                   ) : (
@@ -311,7 +370,7 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
                         <code>avatar_url</code> override the defaults below.
                       </p>
                       <pre className="webhook-mgr__snippet">
-{`curl -X POST '${isRevealed ? url : maskUrl(url)}' \\
+                        {`curl -X POST '${isRevealed ? url : maskUrl(url)}' \\
   -H 'Content-Type: application/json' \\
   -d '{"content":"hello from ${webhook.name}"}'`}
                       </pre>
@@ -320,7 +379,13 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
                           size="sm"
                           variant="secondary"
                           leadingIcon={<Pencil size={13} />}
-                          onClick={() => setEditing({ id: webhook.id, name: webhook.name, avatar: webhook.avatar ?? '' })}
+                          onClick={() =>
+                            setEditing({
+                              id: webhook.id,
+                              name: webhook.name,
+                              avatar: webhook.avatar ?? '',
+                            })
+                          }
                         >
                           edit
                         </Button>
@@ -356,11 +421,21 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
                           size="sm"
                           variant={confirm === 'delete' ? 'danger' : 'primary'}
                           loading={busyId === webhook.id}
-                          onClick={() => (confirm === 'delete' ? handleDelete(webhook.id) : handleRegenerate(webhook.id))}
+                          onClick={() =>
+                            confirm === 'delete'
+                              ? handleDelete(webhook.id)
+                              : handleRegenerate(webhook.id)
+                          }
                         >
                           {confirm === 'delete' ? 'delete' : 'regenerate'}
                         </Button>
-                        <Button size="sm" variant="secondary" onClick={() => setPendingAction(null)}>cancel</Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setPendingAction(null)}
+                        >
+                          cancel
+                        </Button>
                       </div>
                     </div>
                   )}

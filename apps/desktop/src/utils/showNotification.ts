@@ -38,15 +38,20 @@ function playNotificationSound() {
 
     osc.start(now)
     osc.stop(now + 0.3)
-  } catch { /* AudioContext not available */ }
+  } catch {
+    /* AudioContext not available */
+  }
 }
 
 export async function ensureNotificationPermission(): Promise<void> {
   if (isTauri()) {
     try {
-      const { isPermissionGranted, requestPermission } = await import('@tauri-apps/plugin-notification')
+      const { isPermissionGranted, requestPermission } =
+        await import('@tauri-apps/plugin-notification')
       if (!(await isPermissionGranted())) await requestPermission()
-    } catch { /* plugin unavailable */ }
+    } catch {
+      /* plugin unavailable */
+    }
     return
   }
   if ('Notification' in window && Notification.permission === 'default') {
@@ -60,13 +65,17 @@ function sendOSNotification(title: string, body: string, tag: string) {
       .then(async ({ isPermissionGranted, sendNotification }) => {
         if (await isPermissionGranted()) sendNotification({ title, body })
       })
-      .catch(() => { /* plugin unavailable */ })
+      .catch(() => {
+        /* plugin unavailable */
+      })
     return
   }
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
       new Notification(title, { body, icon: '/Logo.webp', tag })
-    } catch { /* not supported */ }
+    } catch {
+      /* not supported */
+    }
   }
 }
 
@@ -101,10 +110,14 @@ export function showNotification(opts: ShowNotificationOptions) {
     channelId: opts.channelId,
   })
 
-  const tag = opts.type === 'mention' ? `mention-${opts.channelId}` :
-              opts.type === 'announce' ? 'announce' :
-              opts.type === 'dmcall' ? 'dmcall' :
-              `message-${opts.channelId ?? 'unknown'}`
+  const tag =
+    opts.type === 'mention'
+      ? `mention-${opts.channelId}`
+      : opts.type === 'announce'
+        ? 'announce'
+        : opts.type === 'dmcall'
+          ? 'dmcall'
+          : `message-${opts.channelId ?? 'unknown'}`
 
   sendOSNotification(opts.title, opts.body, tag)
 }

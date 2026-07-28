@@ -10,7 +10,10 @@ import './PollPanel.css'
 const EMPTY_POLLS: PollData[] = []
 
 /** Human-readable time remaining until `closesAt` (epoch ms), or a "closed" flag. */
-function describeCloses(closesAt: number | null, now: number): { closed: boolean; text: string } | null {
+function describeCloses(
+  closesAt: number | null,
+  now: number,
+): { closed: boolean; text: string } | null {
   if (!closesAt) return null
   const diff = closesAt - now
   if (diff <= 0) return { closed: true, text: 'Poll closed' }
@@ -30,11 +33,15 @@ interface PollPanelProps {
   onCreatePoll?: () => void
 }
 
-export default function PollPanel({ serverUrl, channelId, isOpen, onClose, onCreatePoll }: PollPanelProps) {
+export default function PollPanel({
+  serverUrl,
+  channelId,
+  isOpen,
+  onClose,
+  onCreatePoll,
+}: PollPanelProps) {
   const session = useServerStore((s) => s.activeSession)
-  const polls = useChatStore(
-    (s) => (channelId ? s.polls[channelId] : undefined) ?? EMPTY_POLLS,
-  )
+  const polls = useChatStore((s) => (channelId ? s.polls[channelId] : undefined) ?? EMPTY_POLLS)
   const removePoll = useChatStore((s) => s.removePoll)
 
   const sortedPolls = useMemo(() => {
@@ -62,43 +69,56 @@ export default function PollPanel({ serverUrl, channelId, isOpen, onClose, onCre
     sortedPolls.forEach((p) => {
       if (!fetchedRef.current.has(p.pollId) && serverUrl) {
         fetchedRef.current.add(p.pollId)
-        fetchPoll(serverUrl, p.pollId).then((res) => {
-          setUserVoteIdsByPoll((prev) => {
-            const next = new Map(prev)
-            next.set(p.pollId, res.poll.userVoteIds)
-            return next
+        fetchPoll(serverUrl, p.pollId)
+          .then((res) => {
+            setUserVoteIdsByPoll((prev) => {
+              const next = new Map(prev)
+              next.set(p.pollId, res.poll.userVoteIds)
+              return next
+            })
           })
-        }).catch(() => {})
+          .catch(() => {})
       }
     })
   }, [sortedPolls, serverUrl])
 
-  const handleVote = useCallback(async (pollId: string, optionId: string) => {
-    if (loadingPollId || !serverUrl) return
-    setLoadingPollId(pollId)
-    try {
-      const res = await votePoll(serverUrl, pollId, optionId)
-      setUserVoteIdsByPoll((prev) => {
-        const next = new Map(prev)
-        next.set(pollId, res.userVoteIds)
-        return next
-      })
-    } catch { /* ignore */ }
-    finally { setLoadingPollId(null) }
-  }, [loadingPollId, serverUrl])
+  const handleVote = useCallback(
+    async (pollId: string, optionId: string) => {
+      if (loadingPollId || !serverUrl) return
+      setLoadingPollId(pollId)
+      try {
+        const res = await votePoll(serverUrl, pollId, optionId)
+        setUserVoteIdsByPoll((prev) => {
+          const next = new Map(prev)
+          next.set(pollId, res.userVoteIds)
+          return next
+        })
+      } catch {
+        /* ignore */
+      } finally {
+        setLoadingPollId(null)
+      }
+    },
+    [loadingPollId, serverUrl],
+  )
 
-  const handleDelete = useCallback(async (pollId: string) => {
-    if (!serverUrl || !channelId) return
-    try {
-      await deletePoll(serverUrl, pollId)
-      removePoll(channelId, pollId)
-    } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
-        'Failed to delete poll'
-      useNotificationStore.getState().addNotification({ type: 'announce', title: 'Poll', body: message })
-    }
-  }, [serverUrl, channelId, removePoll])
+  const handleDelete = useCallback(
+    async (pollId: string) => {
+      if (!serverUrl || !channelId) return
+      try {
+        await deletePoll(serverUrl, pollId)
+        removePoll(channelId, pollId)
+      } catch (err: unknown) {
+        const message =
+          (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          'Failed to delete poll'
+        useNotificationStore
+          .getState()
+          .addNotification({ type: 'announce', title: 'Poll', body: message })
+      }
+    },
+    [serverUrl, channelId, removePoll],
+  )
 
   if (!isOpen || sortedPolls.length === 0) return null
 
@@ -112,7 +132,10 @@ export default function PollPanel({ serverUrl, channelId, isOpen, onClose, onCre
     const isClosed = closesInfo?.closed ?? false
 
     return (
-      <div key={poll.pollId} className={`poll-panel__card${isCompact ? ' poll-panel__card--compact' : ''}`}>
+      <div
+        key={poll.pollId}
+        className={`poll-panel__card${isCompact ? ' poll-panel__card--compact' : ''}`}
+      >
         <div className="poll-panel__card-header">
           <div className="poll-panel__question">{poll.question}</div>
           {canDelete(poll) && (

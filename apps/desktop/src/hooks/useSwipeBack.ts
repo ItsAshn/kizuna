@@ -52,8 +52,7 @@ export function useSwipeBack({ containerRef, canSwipe, onCommit }: SwipeBackOpti
     let velocityX = 0
     let width = 1
 
-    const resolveView = () =>
-      container.querySelector<HTMLElement>(':scope > .mobile-content__view')
+    const resolveView = () => container.querySelector<HTMLElement>(':scope > .mobile-content__view')
 
     function onTouchStart(e: TouchEvent) {
       if (e.touches.length !== 1 || !canSwipe()) return
@@ -107,10 +106,7 @@ export function useSwipeBack({ containerRef, canSwipe, onCommit }: SwipeBackOpti
       if (!el) return
 
       const remaining = commit ? width - fromX : fromX
-      const duration = Math.min(
-        320,
-        Math.max(120, remaining / Math.max(Math.abs(velocityX), 0.6)),
-      )
+      const duration = Math.min(320, Math.max(120, remaining / Math.max(Math.abs(velocityX), 0.6)))
       const animation = el.animate(
         [
           { transform: `translateX(${fromX}px)` },
@@ -118,9 +114,7 @@ export function useSwipeBack({ containerRef, canSwipe, onCommit }: SwipeBackOpti
         ],
         {
           duration,
-          easing: commit
-            ? 'cubic-bezier(0.2, 0.8, 0.4, 1)'
-            : 'cubic-bezier(0.22, 1, 0.36, 1)',
+          easing: commit ? 'cubic-bezier(0.2, 0.8, 0.4, 1)' : 'cubic-bezier(0.22, 1, 0.36, 1)',
           fill: 'forwards',
         },
       )

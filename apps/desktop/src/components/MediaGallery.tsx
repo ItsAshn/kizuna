@@ -18,13 +18,21 @@ export default function MediaGallery({ images, onOpen, onClose }: Props) {
             <button
               key={img.url}
               className="media-gallery__item"
-              onClick={() => { onClose(); onOpen(i) }}
+              onClick={() => {
+                onClose()
+                onOpen(i)
+              }}
               aria-label={img.filename}
             >
               {/\.(mp4|webm|ogg)$/i.test(img.url) ? (
                 <video src={img.url} className="media-gallery__media" muted preload="metadata" />
               ) : (
-                <img src={img.url} alt={img.filename} className="media-gallery__media" loading="lazy" />
+                <img
+                  src={img.url}
+                  alt={img.filename}
+                  className="media-gallery__media"
+                  loading="lazy"
+                />
               )}
             </button>
           ))}

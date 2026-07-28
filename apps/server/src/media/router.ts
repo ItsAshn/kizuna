@@ -20,15 +20,15 @@ const MEDIA_CODECS: mediasoupTypes.RtpCodecCapability[] = [
     channels: 2,
     preferredPayloadType: 111,
     parameters: {
-      'useinbandfec': 1,
-      'minptime': 10,
-      'maxaveragebitrate': 256000,
-      'maxplaybackrate': 48000,
+      useinbandfec: 1,
+      minptime: 10,
+      maxaveragebitrate: 256000,
+      maxplaybackrate: 48000,
       'sprop-maxcapturerate': 48000,
       'sprop-stereo': 0,
-      'stereo': 0,
-      'usedtx': 1,
-      'cbr': 0,
+      stereo: 0,
+      usedtx: 1,
+      cbr: 0,
     },
   },
   {
@@ -56,7 +56,6 @@ export async function createRouter(channelId: string): Promise<mediasoupTypes.Ro
   return router
 }
 
-
 export { ensureRouter as getOrCreateRouter }
 
 export async function ensureRouter(channelId: string): Promise<mediasoupTypes.Router> {
@@ -68,11 +67,15 @@ export async function ensureRouter(channelId: string): Promise<mediasoupTypes.Ro
   return createRouter(channelId)
 }
 
-export async function createTransport(router: mediasoupTypes.Router): Promise<mediasoupTypes.WebRtcTransport> {
+export async function createTransport(
+  router: mediasoupTypes.Router,
+): Promise<mediasoupTypes.WebRtcTransport> {
   const listenIp = process.env.MEDIASOUP_LISTEN_IP || '0.0.0.0'
   const announcedIp = process.env.PUBLIC_ADDRESS || undefined
 
-  rlog(`createTransport | listenIp=${listenIp} | announcedIp=${announcedIp ?? 'none'} | enableUdp=true | enableTcp=true`)
+  rlog(
+    `createTransport | listenIp=${listenIp} | announcedIp=${announcedIp ?? 'none'} | enableUdp=true | enableTcp=true`,
+  )
   const transport = await router.createWebRtcTransport({
     listenIps: [{ ip: listenIp, announcedIp }],
     enableUdp: true,
@@ -81,7 +84,9 @@ export async function createTransport(router: mediasoupTypes.Router): Promise<me
     initialAvailableOutgoingBitrate: 5000000,
   })
 
-  rlog(`createTransport OK | transportId=${transport.id} | iceCandidates=${transport.iceCandidates?.length ?? 0}`)
+  rlog(
+    `createTransport OK | transportId=${transport.id} | iceCandidates=${transport.iceCandidates?.length ?? 0}`,
+  )
   return transport
 }
 
@@ -94,7 +99,11 @@ export async function connectTransport(
 
 export async function produceOnTransport(
   transport: mediasoupTypes.WebRtcTransport,
-  options: { kind: 'audio' | 'video'; rtpParameters: mediasoupTypes.RtpParameters; source?: 'camera' | 'screen' },
+  options: {
+    kind: 'audio' | 'video'
+    rtpParameters: mediasoupTypes.RtpParameters
+    source?: 'camera' | 'screen'
+  },
 ): Promise<mediasoupTypes.Producer> {
   return transport.produce({
     kind: options.kind,
@@ -120,7 +129,9 @@ export async function consumeOnTransport(
       appData: {},
     })
 
-    rlog(`consumeOnTransport OK | consumerId=${consumer.id} | kind=${consumer.kind} | type=${consumer.type} | producerPaused=${consumer.producerPaused}`)
+    rlog(
+      `consumeOnTransport OK | consumerId=${consumer.id} | kind=${consumer.kind} | type=${consumer.type} | producerPaused=${consumer.producerPaused}`,
+    )
     io.to(socketId).emit('voice:newConsumer', {
       id: consumer.id,
       producerId,

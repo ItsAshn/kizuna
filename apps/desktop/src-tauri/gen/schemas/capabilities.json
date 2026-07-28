@@ -1,1 +1,15 @@
-{"default":{"identifier":"default","description":"Default capabilities for the Kizuna desktop app","local":true,"windows":["main"],"permissions":["core:default","core:event:default","updater:default","notification:default","process:default"]}}
+{
+  "default": {
+    "identifier": "default",
+    "description": "Default capabilities for the Kizuna desktop app",
+    "local": true,
+    "windows": ["main"],
+    "permissions": [
+      "core:default",
+      "core:event:default",
+      "updater:default",
+      "notification:default",
+      "process:default"
+    ]
+  }
+}

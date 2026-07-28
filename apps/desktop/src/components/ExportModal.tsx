@@ -17,13 +17,16 @@ export default function ExportModal({ onClose }: Props) {
   const jsonData = JSON.stringify({ servers })
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(jsonData).then(() => {
-      setStatus('copied to clipboard')
-      setStatusIsError(false)
-    }).catch(() => {
-      setStatus('failed to copy')
-      setStatusIsError(true)
-    })
+    navigator.clipboard
+      .writeText(jsonData)
+      .then(() => {
+        setStatus('copied to clipboard')
+        setStatusIsError(false)
+      })
+      .catch(() => {
+        setStatus('failed to copy')
+        setStatusIsError(true)
+      })
   }
 
   const handleImport = () => {
@@ -50,11 +53,17 @@ export default function ExportModal({ onClose }: Props) {
       onClose={onClose}
       title="// data"
       className="export-modal"
-      footer={(handleClose) => <Button variant="secondary" onClick={handleClose} className="export-modal__done-btn">close</Button>}
+      footer={(handleClose) => (
+        <Button variant="secondary" onClick={handleClose} className="export-modal__done-btn">
+          close
+        </Button>
+      )}
     >
       <label className="export-modal__label">exported json</label>
       <pre className="export-modal__json">{jsonData}</pre>
-      <button onClick={handleCopy} className="export-modal__copy-btn">copy json</button>
+      <button onClick={handleCopy} className="export-modal__copy-btn">
+        copy json
+      </button>
 
       <label className="export-modal__label">paste exported json</label>
       <textarea
@@ -63,12 +72,18 @@ export default function ExportModal({ onClose }: Props) {
         value={importText}
         onChange={(e) => setImportText(e.target.value)}
       />
-      <button onClick={handleImport} className="export-modal__import-btn" disabled={!importText.trim()}>
+      <button
+        onClick={handleImport}
+        className="export-modal__import-btn"
+        disabled={!importText.trim()}
+      >
         import
       </button>
 
       {status && (
-        <p className={`export-modal__status ${statusIsError ? 'export-modal__status--err' : 'export-modal__status--ok'}`}>
+        <p
+          className={`export-modal__status ${statusIsError ? 'export-modal__status--err' : 'export-modal__status--ok'}`}
+        >
           {status}
         </p>
       )}

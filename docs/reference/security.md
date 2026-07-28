@@ -11,9 +11,9 @@ If you discover a security vulnerability in Kizuna, please report it privately b
 
 ## Supported Versions
 
-| Version | Supported |
-|---|---|
-| 0.1.x | :white_check_mark: |
+| Version | Supported          |
+| ------- | ------------------ |
+| 0.1.x   | :white_check_mark: |
 
 ## Security Model
 

@@ -5,7 +5,21 @@ import jwt from 'jsonwebtoken'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb, getDbPath } from '../db'
-import { requirePermission, adminMiddleware, authMiddleware, getUserPermissions, hasPermission, getUserInfo, isUserAdmin, isUserHost, assignDefaultRoles, clearPermissionCache, markMemberRemoved, clearMemberRemoval, revokeUserSessions } from '../middleware/auth'
+import {
+  requirePermission,
+  adminMiddleware,
+  authMiddleware,
+  getUserPermissions,
+  hasPermission,
+  getUserInfo,
+  isUserAdmin,
+  isUserHost,
+  assignDefaultRoles,
+  clearPermissionCache,
+  markMemberRemoved,
+  clearMemberRemoval,
+  revokeUserSessions,
+} from '../middleware/auth'
 import { getAllPeers } from '../socket/voiceHandler'
 import { getAuth } from '../utils/auth'
 import { getIo, emitIo, disconnectUserSockets } from '../utils/io'
@@ -16,44 +30,88 @@ import { logAuditEvent } from './audit'
 // missing, expired, or exhausted.
 export function consumeInviteCode(code: string): boolean {
   const db = getDb()
-  const result = db.prepare(
-    'UPDATE invite_codes SET uses = uses + 1 WHERE code = ? AND (max_uses IS NULL OR uses < max_uses) AND (expires_at IS NULL OR expires_at > unixepoch())'
-  ).run(code.toUpperCase())
+  const result = db
+    .prepare(
+      'UPDATE invite_codes SET uses = uses + 1 WHERE code = ? AND (max_uses IS NULL OR uses < max_uses) AND (expires_at IS NULL OR expires_at > unixepoch())',
+    )
+    .run(code.toUpperCase())
   return result.changes > 0
 }
 
 export function getMemberById(userId: string) {
   const db = getDb()
-  const user = db.prepare(`
+  const user = db
+    .prepare(
+      `
     SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.last_seen_at, u.reset_requested_at, u.status_text, u.status_emoji, u.status_sticker_id, u.created_at, sm.is_host, sm.joined_at, sm.custom_role_id
     FROM users u
     LEFT JOIN server_members sm ON sm.user_id = u.id
     WHERE u.id = ?
-  `).get(userId) as {
-    id: string; username: string; display_name: string | null;
-    avatar: string | null; banner: string | null; public_key: string | null;
-    last_seen_at: number | null; reset_requested_at: number | null;
-    status_text: string | null; status_emoji: string | null;
-    status_sticker_id: string | null; created_at: number;
-    is_host: number; joined_at: number | null; custom_role_id: string | null
-  } | undefined
+  `,
+    )
+    .get(userId) as
+    | {
+        id: string
+        username: string
+        display_name: string | null
+        avatar: string | null
+        banner: string | null
+        public_key: string | null
+        last_seen_at: number | null
+        reset_requested_at: number | null
+        status_text: string | null
+        status_emoji: string | null
+        status_sticker_id: string | null
+        created_at: number
+        is_host: number
+        joined_at: number | null
+        custom_role_id: string | null
+      }
+    | undefined
   if (!user) return null
 
-  const memberRoles = db.prepare(`
+  const memberRoles = db
+    .prepare(
+      `
     SELECT mr.user_id, r.id, r.name, r.color, r.permissions, r.is_admin, r.position, r.hoist
     FROM member_roles mr
     JOIN roles r ON mr.role_id = r.id
     WHERE mr.user_id = ?
     ORDER BY r.position ASC
-  `).all(userId) as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number; position: number; hoist: number }[]
+  `,
+    )
+    .all(userId) as {
+    user_id: string
+    id: string
+    name: string
+    color: string
+    permissions: string
+    is_admin: number
+    position: number
+    hoist: number
+  }[]
 
-  const rolesByUser: { id: string; name: string; color: string; permissions: Record<string, boolean>; is_admin: boolean; position: number; hoist: boolean }[] = []
+  const rolesByUser: {
+    id: string
+    name: string
+    color: string
+    permissions: Record<string, boolean>
+    is_admin: boolean
+    position: number
+    hoist: boolean
+  }[] = []
   for (const row of memberRoles) {
     rolesByUser.push({
       id: row.id,
       name: row.name,
       color: row.color,
-      permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
+      permissions: (() => {
+        try {
+          return JSON.parse(row.permissions || '{}')
+        } catch {
+          return {}
+        }
+      })(),
       is_admin: row.is_admin === 1,
       position: row.position ?? 0,
       hoist: row.hoist === 1,
@@ -61,22 +119,40 @@ export function getMemberById(userId: string) {
   }
 
   if (user.custom_role_id) {
-    const legacyRoles = db.prepare(`
+    const legacyRoles = db
+      .prepare(
+        `
       SELECT r.id, r.name, r.color, r.permissions, r.is_admin, r.position, r.hoist
       FROM server_members sm
       JOIN roles r ON sm.custom_role_id = r.id
       WHERE sm.user_id = ?
         AND sm.custom_role_id IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = sm.user_id AND mr.role_id = sm.custom_role_id)
-    `).all(userId) as { id: string; name: string; color: string; permissions: string; is_admin: number; position: number; hoist: number }[]
+    `,
+      )
+      .all(userId) as {
+      id: string
+      name: string
+      color: string
+      permissions: string
+      is_admin: number
+      position: number
+      hoist: number
+    }[]
 
     for (const row of legacyRoles) {
-      if (!rolesByUser.some(r => r.id === row.id)) {
+      if (!rolesByUser.some((r) => r.id === row.id)) {
         rolesByUser.push({
           id: row.id,
           name: row.name,
           color: row.color,
-          permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
+          permissions: (() => {
+            try {
+              return JSON.parse(row.permissions || '{}')
+            } catch {
+              return {}
+            }
+          })(),
           is_admin: row.is_admin === 1,
           position: row.position ?? 0,
           hoist: row.hoist === 1,
@@ -85,9 +161,9 @@ export function getMemberById(userId: string) {
     }
   }
 
-  const isAdmin = rolesByUser.some(r => r.is_admin)
+  const isAdmin = rolesByUser.some((r) => r.is_admin)
   const highestRole = rolesByUser.length > 0 ? rolesByUser[rolesByUser.length - 1] : null
-  const hoistedRole = [...rolesByUser].reverse().find(r => r.hoist) || null
+  const hoistedRole = [...rolesByUser].reverse().find((r) => r.hoist) || null
   return {
     id: user.id,
     username: user.username,
@@ -141,15 +217,33 @@ function invalidateServerInfoCache(): void {
 
 function buildServerInfo() {
   const db = getDb()
-  const name = db.prepare("SELECT value FROM server_settings WHERE key = 'server_name'").get() as { value: string } | undefined
-  const description = db.prepare("SELECT value FROM server_settings WHERE key = 'server_description'").get() as { value: string } | undefined
-  const icon = db.prepare("SELECT value FROM server_settings WHERE key = 'server_icon'").get() as { value: string } | undefined
-  const serverUrl = db.prepare("SELECT value FROM server_settings WHERE key = 'server_url'").get() as { value: string } | undefined
-  const backgroundBlur = db.prepare("SELECT value FROM server_settings WHERE key = 'background_blur'").get() as { value: string } | undefined
-  const customCss = db.prepare("SELECT value FROM server_settings WHERE key = 'custom_css'").get() as { value: string } | undefined
-  const voiceBitrateRow = db.prepare("SELECT value FROM server_settings WHERE key = 'voice_bitrate_kbps'").get() as { value: string } | undefined
-  const profanityFilterRow = db.prepare("SELECT value FROM server_settings WHERE key = 'profanity_filter_enabled'").get() as { value: string } | undefined
-  const blockedWordsRow = db.prepare("SELECT value FROM server_settings WHERE key = 'blocked_words'").get() as { value: string } | undefined
+  const name = db.prepare("SELECT value FROM server_settings WHERE key = 'server_name'").get() as
+    | { value: string }
+    | undefined
+  const description = db
+    .prepare("SELECT value FROM server_settings WHERE key = 'server_description'")
+    .get() as { value: string } | undefined
+  const icon = db.prepare("SELECT value FROM server_settings WHERE key = 'server_icon'").get() as
+    | { value: string }
+    | undefined
+  const serverUrl = db
+    .prepare("SELECT value FROM server_settings WHERE key = 'server_url'")
+    .get() as { value: string } | undefined
+  const backgroundBlur = db
+    .prepare("SELECT value FROM server_settings WHERE key = 'background_blur'")
+    .get() as { value: string } | undefined
+  const customCss = db
+    .prepare("SELECT value FROM server_settings WHERE key = 'custom_css'")
+    .get() as { value: string } | undefined
+  const voiceBitrateRow = db
+    .prepare("SELECT value FROM server_settings WHERE key = 'voice_bitrate_kbps'")
+    .get() as { value: string } | undefined
+  const profanityFilterRow = db
+    .prepare("SELECT value FROM server_settings WHERE key = 'profanity_filter_enabled'")
+    .get() as { value: string } | undefined
+  const blockedWordsRow = db
+    .prepare("SELECT value FROM server_settings WHERE key = 'blocked_words'")
+    .get() as { value: string } | undefined
 
   let hasBackground = false
   try {
@@ -177,7 +271,12 @@ function buildServerInfo() {
     profanityFilterEnabled: profanityFilterRow?.value === 'true',
     blockedWords: (() => {
       if (blockedWordsRow?.value) {
-        try { const arr = JSON.parse(blockedWordsRow.value); if (Array.isArray(arr)) return arr } catch { /* ignore */ }
+        try {
+          const arr = JSON.parse(blockedWordsRow.value)
+          if (Array.isArray(arr)) return arr
+        } catch {
+          /* ignore */
+        }
       }
       return []
     })(),
@@ -191,7 +290,11 @@ function getEnvBitrate(): number {
 }
 
 function generateInviteCode(serverUrl: string): string {
-  const encodedUrl = Buffer.from(serverUrl).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const encodedUrl = Buffer.from(serverUrl)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
   const randomPart = uuidv4().replace(/-/g, '').substring(0, 6)
   return `${encodedUrl}.${randomPart}`.toUpperCase()
 }
@@ -199,7 +302,9 @@ function generateInviteCode(serverUrl: string): string {
 function decodeServerUrl(code: string): string {
   const [encodedUrl] = code.split('.')
   try {
-    return Buffer.from((encodedUrl ?? '').replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8')
+    return Buffer.from((encodedUrl ?? '').replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString(
+      'utf-8',
+    )
   } catch {
     throw new Error('Invalid invite code')
   }
@@ -211,26 +316,47 @@ serverInfoRoutes.get('/info', (c) => {
 
 serverInfoRoutes.get('/admins', (c) => {
   const db = getDb()
-  const admins = db.prepare(`
+  const admins = db
+    .prepare(
+      `
     SELECT u.username, u.display_name
     FROM users u
     INNER JOIN server_members sm ON sm.user_id = u.id
     WHERE sm.role = 'admin'
     ORDER BY u.username
-  `).all() as { username: string; display_name: string }[]
+  `,
+    )
+    .all() as { username: string; display_name: string }[]
 
   return c.json({ admins })
 })
 
 serverInfoRoutes.patch('/settings', authMiddleware, adminMiddleware, async (c) => {
-
-  const body = await c.req.json() as { name?: string; icon?: string | null; background_blur?: number; custom_css?: string | null; voice_bitrate_kbps?: number; profanity_filter_enabled?: boolean; blocked_words?: string[] }
-  const { name, icon, background_blur, custom_css, voice_bitrate_kbps, profanity_filter_enabled, blocked_words } = body
+  const body = (await c.req.json()) as {
+    name?: string
+    icon?: string | null
+    background_blur?: number
+    custom_css?: string | null
+    voice_bitrate_kbps?: number
+    profanity_filter_enabled?: boolean
+    blocked_words?: string[]
+  }
+  const {
+    name,
+    icon,
+    background_blur,
+    custom_css,
+    voice_bitrate_kbps,
+    profanity_filter_enabled,
+    blocked_words,
+  } = body
   const db = getDb()
 
   if (name !== undefined) {
     if (!name?.trim()) return c.json({ error: 'name cannot be empty' }, 400)
-    db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('server_name', ?)").run(name.trim())
+    db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('server_name', ?)").run(
+      name.trim(),
+    )
   }
   if (icon !== undefined) {
     if (icon !== null && typeof icon !== 'string') {
@@ -239,12 +365,16 @@ serverInfoRoutes.patch('/settings', authMiddleware, adminMiddleware, async (c) =
     if (icon === null) {
       db.prepare("DELETE FROM server_settings WHERE key = 'server_icon'").run()
     } else {
-      db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('server_icon', ?)").run(icon)
+      db.prepare(
+        "INSERT OR REPLACE INTO server_settings (key, value) VALUES ('server_icon', ?)",
+      ).run(icon)
     }
   }
   if (background_blur !== undefined) {
     const blur = Math.max(0, Math.min(20, background_blur))
-    db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('background_blur', ?)").run(String(blur))
+    db.prepare(
+      "INSERT OR REPLACE INTO server_settings (key, value) VALUES ('background_blur', ?)",
+    ).run(String(blur))
   }
   if (custom_css !== undefined) {
     if (custom_css !== null && typeof custom_css !== 'string') {
@@ -259,12 +389,16 @@ serverInfoRoutes.patch('/settings', authMiddleware, adminMiddleware, async (c) =
     if (custom_css === null) {
       db.prepare("DELETE FROM server_settings WHERE key = 'custom_css'").run()
     } else {
-      db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('custom_css', ?)").run(custom_css)
+      db.prepare(
+        "INSERT OR REPLACE INTO server_settings (key, value) VALUES ('custom_css', ?)",
+      ).run(custom_css)
     }
   }
   if (voice_bitrate_kbps !== undefined) {
     const kbps = Math.max(8, Math.min(512, Math.round(voice_bitrate_kbps)))
-    db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('voice_bitrate_kbps', ?)").run(String(kbps))
+    db.prepare(
+      "INSERT OR REPLACE INTO server_settings (key, value) VALUES ('voice_bitrate_kbps', ?)",
+    ).run(String(kbps))
     const bps = kbps * 1000
     for (const peer of getAllPeers()) {
       for (const [, transport] of peer.transports) {
@@ -277,7 +411,9 @@ serverInfoRoutes.patch('/settings', authMiddleware, adminMiddleware, async (c) =
     }
   }
   if (profanity_filter_enabled !== undefined) {
-    db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('profanity_filter_enabled', ?)").run(String(!!profanity_filter_enabled))
+    db.prepare(
+      "INSERT OR REPLACE INTO server_settings (key, value) VALUES ('profanity_filter_enabled', ?)",
+    ).run(String(!!profanity_filter_enabled))
   }
   if (blocked_words !== undefined) {
     if (!Array.isArray(blocked_words)) {
@@ -288,7 +424,9 @@ serverInfoRoutes.patch('/settings', authMiddleware, adminMiddleware, async (c) =
         return c.json({ error: 'blocked_words must contain only strings' }, 400)
       }
     }
-    db.prepare("INSERT OR REPLACE INTO server_settings (key, value) VALUES ('blocked_words', ?)").run(JSON.stringify(blocked_words))
+    db.prepare(
+      "INSERT OR REPLACE INTO server_settings (key, value) VALUES ('blocked_words', ?)",
+    ).run(JSON.stringify(blocked_words))
   }
 
   invalidateServerInfoCache()
@@ -296,8 +434,7 @@ serverInfoRoutes.patch('/settings', authMiddleware, adminMiddleware, async (c) =
 })
 
 serverInfoRoutes.post('/announce', authMiddleware, adminMiddleware, async (c) => {
-
-  const body = await c.req.json() as { title: string; body: string }
+  const body = (await c.req.json()) as { title: string; body: string }
   const { title, body: announceBody } = body
   if (!title || !announceBody) {
     return c.json({ error: 'title and body are required' }, 400)
@@ -313,56 +450,75 @@ serverInfoRoutes.post('/announce', authMiddleware, adminMiddleware, async (c) =>
   }
 })
 
-serverInfoRoutes.post('/invites', authMiddleware, requirePermission('manage_invites'), async (c) => {
-  const user = getAuth(c)
+serverInfoRoutes.post(
+  '/invites',
+  authMiddleware,
+  requirePermission('manage_invites'),
+  async (c) => {
+    const user = getAuth(c)
 
-  const body = await c.req.json() as { maxUses?: number | null; expiresInHours?: number | null }
-  const { maxUses, expiresInHours } = body
-  const db = getDb()
+    const body = (await c.req.json()) as { maxUses?: number | null; expiresInHours?: number | null }
+    const { maxUses, expiresInHours } = body
+    const db = getDb()
 
-  let serverUrl = process.env.SERVER_URL || ''
-  if (!serverUrl) {
-    const publicAddress = process.env.PUBLIC_ADDRESS || 'localhost'
-    const port = process.env.SERVER_PORT || '5000'
-    serverUrl = `http://${publicAddress}:${port}`
-  }
+    let serverUrl = process.env.SERVER_URL || ''
+    if (!serverUrl) {
+      const publicAddress = process.env.PUBLIC_ADDRESS || 'localhost'
+      const port = process.env.SERVER_PORT || '5000'
+      serverUrl = `http://${publicAddress}:${port}`
+    }
 
-  const max = maxUses && maxUses > 0 ? Math.round(maxUses) : null
-  const expiresAt = expiresInHours && expiresInHours > 0
-    ? Math.floor(Date.now() / 1000) + Math.round(expiresInHours * 3600)
-    : null
+    const max = maxUses && maxUses > 0 ? Math.round(maxUses) : null
+    const expiresAt =
+      expiresInHours && expiresInHours > 0
+        ? Math.floor(Date.now() / 1000) + Math.round(expiresInHours * 3600)
+        : null
 
-  const code = generateInviteCode(serverUrl)
+    const code = generateInviteCode(serverUrl)
 
-  db.prepare(
-    'INSERT INTO invite_codes (code, created_by, max_uses, uses, expires_at) VALUES (?, ?, ?, 0, ?)'
-  ).run(code, user.userId, max, expiresAt)
+    db.prepare(
+      'INSERT INTO invite_codes (code, created_by, max_uses, uses, expires_at) VALUES (?, ?, ?, 0, ?)',
+    ).run(code, user.userId, max, expiresAt)
 
-  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as {
-    code: string; created_by: string; max_uses: number | null;
-    uses: number; expires_at: number | null; created_at: number
-  }
-  return c.json({
-    code: invite.code,
-    created_by: invite.created_by,
-    max_uses: invite.max_uses,
-    uses: invite.uses,
-    expires_at: invite.expires_at ? invite.expires_at * 1000 : null,
-    created_at: invite.created_at ? invite.created_at * 1000 : undefined,
-  }, 201)
-})
+    const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as {
+      code: string
+      created_by: string
+      max_uses: number | null
+      uses: number
+      expires_at: number | null
+      created_at: number
+    }
+    return c.json(
+      {
+        code: invite.code,
+        created_by: invite.created_by,
+        max_uses: invite.max_uses,
+        uses: invite.uses,
+        expires_at: invite.expires_at ? invite.expires_at * 1000 : null,
+        created_at: invite.created_at ? invite.created_at * 1000 : undefined,
+      },
+      201,
+    )
+  },
+)
 
 serverInfoRoutes.get('/invites', authMiddleware, requirePermission('manage_invites'), (c) => {
   const db = getDb()
   const now = Math.floor(Date.now() / 1000)
-  const invites = db.prepare(
-    `SELECT * FROM invite_codes
+  const invites = db
+    .prepare(
+      `SELECT * FROM invite_codes
      WHERE (expires_at IS NULL OR expires_at > ?)
        AND (max_uses IS NULL OR uses < max_uses)
-      ORDER BY created_at DESC`
-  ).all(now) as {
-    code: string; created_by: string; max_uses: number | null;
-    uses: number; expires_at: number | null; created_at: number
+      ORDER BY created_at DESC`,
+    )
+    .all(now) as {
+    code: string
+    created_by: string
+    max_uses: number | null
+    uses: number
+    expires_at: number | null
+    created_at: number
   }[]
   const result = invites.map((inv) => ({
     code: inv.code,
@@ -375,23 +531,34 @@ serverInfoRoutes.get('/invites', authMiddleware, requirePermission('manage_invit
   return c.json({ invites: result })
 })
 
-serverInfoRoutes.delete('/invites/:code', authMiddleware, requirePermission('manage_invites'), (c) => {
-  const code = (c.req.param('code') || '').toUpperCase()
-  const db = getDb()
-  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code)
-  if (!invite) return c.json({ error: 'Invite not found' }, 404)
-  db.prepare('DELETE FROM invite_codes WHERE code = ?').run(code)
-  return c.json({ ok: true })
-})
+serverInfoRoutes.delete(
+  '/invites/:code',
+  authMiddleware,
+  requirePermission('manage_invites'),
+  (c) => {
+    const code = (c.req.param('code') || '').toUpperCase()
+    const db = getDb()
+    const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code)
+    if (!invite) return c.json({ error: 'Invite not found' }, 404)
+    db.prepare('DELETE FROM invite_codes WHERE code = ?').run(code)
+    return c.json({ ok: true })
+  },
+)
 
 serverInfoRoutes.post('/join/:code', async (c) => {
   const code = (c.req.param('code') || '').toUpperCase()
   const db = getDb()
 
-  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as {
-    code: string; created_by: string; max_uses: number | null;
-    uses: number; expires_at: number | null; created_at: number
-  } | undefined
+  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as
+    | {
+        code: string
+        created_by: string
+        max_uses: number | null
+        uses: number
+        expires_at: number | null
+        created_at: number
+      }
+    | undefined
   if (!invite) return c.json({ error: 'Invalid invite code' }, 404)
 
   if (invite.expires_at !== null && invite.expires_at * 1000 < Date.now()) {
@@ -418,7 +585,10 @@ serverInfoRoutes.post('/join/:code', async (c) => {
       return c.json({ error: 'Invite has expired or reached maximum uses' }, 400)
     }
 
-    db.prepare('INSERT OR REPLACE INTO server_members (user_id, role) VALUES (?, ?)').run(userId, 'member')
+    db.prepare('INSERT OR REPLACE INTO server_members (user_id, role) VALUES (?, ?)').run(
+      userId,
+      'member',
+    )
     clearMemberRemoval(userId)
     assignDefaultRoles(userId)
     emitIo(c, 'member:added', getMemberById(userId))
@@ -435,7 +605,9 @@ serverInfoRoutes.post('/join/:code', async (c) => {
 serverInfoRoutes.get('/resolve/:code', (c) => {
   const code = (c.req.param('code') || '').toUpperCase()
   const db = getDb()
-  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as { code: string } | undefined
+  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as
+    | { code: string }
+    | undefined
   if (!invite) return c.json({ error: 'Invalid invite code' }, 404)
 
   try {
@@ -452,10 +624,9 @@ serverInfoRoutes.get('/resolve/:code', (c) => {
 })
 
 serverInfoRoutes.patch('/members/:userId/role', authMiddleware, adminMiddleware, async (c) => {
-
   const targetUserId = c.req.param('userId') || ''
   if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
-  const body = await c.req.json() as { role: 'admin' | 'member' }
+  const body = (await c.req.json()) as { role: 'admin' | 'member' }
   const { role } = body
   if (!['admin', 'member'].includes(role)) return c.json({ error: 'Invalid role' }, 400)
 
@@ -470,9 +641,15 @@ serverInfoRoutes.patch('/members/:userId/role', authMiddleware, adminMiddleware,
   db.prepare('UPDATE server_members SET role = ? WHERE user_id = ?').run(role, targetUserId)
 
   if (role === 'admin') {
-    db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(targetUserId, 'admin-role')
+    db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(
+      targetUserId,
+      'admin-role',
+    )
   } else {
-    db.prepare('DELETE FROM member_roles WHERE user_id = ? AND role_id = ?').run(targetUserId, 'admin-role')
+    db.prepare('DELETE FROM member_roles WHERE user_id = ? AND role_id = ?').run(
+      targetUserId,
+      'admin-role',
+    )
   }
 
   const updatedMember = getMemberById(targetUserId)
@@ -484,71 +661,87 @@ serverInfoRoutes.patch('/members/:userId/role', authMiddleware, adminMiddleware,
   return c.json({ ok: true })
 })
 
-serverInfoRoutes.delete('/members/:userId', authMiddleware, requirePermission('kick_members'), (c) => {
-  const user = getAuth(c)
+serverInfoRoutes.delete(
+  '/members/:userId',
+  authMiddleware,
+  requirePermission('kick_members'),
+  (c) => {
+    const user = getAuth(c)
 
-  const targetUserId = c.req.param('userId') || ''
-  if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
-  if (targetUserId === user.userId) return c.json({ error: 'Cannot kick yourself' }, 400)
+    const targetUserId = c.req.param('userId') || ''
+    if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
+    if (targetUserId === user.userId) return c.json({ error: 'Cannot kick yourself' }, 400)
 
-  const db = getDb()
-  const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId)
-  if (!member) return c.json({ error: 'Member not found' }, 404)
+    const db = getDb()
+    const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId)
+    if (!member) return c.json({ error: 'Member not found' }, 404)
 
-  const targetInfo = getUserInfo(targetUserId)
-  if (isUserHost(targetUserId)) {
-    return c.json({ error: 'Cannot kick the server host' }, 403)
-  }
-  if (targetInfo && targetInfo.role === 'admin' && !isUserAdmin(user.userId)) {
-    return c.json({ error: 'Cannot kick an admin' }, 403)
-  }
+    const targetInfo = getUserInfo(targetUserId)
+    if (isUserHost(targetUserId)) {
+      return c.json({ error: 'Cannot kick the server host' }, 403)
+    }
+    if (targetInfo && targetInfo.role === 'admin' && !isUserAdmin(user.userId)) {
+      return c.json({ error: 'Cannot kick an admin' }, 403)
+    }
 
-  db.transaction(() => {
-    db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
-    db.prepare('DELETE FROM member_roles WHERE user_id = ?').run(targetUserId)
-    markMemberRemoved(targetUserId, user.userId)
-  })()
+    db.transaction(() => {
+      db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
+      db.prepare('DELETE FROM member_roles WHERE user_id = ?').run(targetUserId)
+      markMemberRemoved(targetUserId, user.userId)
+    })()
 
-  // Without this the kicked client keeps its token and socket, and the next
-  // request would silently re-create the membership row.
-  revokeUserSessions(targetUserId)
-  clearPermissionCache(targetUserId)
-  disconnectUserSockets(c, targetUserId, 'kicked')
+    // Without this the kicked client keeps its token and socket, and the next
+    // request would silently re-create the membership row.
+    revokeUserSessions(targetUserId)
+    clearPermissionCache(targetUserId)
+    disconnectUserSockets(c, targetUserId, 'kicked')
 
-  logAuditEvent(db, 'member_kick', user.userId, targetUserId, null)
-  emitIo(c, 'member:removed', { userId: targetUserId })
-  dispatchOutgoing('member.removed', {
-    user: { id: targetUserId, username: targetInfo?.username, display_name: targetInfo?.displayName },
-    actor: { id: user.userId, username: user.username },
-    reason: 'kicked',
-  })
-  return c.json({ ok: true })
-})
+    logAuditEvent(db, 'member_kick', user.userId, targetUserId, null)
+    emitIo(c, 'member:removed', { userId: targetUserId })
+    dispatchOutgoing('member.removed', {
+      user: {
+        id: targetUserId,
+        username: targetInfo?.username,
+        display_name: targetInfo?.displayName,
+      },
+      actor: { id: user.userId, username: user.username },
+      reason: 'kicked',
+    })
+    return c.json({ ok: true })
+  },
+)
 
-serverInfoRoutes.patch('/members/:userId/custom-role', authMiddleware, adminMiddleware, async (c) => {
+serverInfoRoutes.patch(
+  '/members/:userId/custom-role',
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
+    const targetUserId = c.req.param('userId') || ''
+    if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
+    const body = (await c.req.json()) as { roleId: string | null }
+    const { roleId } = body
 
-  const targetUserId = c.req.param('userId') || ''
-  if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
-  const body = await c.req.json() as { roleId: string | null }
-  const { roleId } = body
+    const db = getDb()
+    const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId)
+    if (!member) return c.json({ error: 'Member not found' }, 404)
 
-  const db = getDb()
-  const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId)
-  if (!member) return c.json({ error: 'Member not found' }, 404)
+    if (roleId !== null) {
+      const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(roleId)
+      if (!role) return c.json({ error: 'Role not found' }, 404)
+    }
 
-  if (roleId !== null) {
-    const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(roleId)
-    if (!role) return c.json({ error: 'Role not found' }, 404)
-  }
-
-  db.prepare('UPDATE server_members SET custom_role_id = ? WHERE user_id = ?').run(roleId, targetUserId)
-  clearPermissionCache(targetUserId)
-  const updatedMember = getMemberById(targetUserId)
-  if (updatedMember) {
-    emitIo(c, 'member:updated', updatedMember)
-  }
-  return c.json({ ok: true })
-})
+    db.prepare('UPDATE server_members SET custom_role_id = ? WHERE user_id = ?').run(
+      roleId,
+      targetUserId,
+    )
+    clearPermissionCache(targetUserId)
+    const updatedMember = getMemberById(targetUserId)
+    if (updatedMember) {
+      emitIo(c, 'member:updated', updatedMember)
+    }
+    return c.json({ ok: true })
+  },
+)
 
 serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
   const user = getAuth(c)
@@ -559,7 +752,7 @@ serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
 
   const targetUserId = c.req.param('userId') || ''
   if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
-  const body = await c.req.json() as { roleId: string }
+  const body = (await c.req.json()) as { roleId: string }
   const { roleId } = body
   if (!roleId) return c.json({ error: 'roleId is required' }, 400)
 
@@ -567,13 +760,18 @@ serverInfoRoutes.post('/members/:userId/roles', authMiddleware, async (c) => {
   const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId)
   if (!member) return c.json({ error: 'Member not found' }, 404)
 
-  const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(roleId) as { is_admin?: number } | undefined
+  const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(roleId) as
+    | { is_admin?: number }
+    | undefined
   if (!role) return c.json({ error: 'Role not found' }, 404)
   if (role.is_admin && !isUserAdmin(user.userId)) {
     return c.json({ error: 'Only an admin can assign an admin role' }, 403)
   }
 
-  db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(targetUserId, roleId)
+  db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(
+    targetUserId,
+    roleId,
+  )
   clearPermissionCache(targetUserId)
   const updatedMember = getMemberById(targetUserId)
   if (updatedMember) {
@@ -597,7 +795,9 @@ serverInfoRoutes.delete('/members/:userId/roles/:roleId', authMiddleware, (c) =>
   if (roleId === 'admin-role' && isUserHost(targetUserId)) {
     return c.json({ error: 'Cannot remove admin role from the server host' }, 403)
   }
-  const targetRole = db.prepare('SELECT is_admin FROM roles WHERE id = ?').get(roleId) as { is_admin?: number } | undefined
+  const targetRole = db.prepare('SELECT is_admin FROM roles WHERE id = ?').get(roleId) as
+    | { is_admin?: number }
+    | undefined
   if (targetRole?.is_admin && !isUserAdmin(user.userId)) {
     return c.json({ error: 'Only an admin can remove an admin role' }, 403)
   }
@@ -610,32 +810,37 @@ serverInfoRoutes.delete('/members/:userId/roles/:roleId', authMiddleware, (c) =>
   return c.json({ ok: true })
 })
 
-serverInfoRoutes.post('/members/:userId/generate-reset', authMiddleware, adminMiddleware, async (c) => {
+serverInfoRoutes.post(
+  '/members/:userId/generate-reset',
+  authMiddleware,
+  adminMiddleware,
+  async (c) => {
+    const targetUserId = c.req.param('userId') || ''
+    if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
 
-  const targetUserId = c.req.param('userId') || ''
-  if (!targetUserId) return c.json({ error: 'Invalid user ID' }, 400)
+    const db = getDb()
+    const target = db.prepare('SELECT id, username FROM users WHERE id = ?').get(targetUserId) as
+      | { id: string; username: string }
+      | undefined
+    if (!target) return c.json({ error: 'User not found' }, 404)
 
-  const db = getDb()
-  const target = db.prepare('SELECT id, username FROM users WHERE id = ?').get(targetUserId) as { id: string; username: string } | undefined
-  if (!target) return c.json({ error: 'User not found' }, 404)
+    const token = randomBytes(32).toString('hex')
+    const expiresAt = Math.floor(Date.now() / 1000) + 86400
 
-  const token = randomBytes(32).toString('hex')
-  const expiresAt = Math.floor(Date.now() / 1000) + 86400
+    db.prepare(
+      'UPDATE users SET reset_token = ?, reset_token_expires_at = ?, reset_requested_at = NULL WHERE id = ?',
+    ).run(token, expiresAt, targetUserId)
 
-  db.prepare(
-    'UPDATE users SET reset_token = ?, reset_token_expires_at = ?, reset_requested_at = NULL WHERE id = ?',
-  ).run(token, expiresAt, targetUserId)
-
-  return c.json({
-    resetToken: token,
-    username: target.username,
-    expiresAt: expiresAt * 1000,
-  })
-})
+    return c.json({
+      resetToken: token,
+      username: target.username,
+      expiresAt: expiresAt * 1000,
+    })
+  },
+)
 
 // POST /background — upload background image (admin only)
 serverInfoRoutes.post('/background', authMiddleware, adminMiddleware, async (c) => {
-
   const contentLength = parseInt(c.req.header('content-length') || '0', 10)
   if (contentLength > MAX_BACKGROUND_SIZE) {
     return c.json({ error: 'File too large. Maximum size is 10MB' }, 413)
@@ -656,13 +861,14 @@ serverInfoRoutes.post('/background', authMiddleware, adminMiddleware, async (c) 
 
   const buffer = Buffer.from(await file.arrayBuffer())
 
-  const magicOk = ext === '.jpg' || ext === '.jpeg'
-    ? buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF
-    : ext === '.png'
-    ? buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47
-    : ext === '.webp'
-    ? buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
-    : false
+  const magicOk =
+    ext === '.jpg' || ext === '.jpeg'
+      ? buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff
+      : ext === '.png'
+        ? buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47
+        : ext === '.webp'
+          ? buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
+          : false
   if (!magicOk) {
     return c.json({ error: 'File content does not match its extension' }, 415)
   }
@@ -710,7 +916,6 @@ serverInfoRoutes.get('/background', (c) => {
 
 // DELETE /background — remove background image (admin only)
 serverInfoRoutes.delete('/background', authMiddleware, adminMiddleware, (c) => {
-
   try {
     const files = fs.readdirSync(BACKGROUNDS_DIR)
     for (const f of files) fs.unlinkSync(path.join(BACKGROUNDS_DIR, f))
@@ -722,16 +927,22 @@ serverInfoRoutes.delete('/background', authMiddleware, adminMiddleware, (c) => {
 
 // GET /storage — storage stats (admin only)
 serverInfoRoutes.get('/storage', authMiddleware, adminMiddleware, (c) => {
-
   const db = getDb()
   const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
   const GIFS_DIR = process.env.GIFS_DIR || path.join(UPLOADS_DIR, 'gifs')
 
-  const attachmentStats = db.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as total_size FROM attachments').get() as { count: number; total_size: number }
-  const auditLogCount = (db.prepare('SELECT COUNT(*) as count FROM audit_logs').get() as { count: number }).count
-  const gifCount = (db.prepare('SELECT COUNT(*) as count FROM gifs').get() as { count: number }).count
+  const attachmentStats = db
+    .prepare('SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as total_size FROM attachments')
+    .get() as { count: number; total_size: number }
+  const auditLogCount = (
+    db.prepare('SELECT COUNT(*) as count FROM audit_logs').get() as { count: number }
+  ).count
+  const gifCount = (db.prepare('SELECT COUNT(*) as count FROM gifs').get() as { count: number })
+    .count
 
-  const filenames = (db.prepare('SELECT url FROM attachments').all() as { url: string }[]).map(r => path.basename(r.url))
+  const filenames = (db.prepare('SELECT url FROM attachments').all() as { url: string }[]).map(
+    (r) => path.basename(r.url),
+  )
   const knownFiles = new Set(filenames)
 
   let orphanCount = 0
@@ -741,7 +952,9 @@ serverInfoRoutes.get('/storage', authMiddleware, adminMiddleware, (c) => {
     for (const entry of entries) {
       if (entry.isFile() && !knownFiles.has(entry.name)) {
         orphanCount++
-        try { orphanSize += fs.statSync(path.join(UPLOADS_DIR, entry.name)).size } catch {}
+        try {
+          orphanSize += fs.statSync(path.join(UPLOADS_DIR, entry.name)).size
+        } catch {}
       }
     }
   } catch {}
@@ -756,7 +969,9 @@ serverInfoRoutes.get('/storage', authMiddleware, adminMiddleware, (c) => {
     const gifEntries = fs.readdirSync(GIFS_DIR, { withFileTypes: true })
     for (const entry of gifEntries) {
       if (entry.isFile()) {
-        try { gifDirSize += fs.statSync(path.join(GIFS_DIR, entry.name)).size } catch {}
+        try {
+          gifDirSize += fs.statSync(path.join(GIFS_DIR, entry.name)).size
+        } catch {}
       }
     }
   } catch {}
@@ -772,11 +987,12 @@ serverInfoRoutes.get('/storage', authMiddleware, adminMiddleware, (c) => {
 
 // POST /cleanup/orphans — delete orphaned attachment files (admin only)
 serverInfoRoutes.post('/cleanup/orphans', authMiddleware, adminMiddleware, (c) => {
-
   const db = getDb()
   const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
 
-  const filenames = (db.prepare('SELECT url FROM attachments').all() as { url: string }[]).map(r => path.basename(r.url))
+  const filenames = (db.prepare('SELECT url FROM attachments').all() as { url: string }[]).map(
+    (r) => path.basename(r.url),
+  )
   const knownFiles = new Set(filenames)
 
   let deletedCount = 0

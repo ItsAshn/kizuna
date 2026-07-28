@@ -3,7 +3,18 @@ import { v4 as uuidv4 } from 'uuid'
 import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { getDb, deleteUserAccount } from '../db'
-import { signToken, authMiddleware, isUserAdmin, isUserHost, getUserInfo, getUserPermissions, getJwtSecret, assignDefaultRoles, isRemovedMember, clearMemberRemoval } from '../middleware/auth'
+import {
+  signToken,
+  authMiddleware,
+  isUserAdmin,
+  isUserHost,
+  getUserInfo,
+  getUserPermissions,
+  getJwtSecret,
+  assignDefaultRoles,
+  isRemovedMember,
+  clearMemberRemoval,
+} from '../middleware/auth'
 import type { JwtPayload } from '../middleware/auth'
 import { generateChallenge, verifyPoW } from '../middleware/pow'
 import { sensitiveAuthLimiter } from '../middleware/rateLimiter'
@@ -25,7 +36,16 @@ authRoutes.get('/challenge', (c) => {
 })
 
 authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
-  const { username, password, display_name, serverPassword, public_key, key_salt, challenge, nonce } = await c.req.json()
+  const {
+    username,
+    password,
+    display_name,
+    serverPassword,
+    public_key,
+    key_salt,
+    challenge,
+    nonce,
+  } = await c.req.json()
 
   if (!username || !password) {
     return c.json({ error: 'username and password required' }, 400)
@@ -44,9 +64,12 @@ authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
   }
 
   if (!/^[\w.-]+$/.test(username)) {
-    return c.json({
-      error: 'Username may only contain letters, numbers, underscores, hyphens, and dots',
-    }, 400)
+    return c.json(
+      {
+        error: 'Username may only contain letters, numbers, underscores, hyphens, and dots',
+      },
+      400,
+    )
   }
 
   if (password.length < 8) {
@@ -69,19 +92,34 @@ authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
 
     db.prepare(
       'INSERT INTO users (id, username, display_name, password_hash, public_key, key_salt, backuptoken_hash) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).run(id, username.toLowerCase().trim(), display_name || username, hash, public_key?.trim() || null, key_salt?.trim() || null, backuptokenHash)
+    ).run(
+      id,
+      username.toLowerCase().trim(),
+      display_name || username,
+      hash,
+      public_key?.trim() || null,
+      key_salt?.trim() || null,
+      backuptokenHash,
+    )
 
     const isFirstUser = db.transaction(() => {
-      const userCount = db
-        .prepare('SELECT COUNT(*) as n FROM server_members')
-        .get() as { n: number }
+      const userCount = db.prepare('SELECT COUNT(*) as n FROM server_members').get() as {
+        n: number
+      }
       const first = userCount.n === 0
-      db.prepare('INSERT INTO server_members (user_id, role, is_host) VALUES (?, ?, ?)').run(id, first ? 'admin' : 'member', first ? 1 : 0)
+      db.prepare('INSERT INTO server_members (user_id, role, is_host) VALUES (?, ?, ?)').run(
+        id,
+        first ? 'admin' : 'member',
+        first ? 1 : 0,
+      )
       return first
     })()
 
     if (isFirstUser) {
-      db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(id, 'admin-role')
+      db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(
+        id,
+        'admin-role',
+      )
     } else {
       assignDefaultRoles(id)
     }
@@ -90,19 +128,31 @@ authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
       .prepare(
         'SELECT id, username, display_name, avatar, public_key, key_salt, created_at FROM users WHERE id = ?',
       )
-      .get(id) as { id: string; username: string; display_name: string; avatar: string | null; public_key: string | null; key_salt: string | null; created_at: number }
+      .get(id) as {
+      id: string
+      username: string
+      display_name: string
+      avatar: string | null
+      public_key: string | null
+      key_salt: string | null
+      created_at: number
+    }
 
-  const tokenId = uuidv4()
-  const token = signToken({ userId: user.id, username: user.username, tokenId })
-  db.prepare('INSERT OR REPLACE INTO sessions (token_id, user_id, created_at) VALUES (?, ?, unixepoch())').run(tokenId, user.id)
-  c.header(
-    'Set-Cookie',
-    `kizuna_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
-  )
-  emitIo(c, 'member:added', getMemberById(id))
-  dispatchOutgoing('member.joined', { user: { id, username: user.username, display_name: user.display_name } })
+    const tokenId = uuidv4()
+    const token = signToken({ userId: user.id, username: user.username, tokenId })
+    db.prepare(
+      'INSERT OR REPLACE INTO sessions (token_id, user_id, created_at) VALUES (?, ?, unixepoch())',
+    ).run(tokenId, user.id)
+    c.header(
+      'Set-Cookie',
+      `kizuna_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
+    )
+    emitIo(c, 'member:added', getMemberById(id))
+    dispatchOutgoing('member.joined', {
+      user: { id, username: user.username, display_name: user.display_name },
+    })
 
-  return c.json(
+    return c.json(
       {
         token,
         user: { ...user, role: isFirstUser ? 'admin' : 'member', is_host: isFirstUser },
@@ -129,7 +179,19 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
   const db = getDb()
   const user = db
     .prepare('SELECT * FROM users WHERE username = ?')
-    .get(username.toLowerCase().trim()) as { id: string; username: string; display_name: string; avatar: string | null; banner: string | null; password_hash: string; public_key: string | null; key_salt: string | null; created_at: number } | undefined
+    .get(username.toLowerCase().trim()) as
+    | {
+        id: string
+        username: string
+        display_name: string
+        avatar: string | null
+        banner: string | null
+        password_hash: string
+        public_key: string | null
+        key_salt: string | null
+        created_at: number
+      }
+    | undefined
 
   if (!user) {
     return c.json({ error: 'Invalid credentials' }, 401)
@@ -140,7 +202,9 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
     return c.json({ error: 'Invalid credentials' }, 401)
   }
 
-  const ban = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(user.id) as { id: string } | undefined
+  const ban = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(user.id) as
+    | { id: string }
+    | undefined
   if (ban) {
     return c.json({ error: 'You are banned from this server' }, 403)
   }
@@ -153,10 +217,13 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
   // re-add them — they need an invite to rejoin (or an admin to re-add them).
   if (!member && isRemovedMember(user.id)) {
     if (!inviteCode || typeof inviteCode !== 'string' || !consumeInviteCode(inviteCode.trim())) {
-      return c.json({
-        error: 'You have been removed from this server. You need a valid invite code to rejoin.',
-        code: 'removed_from_server',
-      }, 403)
+      return c.json(
+        {
+          error: 'You have been removed from this server. You need a valid invite code to rejoin.',
+          code: 'removed_from_server',
+        },
+        403,
+      )
     }
     clearMemberRemoval(user.id)
   }
@@ -164,27 +231,40 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
   if (!member) {
     db.transaction(() => {
       const anyAdmin = db
-        .prepare("SELECT 1 FROM member_roles mr JOIN roles r ON mr.role_id = r.id WHERE r.is_admin = 1")
+        .prepare(
+          'SELECT 1 FROM member_roles mr JOIN roles r ON mr.role_id = r.id WHERE r.is_admin = 1',
+        )
         .get()
       const isFirstAdmin = !anyAdmin
-      db.prepare('INSERT OR IGNORE INTO server_members (user_id, role, is_host) VALUES (?, ?, 0)').run(user.id, isFirstAdmin ? 'admin' : 'member')
+      db.prepare(
+        'INSERT OR IGNORE INTO server_members (user_id, role, is_host) VALUES (?, ?, 0)',
+      ).run(user.id, isFirstAdmin ? 'admin' : 'member')
       if (isFirstAdmin) {
-        db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(user.id, 'admin-role')
+        db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)').run(
+          user.id,
+          'admin-role',
+        )
       } else {
         assignDefaultRoles(user.id)
       }
     })()
-    member = db.prepare('SELECT role, is_host FROM server_members WHERE user_id = ?').get(user.id) as { role: string; is_host: number } | undefined
+    member = db
+      .prepare('SELECT role, is_host FROM server_members WHERE user_id = ?')
+      .get(user.id) as { role: string; is_host: number } | undefined
     if (!member) {
       member = { role: 'member', is_host: 0 }
     }
     emitIo(c, 'member:added', getMemberById(user.id))
-    dispatchOutgoing('member.joined', { user: { id: user.id, username: user.username, display_name: user.display_name } })
+    dispatchOutgoing('member.joined', {
+      user: { id: user.id, username: user.username, display_name: user.display_name },
+    })
   }
 
   const tokenId = uuidv4()
   const token = signToken({ userId: user.id, username: user.username, tokenId })
-  db.prepare('INSERT OR REPLACE INTO sessions (token_id, user_id, created_at) VALUES (?, ?, unixepoch())').run(tokenId, user.id)
+  db.prepare(
+    'INSERT OR REPLACE INTO sessions (token_id, user_id, created_at) VALUES (?, ?, unixepoch())',
+  ).run(tokenId, user.id)
   c.header(
     'Set-Cookie',
     `kizuna_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
@@ -213,7 +293,22 @@ authRoutes.get('/me', authMiddleware, (c) => {
     .prepare(
       'SELECT u.id, u.username, u.display_name, u.avatar, u.banner, u.public_key, u.key_salt, u.status_text, u.status_emoji, u.status_sticker_id, u.created_at, sm.is_host FROM users u LEFT JOIN server_members sm ON sm.user_id = u.id WHERE u.id = ?',
     )
-    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; banner: string | null; public_key: string | null; key_salt: string | null; status_text: string | null; status_emoji: string | null; status_sticker_id: string | null; created_at: number; is_host: number | null } | undefined
+    .get(auth.userId) as
+    | {
+        id: string
+        username: string
+        display_name: string
+        avatar: string | null
+        banner: string | null
+        public_key: string | null
+        key_salt: string | null
+        status_text: string | null
+        status_emoji: string | null
+        status_sticker_id: string | null
+        created_at: number
+        is_host: number | null
+      }
+    | undefined
 
   if (!user) {
     return c.json({ error: 'User not found' }, 404)
@@ -222,9 +317,18 @@ authRoutes.get('/me', authMiddleware, (c) => {
   const { is_host, ...userFields } = user
   const perms = getUserPermissions(auth.userId)
 
-  const identityLinks = db.prepare(
-    'SELECT id, linked_server_url, linked_user_id, linked_username, public, linked_at FROM identity_links WHERE user_id = ? ORDER BY linked_at DESC',
-  ).all(auth.userId) as { id: string; linked_server_url: string; linked_user_id: string; linked_username: string; public: number; linked_at: number }[]
+  const identityLinks = db
+    .prepare(
+      'SELECT id, linked_server_url, linked_user_id, linked_username, public, linked_at FROM identity_links WHERE user_id = ? ORDER BY linked_at DESC',
+    )
+    .all(auth.userId) as {
+    id: string
+    linked_server_url: string
+    linked_user_id: string
+    linked_username: string
+    public: number
+    linked_at: number
+  }[]
 
   return c.json({
     user: {
@@ -246,7 +350,11 @@ authRoutes.get('/me', authMiddleware, (c) => {
 
 authRoutes.patch('/me/status', authMiddleware, async (c) => {
   const auth = getAuth(c)
-  const { status_text, status_emoji, status_sticker_id } = await c.req.json() as { status_text?: string | null; status_emoji?: string | null; status_sticker_id?: string | null }
+  const { status_text, status_emoji, status_sticker_id } = (await c.req.json()) as {
+    status_text?: string | null
+    status_emoji?: string | null
+    status_sticker_id?: string | null
+  }
 
   const db = getDb()
   const updates: string[] = []
@@ -290,12 +398,15 @@ authRoutes.patch('/me/status', authMiddleware, async (c) => {
     if (io) {
       io.emit('user:status', {
         userId: auth.userId,
-        status_text: status_text !== undefined ? (status_text?.trim().slice(0, 128) || null) : undefined,
-        status_emoji: status_emoji !== undefined ? (status_emoji?.slice(0, 8) || null) : undefined,
-        status_sticker_id: status_sticker_id !== undefined ? (status_sticker_id || null) : undefined,
+        status_text:
+          status_text !== undefined ? status_text?.trim().slice(0, 128) || null : undefined,
+        status_emoji: status_emoji !== undefined ? status_emoji?.slice(0, 8) || null : undefined,
+        status_sticker_id: status_sticker_id !== undefined ? status_sticker_id || null : undefined,
       })
     }
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
 
   return c.json({ ok: true })
 })
@@ -311,7 +422,15 @@ authRoutes.patch('/profile', authMiddleware, async (c) => {
   const db = getDb()
   const user = db
     .prepare('SELECT id, username, display_name, avatar, banner FROM users WHERE id = ?')
-    .get(auth.userId) as { id: string; username: string; display_name: string; avatar: string | null; banner: string | null } | undefined
+    .get(auth.userId) as
+    | {
+        id: string
+        username: string
+        display_name: string
+        avatar: string | null
+        banner: string | null
+      }
+    | undefined
 
   if (!user) {
     return c.json({ error: 'User not found' }, 404)
@@ -352,13 +471,25 @@ authRoutes.get('/users', authMiddleware, (c) => {
 
   const users = db
     .prepare(
-       `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at, u.status_text, u.status_emoji, u.status_sticker_id, u.reset_requested_at, sm.is_host
+      `SELECT u.id, u.username, u.display_name, u.avatar, u.public_key, u.last_seen_at, u.status_text, u.status_emoji, u.status_sticker_id, u.reset_requested_at, sm.is_host
        FROM users u
        JOIN server_members sm ON sm.user_id = u.id
        ORDER BY u.username
        LIMIT ? OFFSET ?`,
     )
-    .all(limit, offset) as { id: string; username: string; display_name: string; avatar: string | null; public_key: string | null; last_seen_at: number | null; status_text: string | null; status_emoji: string | null; status_sticker_id: string | null; reset_requested_at: number | null; is_host: number }[]
+    .all(limit, offset) as {
+    id: string
+    username: string
+    display_name: string
+    avatar: string | null
+    public_key: string | null
+    last_seen_at: number | null
+    status_text: string | null
+    status_emoji: string | null
+    status_sticker_id: string | null
+    reset_requested_at: number | null
+    is_host: number
+  }[]
 
   if (users.length === 0) {
     return c.json({ users: [], total, offset, limit })
@@ -367,44 +498,93 @@ authRoutes.get('/users', authMiddleware, (c) => {
   const userIds = users.map((u) => u.id)
   const placeholders = userIds.map(() => '?').join(',')
 
-  const memberRoles = db.prepare(`
+  const memberRoles = db
+    .prepare(
+      `
     SELECT mr.user_id, r.id, r.name, r.color, r.permissions, r.is_admin, r.position, r.hoist
     FROM member_roles mr
     JOIN roles r ON mr.role_id = r.id
     WHERE mr.user_id IN (${placeholders})
     ORDER BY r.position ASC
-  `).all(...userIds) as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number; position: number; hoist: number }[]
+  `,
+    )
+    .all(...userIds) as {
+    user_id: string
+    id: string
+    name: string
+    color: string
+    permissions: string
+    is_admin: number
+    position: number
+    hoist: number
+  }[]
 
-  const rolesByUser: Record<string, { id: string; name: string; color: string; permissions: Record<string, boolean>; is_admin: boolean; position: number; hoist: boolean }[]> = {}
+  const rolesByUser: Record<
+    string,
+    {
+      id: string
+      name: string
+      color: string
+      permissions: Record<string, boolean>
+      is_admin: boolean
+      position: number
+      hoist: boolean
+    }[]
+  > = {}
   for (const row of memberRoles) {
     if (!rolesByUser[row.user_id]) rolesByUser[row.user_id] = []
     rolesByUser[row.user_id]!.push({
       id: row.id,
       name: row.name,
       color: row.color,
-      permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
+      permissions: (() => {
+        try {
+          return JSON.parse(row.permissions || '{}')
+        } catch {
+          return {}
+        }
+      })(),
       is_admin: row.is_admin === 1,
       position: row.position ?? 0,
       hoist: row.hoist === 1,
     })
   }
 
-  const legacyRoles = db.prepare(`
+  const legacyRoles = db
+    .prepare(
+      `
     SELECT sm.user_id, r.id, r.name, r.color, r.permissions, r.is_admin, r.position, r.hoist
     FROM server_members sm
     JOIN roles r ON sm.custom_role_id = r.id
     WHERE sm.custom_role_id IS NOT NULL AND sm.user_id IN (${placeholders})
       AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = sm.user_id AND mr.role_id = sm.custom_role_id)
-  `).all(...userIds) as { user_id: string; id: string; name: string; color: string; permissions: string; is_admin: number; position: number; hoist: number }[]
+  `,
+    )
+    .all(...userIds) as {
+    user_id: string
+    id: string
+    name: string
+    color: string
+    permissions: string
+    is_admin: number
+    position: number
+    hoist: number
+  }[]
 
   for (const row of legacyRoles) {
     if (!rolesByUser[row.user_id]) rolesByUser[row.user_id] = []
-    if (!rolesByUser[row.user_id]!.some(r => r.id === row.id)) {
-    rolesByUser[row.user_id]!.push({
+    if (!rolesByUser[row.user_id]!.some((r) => r.id === row.id)) {
+      rolesByUser[row.user_id]!.push({
         id: row.id,
         name: row.name,
         color: row.color,
-        permissions: (() => { try { return JSON.parse(row.permissions || '{}') } catch { return {} } })(),
+        permissions: (() => {
+          try {
+            return JSON.parse(row.permissions || '{}')
+          } catch {
+            return {}
+          }
+        })(),
         is_admin: row.is_admin === 1,
         position: row.position ?? 0,
         hoist: row.hoist === 1,
@@ -414,9 +594,9 @@ authRoutes.get('/users', authMiddleware, (c) => {
 
   const formatted = users.map((u) => {
     const userRoles = rolesByUser[u.id] || []
-    const isAdmin = userRoles.some(r => r.is_admin)
+    const isAdmin = userRoles.some((r) => r.is_admin)
     const highestRole = userRoles.length > 0 ? userRoles[userRoles.length - 1] : null
-    const hoistedRole = [...userRoles].reverse().find(r => r.hoist) || null
+    const hoistedRole = [...userRoles].reverse().find((r) => r.hoist) || null
     return {
       ...u,
       last_seen_at: u.last_seen_at ? u.last_seen_at * 1000 : null,
@@ -443,20 +623,31 @@ authRoutes.get('/users/:userId', authMiddleware, (c) => {
   if (!member) return c.json({ error: 'User not found' }, 404)
 
   const db = getDb()
-  const identityLinks = db.prepare(
-    'SELECT id, linked_server_url, linked_username, linked_at FROM identity_links WHERE user_id = ? AND public = 1 ORDER BY linked_at DESC',
-  ).all(userId) as { id: string; linked_server_url: string; linked_username: string; linked_at: number }[]
+  const identityLinks = db
+    .prepare(
+      'SELECT id, linked_server_url, linked_username, linked_at FROM identity_links WHERE user_id = ? AND public = 1 ORDER BY linked_at DESC',
+    )
+    .all(userId) as {
+    id: string
+    linked_server_url: string
+    linked_username: string
+    linked_at: number
+  }[]
 
   return c.json({ ...member, linked_identities: identityLinks })
 })
 
 authRoutes.put('/public-key', authMiddleware, async (c) => {
   const auth = getAuth(c)
-  const { public_key, key_salt } = await c.req.json() as { public_key: string; key_salt?: string }
+  const { public_key, key_salt } = (await c.req.json()) as { public_key: string; key_salt?: string }
   if (!public_key?.trim()) return c.json({ error: 'public_key is required' }, 400)
 
   const db = getDb()
-  db.prepare('UPDATE users SET public_key = ?, key_salt = COALESCE(?, key_salt) WHERE id = ?').run(public_key.trim(), key_salt?.trim() || null, auth.userId)
+  db.prepare('UPDATE users SET public_key = ?, key_salt = COALESCE(?, key_salt) WHERE id = ?').run(
+    public_key.trim(),
+    key_salt?.trim() || null,
+    auth.userId,
+  )
   return c.json({ ok: true })
 })
 
@@ -465,7 +656,9 @@ authRoutes.get('/users/:userId/public-key', authMiddleware, (c) => {
   if (!userId) return c.json({ error: 'User ID is required' }, 400)
 
   const db = getDb()
-  const user = db.prepare('SELECT public_key FROM users WHERE id = ?').get(userId) as { public_key: string | null } | undefined
+  const user = db.prepare('SELECT public_key FROM users WHERE id = ?').get(userId) as
+    | { public_key: string | null }
+    | undefined
   if (!user) return c.json({ error: 'User not found' }, 404)
 
   return c.json({ public_key: user.public_key || null })
@@ -478,7 +671,8 @@ authRoutes.post('/request-reset', sensitiveAuthLimiter, async (c) => {
   }
 
   const db = getDb()
-  const user = db.prepare('SELECT id FROM users WHERE username = ?')
+  const user = db
+    .prepare('SELECT id FROM users WHERE username = ?')
     .get(username.toLowerCase().trim()) as { id: string } | undefined
 
   if (!user) {
@@ -492,7 +686,11 @@ authRoutes.post('/request-reset', sensitiveAuthLimiter, async (c) => {
 })
 
 authRoutes.post('/reset-with-backuptoken', sensitiveAuthLimiter, async (c) => {
-  const { username, backuptoken, new_password } = await c.req.json() as { username?: string; backuptoken?: string; new_password?: string }
+  const { username, backuptoken, new_password } = (await c.req.json()) as {
+    username?: string
+    backuptoken?: string
+    new_password?: string
+  }
   if (!username || !backuptoken || !new_password) {
     return c.json({ error: 'username, backuptoken, and new_password are required' }, 400)
   }
@@ -501,16 +699,21 @@ authRoutes.post('/reset-with-backuptoken', sensitiveAuthLimiter, async (c) => {
   }
 
   const db = getDb()
-  const user = db.prepare(
-    'SELECT id, backuptoken_hash FROM users WHERE username = ?',
-  ).get(username.toLowerCase().trim()) as { id: string; backuptoken_hash: string | null } | undefined
+  const user = db
+    .prepare('SELECT id, backuptoken_hash FROM users WHERE username = ?')
+    .get(username.toLowerCase().trim()) as
+    | { id: string; backuptoken_hash: string | null }
+    | undefined
 
   if (!user) {
     return c.json({ error: 'User not found' }, 404)
   }
 
   if (!user.backuptoken_hash) {
-    return c.json({ error: 'No backup token set for this account. Contact an admin for password recovery.' }, 400)
+    return c.json(
+      { error: 'No backup token set for this account. Contact an admin for password recovery.' },
+      400,
+    )
   }
 
   const valid = await bcrypt.compare(backuptoken, user.backuptoken_hash)
@@ -555,14 +758,18 @@ authRoutes.post('/refresh', async (c) => {
     }
 
     const db = getDb()
-    const row = db.prepare('SELECT token_invalidated_at FROM users WHERE id = ?').get(payload.userId) as { token_invalidated_at: number | null } | undefined
+    const row = db
+      .prepare('SELECT token_invalidated_at FROM users WHERE id = ?')
+      .get(payload.userId) as { token_invalidated_at: number | null } | undefined
     if (row?.token_invalidated_at && payload.iat && row.token_invalidated_at > payload.iat) {
       return c.json({ error: 'Token has been revoked' }, 401)
     }
 
     const tokenId = uuidv4()
     const newToken = signToken({ userId: userInfo.userId, username: userInfo.username, tokenId })
-    db.prepare('INSERT OR REPLACE INTO sessions (token_id, user_id, created_at) VALUES (?, ?, unixepoch())').run(tokenId, userInfo.userId)
+    db.prepare(
+      'INSERT OR REPLACE INTO sessions (token_id, user_id, created_at) VALUES (?, ?, unixepoch())',
+    ).run(tokenId, userInfo.userId)
     c.header(
       'Set-Cookie',
       `kizuna_token=${newToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
@@ -579,9 +786,9 @@ authRoutes.get('/reset-password/:token', (c) => {
 
   const db = getDb()
   const now = Math.floor(Date.now() / 1000)
-  const user = db.prepare(
-    'SELECT username, reset_token_expires_at FROM users WHERE reset_token = ?',
-  ).get(token) as { username: string; reset_token_expires_at: number } | undefined
+  const user = db
+    .prepare('SELECT username, reset_token_expires_at FROM users WHERE reset_token = ?')
+    .get(token) as { username: string; reset_token_expires_at: number } | undefined
 
   if (!user || user.reset_token_expires_at < now) {
     return c.json({ error: 'Invalid or expired reset token' }, 400)
@@ -596,7 +803,9 @@ authRoutes.delete('/me', authMiddleware, async (c) => {
   const deleteData = c.req.query('data') === 'true'
 
   const db = getDb()
-  const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(auth.userId) as { password_hash: string } | undefined
+  const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(auth.userId) as
+    | { password_hash: string }
+    | undefined
   if (!user) return c.json({ error: 'User not found' }, 404)
   if (!password) return c.json({ error: 'Password required to delete account' }, 400)
   const valid = await bcrypt.compare(password, user.password_hash)
@@ -638,9 +847,15 @@ authRoutes.post('/logout', authMiddleware, (c) => {
     try {
       const payload = jwt.decode(token) as { tokenId?: string; userId?: string } | null
       if (payload?.tokenId && payload.userId === auth.userId) {
-        db.prepare('UPDATE sessions SET revoked_at = ? WHERE token_id = ? AND user_id = ?').run(now, payload.tokenId, auth.userId)
+        db.prepare('UPDATE sessions SET revoked_at = ? WHERE token_id = ? AND user_id = ?').run(
+          now,
+          payload.tokenId,
+          auth.userId,
+        )
       }
-    } catch { /* ignore decode errors */ }
+    } catch {
+      /* ignore decode errors */
+    }
   }
 
   c.header('Set-Cookie', 'kizuna_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
@@ -651,16 +866,16 @@ authRoutes.post('/reset-password/:token', sensitiveAuthLimiter, async (c) => {
   const token = c.req.param('token') || ''
   if (!token) return c.json({ error: 'Invalid token' }, 400)
 
-  const { password } = await c.req.json() as { password?: string }
+  const { password } = (await c.req.json()) as { password?: string }
   if (!password || password.length < 8) {
     return c.json({ error: 'Password must be at least 8 characters' }, 400)
   }
 
   const db = getDb()
   const now = Math.floor(Date.now() / 1000)
-  const user = db.prepare(
-    'SELECT id, reset_token_expires_at FROM users WHERE reset_token = ?',
-  ).get(token) as { id: string; reset_token_expires_at: number } | undefined
+  const user = db
+    .prepare('SELECT id, reset_token_expires_at FROM users WHERE reset_token = ?')
+    .get(token) as { id: string; reset_token_expires_at: number } | undefined
 
   if (!user || user.reset_token_expires_at < now) {
     return c.json({ error: 'Invalid or expired reset token' }, 400)

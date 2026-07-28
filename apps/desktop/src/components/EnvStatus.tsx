@@ -14,13 +14,15 @@ export default function EnvStatus({ onOpenWizard }: { onOpenWizard: () => void }
     fetchEnvironment().then((env) => {
       if (!cancelled) setDiagnostic(env)
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   if (!diagnostic) return null
 
-  const errorCount = diagnostic.issues.filter(i => i.severity === 'error').length
-  const warnCount = diagnostic.issues.filter(i => i.severity === 'warning').length
+  const errorCount = diagnostic.issues.filter((i) => i.severity === 'error').length
+  const warnCount = diagnostic.issues.filter((i) => i.severity === 'warning').length
   if (errorCount + warnCount === 0) return null
 
   const label = diagnostic.os === 'linux' ? diagnostic.compositor : diagnostic.os
@@ -43,13 +45,15 @@ export default function EnvStatus({ onOpenWizard }: { onOpenWizard: () => void }
         color: 'var(--error-faded)',
       }}
     >
-      <span style={{
-        width: 6,
-        height: 6,
-        borderRadius: '50%',
-        background: 'var(--error)',
-        flexShrink: 0,
-      }} />
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: 'var(--error)',
+          flexShrink: 0,
+        }}
+      />
       {label} ({errorCount + warnCount})
     </button>
   )

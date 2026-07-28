@@ -29,29 +29,38 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
 
   const effectiveChannelId = serverwide ? undefined : channelId
 
-  const doSearch = useCallback(async (q: string, before?: string) => {
-    if (!session) return
-    const isNewSearch = !before
-    if (isNewSearch) {
-      setLoading(true)
-      setResults([])
-    } else {
-      setLoadingMore(true)
-    }
-    lastQueryRef.current = q
-    try {
-      const { results: r, hasMore: hm } = await searchMessages(session.url, q, effectiveChannelId, 20, before)
-      if (lastQueryRef.current !== q) return
+  const doSearch = useCallback(
+    async (q: string, before?: string) => {
+      if (!session) return
+      const isNewSearch = !before
       if (isNewSearch) {
-        setResults(r)
+        setLoading(true)
+        setResults([])
       } else {
-        setResults(prev => [...prev, ...r])
+        setLoadingMore(true)
       }
-      setHasMore(hm)
-    } catch {}
-    setLoading(false)
-    setLoadingMore(false)
-  }, [session, effectiveChannelId])
+      lastQueryRef.current = q
+      try {
+        const { results: r, hasMore: hm } = await searchMessages(
+          session.url,
+          q,
+          effectiveChannelId,
+          20,
+          before,
+        )
+        if (lastQueryRef.current !== q) return
+        if (isNewSearch) {
+          setResults(r)
+        } else {
+          setResults((prev) => [...prev, ...r])
+        }
+        setHasMore(hm)
+      } catch {}
+      setLoading(false)
+      setLoadingMore(false)
+    },
+    [session, effectiveChannelId],
+  )
 
   useEffect(() => {
     if (!query.trim() || query.length < 2) {
@@ -110,7 +119,7 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
             label="Toggle serverwide search"
             title={serverwide ? 'Searching all channels' : 'Search this channel only'}
             active={serverwide}
-            onClick={() => setServerwide(v => !v)}
+            onClick={() => setServerwide((v) => !v)}
           />
         )}
         <IconButton size="sm" icon={<X size={14} />} label="Close search" onClick={onClose} />
@@ -123,16 +132,29 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
               className="search-bar__result"
               onClick={() => onJumpToMessage(r.message.id, r.message.channel_id)}
             >
-              <span className="search-bar__result-user">@{r.message.display_name || r.message.username}</span>
+              <span className="search-bar__result-user">
+                @{r.message.display_name || r.message.username}
+              </span>
               <span className="search-bar__result-content">{r.message.content}</span>
               <span className="search-bar__result-time">
-                {new Date(r.message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {new Date(r.message.created_at).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
               </span>
             </button>
           ))}
           {hasMore && (
-            <button className="search-bar__load-more" onClick={handleLoadMore} disabled={loadingMore}>
-              {loadingMore ? <Loader2 size={12} className="search-bar__spinner" /> : <ChevronDown size={14} />}
+            <button
+              className="search-bar__load-more"
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+            >
+              {loadingMore ? (
+                <Loader2 size={12} className="search-bar__spinner" />
+              ) : (
+                <ChevronDown size={14} />
+              )}
               {loadingMore ? 'Loading...' : 'Load more results'}
             </button>
           )}

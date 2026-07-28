@@ -1,5 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useVoiceStore, type VoiceInputMode, type VoiceProcessingMode } from '../../store/voiceStore'
+import {
+  useVoiceStore,
+  type VoiceInputMode,
+  type VoiceProcessingMode,
+} from '../../store/voiceStore'
 import { isTauri, isMobileTauri } from '../../utils/platform'
 import { SettingsToggleRow, SettingsSlider } from './rows'
 
@@ -18,7 +22,11 @@ interface AudioDevice {
 }
 
 const INPUT_MODES: { value: VoiceInputMode; label: string; desc: string }[] = [
-  { value: 'voice-activity', label: 'voice activity', desc: 'automatically transmit when you speak' },
+  {
+    value: 'voice-activity',
+    label: 'voice activity',
+    desc: 'automatically transmit when you speak',
+  },
   { value: 'push-to-talk', label: 'push to talk', desc: 'hold a key to transmit' },
 ]
 
@@ -63,19 +71,31 @@ export function VoiceSection({
   setListeningForKey: (v: boolean) => void
 }) {
   const {
-    audioInputDeviceId, setAudioInputDeviceId,
-    audioOutputDeviceId, setAudioOutputDeviceId,
-    voiceInputMode, setVoiceInputMode,
+    audioInputDeviceId,
+    setAudioInputDeviceId,
+    audioOutputDeviceId,
+    setAudioOutputDeviceId,
+    voiceInputMode,
+    setVoiceInputMode,
     pushToTalkKey,
-    voiceProcessingMode, setVoiceProcessingMode,
-    noiseSuppression, setNoiseSuppression,
-    autoGainControl, setAutoGainControl,
-    echoCancellation, setEchoCancellation,
-    noiseGateEnabled, setNoiseGateEnabled,
-    noiseGateThreshold, setNoiseGateThreshold,
-    inputVolume, setInputVolume,
-    outputVolume, setOutputVolume,
-    liveAudioLevel, setLiveAudioLevel,
+    voiceProcessingMode,
+    setVoiceProcessingMode,
+    noiseSuppression,
+    setNoiseSuppression,
+    autoGainControl,
+    setAutoGainControl,
+    echoCancellation,
+    setEchoCancellation,
+    noiseGateEnabled,
+    setNoiseGateEnabled,
+    noiseGateThreshold,
+    setNoiseGateThreshold,
+    inputVolume,
+    setInputVolume,
+    outputVolume,
+    setOutputVolume,
+    liveAudioLevel,
+    setLiveAudioLevel,
   } = useVoiceStore()
 
   const [inputDevices, setInputDevices] = useState<AudioDevice[] | null>(null)
@@ -119,40 +139,41 @@ export function VoiceSection({
         }
       }
     } else {
-      const enumerate = () => Promise.race([
-        navigator.mediaDevices.enumerateDevices(),
-        new Promise<MediaDeviceInfo[]>((_, reject) =>
-          setTimeout(() => reject(new Error('Device enumeration timed out')), 3000)
-        ),
-      ])
+      const enumerate = () =>
+        Promise.race([
+          navigator.mediaDevices.enumerateDevices(),
+          new Promise<MediaDeviceInfo[]>((_, reject) =>
+            setTimeout(() => reject(new Error('Device enumeration timed out')), 3000),
+          ),
+        ])
       const applyDevices = (devices: MediaDeviceInfo[]) => {
         setInputDevices(
           devices
-            .filter(d => d.kind === 'audioinput')
-            .map(d => ({
+            .filter((d) => d.kind === 'audioinput')
+            .map((d) => ({
               name: d.label || `microphone (${d.deviceId.slice(0, 8)}...)`,
               device_id: d.deviceId,
               is_default: d.deviceId === 'default',
               max_channels: 1,
               default_sample_rate: 48000,
-            }))
+            })),
         )
         setOutputDevices(
           devices
-            .filter(d => d.kind === 'audiooutput')
-            .map(d => ({
+            .filter((d) => d.kind === 'audiooutput')
+            .map((d) => ({
               name: d.label || `speaker (${d.deviceId.slice(0, 8)}...)`,
               device_id: d.deviceId,
               is_default: d.deviceId === 'default',
               max_channels: 2,
               default_sample_rate: 48000,
-            }))
+            })),
         )
       }
 
       try {
         const devices = await enumerate()
-        const hasLabels = devices.some(d => d.kind === 'audioinput' && d.label)
+        const hasLabels = devices.some((d) => d.kind === 'audioinput' && d.label)
         if (hasLabels) {
           // Mic permission already granted — labels come free, no capture.
           if (!unmountedRef.current) applyDevices(devices)
@@ -170,10 +191,10 @@ export function VoiceSection({
                 },
               }),
               new Promise<MediaStream>((_, reject) =>
-                setTimeout(() => reject(new Error('Permission request timed out')), 3000)
+                setTimeout(() => reject(new Error('Permission request timed out')), 3000),
               ),
             ])
-            stream.getTracks().forEach(t => t.stop())
+            stream.getTracks().forEach((t) => t.stop())
             if (unmountedRef.current) return
             const labeled = await enumerate()
             if (!unmountedRef.current) applyDevices(labeled)
@@ -199,7 +220,9 @@ export function VoiceSection({
   useEffect(() => {
     unmountedRef.current = false
     loadDevices()
-    return () => { unmountedRef.current = true }
+    return () => {
+      unmountedRef.current = true
+    }
   }, [loadDevices])
 
   const startAudioMonitoring = useCallback(async () => {
@@ -210,7 +233,11 @@ export function VoiceSection({
     const { invoke } = await import('@tauri-apps/api/core')
     const { listen } = await import('@tauri-apps/api/event')
 
-    try { await invoke('stop_audio_capture') } catch (err) { console.error('Failed to stop prior audio capture:', err) }
+    try {
+      await invoke('stop_audio_capture')
+    } catch (err) {
+      console.error('Failed to stop prior audio capture:', err)
+    }
 
     try {
       await invoke('start_audio_capture', {
@@ -233,7 +260,9 @@ export function VoiceSection({
 
     audioLevelCleanupRef.current = () => {
       unlisten()
-      invoke('stop_audio_capture').catch((err) => { console.error('Failed to stop audio capture on cleanup:', err) })
+      invoke('stop_audio_capture').catch((err) => {
+        console.error('Failed to stop audio capture on cleanup:', err)
+      })
     }
   }, [audioInputDeviceId, setLiveAudioLevel])
 
@@ -249,7 +278,6 @@ export function VoiceSection({
 
   return (
     <div className="settings-tab-content">
-
       {permissionDenied && (
         <p className="settings-permission-warning">
           microphone permission denied — device labels unavailable
@@ -276,9 +304,10 @@ export function VoiceSection({
               className="settings-select"
             >
               <option value="">system default</option>
-              {inputDevices.map(d => (
+              {inputDevices.map((d) => (
                 <option key={d.device_id} value={d.device_id}>
-                  {d.name}{d.is_default ? ' (default)' : ''}
+                  {d.name}
+                  {d.is_default ? ' (default)' : ''}
                 </option>
               ))}
             </select>
@@ -290,9 +319,10 @@ export function VoiceSection({
                 className="settings-select"
               >
                 <option value="">system default</option>
-                {outputDevices.map(d => (
+                {outputDevices.map((d) => (
                   <option key={d.device_id} value={d.device_id}>
-                    {d.name}{d.is_default ? ' (default)' : ''}
+                    {d.name}
+                    {d.is_default ? ' (default)' : ''}
                   </option>
                 ))}
               </select>
@@ -309,7 +339,7 @@ export function VoiceSection({
       <div className="settings-card">
         <p className="settings-card-title">input mode</p>
         <div className="settings-radio-group">
-          {INPUT_MODES.map(mode => (
+          {INPUT_MODES.map((mode) => (
             <button
               key={mode.value}
               className={`settings-radio-option${voiceInputMode === mode.value ? ' settings-radio-option--active' : ''}`}
@@ -347,17 +377,19 @@ export function VoiceSection({
           role="radiogroup"
           aria-label="audio processing mode"
         >
-          {([
-            { id: 'off', label: 'off', desc: 'raw mic — no processing' },
-            {
-              id: 'standard',
-              label: 'standard',
-              desc: nativeVoice
-                ? 'rnnoise suppression + auto leveler · recommended'
-                : 'browser noise suppression + auto leveler · recommended',
-            },
-            { id: 'custom', label: 'custom', desc: 'tune each filter yourself' },
-          ] as { id: VoiceProcessingMode; label: string; desc: string }[]).map((m) => (
+          {(
+            [
+              { id: 'off', label: 'off', desc: 'raw mic — no processing' },
+              {
+                id: 'standard',
+                label: 'standard',
+                desc: nativeVoice
+                  ? 'rnnoise suppression + auto leveler · recommended'
+                  : 'browser noise suppression + auto leveler · recommended',
+              },
+              { id: 'custom', label: 'custom', desc: 'tune each filter yourself' },
+            ] as { id: VoiceProcessingMode; label: string; desc: string }[]
+          ).map((m) => (
             <button
               key={m.id}
               type="button"
@@ -373,10 +405,7 @@ export function VoiceSection({
         </div>
 
         <div className="settings-mic-test">
-          <button
-            onClick={() => setMonitoring((m) => !m)}
-            className="settings-btn"
-          >
+          <button onClick={() => setMonitoring((m) => !m)} className="settings-btn">
             {monitoring ? 'stop mic test' : 'test microphone'}
           </button>
           <div className="settings-meter-row">
@@ -417,9 +446,11 @@ export function VoiceSection({
                 checked={noiseSuppression}
                 onChange={setNoiseSuppression}
                 ariaLabel="enable noise suppression"
-                hint={nativeVoice
-                  ? 'ai-based removal of steady background noise like fans and hum. runs at full strength'
-                  : "your browser's built-in removal of steady background noise like fans and hum"}
+                hint={
+                  nativeVoice
+                    ? 'ai-based removal of steady background noise like fans and hum. runs at full strength'
+                    : "your browser's built-in removal of steady background noise like fans and hum"
+                }
               />
             </div>
 
@@ -467,9 +498,7 @@ export function VoiceSection({
           </>
         )}
 
-        <p className="settings-hint settings-processing-note">
-          applied on next voice channel join
-        </p>
+        <p className="settings-hint settings-processing-note">applied on next voice channel join</p>
       </div>
 
       {/* Volume */}

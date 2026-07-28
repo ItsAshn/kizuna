@@ -31,20 +31,14 @@ export default function MobileYouTab({
         <div className="mobile-you-profile">
           <div className="mobile-you-profile__avatar">
             {user.avatar ? (
-              <img
-                src={user.avatar}
-                alt=""
-                className="mobile-you-profile__avatar-img"
-              />
+              <img src={user.avatar} alt="" className="mobile-you-profile__avatar-img" />
             ) : (
               <span className="mobile-you-profile__avatar-text">
                 {(user.display_name || user.username)?.[0]?.toUpperCase()}
               </span>
             )}
           </div>
-          <p className="mobile-you-profile__name">
-            {user.display_name || user.username}
-          </p>
+          <p className="mobile-you-profile__name">{user.display_name || user.username}</p>
           <p className="mobile-you-profile__username">@{user.username}</p>
         </div>
 

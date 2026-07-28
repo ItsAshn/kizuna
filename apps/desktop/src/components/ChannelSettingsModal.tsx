@@ -39,31 +39,38 @@ export default function ChannelSettingsModal({ channel, onClose }: Props) {
   const [tab, setTab] = useState<'overview' | 'permissions' | 'integrations'>('permissions')
   const [integrationTab, setIntegrationTab] = useState('incoming')
   const [roles, setRoles] = useState<CustomRole[]>([])
-  const [overrides, setOverrides] = useState<Record<string, { allow: Record<string, boolean>; deny: Record<string, boolean> }>>({})
+  const [overrides, setOverrides] = useState<
+    Record<string, { allow: Record<string, boolean>; deny: Record<string, boolean> }>
+  >({})
   const [loading, setLoading] = useState(true)
   const mountedRef = useRef(false)
   mountedRef.current = true
   useEffect(() => {
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+    }
   }, [])
 
   useEffect(() => {
     if (!serverUrl) return
     setLoading(true)
-    Promise.all([
-      fetchRoles(serverUrl),
-      fetchChannelOverrides(serverUrl, channel.id),
-    ]).then(([allRoles, channelOverrides]) => {
-      if (!mountedRef.current) return
-      setRoles(allRoles.filter(r => !r.is_admin))
-      const ov: Record<string, { allow: Record<string, boolean>; deny: Record<string, boolean> }> = {}
-      for (const o of channelOverrides) {
-        ov[o.role_id] = { allow: o.allow_permissions, deny: o.deny_permissions }
-      }
-      setOverrides(ov)
-    }).catch(() => {}).finally(() => {
-      if (mountedRef.current) setLoading(false)
-    })
+    Promise.all([fetchRoles(serverUrl), fetchChannelOverrides(serverUrl, channel.id)])
+      .then(([allRoles, channelOverrides]) => {
+        if (!mountedRef.current) return
+        setRoles(allRoles.filter((r) => !r.is_admin))
+        const ov: Record<
+          string,
+          { allow: Record<string, boolean>; deny: Record<string, boolean> }
+        > = {}
+        for (const o of channelOverrides) {
+          ov[o.role_id] = { allow: o.allow_permissions, deny: o.deny_permissions }
+        }
+        setOverrides(ov)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (mountedRef.current) setLoading(false)
+      })
   }, [serverUrl, channel.id])
 
   function getToggleState(roleId: string, perm: Permission): ToggleState {
@@ -76,7 +83,8 @@ export default function ChannelSettingsModal({ channel, onClose }: Props) {
 
   function cycleToggle(roleId: string, perm: Permission) {
     const current = getToggleState(roleId, perm)
-    const next: ToggleState = current === 'inherit' ? 'allow' : current === 'allow' ? 'deny' : 'inherit'
+    const next: ToggleState =
+      current === 'inherit' ? 'allow' : current === 'allow' ? 'deny' : 'inherit'
 
     if (next === 'inherit') {
       const updated = { ...overrides }
@@ -90,7 +98,8 @@ export default function ChannelSettingsModal({ channel, onClose }: Props) {
           if (serverUrl) deleteChannelOverride(serverUrl, channel.id, roleId).catch(() => {})
         } else {
           updated[roleId] = { allow: newAllow, deny: newDeny }
-          if (serverUrl) setChannelOverride(serverUrl, channel.id, roleId, newAllow, newDeny).catch(() => {})
+          if (serverUrl)
+            setChannelOverride(serverUrl, channel.id, roleId, newAllow, newDeny).catch(() => {})
         }
       }
       setOverrides(updated)
@@ -109,7 +118,8 @@ export default function ChannelSettingsModal({ channel, onClose }: Props) {
     const updated = { ...overrides, [roleId]: { allow: newAllow, deny: newDeny } }
     setOverrides(updated)
 
-    if (serverUrl) setChannelOverride(serverUrl, channel.id, roleId, newAllow, newDeny).catch(() => {})
+    if (serverUrl)
+      setChannelOverride(serverUrl, channel.id, roleId, newAllow, newDeny).catch(() => {})
   }
 
   return (
@@ -119,10 +129,17 @@ export default function ChannelSettingsModal({ channel, onClose }: Props) {
       title={`Channel Settings — #${channel.name}`}
       className="channel-settings"
       footer={(handleClose) => (
-        <button onClick={handleClose} className="channel-settings__done-btn">done</button>
+        <button onClick={handleClose} className="channel-settings__done-btn">
+          done
+        </button>
       )}
     >
-      <Tabs tabs={PERM_TABS} activeKey={tab} onChange={(k) => setTab(k as typeof tab)} variant="underline" />
+      <Tabs
+        tabs={PERM_TABS}
+        activeKey={tab}
+        onChange={(k) => setTab(k as typeof tab)}
+        variant="underline"
+      />
 
       {tab === 'overview' && (
         <div style={{ marginTop: '16px' }}>
@@ -147,11 +164,21 @@ export default function ChannelSettingsModal({ channel, onClose }: Props) {
         <div style={{ marginTop: '16px' }}>
           <p className="channel-settings__section-title">Permission Overrides</p>
           <p className="channel-settings__hint">
-            Click to cycle: <span className="channel-settings__legend-item"><span className="channel-settings__legend-dot channel-settings__legend-dot--inherit" /> inherit</span>
+            Click to cycle:{' '}
+            <span className="channel-settings__legend-item">
+              <span className="channel-settings__legend-dot channel-settings__legend-dot--inherit" />{' '}
+              inherit
+            </span>
             {' → '}
-            <span className="channel-settings__legend-item"><span className="channel-settings__legend-dot channel-settings__legend-dot--allow" /> allow</span>
+            <span className="channel-settings__legend-item">
+              <span className="channel-settings__legend-dot channel-settings__legend-dot--allow" />{' '}
+              allow
+            </span>
             {' → '}
-            <span className="channel-settings__legend-item"><span className="channel-settings__legend-dot channel-settings__legend-dot--deny" /> deny</span>
+            <span className="channel-settings__legend-item">
+              <span className="channel-settings__legend-dot channel-settings__legend-dot--deny" />{' '}
+              deny
+            </span>
           </p>
 
           {loading ? (
@@ -160,32 +187,47 @@ export default function ChannelSettingsModal({ channel, onClose }: Props) {
             <div className="channel-settings__perm-matrix">
               <div className="channel-settings__perm-header">
                 <span className="channel-settings__perm-header-role">Role</span>
-                {ALL_PERMISSIONS.map(p => (
-                  <span key={p.key} className="channel-settings__perm-header-col">{p.label}</span>
+                {ALL_PERMISSIONS.map((p) => (
+                  <span key={p.key} className="channel-settings__perm-header-col">
+                    {p.label}
+                  </span>
                 ))}
               </div>
-              {roles.filter(r => !r.is_admin).sort((a, b) => (b.position ?? 0) - (a.position ?? 0)).map(role => (
-                <div key={role.id} className="channel-settings__perm-row">
-                  <div className="channel-settings__perm-role">
-                    <span className="channel-settings__perm-role-dot" style={{ backgroundColor: role.color }} />
-                    <span className="channel-settings__perm-role-name" style={{ color: role.color }}>{role.name}</span>
+              {roles
+                .filter((r) => !r.is_admin)
+                .sort((a, b) => (b.position ?? 0) - (a.position ?? 0))
+                .map((role) => (
+                  <div key={role.id} className="channel-settings__perm-row">
+                    <div className="channel-settings__perm-role">
+                      <span
+                        className="channel-settings__perm-role-dot"
+                        style={{ backgroundColor: role.color }}
+                      />
+                      <span
+                        className="channel-settings__perm-role-name"
+                        style={{ color: role.color }}
+                      >
+                        {role.name}
+                      </span>
+                    </div>
+                    {ALL_PERMISSIONS.map((p) => {
+                      const state = getToggleState(role.id, p.key)
+                      return (
+                        <div key={p.key} className="channel-settings__perm-cell">
+                          <button
+                            onClick={() => cycleToggle(role.id, p.key)}
+                            className={`channel-settings__perm-btn channel-settings__perm-btn--${state}`}
+                            title={`${role.name}: ${p.label} — ${state}`}
+                          />
+                        </div>
+                      )
+                    })}
                   </div>
-                  {ALL_PERMISSIONS.map(p => {
-                    const state = getToggleState(role.id, p.key)
-                    return (
-                      <div key={p.key} className="channel-settings__perm-cell">
-                        <button
-                          onClick={() => cycleToggle(role.id, p.key)}
-                          className={`channel-settings__perm-btn channel-settings__perm-btn--${state}`}
-                          title={`${role.name}: ${p.label} — ${state}`}
-                        />
-                      </div>
-                    )
-                  })}
-                </div>
-              ))}
-              {roles.filter(r => !r.is_admin).length === 0 && (
-                <p className="channel-settings__loading">No custom roles exist. Create one in server menu.</p>
+                ))}
+              {roles.filter((r) => !r.is_admin).length === 0 && (
+                <p className="channel-settings__loading">
+                  No custom roles exist. Create one in server menu.
+                </p>
               )}
             </div>
           )}
@@ -195,13 +237,18 @@ export default function ChannelSettingsModal({ channel, onClose }: Props) {
       {tab === 'integrations' && (
         <div style={{ marginTop: '16px' }}>
           <Tabs
-            tabs={[{ key: 'incoming', label: 'incoming' }, { key: 'outgoing', label: 'outgoing' }]}
+            tabs={[
+              { key: 'incoming', label: 'incoming' },
+              { key: 'outgoing', label: 'outgoing' },
+            ]}
             activeKey={integrationTab}
             onChange={setIntegrationTab}
           />
-          {integrationTab === 'incoming'
-            ? <WebhookManager serverUrl={serverUrl} channel={channel} />
-            : <OutgoingWebhookManager serverUrl={serverUrl} channel={channel} />}
+          {integrationTab === 'incoming' ? (
+            <WebhookManager serverUrl={serverUrl} channel={channel} />
+          ) : (
+            <OutgoingWebhookManager serverUrl={serverUrl} channel={channel} />
+          )}
         </div>
       )}
     </Modal>

@@ -23,11 +23,10 @@ export default function MobileMessagesTab({
 
   const handleRefresh = useCallback(async () => {}, [])
 
-  const { containerRef, pulling, refreshing, pullDistance, indicatorOpacity } =
-    usePullToRefresh({
-      onRefresh: handleRefresh,
-      disabled: !isMobile,
-    })
+  const { containerRef, pulling, refreshing, pullDistance, indicatorOpacity } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    disabled: !isMobile,
+  })
 
   const handleDMTap = useCallback(
     (dm: DMChannelData) => {
@@ -42,10 +41,7 @@ export default function MobileMessagesTab({
       <div className="mobile-tab__header">
         <h1 className="mobile-tab__title">Messages</h1>
       </div>
-      <div
-        ref={containerRef}
-        className="mobile-tab__body mobile-messages-tab__body"
-      >
+      <div ref={containerRef} className="mobile-tab__body mobile-messages-tab__body">
         <div
           className="mobile-tab__pull-indicator"
           style={{
@@ -58,9 +54,10 @@ export default function MobileMessagesTab({
               size={22}
               className={refreshing ? 'mobile-tab__pull-spinner--spinning' : ''}
               style={{
-                transform: pulling && !refreshing
-                  ? `rotate(${Math.min(pullDistance * 3, 360)}deg)`
-                  : undefined,
+                transform:
+                  pulling && !refreshing
+                    ? `rotate(${Math.min(pullDistance * 3, 360)}deg)`
+                    : undefined,
               }}
             />
           </div>
@@ -72,9 +69,7 @@ export default function MobileMessagesTab({
               <span className="mobile-tab__empty-emoji">💬</span>
             </div>
             <p className="mobile-tab__empty-text">No messages yet</p>
-            <p className="mobile-tab__empty-sub">
-              Join a server and start a conversation
-            </p>
+            <p className="mobile-tab__empty-sub">Join a server and start a conversation</p>
           </div>
         ) : (
           dmChannels.map((dm) => {
@@ -104,14 +99,10 @@ export default function MobileMessagesTab({
                   <p className="mobile-dm-item__name">
                     {dm.other_display_name || dm.other_username}
                   </p>
-                  <p className="mobile-dm-item__username">
-                    @{dm.other_username}
-                  </p>
+                  <p className="mobile-dm-item__username">@{dm.other_username}</p>
                 </div>
                 {hasUnread && (
-                  <span className="mobile-dm-item__badge">
-                    {unread > 99 ? '99+' : unread}
-                  </span>
+                  <span className="mobile-dm-item__badge">{unread > 99 ? '99+' : unread}</span>
                 )}
               </button>
             )

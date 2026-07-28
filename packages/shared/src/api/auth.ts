@@ -1,18 +1,10 @@
 import axios from 'axios'
-import type {
-  User,
-  ServerInfo,
-  PoWChallenge,
-  AdminInfo,
-  PublicServerEntry,
-} from '../types'
+import type { User, ServerInfo, PoWChallenge, AdminInfo, PublicServerEntry } from '../types'
 import { client, normalizeUrl } from './core'
 
 // ─── Auth ─────────────────────────────────────────────────
 
-export async function getChallenge(
-  serverUrl: string,
-): Promise<PoWChallenge> {
+export async function getChallenge(serverUrl: string): Promise<PoWChallenge> {
   const res = await axios.get(`${normalizeUrl(serverUrl)}/api/auth/challenge`)
   return res.data
 }
@@ -53,9 +45,7 @@ export async function login(
   return res.data
 }
 
-export async function refreshToken(
-  serverUrl: string,
-): Promise<string | null> {
+export async function refreshToken(serverUrl: string): Promise<string | null> {
   try {
     const res = await client(serverUrl).post('/api/auth/refresh')
     return res.data.token ?? null
@@ -86,7 +76,11 @@ export async function updateStatus(
   status_emoji?: string | null,
   status_sticker_id?: string | null,
 ): Promise<void> {
-  await client(serverUrl).patch('/api/auth/me/status', { status_text, status_emoji, status_sticker_id })
+  await client(serverUrl).patch('/api/auth/me/status', {
+    status_text,
+    status_emoji,
+    status_sticker_id,
+  })
 }
 
 export async function uploadPublicKey(
@@ -100,10 +94,7 @@ export async function uploadPublicKey(
   })
 }
 
-export async function getUserPublicKey(
-  serverUrl: string,
-  userId: string,
-): Promise<string | null> {
+export async function getUserPublicKey(serverUrl: string, userId: string): Promise<string | null> {
   const res = await client(serverUrl).get(`/api/auth/users/${userId}/public-key`)
   return res.data.public_key ?? null
 }
@@ -121,7 +112,9 @@ export async function resetPassword(
   resetToken: string,
   password: string,
 ): Promise<{ backuptoken: string }> {
-  const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/reset-password/${resetToken}`, { password })
+  const res = await axios.post(`${normalizeUrl(serverUrl)}/api/auth/reset-password/${resetToken}`, {
+    password,
+  })
   return res.data
 }
 
@@ -158,16 +151,11 @@ export async function deleteAccount(
   })
 }
 
-export async function requestPasswordReset(
-  serverUrl: string,
-  username: string,
-): Promise<void> {
+export async function requestPasswordReset(serverUrl: string, username: string): Promise<void> {
   await axios.post(`${normalizeUrl(serverUrl)}/api/auth/request-reset`, { username })
 }
 
-export async function getAdminList(
-  serverUrl: string,
-): Promise<AdminInfo[]> {
+export async function getAdminList(serverUrl: string): Promise<AdminInfo[]> {
   const res = await axios.get(`${normalizeUrl(serverUrl)}/api/server/admins`)
   return res.data.admins ?? res.data
 }
@@ -192,7 +180,7 @@ export async function resolveInviteCode(
 ): Promise<{ serverUrl: string; name: string; description: string }> {
   const parts = code.toUpperCase().split('.')
   if (parts.length !== 2) throw new Error('Invalid invite code format')
-  const encodedUrl = parts[0]!;
+  const encodedUrl = parts[0]!
   let serverUrl: string
   try {
     serverUrl = atob(encodedUrl.replace(/-/g, '+').replace(/_/g, '/'))
@@ -205,4 +193,3 @@ export async function resolveInviteCode(
   )
   return res.data
 }
-

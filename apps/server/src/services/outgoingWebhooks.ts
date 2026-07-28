@@ -94,7 +94,12 @@ let timer: NodeJS.Timeout | null = null
 // Target validation (SSRF)
 // ---------------------------------------------------------------------------
 
-const BLOCKED_HOSTNAMES = new Set(['localhost', 'localhost.localdomain', 'ip6-localhost', 'ip6-loopback'])
+const BLOCKED_HOSTNAMES = new Set([
+  'localhost',
+  'localhost.localdomain',
+  'ip6-localhost',
+  'ip6-loopback',
+])
 
 /** Literal IPv4 in any of the private / loopback / link-local ranges. */
 function isPrivateIPv4(host: string): boolean {
@@ -155,10 +160,16 @@ export function isSafeWebhookTarget(rawUrl: string): { ok: true } | { ok: false;
 
   const host = url.hostname.toLowerCase()
   if (BLOCKED_HOSTNAMES.has(host) || host.endsWith('.local') || host.endsWith('.internal')) {
-    return { ok: false, reason: `"${host}" is a local address — set ALLOW_PRIVATE_WEBHOOK_TARGETS=true to allow it` }
+    return {
+      ok: false,
+      reason: `"${host}" is a local address — set ALLOW_PRIVATE_WEBHOOK_TARGETS=true to allow it`,
+    }
   }
   if (isPrivateIPv4(host) || isPrivateIPv6(host)) {
-    return { ok: false, reason: `"${host}" is a private address — set ALLOW_PRIVATE_WEBHOOK_TARGETS=true to allow it` }
+    return {
+      ok: false,
+      reason: `"${host}" is a private address — set ALLOW_PRIVATE_WEBHOOK_TARGETS=true to allow it`,
+    }
   }
 
   return { ok: true }
@@ -306,7 +317,9 @@ function enqueue(job: Job): void {
     const now = Date.now()
     if (now - lastQueueWarnAt > 60_000) {
       lastQueueWarnAt = now
-      log.warn(`delivery queue full (${MAX_QUEUE}) — dropping oldest events. Is a target endpoint hanging?`)
+      log.warn(
+        `delivery queue full (${MAX_QUEUE}) — dropping oldest events. Is a target endpoint hanging?`,
+      )
     }
   }
   queue.push(job)
@@ -329,7 +342,12 @@ function isRetryable(status: number | null): boolean {
   return status >= 500
 }
 
-async function sendOnce(webhook: OutgoingWebhookRow, event: string, body: string, deliveryId: string): Promise<Attempt> {
+async function sendOnce(
+  webhook: OutgoingWebhookRow,
+  event: string,
+  body: string,
+  deliveryId: string,
+): Promise<Attempt> {
   const safe = isSafeWebhookTarget(webhook.url)
   if (!safe.ok) return { status: null, duration_ms: 0, error: `blocked target: ${safe.reason}` }
 
@@ -361,18 +379,35 @@ async function sendOnce(webhook: OutgoingWebhookRow, event: string, body: string
     return {
       status: null,
       duration_ms: Date.now() - started,
-      error: message.includes('timed out') || message.includes('aborted') ? 'request timed out' : message,
+      error:
+        message.includes('timed out') || message.includes('aborted')
+          ? 'request timed out'
+          : message,
     }
   }
 }
 
-function recordAttempt(webhookId: string, deliveryId: string, event: string, attempt: number, result: Attempt): void {
+function recordAttempt(
+  webhookId: string,
+  deliveryId: string,
+  event: string,
+  attempt: number,
+  result: Attempt,
+): void {
   try {
     const db = getDb()
     db.prepare(
       `INSERT INTO outgoing_webhook_deliveries (id, webhook_id, event, status, error, duration_ms, attempt)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(uuidv4(), webhookId, event, result.status, result.error?.slice(0, 500) ?? null, result.duration_ms, attempt)
+    ).run(
+      uuidv4(),
+      webhookId,
+      event,
+      result.status,
+      result.error?.slice(0, 500) ?? null,
+      result.duration_ms,
+      attempt,
+    )
 
     // Keep the log to the most recent N per hook — it exists for the UI's
     // "recent deliveries" panel, not as an archive.
@@ -413,7 +448,10 @@ function recordOutcome(webhookId: string, result: Attempt, succeeded: boolean): 
 
     if (row && row.consecutive_failures >= MAX_CONSECUTIVE_FAILURES) {
       const reason = `auto-disabled after ${row.consecutive_failures} consecutive failures`
-      db.prepare('UPDATE outgoing_webhooks SET enabled = 0, disabled_reason = ? WHERE id = ?').run(reason, webhookId)
+      db.prepare('UPDATE outgoing_webhooks SET enabled = 0, disabled_reason = ? WHERE id = ?').run(
+        reason,
+        webhookId,
+      )
       log.warn(`"${row.name}" ${reason}`)
     }
   } catch (err) {
@@ -422,7 +460,9 @@ function recordOutcome(webhookId: string, result: Attempt, succeeded: boolean): 
 }
 
 function getWebhook(id: string): OutgoingWebhookRow | undefined {
-  return getDb().prepare('SELECT * FROM outgoing_webhooks WHERE id = ?').get(id) as OutgoingWebhookRow | undefined
+  return getDb().prepare('SELECT * FROM outgoing_webhooks WHERE id = ?').get(id) as
+    | OutgoingWebhookRow
+    | undefined
 }
 
 async function runJob(job: Job): Promise<void> {
@@ -449,7 +489,9 @@ async function runJob(job: Job): Promise<void> {
   }
 
   recordOutcome(job.webhookId, result, false)
-  log.warn(`"${webhook.name}" delivery ${job.deliveryId} failed after ${attemptNumber} attempt(s): ${result.error}`)
+  log.warn(
+    `"${webhook.name}" delivery ${job.deliveryId} failed after ${attemptNumber} attempt(s): ${result.error}`,
+  )
 }
 
 function tick(): void {
@@ -465,7 +507,9 @@ function tick(): void {
     inFlight++
     runJob(job)
       .catch((err) => log.warn('delivery crashed:', err instanceof Error ? err.message : err))
-      .finally(() => { inFlight-- })
+      .finally(() => {
+        inFlight--
+      })
   }
 }
 

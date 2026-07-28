@@ -34,10 +34,20 @@ export type CommandResult =
   | { kind: 'compose'; content: string } // send this content as a normal message
 
 const EIGHT_BALL = [
-  'It is certain.', 'Without a doubt.', 'Yes — definitely.', 'You may rely on it.',
-  'Most likely.', 'Outlook good.', 'Signs point to yes.', 'Reply hazy, try again.',
-  'Ask again later.', 'Cannot predict now.', "Don't count on it.", 'My reply is no.',
-  'Outlook not so good.', 'Very doubtful.',
+  'It is certain.',
+  'Without a doubt.',
+  'Yes — definitely.',
+  'You may rely on it.',
+  'Most likely.',
+  'Outlook good.',
+  'Signs point to yes.',
+  'Reply hazy, try again.',
+  'Ask again later.',
+  'Cannot predict now.',
+  "Don't count on it.",
+  'My reply is no.',
+  'Outlook not so good.',
+  'Very doubtful.',
 ]
 
 export function userCanUseCommand(user: CommandUser, command: ChatCommand): boolean {
@@ -96,7 +106,10 @@ export async function runChatCommand(input: string, ctx: CommandContext): Promis
   if (command.kind === 'compose') {
     switch (command.name) {
       case 'me':
-        if (!argString.trim()) { ctx.notify('Usage', '/me <action>'); return { kind: 'handled' } }
+        if (!argString.trim()) {
+          ctx.notify('Usage', '/me <action>')
+          return { kind: 'handled' }
+        }
         return { kind: 'compose', content: `*${argString.trim()}*` }
       case 'shrug':
         return { kind: 'compose', content: `${argString.trim()} ¯\\_(ツ)_/¯`.trim() }
@@ -105,15 +118,24 @@ export async function runChatCommand(input: string, ctx: CommandContext): Promis
       case 'unflip':
         return { kind: 'compose', content: '┬─┬ ノ( ゜-゜ノ)' }
       case 'spoiler':
-        if (!argString.trim()) { ctx.notify('Usage', '/spoiler <message>'); return { kind: 'handled' } }
+        if (!argString.trim()) {
+          ctx.notify('Usage', '/spoiler <message>')
+          return { kind: 'handled' }
+        }
         return { kind: 'compose', content: `||${argString.trim()}||` }
       case 'roll':
         return { kind: 'compose', content: rollDice(args[0]) }
       case 'flip':
         return { kind: 'compose', content: `🪙 ${Math.random() < 0.5 ? 'Heads' : 'Tails'}` }
       case '8ball':
-        if (!argString.trim()) { ctx.notify('Usage', '/8ball <question>'); return { kind: 'handled' } }
-        return { kind: 'compose', content: `🎱 ${EIGHT_BALL[Math.floor(Math.random() * EIGHT_BALL.length)]}` }
+        if (!argString.trim()) {
+          ctx.notify('Usage', '/8ball <question>')
+          return { kind: 'handled' }
+        }
+        return {
+          kind: 'compose',
+          content: `🎱 ${EIGHT_BALL[Math.floor(Math.random() * EIGHT_BALL.length)]}`,
+        }
     }
   }
 
@@ -126,7 +148,10 @@ export async function runChatCommand(input: string, ctx: CommandContext): Promis
 
   if (command.name === 'roles') {
     const target = resolveMember(ctx.members, args[0] ?? '')
-    if (!target) { ctx.notify('User not found', `No member matching "${args[0] ?? ''}".`); return { kind: 'handled' } }
+    if (!target) {
+      ctx.notify('User not found', `No member matching "${args[0] ?? ''}".`)
+      return { kind: 'handled' }
+    }
     const roleNames = (target.custom_roles ?? []).map((r) => r.name).join(', ') || 'No roles'
     ctx.notify(`@${target.username}`, roleNames)
     return { kind: 'handled' }
@@ -140,7 +165,7 @@ export async function runChatCommand(input: string, ctx: CommandContext): Promis
         if (!target) return notFound(ctx, args[0])
         await kickMember(ctx.serverUrl, target.id)
         const store = useChatStore.getState()
-        store.setMembers(store.members.filter(m => m.id !== target.id))
+        store.setMembers(store.members.filter((m) => m.id !== target.id))
         ctx.notify('Member kicked', `@${target.username} was removed from the server.`)
         return { kind: 'handled' }
       }
@@ -150,7 +175,7 @@ export async function runChatCommand(input: string, ctx: CommandContext): Promis
         const reason = args.slice(1).join(' ') || undefined
         await banUser(ctx.serverUrl, target.id, reason)
         const store = useChatStore.getState()
-        store.setMembers(store.members.filter(m => m.id !== target.id))
+        store.setMembers(store.members.filter((m) => m.id !== target.id))
         ctx.notify('Member banned', `@${target.username} was banned${reason ? `: ${reason}` : '.'}`)
         return { kind: 'handled' }
       }
@@ -171,10 +196,16 @@ export async function runChatCommand(input: string, ctx: CommandContext): Promis
         const target = resolveMember(ctx.members, args[1] ?? '')
         if (!target) return notFound(ctx, args[1])
         const roleName = args.slice(2).join(' ').trim()
-        if (!roleName) { ctx.notify('Usage', '/role add|remove <user> <role>'); return { kind: 'handled' } }
+        if (!roleName) {
+          ctx.notify('Usage', '/role add|remove <user> <role>')
+          return { kind: 'handled' }
+        }
         const roles = await fetchRoles(ctx.serverUrl)
         const role = roles.find((r) => r.name.toLowerCase() === roleName.toLowerCase())
-        if (!role) { ctx.notify('Role not found', `No role named "${roleName}".`); return { kind: 'handled' } }
+        if (!role) {
+          ctx.notify('Role not found', `No role named "${roleName}".`)
+          return { kind: 'handled' }
+        }
         if (sub === 'add') {
           await addMemberRole(ctx.serverUrl, target.id, role.id)
           ctx.notify('Role added', `@${target.username} was given ${role.name}.`)
@@ -186,7 +217,10 @@ export async function runChatCommand(input: string, ctx: CommandContext): Promis
       }
       case 'nick': {
         const name = argString.trim()
-        if (!name) { ctx.notify('Usage', '/nick <nickname>'); return { kind: 'handled' } }
+        if (!name) {
+          ctx.notify('Usage', '/nick <nickname>')
+          return { kind: 'handled' }
+        }
         await updateProfile(ctx.serverUrl, name)
         ctx.notify('Display name updated', `You are now "${name}".`)
         return { kind: 'handled' }
@@ -194,7 +228,10 @@ export async function runChatCommand(input: string, ctx: CommandContext): Promis
     }
   } catch (err: unknown) {
     const e = err as { response?: { data?: { error?: string } }; message?: string }
-    ctx.notify(`/${command.name} failed`, e?.response?.data?.error || e?.message || 'Request failed.')
+    ctx.notify(
+      `/${command.name} failed`,
+      e?.response?.data?.error || e?.message || 'Request failed.',
+    )
     return { kind: 'handled' }
   }
 

@@ -7,15 +7,38 @@ const embedRoutes = new Hono()
 embedRoutes.post('/unfurl', authMiddleware, async (c) => {
   const db = getDb()
   let body: { urls?: string[] }
-  try { body = await c.req.json() as { urls?: string[] } } catch { return c.json({ error: 'Invalid body' }, 400) }
+  try {
+    body = (await c.req.json()) as { urls?: string[] }
+  } catch {
+    return c.json({ error: 'Invalid body' }, 400)
+  }
 
   const urls: string[] = body?.urls || []
   if (!urls.length) return c.json({ embeds: [] })
 
-  const results: Record<string, { title: string | null; description: string | null; image: string | null; siteName: string | null; favicon: string | null }> = {}
+  const results: Record<
+    string,
+    {
+      title: string | null
+      description: string | null
+      image: string | null
+      siteName: string | null
+      favicon: string | null
+    }
+  > = {}
 
   for (const url of urls) {
-    const cached = db.prepare('SELECT * FROM link_embeds WHERE url = ? AND fetched_at > ?').get(url, Math.floor(Date.now() / 1000) - 86400) as { title: string | null; description: string | null; image: string | null; site_name: string | null; favicon: string | null } | undefined
+    const cached = db
+      .prepare('SELECT * FROM link_embeds WHERE url = ? AND fetched_at > ?')
+      .get(url, Math.floor(Date.now() / 1000) - 86400) as
+      | {
+          title: string | null
+          description: string | null
+          image: string | null
+          site_name: string | null
+          favicon: string | null
+        }
+      | undefined
     if (cached) {
       results[url] = {
         title: cached.title,
@@ -31,18 +54,32 @@ embedRoutes.post('/unfurl', authMiddleware, async (c) => {
     if (ytMatch) {
       try {
         const oembedRes = await fetch(
-          `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${ytMatch[1]}`)}&format=json`
+          `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${ytMatch[1]}`)}&format=json`,
         )
         if (oembedRes.ok) {
-          const oembed = await oembedRes.json() as { title?: string; thumbnail_url?: string }
+          const oembed = (await oembedRes.json()) as { title?: string; thumbnail_url?: string }
           const title = oembed.title || null
           const image = oembed.thumbnail_url || null
 
           db.prepare(
-            'INSERT OR REPLACE INTO link_embeds (url, title, description, image, site_name, favicon, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-          ).run(url, title, null, image, 'YouTube', 'https://www.youtube.com/favicon.ico', Math.floor(Date.now() / 1000))
+            'INSERT OR REPLACE INTO link_embeds (url, title, description, image, site_name, favicon, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          ).run(
+            url,
+            title,
+            null,
+            image,
+            'YouTube',
+            'https://www.youtube.com/favicon.ico',
+            Math.floor(Date.now() / 1000),
+          )
 
-          results[url] = { title, description: null, image, siteName: 'YouTube', favicon: 'https://www.youtube.com/favicon.ico' }
+          results[url] = {
+            title,
+            description: null,
+            image,
+            siteName: 'YouTube',
+            favicon: 'https://www.youtube.com/favicon.ico',
+          }
           continue
         }
       } catch {
@@ -63,9 +100,15 @@ embedRoutes.post('/unfurl', authMiddleware, async (c) => {
       const html = await res.text()
 
       const getMeta = (name: string) => {
-        const propMatch = new RegExp(`<meta[^>]+property=["']og:${name}["'][^>]+content=["']([^"']+)["']`, 'i').exec(html)
+        const propMatch = new RegExp(
+          `<meta[^>]+property=["']og:${name}["'][^>]+content=["']([^"']+)["']`,
+          'i',
+        ).exec(html)
         if (propMatch) return propMatch[1]
-        const nameMatch = new RegExp(`<meta[^>]+name=["']${name}["'][^>]+content=["']([^"']+)["']`, 'i').exec(html)
+        const nameMatch = new RegExp(
+          `<meta[^>]+name=["']${name}["'][^>]+content=["']([^"']+)["']`,
+          'i',
+        ).exec(html)
         return nameMatch ? nameMatch[1] : null
       }
 
@@ -73,11 +116,13 @@ embedRoutes.post('/unfurl', authMiddleware, async (c) => {
       const description = getMeta('description') || null
       const image = getMeta('image') || null
       const siteName = getMeta('site_name') || null
-      const favicon = html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]+href=["']([^"']+)["']/i)?.[1] || null
+      const favicon =
+        html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]+href=["']([^"']+)["']/i)?.[1] ||
+        null
 
       try {
         db.prepare(
-          'INSERT OR REPLACE INTO link_embeds (url, title, description, image, site_name, favicon, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          'INSERT OR REPLACE INTO link_embeds (url, title, description, image, site_name, favicon, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         ).run(url, title, description, image, siteName, favicon, Math.floor(Date.now() / 1000))
       } catch {}
 

@@ -10,7 +10,12 @@ interface CameraPreviewOverlayProps {
   channelId: string | null
 }
 
-export default function CameraPreviewOverlay({ cameraStreamRef, isCameraOn, toggleCamera, channelId }: CameraPreviewOverlayProps) {
+export default function CameraPreviewOverlay({
+  cameraStreamRef,
+  isCameraOn,
+  toggleCamera,
+  channelId,
+}: CameraPreviewOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [mounted, setMounted] = useState(false)
@@ -139,13 +144,7 @@ export default function CameraPreviewOverlay({ cameraStreamRef, isCameraOn, togg
         />
       </div>
       <div className="camera-overlay__body">
-        <video
-          ref={videoRef}
-          autoPlay
-          muted
-          playsInline
-          className="camera-overlay__video"
-        />
+        <video ref={videoRef} autoPlay muted playsInline className="camera-overlay__video" />
       </div>
     </div>
   )

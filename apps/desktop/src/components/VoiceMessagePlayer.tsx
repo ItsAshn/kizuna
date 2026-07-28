@@ -101,7 +101,7 @@ export default function VoiceMessagePlayer({ url }: Props) {
       const x = i * (barW + gap)
       const barH = Math.max(2, v * h * 0.8)
       const y = (h - barH) / 2
-      const isPlayed = (i / waveform.length) <= progress
+      const isPlayed = i / waveform.length <= progress
 
       ctx.fillStyle = isPlayed ? 'var(--brand)' : 'var(--text-muted)'
       ctx.beginPath()
@@ -122,7 +122,11 @@ export default function VoiceMessagePlayer({ url }: Props) {
 
   return (
     <div className="voice-player">
-      <button className="voice-player__btn" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>
+      <button
+        className="voice-player__btn"
+        onClick={togglePlay}
+        aria-label={playing ? 'Pause' : 'Play'}
+      >
         {playing ? <Pause className="icon-sm" /> : <Play className="icon-sm" />}
       </button>
       <canvas ref={canvasRef} className="voice-player__waveform" />

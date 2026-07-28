@@ -24,33 +24,106 @@ export interface ChatCommand {
 
 export const CHAT_COMMANDS: ChatCommand[] = [
   // ─── Moderation ───────────────────────────────────────────────
-  { name: 'kick', kind: 'action', permission: 'kick_members', usage: '<user> [reason]', description: 'Remove a member from the server' },
-  { name: 'ban', kind: 'action', permission: 'ban_members', usage: '<user> [reason]', description: 'Permanently ban a member' },
-  { name: 'unban', kind: 'action', permission: 'ban_members', usage: '<user>', description: 'Lift a ban so the user can rejoin' },
+  {
+    name: 'kick',
+    kind: 'action',
+    permission: 'kick_members',
+    usage: '<user> [reason]',
+    description: 'Remove a member from the server',
+  },
+  {
+    name: 'ban',
+    kind: 'action',
+    permission: 'ban_members',
+    usage: '<user> [reason]',
+    description: 'Permanently ban a member',
+  },
+  {
+    name: 'unban',
+    kind: 'action',
+    permission: 'ban_members',
+    usage: '<user>',
+    description: 'Lift a ban so the user can rejoin',
+  },
 
   // ─── Roles & members ──────────────────────────────────────────
-  { name: 'role', kind: 'action', permission: 'manage_roles', usage: 'add|remove <user> <role>', description: 'Grant or remove a role from a member' },
+  {
+    name: 'role',
+    kind: 'action',
+    permission: 'manage_roles',
+    usage: 'add|remove <user> <role>',
+    description: 'Grant or remove a role from a member',
+  },
   { name: 'roles', kind: 'client', usage: '<user>', description: "List a member's roles" },
-  { name: 'nick', kind: 'action', usage: '<nickname>', description: 'Change your own display name' },
+  {
+    name: 'nick',
+    kind: 'action',
+    usage: '<nickname>',
+    description: 'Change your own display name',
+  },
 
   // ─── Utility / fun ────────────────────────────────────────────
   { name: 'help', kind: 'client', usage: '[command]', description: 'List available commands' },
-  { name: 'me', kind: 'compose', permission: 'send_messages', usage: '<action>', description: 'Send an action/emote message' },
-  { name: 'shrug', kind: 'compose', permission: 'send_messages', usage: '[message]', description: 'Append ¯\\_(ツ)_/¯' },
-  { name: 'tableflip', kind: 'compose', permission: 'send_messages', description: 'Flip a table (╯°□°)╯︵ ┻━┻' },
-  { name: 'unflip', kind: 'compose', permission: 'send_messages', description: 'Restore the table ┬─┬ ノ( ゜-゜ノ)' },
-  { name: 'spoiler', kind: 'compose', permission: 'send_messages', usage: '<message>', description: 'Mark a message as a spoiler' },
-  { name: 'roll', kind: 'compose', permission: 'send_messages', usage: '[NdM]', description: 'Roll dice (default 1d20)' },
+  {
+    name: 'me',
+    kind: 'compose',
+    permission: 'send_messages',
+    usage: '<action>',
+    description: 'Send an action/emote message',
+  },
+  {
+    name: 'shrug',
+    kind: 'compose',
+    permission: 'send_messages',
+    usage: '[message]',
+    description: 'Append ¯\\_(ツ)_/¯',
+  },
+  {
+    name: 'tableflip',
+    kind: 'compose',
+    permission: 'send_messages',
+    description: 'Flip a table (╯°□°)╯︵ ┻━┻',
+  },
+  {
+    name: 'unflip',
+    kind: 'compose',
+    permission: 'send_messages',
+    description: 'Restore the table ┬─┬ ノ( ゜-゜ノ)',
+  },
+  {
+    name: 'spoiler',
+    kind: 'compose',
+    permission: 'send_messages',
+    usage: '<message>',
+    description: 'Mark a message as a spoiler',
+  },
+  {
+    name: 'roll',
+    kind: 'compose',
+    permission: 'send_messages',
+    usage: '[NdM]',
+    description: 'Roll dice (default 1d20)',
+  },
   { name: 'flip', kind: 'compose', permission: 'send_messages', description: 'Flip a coin' },
-  { name: '8ball', kind: 'compose', permission: 'send_messages', usage: '<question>', description: 'Ask the magic 8-ball' },
-  { name: 'poll', kind: 'action', permission: 'send_messages', usage: 'question | option one | option two [| ...]', description: 'Create a poll (or use the poll builder for timers & multi-select)' },
+  {
+    name: '8ball',
+    kind: 'compose',
+    permission: 'send_messages',
+    usage: '<question>',
+    description: 'Ask the magic 8-ball',
+  },
+  {
+    name: 'poll',
+    kind: 'action',
+    permission: 'send_messages',
+    usage: 'question | option one | option two [| ...]',
+    description: 'Create a poll (or use the poll builder for timers & multi-select)',
+  },
 ]
 
 export function findChatCommand(name: string): ChatCommand | undefined {
   const lower = name.toLowerCase()
-  return CHAT_COMMANDS.find(
-    (c) => c.name === lower || c.aliases?.includes(lower),
-  )
+  return CHAT_COMMANDS.find((c) => c.name === lower || c.aliases?.includes(lower))
 }
 
 export interface ParsedSlashCommand {

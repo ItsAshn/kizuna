@@ -1,8 +1,5 @@
 import axios from 'axios'
-import type {
-  InviteCode,
-  ServerInfo,
-} from '../types'
+import type { InviteCode, ServerInfo } from '../types'
 import { client, normalizeUrl, tokenStore } from './core'
 
 // ─── Server Settings ──────────────────────────────────────
@@ -56,7 +53,12 @@ export async function uploadServerBackground(
           resolve()
         } else {
           let message = 'Upload failed'
-          try { const err = JSON.parse(xhr.responseText); message = err.error || message } catch { /* ignore */ }
+          try {
+            const err = JSON.parse(xhr.responseText)
+            message = err.error || message
+          } catch {
+            /* ignore */
+          }
           reject(new Error(message))
         }
       }
@@ -68,9 +70,7 @@ export async function uploadServerBackground(
   await client(serverUrl).post('/api/server/background', formData)
 }
 
-export async function deleteServerBackground(
-  serverUrl: string,
-): Promise<void> {
+export async function deleteServerBackground(serverUrl: string): Promise<void> {
   await client(serverUrl).delete('/api/server/background')
 }
 
@@ -88,17 +88,12 @@ export async function createInvite(
   return res.data
 }
 
-export async function fetchInvites(
-  serverUrl: string,
-): Promise<InviteCode[]> {
+export async function fetchInvites(serverUrl: string): Promise<InviteCode[]> {
   const res = await client(serverUrl).get('/api/server/invites')
   return res.data.invites ?? res.data
 }
 
-export async function revokeInvite(
-  serverUrl: string,
-  code: string,
-): Promise<void> {
+export async function revokeInvite(serverUrl: string, code: string): Promise<void> {
   await client(serverUrl).delete(`/api/server/invites/${code}`)
 }
 
@@ -118,9 +113,7 @@ export async function joinWithInvite(
 
 // ─── Storage & Cleanup ──────────────────────────────────────
 
-export async function fetchStorageStats(
-  serverUrl: string,
-): Promise<{
+export async function fetchStorageStats(serverUrl: string): Promise<{
   attachments: { count: number; totalSize: number }
   gifs: { count: number; totalSize: number }
   auditLogs: { count: number }
@@ -131,9 +124,7 @@ export async function fetchStorageStats(
   return res.data
 }
 
-export async function clearAuditLogs(
-  serverUrl: string,
-): Promise<void> {
+export async function clearAuditLogs(serverUrl: string): Promise<void> {
   await client(serverUrl).delete('/api/audit')
 }
 
@@ -143,4 +134,3 @@ export async function cleanupOrphanFiles(
   const res = await client(serverUrl).post('/api/server/cleanup/orphans')
   return res.data
 }
-

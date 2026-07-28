@@ -31,10 +31,7 @@ function checkEnvFile(): void {
   if (process.env.JWT_SECRET) return
 
   if (!fs.existsSync(path.join(process.cwd(), '.env'))) {
-    console.error(
-      '\n[!] No .env file found.\n' +
-      '    Copy .env.example to .env and edit it.\n'
-    )
+    console.error('\n[!] No .env file found.\n' + '    Copy .env.example to .env and edit it.\n')
     process.exit(1)
   }
 }
@@ -71,7 +68,9 @@ async function start(): Promise<void> {
   })
   setTaggingEnabled(config.AUTO_TAGGING_ENABLED)
   if (config.AUTO_TAGGING_ENABLED) {
-    console.log('[i] Auto-tagging is enabled. Call POST /api/gifs/load-tagger or use the Server Settings UI to load the CLIP model when ready.')
+    console.log(
+      '[i] Auto-tagging is enabled. Call POST /api/gifs/load-tagger or use the Server Settings UI to load the CLIP model when ready.',
+    )
   }
 
   console.log('[✓] Configuration validated')
@@ -90,7 +89,9 @@ async function start(): Promise<void> {
   startOutgoingWebhooks()
   console.log('[i] Scheduled cleanup jobs started')
 
-  console.log(`[i] Configuring network (UPnP: ${process.env.UPNP_ENABLED !== 'false' ? 'enabled' : 'disabled'})...`)
+  console.log(
+    `[i] Configuring network (UPnP: ${process.env.UPNP_ENABLED !== 'false' ? 'enabled' : 'disabled'})...`,
+  )
   console.log('[i] Resolving public address...')
   console.log('[i] Starting voice server...')
 
@@ -103,19 +104,27 @@ async function start(): Promise<void> {
   if (_.status === 'fulfilled') {
     console.log('[✓] Network ports configured')
   } else {
-    console.warn('[!] Network port configuration failed:', _.reason instanceof Error ? _.reason.message : _.reason)
+    console.warn(
+      '[!] Network port configuration failed:',
+      _.reason instanceof Error ? _.reason.message : _.reason,
+    )
   }
 
   if (_publicAddress.status === 'fulfilled') {
     console.log(`[✓] Public address: ${process.env.PUBLIC_ADDRESS || 'auto-detected'}`)
   } else {
-    console.warn(`[!] Could not resolve public address: ${_publicAddress.reason instanceof Error ? _publicAddress.reason.message : _publicAddress.reason}`)
+    console.warn(
+      `[!] Could not resolve public address: ${_publicAddress.reason instanceof Error ? _publicAddress.reason.message : _publicAddress.reason}`,
+    )
   }
 
   if (_worker.status === 'fulfilled') {
     console.log('[✓] Media worker started')
   } else {
-    console.error('[!] Failed to start mediasoup worker:', _worker.reason instanceof Error ? _worker.reason.message : _worker.reason)
+    console.error(
+      '[!] Failed to start mediasoup worker:',
+      _worker.reason instanceof Error ? _worker.reason.message : _worker.reason,
+    )
   }
 
   startIpWatcher()
@@ -155,7 +164,9 @@ async function start(): Promise<void> {
   const shutdown = async (signal: string) => {
     console.log(`\n[${signal}] Shutting down gracefully...`)
     for (const mapping of getMappedPorts()) {
-      try { upnpClient.portUnmapping({ public: mapping.public }, () => {}) } catch {}
+      try {
+        upnpClient.portUnmapping({ public: mapping.public }, () => {})
+      } catch {}
     }
     closeDb()
     await closeWorker()

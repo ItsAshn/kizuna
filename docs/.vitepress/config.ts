@@ -5,7 +5,8 @@ const OG_IMAGE = `${SITE_URL}/Logo.webp`
 
 export default defineConfig({
   title: 'Kizuna',
-  description: 'Self-hosted Discord alternative with text chat, voice channels, and screen sharing. You host the server, you own the data.',
+  description:
+    'Self-hosted Discord alternative with text chat, voice channels, and screen sharing. You host the server, you own the data.',
   base: '/kizuna/',
   lang: 'en-US',
   lastUpdated: true,
@@ -28,16 +29,34 @@ export default defineConfig({
   ],
   transformHead: (ctx) => {
     const title = ctx.pageData.title ? `${ctx.pageData.title} | Kizuna Docs` : 'Kizuna Docs'
-    const description = ctx.pageData.description
-      || ctx.pageData.frontmatter.description
-      || 'Self-hosted Discord alternative with text chat, voice channels, and screen sharing.'
+    const description =
+      ctx.pageData.description ||
+      ctx.pageData.frontmatter.description ||
+      'Self-hosted Discord alternative with text chat, voice channels, and screen sharing.'
     return [
       ['meta', { property: 'og:title', content: title }],
       ['meta', { property: 'og:description', content: description }],
-      ['meta', { property: 'og:url', content: `${SITE_URL}${ctx.pageData.relativePath ? `/${ctx.pageData.relativePath.replace(/\.md$/, '').replace(/index$/, '')}` : ''}` }],
+      [
+        'meta',
+        {
+          property: 'og:url',
+          content: `${SITE_URL}${ctx.pageData.relativePath ? `/${ctx.pageData.relativePath.replace(/\.md$/, '').replace(/index$/, '')}` : ''}`,
+        },
+      ],
       ['meta', { name: 'twitter:title', content: title }],
       ['meta', { name: 'twitter:description', content: description }],
-      ['link', { rel: 'canonical', href: `${SITE_URL}/kizuna/${ctx.pageData.relativePath?.replace(/\.md$/, '').replace(/index$/, '').replace(/\/$/, '') || ''}` }],
+      [
+        'link',
+        {
+          rel: 'canonical',
+          href: `${SITE_URL}/kizuna/${
+            ctx.pageData.relativePath
+              ?.replace(/\.md$/, '')
+              .replace(/index$/, '')
+              .replace(/\/$/, '') || ''
+          }`,
+        },
+      ],
     ]
   },
   themeConfig: {
@@ -81,11 +100,10 @@ export default defineConfig({
       ],
     },
     footer: {
-      message: '<a href="/kizuna/legal/privacy">Privacy Policy</a> &middot; <a href="/kizuna/legal/terms">Terms of Service</a> &middot; <a href="/kizuna/legal/license">License</a>',
+      message:
+        '<a href="/kizuna/legal/privacy">Privacy Policy</a> &middot; <a href="/kizuna/legal/terms">Terms of Service</a> &middot; <a href="/kizuna/legal/license">License</a>',
       copyright: 'Copyright &copy; 2025-present ItsAshn',
     },
-    socialLinks: [
-      { icon: 'github', link: 'https://github.com/ItsAshn/kizuna' },
-    ],
+    socialLinks: [{ icon: 'github', link: 'https://github.com/ItsAshn/kizuna' }],
   },
 })

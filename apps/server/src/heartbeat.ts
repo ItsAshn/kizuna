@@ -17,7 +17,12 @@ function buildServerUrl(config: EnvConfig): string {
 export function startHeartbeat(
   config: EnvConfig,
   getPlayerCount: () => number,
-  getServerInfo: () => { name: string; description: string; passwordProtected: boolean; icon: string | null },
+  getServerInfo: () => {
+    name: string
+    description: string
+    passwordProtected: boolean
+    icon: string | null
+  },
 ): void {
   const announceUrl = config.ANNOUNCE_URL || 'https://server.use-kizuna.com'
   const serverUrl = buildServerUrl(config)

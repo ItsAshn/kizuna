@@ -57,7 +57,8 @@ export function useBackgroundNotifications(): void {
         if (activeServerId !== server.id || message.channel_id !== store.activeChannelId) {
           if (activeServerId === server.id) return
           const sender = message.display_name || message.username || 'Someone'
-          const body = message.content.length > 100 ? message.content.slice(0, 100) + '...' : message.content
+          const body =
+            message.content.length > 100 ? message.content.slice(0, 100) + '...' : message.content
           showNotification({ type: 'message', title: sender, body, channelId: message.channel_id })
           store.setUnreadCounts({
             ...store.unreadCounts,
@@ -66,20 +67,27 @@ export function useBackgroundNotifications(): void {
         }
       })
 
-      socket.on('message:mention', (mention: { channel_id: string; author_username?: string; content?: string | null }) => {
-        if (activeServerId === server.id) return
-        const store = useChatStore.getState()
-        store.setMentionCounts({
-          ...store.mentionCounts,
-          [mention.channel_id]: (store.mentionCounts[mention.channel_id] || 0) + 1,
-        })
-        showNotification({
-          type: 'mention',
-          title: mention.author_username || 'Someone',
-          body: mention.content ? (mention.content.length > 100 ? mention.content.slice(0, 100) + '...' : mention.content) : '',
-          channelId: mention.channel_id,
-        })
-      })
+      socket.on(
+        'message:mention',
+        (mention: { channel_id: string; author_username?: string; content?: string | null }) => {
+          if (activeServerId === server.id) return
+          const store = useChatStore.getState()
+          store.setMentionCounts({
+            ...store.mentionCounts,
+            [mention.channel_id]: (store.mentionCounts[mention.channel_id] || 0) + 1,
+          })
+          showNotification({
+            type: 'mention',
+            title: mention.author_username || 'Someone',
+            body: mention.content
+              ? mention.content.length > 100
+                ? mention.content.slice(0, 100) + '...'
+                : mention.content
+              : '',
+            channelId: mention.channel_id,
+          })
+        },
+      )
 
       socket.on('dm:received', (message: Message) => {
         const currentUserId = useServerStore.getState().sessions[server.id]?.user.id
@@ -88,7 +96,10 @@ export function useBackgroundNotifications(): void {
         const decrypted = tryDecryptSocketDM(message)
         const store = useChatStore.getState()
         const sender = decrypted.display_name || decrypted.username || 'Someone'
-        const body = decrypted.content.length > 100 ? decrypted.content.slice(0, 100) + '...' : decrypted.content
+        const body =
+          decrypted.content.length > 100
+            ? decrypted.content.slice(0, 100) + '...'
+            : decrypted.content
         showNotification({ type: 'message', title: sender, body, channelId: message.channel_id })
         store.setUnreadCounts({
           ...store.unreadCounts,
@@ -103,7 +114,10 @@ export function useBackgroundNotifications(): void {
         const decrypted = tryDecryptGroupDM(message)
         const store = useChatStore.getState()
         const sender = decrypted.display_name || decrypted.username || 'Someone'
-        const body = decrypted.content.length > 100 ? decrypted.content.slice(0, 100) + '...' : decrypted.content
+        const body =
+          decrypted.content.length > 100
+            ? decrypted.content.slice(0, 100) + '...'
+            : decrypted.content
         showNotification({ type: 'message', title: sender, body, channelId: message.channel_id })
         store.setUnreadCounts({
           ...store.unreadCounts,
@@ -115,9 +129,12 @@ export function useBackgroundNotifications(): void {
         showNotification({ type: 'announce', title, body })
       })
 
-      socket.on('channel:mute', ({ channel_id, muted_until }: { channel_id: string; muted_until: number | null }) => {
-        useChatStore.getState().upsertChannelMute(channel_id, muted_until)
-      })
+      socket.on(
+        'channel:mute',
+        ({ channel_id, muted_until }: { channel_id: string; muted_until: number | null }) => {
+          useChatStore.getState().upsertChannelMute(channel_id, muted_until)
+        },
+      )
 
       socket.on('channel:unmute', ({ channel_id }: { channel_id: string }) => {
         useChatStore.getState().removeChannelMute(channel_id)

@@ -23,7 +23,9 @@
   overflow: hidden;
   padding: 0;
   position: relative;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
 }
 
 .media-gallery__item:hover {

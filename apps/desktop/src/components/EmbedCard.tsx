@@ -20,21 +20,25 @@ export default function EmbedCard({ urls }: EmbedCardProps) {
       setLoaded(true)
       return
     }
-    unfurlUrls(session.url, urls).then(setEmbeds).catch(() => {}).finally(() => setLoaded(true))
+    unfurlUrls(session.url, urls)
+      .then(setEmbeds)
+      .catch(() => {})
+      .finally(() => setLoaded(true))
   }, [urls.join(','), session?.url])
 
-  if (!loaded) return (
-    <div className="embed-card-list">
-      <div className="embed-card embed-card--loading">
-        <div className="embed-card__accent" />
-        <div className="embed-card__body">
-          <Skeleton variant="text" width="70%" />
-          <Skeleton variant="text" width="90%" />
-          <Skeleton variant="text" width="50%" />
+  if (!loaded)
+    return (
+      <div className="embed-card-list">
+        <div className="embed-card embed-card--loading">
+          <div className="embed-card__accent" />
+          <div className="embed-card__body">
+            <Skeleton variant="text" width="70%" />
+            <Skeleton variant="text" width="90%" />
+            <Skeleton variant="text" width="50%" />
+          </div>
         </div>
       </div>
-    </div>
-  )
+    )
 
   if (Object.keys(embeds).length === 0) return null
 
@@ -50,22 +54,23 @@ export default function EmbedCard({ urls }: EmbedCardProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="embed-card"
-            onClick={(e) => { e.preventDefault(); openExternalLink(url) }}
+            onClick={(e) => {
+              e.preventDefault()
+              openExternalLink(url)
+            }}
           >
             <div className="embed-card__accent" />
             <div className="embed-card__body">
               <div className="embed-card__header">
-                {embed.favicon && <img src={embed.favicon} alt="" className="embed-card__favicon" />}
+                {embed.favicon && (
+                  <img src={embed.favicon} alt="" className="embed-card__favicon" />
+                )}
                 <span className="embed-card__site">{embed.site_name || new URL(url).hostname}</span>
               </div>
               <span className="embed-card__title">{embed.title}</span>
-              {embed.description && (
-                <span className="embed-card__desc">{embed.description}</span>
-              )}
+              {embed.description && <span className="embed-card__desc">{embed.description}</span>}
             </div>
-            {embed.image && (
-              <img src={embed.image} alt="" className="embed-card__thumb" />
-            )}
+            {embed.image && <img src={embed.image} alt="" className="embed-card__thumb" />}
           </a>
         )
       })}

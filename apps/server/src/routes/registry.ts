@@ -7,7 +7,7 @@ const CLEANUP_INTERVAL_MS = 60_000
 const registryRoutes = new Hono()
 
 registryRoutes.post('/heartbeat', async (c) => {
-  const body = await c.req.json() as {
+  const body = (await c.req.json()) as {
     url: string
     name: string
     description?: string
@@ -23,10 +23,12 @@ registryRoutes.post('/heartbeat', async (c) => {
   const db = getDb()
   const now = Math.floor(Date.now() / 1000)
 
-  db.prepare(`
+  db.prepare(
+    `
     INSERT OR REPLACE INTO registry_servers (url, name, description, icon, password_protected, player_count, last_heartbeat)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
+  ).run(
     body.url.trim(),
     body.name.trim(),
     (body.description || '').trim(),
@@ -43,12 +45,16 @@ registryRoutes.get('/servers', (c) => {
   const db = getDb()
   const cutoff = Math.floor(Date.now() / 1000) - STALE_SECONDS
 
-  const servers = db.prepare(`
+  const servers = db
+    .prepare(
+      `
     SELECT url, name, description, icon, password_protected, player_count, last_heartbeat
     FROM registry_servers
     WHERE last_heartbeat >= ?
     ORDER BY player_count DESC, name ASC
-  `).all(cutoff) as {
+  `,
+    )
+    .all(cutoff) as {
     url: string
     name: string
     description: string
@@ -58,14 +64,16 @@ registryRoutes.get('/servers', (c) => {
     last_heartbeat: number
   }[]
 
-  return c.json(servers.map((s) => ({
-    url: s.url,
-    name: s.name,
-    description: s.description,
-    icon: s.icon,
-    passwordProtected: s.password_protected === 1,
-    playerCount: s.player_count,
-  })))
+  return c.json(
+    servers.map((s) => ({
+      url: s.url,
+      name: s.name,
+      description: s.description,
+      icon: s.icon,
+      passwordProtected: s.password_protected === 1,
+      playerCount: s.player_count,
+    })),
+  )
 })
 
 function cleanupStaleServers(): void {

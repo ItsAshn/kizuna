@@ -20,8 +20,13 @@ function fileToDataUrl(file: File, maxSize = 512): Promise<string> {
       img.onload = () => {
         let { width, height } = img
         if (width > maxSize || height > maxSize) {
-          if (width > height) { height = Math.round((height / width) * maxSize); width = maxSize }
-          else { width = Math.round((width / height) * maxSize); height = maxSize }
+          if (width > height) {
+            height = Math.round((height / width) * maxSize)
+            width = maxSize
+          } else {
+            width = Math.round((width / height) * maxSize)
+            height = maxSize
+          }
         }
         const canvas = document.createElement('canvas')
         canvas.width = width
@@ -101,11 +106,10 @@ export default function GroupDMSettingsModal({ groupDM, onClose }: Props) {
           avatarPayload = await fileToDataUrl(pendingAvatarFile.current)
         }
       }
-      const updated = await updateGroupDM(
-        session.url,
-        groupDM.id,
-        { name: name.trim(), avatar: avatarPayload },
-      )
+      const updated = await updateGroupDM(session.url, groupDM.id, {
+        name: name.trim(),
+        avatar: avatarPayload,
+      })
       setGroupDMChannels(groupDMChannels.map((c) => (c.id === updated.id ? updated : c)))
       setAvatarChanged(false)
       pendingAvatarFile.current = null
@@ -124,22 +128,22 @@ export default function GroupDMSettingsModal({ groupDM, onClose }: Props) {
       open
       onClose={onClose}
       title="Group Settings"
-      footer={() => isOwner ? (
-        <button
-          className="gdms__save-btn"
-          onClick={handleSave}
-          disabled={!name.trim() || saving}
-        >
-          {saving ? 'Saving...' : 'Save'}
-        </button>
-      ) : undefined}
+      footer={() =>
+        isOwner ? (
+          <button className="gdms__save-btn" onClick={handleSave} disabled={!name.trim() || saving}>
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        ) : undefined
+      }
     >
       <div className="gdms__avatar-section">
         <div className="gdms__avatar-wrap">
           {avatarPreview ? (
             <img src={avatarPreview} alt="" className="gdms__avatar-img" />
           ) : (
-            <span className="gdms__avatar-placeholder">{groupDM.name.slice(0, 2).toUpperCase()}</span>
+            <span className="gdms__avatar-placeholder">
+              {groupDM.name.slice(0, 2).toUpperCase()}
+            </span>
           )}
           {isOwner && (
             <>
@@ -204,9 +208,16 @@ export default function GroupDMSettingsModal({ groupDM, onClose }: Props) {
                 <div className="gdms__member-info">
                   <span className="gdms__member-name">
                     {displayName}
-                    {isOwnerBadge && <span className="gdms__member-owner" title="Owner"> 👑</span>}
+                    {isOwnerBadge && (
+                      <span className="gdms__member-owner" title="Owner">
+                        {' '}
+                        👑
+                      </span>
+                    )}
                   </span>
-                  <span className="gdms__member-username">@{memberInfo?.username || member.user_id}</span>
+                  <span className="gdms__member-username">
+                    @{memberInfo?.username || member.user_id}
+                  </span>
                 </div>
               </div>
             )

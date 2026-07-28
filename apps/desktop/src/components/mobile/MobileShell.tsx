@@ -43,7 +43,11 @@ interface MobileShellProps {
   leaveVoice: () => Promise<void>
   toggleMute: () => void
   toggleCamera: (channelId: string) => void
-  startScreenshare: (channelId: string, monitorIndex: number, fps?: number) => Promise<string | null>
+  startScreenshare: (
+    channelId: string,
+    monitorIndex: number,
+    fps?: number,
+  ) => Promise<string | null>
   stopScreenshare: () => void
   isCameraOn: boolean
   cameraStreamRef: MutableRefObject<MediaStream | null>
@@ -134,9 +138,7 @@ export default function MobileShell({
 
   const viewedVoiceChannelId = useChatStore((s) => s.viewedVoiceChannelId)
   const stageOwnsScreenshare =
-    voiceStageVisible &&
-    !!viewedVoiceChannelId &&
-    viewedVoiceChannelId === activeVoiceChannelId
+    voiceStageVisible && !!viewedVoiceChannelId && viewedVoiceChannelId === activeVoiceChannelId
 
   const dmUnreadTotal = useMemo(() => {
     let total = 0
@@ -154,8 +156,7 @@ export default function MobileShell({
     return total
   }, [serverMentionCounts])
 
-  const showBg =
-    bgInfo?.hasBackground && serverBackgroundEnabled && navStack.length > 0
+  const showBg = bgInfo?.hasBackground && serverBackgroundEnabled && navStack.length > 0
   const hasBg = showBg
 
   const goBack = useCallback(() => {
@@ -256,9 +257,7 @@ export default function MobileShell({
           socketRef={socketRef}
           onOpenMenu={onOpenMenu}
           onBackToServers={popView}
-          onOpenVoiceStage={(channelId) =>
-            pushView({ type: 'voice', channelId })
-          }
+          onOpenVoiceStage={(channelId) => pushView({ type: 'voice', channelId })}
           onOpenChat={pushToChat}
         />
       )
@@ -281,11 +280,7 @@ export default function MobileShell({
       )
     }
 
-    if (
-      topEntry.type === 'channel' ||
-      topEntry.type === 'dm' ||
-      topEntry.type === 'group-dm'
-    ) {
+    if (topEntry.type === 'channel' || topEntry.type === 'dm' || topEntry.type === 'group-dm') {
       return (
         <ChatArea
           socketRef={socketRef}
@@ -320,14 +315,9 @@ export default function MobileShell({
           <div className="connection-banner">
             {socketReconnecting ? (
               <>
-                <Loader2
-                  size={14}
-                  className="connection-banner__spinner"
-                />
+                <Loader2 size={14} className="connection-banner__spinner" />
                 Reconnecting
-                {socketReconnectAttempts > 0
-                  ? ` (attempt ${socketReconnectAttempts})`
-                  : ''}
+                {socketReconnectAttempts > 0 ? ` (attempt ${socketReconnectAttempts})` : ''}
                 ...
               </>
             ) : (
@@ -347,10 +337,7 @@ export default function MobileShell({
         <div className="mobile-content" ref={contentRef}>
           {/* Keyed so each navigation mounts a fresh view, which is what makes
               the direction-specific mount animation play exactly once. */}
-          <div
-            key={viewKey}
-            className={`mobile-content__view mobile-content__view--${navAnim}`}
-          >
+          <div key={viewKey} className={`mobile-content__view mobile-content__view--${navAnim}`}>
             {renderCurrentView()}
           </div>
         </div>
@@ -375,10 +362,7 @@ export default function MobileShell({
 
         <MemberList visible={showMembers} onClose={onCloseMembers} />
         {!stageOwnsScreenshare && (
-          <ScreenShareOverlay
-            videoElRef={videoElRef}
-            stopScreenshare={stopScreenshare}
-          />
+          <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
         )}
         <CameraPreviewOverlay
           cameraStreamRef={cameraStreamRef}

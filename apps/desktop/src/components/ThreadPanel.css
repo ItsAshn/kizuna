@@ -115,7 +115,10 @@
   border-radius: var(--radius-sm);
   padding: 2px var(--space-2);
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .thread-panel__meta-delete:hover {
@@ -153,7 +156,10 @@
   color: var(--text-secondary);
   padding: 4px var(--space-3);
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .thread-panel__delete-confirm-btn:hover {

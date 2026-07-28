@@ -10,7 +10,9 @@ export function useMountedRef() {
   const mountedRef = useRef(false)
   useEffect(() => {
     mountedRef.current = true
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+    }
   }, [])
   return mountedRef
 }
@@ -23,8 +25,13 @@ export function fileToDataUrl(file: File, maxSize = 512): Promise<string> {
       img.onload = () => {
         let { width, height } = img
         if (width > maxSize || height > maxSize) {
-          if (width > height) { height = Math.round((height / width) * maxSize); width = maxSize }
-          else { width = Math.round((width / height) * maxSize); height = maxSize }
+          if (width > height) {
+            height = Math.round((height / width) * maxSize)
+            width = maxSize
+          } else {
+            width = Math.round((width / height) * maxSize)
+            height = maxSize
+          }
         }
         const canvas = document.createElement('canvas')
         canvas.width = width

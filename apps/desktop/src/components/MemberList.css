@@ -105,7 +105,10 @@
   font-size: 13px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
   border: none;
   background: none;
   width: 100%;
@@ -379,5 +382,3 @@
     padding-top: 12px;
   }
 }
-
-

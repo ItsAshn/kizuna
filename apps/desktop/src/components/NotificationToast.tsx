@@ -32,7 +32,14 @@ export default function NotificationToast({ notification }: Props) {
       }
     }
     dismissNotification(notification.id)
-  }, [notification.channelId, notification.id, notification.type, dismissNotification, setActiveChannel, setActiveDMChannel])
+  }, [
+    notification.channelId,
+    notification.id,
+    notification.type,
+    dismissNotification,
+    setActiveChannel,
+    setActiveDMChannel,
+  ])
 
   const content = (
     <>
@@ -47,7 +54,10 @@ export default function NotificationToast({ notification }: Props) {
         size="sm"
         icon={<X size={12} />}
         label="Dismiss notification"
-        onClick={(e) => { e.stopPropagation(); dismissNotification(notification.id) }}
+        onClick={(e) => {
+          e.stopPropagation()
+          dismissNotification(notification.id)
+        }}
       />
     </>
   )
@@ -57,16 +67,14 @@ export default function NotificationToast({ notification }: Props) {
       <button
         className="notification-toast notification-toast--clickable"
         onClick={handleClick}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClick() }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') handleClick()
+        }}
       >
         {content}
       </button>
     )
   }
 
-  return (
-    <div className="notification-toast">
-      {content}
-    </div>
-  )
+  return <div className="notification-toast">{content}</div>
 }

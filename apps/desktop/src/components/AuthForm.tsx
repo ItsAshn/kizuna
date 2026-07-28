@@ -63,7 +63,14 @@ export default function AuthForm({
     <>
       <div className="auth-form__server-header">
         {serverIcon ? (
-          <img src={serverIcon} alt="" className="auth-form__server-icon" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+          <img
+            src={serverIcon}
+            alt=""
+            className="auth-form__server-icon"
+            onError={(e) => {
+              ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+            }}
+          />
         ) : (
           <div className="auth-form__server-icon auth-form__server-icon--fallback">
             {serverName.slice(0, 2).toUpperCase()}

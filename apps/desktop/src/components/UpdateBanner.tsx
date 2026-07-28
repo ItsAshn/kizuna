@@ -59,7 +59,8 @@ export default function UpdateBanner() {
     )
   }
 
-  const actionable = updateState === 'available' || updateState === 'downloading' || updateState === 'ready'
+  const actionable =
+    updateState === 'available' || updateState === 'downloading' || updateState === 'ready'
   if (!actionable) return null
   if (dismissedVersion !== undefined && dismissedVersion === updateVersion) return null
 
@@ -127,11 +128,7 @@ export default function UpdateBanner() {
 // On mobile the banner is a sibling of the full-viewport shell, so it docks over
 // the top instead of taking part in the flow.
 function bannerClass(mobile: boolean, expanded: boolean): string {
-  return [
-    'update-banner',
-    mobile && 'update-banner--docked',
-    expanded && 'update-banner--expanded',
-  ]
+  return ['update-banner', mobile && 'update-banner--docked', expanded && 'update-banner--expanded']
     .filter(Boolean)
     .join(' ')
 }

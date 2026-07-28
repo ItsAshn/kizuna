@@ -8,34 +8,39 @@ Kizuna handles audio entirely in native code (Rust). No GStreamer or other media
 
 #### Linux
 
-| Package | Purpose |
-|---------|---------|
-| `alsa-lib` / `libasound2` | Audio device access (ALSA backend) |
-| `pipewire` or `pulseaudio` | Audio server |
-| `pipewire-pulse` | PulseAudio compatibility layer (**required on PipeWire systems**) |
-| `paplay` (from `pulseaudio-utils` or `pipewire-pulse`) | Audio output subprocess |
+| Package                                                | Purpose                                                           |
+| ------------------------------------------------------ | ----------------------------------------------------------------- |
+| `alsa-lib` / `libasound2`                              | Audio device access (ALSA backend)                                |
+| `pipewire` or `pulseaudio`                             | Audio server                                                      |
+| `pipewire-pulse`                                       | PulseAudio compatibility layer (**required on PipeWire systems**) |
+| `paplay` (from `pulseaudio-utils` or `pipewire-pulse`) | Audio output subprocess                                           |
 
 Install guides per distro:
 
 **Arch:**
+
 ```
 sudo pacman -S alsa-lib pipewire pipewire-pulse
 ```
 
 **Debian/Ubuntu:**
+
 ```
 sudo apt-get install libasound2 pipewire pipewire-pulse
 ```
 
 **Fedora:**
+
 ```
 sudo dnf install alsa-lib pipewire pipewire-pulseaudio
 ```
 
 #### Windows
+
 No special audio packages needed. WASAPI is built into Windows.
 
 #### macOS
+
 No special audio packages needed. CoreAudio is built into macOS.
 
 ### Optional: Full WebRTC webkit2gtk (Linux only)

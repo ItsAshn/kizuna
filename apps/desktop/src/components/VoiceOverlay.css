@@ -154,7 +154,9 @@
   font-size: 12px;
   font-weight: 600;
   border: 2px solid transparent;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .voice-row__avatar--self {
@@ -164,7 +166,9 @@
 
 .voice-row__avatar--speaking {
   border-color: var(--green);
-  box-shadow: 0 0 0 1px var(--green), 0 0 8px var(--green-dim);
+  box-shadow:
+    0 0 0 1px var(--green),
+    0 0 8px var(--green-dim);
 }
 
 .voice-row__avatar--muted {
@@ -185,7 +189,8 @@
 }
 
 @keyframes voice-pip-pulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
     opacity: 1;
   }
@@ -311,7 +316,10 @@
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, transform 0.08s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    transform 0.08s ease;
 }
 
 .voice-ctrl:hover {
@@ -448,7 +456,9 @@
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
 .voice-error__btn:hover {

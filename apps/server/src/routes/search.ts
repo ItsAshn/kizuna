@@ -17,20 +17,27 @@ searchRoutes.get('/', authMiddleware, (c) => {
   const limit = Math.min(rawLimit ?? 20, 50)
   const db = getDb()
 
-  const ftsQuery = q.replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean).map(w => `"${w}"`).join(' ')
+  const ftsQuery = q
+    .replace(/[^\w\s]/g, '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => `"${w}"`)
+    .join(' ')
 
   try {
     let beforeRowId: number | null = null
     if (before) {
-      const cursor = db.prepare('SELECT rowid FROM messages_fts WHERE message_id = ?').get(before) as { rowid: number } | undefined
+      const cursor = db
+        .prepare('SELECT rowid FROM messages_fts WHERE message_id = ?')
+        .get(before) as { rowid: number } | undefined
       if (cursor) beforeRowId = cursor.rowid
     }
 
     const params: (string | number)[] = [ftsQuery]
 
-    params.push(auth.userId)                 // permission: dm from
-    params.push(auth.userId)                 // permission: dm to
-    params.push(auth.userId)                 // permission: group_dm member
+    params.push(auth.userId) // permission: dm from
+    params.push(auth.userId) // permission: dm to
+    params.push(auth.userId) // permission: group_dm member
 
     let channelFilter = ''
     if (channelId) {
@@ -46,7 +53,9 @@ searchRoutes.get('/', authMiddleware, (c) => {
 
     params.push(limit + 1)
 
-    const rows = db.prepare(`
+    const rows = db
+      .prepare(
+        `
       SELECT
         f.source,
         f.message_id,
@@ -81,45 +90,58 @@ searchRoutes.get('/', authMiddleware, (c) => {
       ${channelFilter}
       ORDER BY f.rowid DESC
       LIMIT ?
-    `).all(...params) as {
-    source: string
-    message_id: string
-    fts_rowid: number
-    id: string
-    channel_id: string
-    author_id: string
-    author_username: string
-    content: string
-    created_at: number
-    display_name: string | null
-    avatar: string | null
-    channel_name: string | null
-  }[]
+    `,
+      )
+      .all(...params) as {
+      source: string
+      message_id: string
+      fts_rowid: number
+      id: string
+      channel_id: string
+      author_id: string
+      author_username: string
+      content: string
+      created_at: number
+      display_name: string | null
+      avatar: string | null
+      channel_name: string | null
+    }[]
 
     const hasMorePre = rows.length > limit
     if (hasMorePre) rows.pop()
 
-    const visibleRows = rows.filter((r) => r.source !== 'channel' || canViewChannel(auth.userId, r.channel_id))
+    const visibleRows = rows.filter(
+      (r) => r.source !== 'channel' || canViewChannel(auth.userId, r.channel_id),
+    )
     const hasMore = visibleRows.length > limit
     const finalResults = hasMore ? visibleRows.slice(0, limit) : visibleRows
 
-    const results = finalResults.map((r: {
-    source: string; id: string; channel_id: string; author_id: string;
-    author_username: string; display_name: string | null; avatar: string | null;
-    content: string; created_at: number; channel_name: string | null
-  }) => ({
-      message: {
-        id: r.id,
-        channel_id: r.channel_id,
-        user_id: r.author_id,
-        username: r.author_username,
-        display_name: r.display_name || r.author_username,
-        avatar: r.avatar || undefined,
-        content: r.content,
-        created_at: r.created_at * 1000,
-      },
-      channelName: r.channel_name || (r.source === 'group_dm' ? 'Group DM' : 'DM'),
-    }))
+    const results = finalResults.map(
+      (r: {
+        source: string
+        id: string
+        channel_id: string
+        author_id: string
+        author_username: string
+        display_name: string | null
+        avatar: string | null
+        content: string
+        created_at: number
+        channel_name: string | null
+      }) => ({
+        message: {
+          id: r.id,
+          channel_id: r.channel_id,
+          user_id: r.author_id,
+          username: r.author_username,
+          display_name: r.display_name || r.author_username,
+          avatar: r.avatar || undefined,
+          content: r.content,
+          created_at: r.created_at * 1000,
+        },
+        channelName: r.channel_name || (r.source === 'group_dm' ? 'Group DM' : 'DM'),
+      }),
+    )
 
     return c.json({ results, hasMore })
   } catch {

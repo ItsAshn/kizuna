@@ -41,8 +41,8 @@ The server will be available at `https://your-domain.com`. For voice and screen 
 
 ## Project Structure
 
-| Package | Path | Purpose |
-|---|---|---|
-| `@kizuna/server` | `apps/server/` | Node.js backend, WebSocket API, mediasoup SFU for WebRTC |
-| `@kizuna/desktop` | `apps/desktop/` | Tauri v2 desktop client (React + Vite) |
-| `@kizuna/shared` | `packages/shared/` | Shared TypeScript types and utilities |
+| Package           | Path               | Purpose                                                  |
+| ----------------- | ------------------ | -------------------------------------------------------- |
+| `@kizuna/server`  | `apps/server/`     | Node.js backend, WebSocket API, mediasoup SFU for WebRTC |
+| `@kizuna/desktop` | `apps/desktop/`    | Tauri v2 desktop client (React + Vite)                   |
+| `@kizuna/shared`  | `packages/shared/` | Shared TypeScript types and utilities                    |

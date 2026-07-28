@@ -1,21 +1,21 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
-export type NotificationLevel = 'all' | 'mentions' | 'none';
+export type NotificationLevel = 'all' | 'mentions' | 'none'
 
 interface NotificationSettings {
-  level: NotificationLevel;
-  suppressEveryone: boolean;
+  level: NotificationLevel
+  suppressEveryone: boolean
 }
 
 interface RecentChannel {
-  id: string;
-  type: 'text' | 'voice' | 'dm';
+  id: string
+  type: 'text' | 'voice' | 'dm'
 }
 
 export interface PostUpdateNote {
-  version: string;
-  notes: string | null;
+  version: string
+  notes: string | null
 }
 
 export type UpdateState =
@@ -25,65 +25,65 @@ export type UpdateState =
   | 'available'
   | 'downloading'
   | 'ready'
-  | 'error';
+  | 'error'
 
 interface SettingsState {
-  serverBackgroundEnabled: boolean;
-  customCssEnabled: boolean;
-  runInBackground: boolean;
-  notificationSettings: Record<string, NotificationSettings>;
-  recentChannels: RecentChannel[];
-  channelNotificationLevels: Record<string, NotificationLevel>;
-  notificationSoundEnabled: boolean;
-  shareMediaActivity: boolean;
-  shareAppActivity: boolean;
-  customMediaActivity: string | null;
-  customAppActivity: string | null;
-  recentMediaActivities: string[];
-  recentAppActivities: string[];
+  serverBackgroundEnabled: boolean
+  customCssEnabled: boolean
+  runInBackground: boolean
+  notificationSettings: Record<string, NotificationSettings>
+  recentChannels: RecentChannel[]
+  channelNotificationLevels: Record<string, NotificationLevel>
+  notificationSoundEnabled: boolean
+  shareMediaActivity: boolean
+  shareAppActivity: boolean
+  customMediaActivity: string | null
+  customAppActivity: string | null
+  recentMediaActivities: string[]
+  recentAppActivities: string[]
   /**
    * `available` is distinct from `downloading`: finding an update never starts
    * a download. The user opts in, so discovery and installation stay separate.
    */
-  updateState: UpdateState;
-  updateProgress: number;
-  updateVersion: string | null;
-  updateError: string | null;
+  updateState: UpdateState
+  updateProgress: number
+  updateVersion: string | null
+  updateError: string | null
   /** Release notes for the pending update, shown before installing. */
-  updateNotes: string | null;
+  updateNotes: string | null
   /**
    * Set on the first launch after an update landed, so the app can report what
    * changed. Cleared once shown.
    */
-  postUpdateNote: PostUpdateNote | null;
-  socketConnected: boolean;
-  socketReconnecting: boolean;
-  socketReconnectAttempts: number;
+  postUpdateNote: PostUpdateNote | null
+  socketConnected: boolean
+  socketReconnecting: boolean
+  socketReconnectAttempts: number
 
-  setServerBackgroundEnabled: (enabled: boolean) => void;
-  setCustomCssEnabled: (enabled: boolean) => void;
-  setRunInBackground: (enabled: boolean) => void;
-  setNotificationSettings: (serverId: string, settings: NotificationSettings) => void;
-  pushRecentChannel: (channel: RecentChannel) => void;
-  setChannelNotificationLevel: (channelId: string, level: NotificationLevel | null) => void;
-  setNotificationSoundEnabled: (enabled: boolean) => void;
-  setShareMediaActivity: (enabled: boolean) => void;
-  setShareAppActivity: (enabled: boolean) => void;
-  setCustomMediaActivity: (text: string | null) => void;
-  setCustomAppActivity: (text: string | null) => void;
-  addRecentMediaActivity: (name: string) => void;
-  addRecentAppActivity: (name: string) => void;
-  removeRecentMediaActivity: (name: string) => void;
-  removeRecentAppActivity: (name: string) => void;
-  setUpdateState: (state: UpdateState) => void;
-  setUpdateProgress: (progress: number) => void;
-  setUpdateVersion: (version: string | null) => void;
-  setUpdateError: (error: string | null) => void;
-  setUpdateNotes: (notes: string | null) => void;
-  setPostUpdateNote: (note: PostUpdateNote | null) => void;
-  setSocketConnected: (connected: boolean) => void;
-  setSocketReconnecting: (reconnecting: boolean) => void;
-  setSocketReconnectAttempts: (attempts: number) => void;
+  setServerBackgroundEnabled: (enabled: boolean) => void
+  setCustomCssEnabled: (enabled: boolean) => void
+  setRunInBackground: (enabled: boolean) => void
+  setNotificationSettings: (serverId: string, settings: NotificationSettings) => void
+  pushRecentChannel: (channel: RecentChannel) => void
+  setChannelNotificationLevel: (channelId: string, level: NotificationLevel | null) => void
+  setNotificationSoundEnabled: (enabled: boolean) => void
+  setShareMediaActivity: (enabled: boolean) => void
+  setShareAppActivity: (enabled: boolean) => void
+  setCustomMediaActivity: (text: string | null) => void
+  setCustomAppActivity: (text: string | null) => void
+  addRecentMediaActivity: (name: string) => void
+  addRecentAppActivity: (name: string) => void
+  removeRecentMediaActivity: (name: string) => void
+  removeRecentAppActivity: (name: string) => void
+  setUpdateState: (state: UpdateState) => void
+  setUpdateProgress: (progress: number) => void
+  setUpdateVersion: (version: string | null) => void
+  setUpdateError: (error: string | null) => void
+  setUpdateNotes: (notes: string | null) => void
+  setPostUpdateNote: (note: PostUpdateNote | null) => void
+  setSocketConnected: (connected: boolean) => void
+  setSocketReconnecting: (reconnecting: boolean) => void
+  setSocketReconnectAttempts: (attempts: number) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -121,7 +121,9 @@ export const useSettingsStore = create<SettingsState>()(
         })),
       pushRecentChannel: (channel) =>
         set((s) => {
-          const filtered = s.recentChannels.filter((r) => !(r.id === channel.id && r.type === channel.type))
+          const filtered = s.recentChannels.filter(
+            (r) => !(r.id === channel.id && r.type === channel.type),
+          )
           return { recentChannels: [channel, ...filtered].slice(0, 10) }
         }),
       setChannelNotificationLevel: (channelId, level) =>
@@ -131,7 +133,9 @@ export const useSettingsStore = create<SettingsState>()(
             delete next[channelId]
             return { channelNotificationLevels: next }
           }
-          return { channelNotificationLevels: { ...s.channelNotificationLevels, [channelId]: level } }
+          return {
+            channelNotificationLevels: { ...s.channelNotificationLevels, [channelId]: level },
+          }
         }),
       setNotificationSoundEnabled: (notificationSoundEnabled) => set({ notificationSoundEnabled }),
       setShareMediaActivity: (shareMediaActivity) => set({ shareMediaActivity }),
@@ -140,11 +144,17 @@ export const useSettingsStore = create<SettingsState>()(
       setCustomAppActivity: (customAppActivity) => set({ customAppActivity }),
       addRecentMediaActivity: (name) =>
         set((s) => ({
-          recentMediaActivities: [name, ...s.recentMediaActivities.filter((n) => n !== name)].slice(0, 10),
+          recentMediaActivities: [name, ...s.recentMediaActivities.filter((n) => n !== name)].slice(
+            0,
+            10,
+          ),
         })),
       addRecentAppActivity: (name) =>
         set((s) => ({
-          recentAppActivities: [name, ...s.recentAppActivities.filter((n) => n !== name)].slice(0, 10),
+          recentAppActivities: [name, ...s.recentAppActivities.filter((n) => n !== name)].slice(
+            0,
+            10,
+          ),
         })),
       removeRecentMediaActivity: (name) =>
         set((s) => ({
@@ -185,4 +195,4 @@ export const useSettingsStore = create<SettingsState>()(
       }),
     },
   ),
-);
+)

@@ -7,8 +7,11 @@ const categoryRoutes = new Hono()
 
 categoryRoutes.get('/', authMiddleware, (c) => {
   const db = getDb()
-  const rows = db.prepare('SELECT * FROM channel_categories ORDER BY position ASC').all() as Record<string, unknown>[]
-  const categories = rows.map(r => ({
+  const rows = db.prepare('SELECT * FROM channel_categories ORDER BY position ASC').all() as Record<
+    string,
+    unknown
+  >[]
+  const categories = rows.map((r) => ({
     id: r.id,
     name: r.name,
     position: r.position,
@@ -19,13 +22,23 @@ categoryRoutes.get('/', authMiddleware, (c) => {
 categoryRoutes.post('/', authMiddleware, adminMiddleware, (c) => {
   const db = getDb()
   let body: Record<string, unknown>
-  try { body = c.req.json() as unknown as Record<string, unknown> } catch { return c.json({ error: 'Invalid body' }, 400) }
+  try {
+    body = c.req.json() as unknown as Record<string, unknown>
+  } catch {
+    return c.json({ error: 'Invalid body' }, 400)
+  }
   const name = (body?.name as string | undefined)?.trim()
   if (!name) return c.json({ error: 'Name required' }, 400)
 
   const id = uuidv4()
-  const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) as pos FROM channel_categories').get() as { pos: number }
-  db.prepare('INSERT INTO channel_categories (id, name, position) VALUES (?, ?, ?)').run(id, name, maxPos.pos + 1)
+  const maxPos = db
+    .prepare('SELECT COALESCE(MAX(position), -1) as pos FROM channel_categories')
+    .get() as { pos: number }
+  db.prepare('INSERT INTO channel_categories (id, name, position) VALUES (?, ?, ?)').run(
+    id,
+    name,
+    maxPos.pos + 1,
+  )
 
   return c.json({ id, name, position: maxPos.pos + 1 })
 })
@@ -34,12 +47,22 @@ categoryRoutes.patch('/:id', authMiddleware, adminMiddleware, (c) => {
   const categoryId = c.req.param('id')
   const db = getDb()
   let body: Record<string, unknown>
-  try { body = c.req.json() as unknown as Record<string, unknown> } catch { return c.json({ error: 'Invalid body' }, 400) }
+  try {
+    body = c.req.json() as unknown as Record<string, unknown>
+  } catch {
+    return c.json({ error: 'Invalid body' }, 400)
+  }
 
   if (body.name) {
-    db.prepare('UPDATE channel_categories SET name = ? WHERE id = ?').run((body.name as string).trim(), categoryId)
+    db.prepare('UPDATE channel_categories SET name = ? WHERE id = ?').run(
+      (body.name as string).trim(),
+      categoryId,
+    )
   }
-  const row = db.prepare('SELECT * FROM channel_categories WHERE id = ?').get(categoryId) as Record<string, unknown>
+  const row = db.prepare('SELECT * FROM channel_categories WHERE id = ?').get(categoryId) as Record<
+    string,
+    unknown
+  >
   return c.json({ id: row.id, name: row.name, position: row.position })
 })
 

@@ -31,7 +31,11 @@ export function parseMentions(content: string): MentionResult[] {
   return results
 }
 
-export function processMentions(io: Server, message: ProcessMentionsMessage, mentions: MentionResult[]): void {
+export function processMentions(
+  io: Server,
+  message: ProcessMentionsMessage,
+  mentions: MentionResult[],
+): void {
   if (!mentions.length) return
   const db = getDb()
 
@@ -51,8 +55,16 @@ export function processMentions(io: Server, message: ProcessMentionsMessage, men
       db.prepare(
         `INSERT OR IGNORE INTO mentions
          (id, message_id, channel_id, author_id, author_username, content, mention_type)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      ).run(mentionId, message.id, message.channel_id, base.author_id, base.author_username, message.content, mention.type)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        mentionId,
+        message.id,
+        message.channel_id,
+        base.author_id,
+        base.author_username,
+        message.content,
+        mention.type,
+      )
 
       for (const uid of getEligibleNotifyUserIds(message.channel_id, base.author_id!)) {
         io.to(`user:${uid}`).emit('message:mention', {
@@ -62,22 +74,31 @@ export function processMentions(io: Server, message: ProcessMentionsMessage, men
       }
     } else {
       // Check if this matches a mentionable role first
-      const role = db.prepare(
-        "SELECT id, name FROM roles WHERE LOWER(name) = ? AND mentionable = 1"
-      ).get(mention.target!.toLowerCase()) as { id: string; name: string } | undefined
+      const role = db
+        .prepare('SELECT id, name FROM roles WHERE LOWER(name) = ? AND mentionable = 1')
+        .get(mention.target!.toLowerCase()) as { id: string; name: string } | undefined
 
       if (role) {
-        const roleMembers = db.prepare(
-          'SELECT user_id FROM member_roles WHERE role_id = ?'
-        ).all(role.id) as { user_id: string }[]
+        const roleMembers = db
+          .prepare('SELECT user_id FROM member_roles WHERE role_id = ?')
+          .all(role.id) as { user_id: string }[]
 
         for (const rm of roleMembers) {
           const roleMentionId = uuidv4()
           db.prepare(
             `INSERT OR IGNORE INTO mentions
              (id, message_id, channel_id, author_id, author_username, mentioned_user_id, content, mention_type)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(roleMentionId, message.id, message.channel_id, base.author_id, base.author_username, rm.user_id, message.content, 'role')
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          ).run(
+            roleMentionId,
+            message.id,
+            message.channel_id,
+            base.author_id,
+            base.author_username,
+            rm.user_id,
+            message.content,
+            'role',
+          )
 
           io.to(`user:${rm.user_id}`).emit('message:mention', {
             ...base,
@@ -91,14 +112,25 @@ export function processMentions(io: Server, message: ProcessMentionsMessage, men
         continue
       }
 
-      const user = db.prepare('SELECT id, username FROM users WHERE username = ?').get(mention.target!) as { id: string; username: string } | undefined
+      const user = db
+        .prepare('SELECT id, username FROM users WHERE username = ?')
+        .get(mention.target!) as { id: string; username: string } | undefined
       if (!user) continue
 
       db.prepare(
         `INSERT OR IGNORE INTO mentions
          (id, message_id, channel_id, author_id, author_username, mentioned_user_id, content, mention_type)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(mentionId, message.id, message.channel_id, base.author_id, base.author_username, user.id, message.content, 'user')
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        mentionId,
+        message.id,
+        message.channel_id,
+        base.author_id,
+        base.author_username,
+        user.id,
+        message.content,
+        'user',
+      )
 
       io.to(`user:${user.id}`).emit('message:mention', {
         ...base,

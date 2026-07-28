@@ -159,7 +159,10 @@
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .settings-radio-option:hover {
@@ -197,7 +200,9 @@
   background: var(--brand);
   opacity: 0;
   transform: scale(0);
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
 }
 
 .settings-radio-option--active .settings-radio-dot::after {
@@ -296,7 +301,9 @@
 .settings-meter-fill {
   height: 100%;
   border-radius: 4px;
-  transition: width 60ms linear, background 0.3s ease;
+  transition:
+    width 60ms linear,
+    background 0.3s ease;
 }
 
 .settings-meter-fill--low {
@@ -356,7 +363,10 @@
   cursor: pointer;
   min-width: 90px;
   text-align: center;
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .settings-keybind-btn:hover {
@@ -371,8 +381,13 @@
 }
 
 @keyframes keybind-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 /* ── Action rows ───────────────────────────────────────────── */
@@ -496,7 +511,7 @@
   cursor: pointer;
 }
 
-.settings-checkbox-row input[type="checkbox"] {
+.settings-checkbox-row input[type='checkbox'] {
   accent-color: var(--brand);
   cursor: pointer;
   width: 14px;
@@ -661,7 +676,9 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .settings-mode-btn:hover {
@@ -731,8 +748,12 @@
     width: calc(100vw - 16px);
     max-width: 520px;
     height: auto;
-    max-height: calc(100vh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(
+      100vh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+    );
+    max-height: calc(
+      100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+    );
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
@@ -913,7 +934,9 @@
   border-radius: var(--radius-full);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
   font-family: inherit;
 }
 

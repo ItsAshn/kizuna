@@ -134,11 +134,7 @@ function recordViolation(state: UserSpamState, userId: string): void {
   }
 }
 
-export function checkSpam(
-  userId: string,
-  channelId: string,
-  content: string,
-): SpamCheckResult {
+export function checkSpam(userId: string, channelId: string, content: string): SpamCheckResult {
   const mute = userMutes.get(userId)
   if (mute && mute.until > Date.now()) {
     return { allowed: false, reason: 'muted' }
@@ -163,8 +159,8 @@ export function checkSpam(
 
   const trimmed = content.trim().toLowerCase()
   const cutoff = Date.now() - config.duplicateWindowMs
-  state.recentMessages = state.recentMessages.filter(m => m.time > cutoff)
-  if (state.recentMessages.some(m => m.content === trimmed)) {
+  state.recentMessages = state.recentMessages.filter((m) => m.time > cutoff)
+  if (state.recentMessages.some((m) => m.content === trimmed)) {
     recordViolation(state, userId)
     return { allowed: false, reason: 'duplicate' }
   }

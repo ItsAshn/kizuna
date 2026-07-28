@@ -283,7 +283,9 @@
   font-weight: 700;
   color: var(--text-secondary);
   flex-shrink: 0;
-  transition: border-radius 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    border-radius 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    background 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .server-panel__folder-toggle:hover .server-panel__folder-preview {

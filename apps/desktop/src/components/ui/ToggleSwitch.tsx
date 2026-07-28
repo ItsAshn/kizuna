@@ -7,7 +7,12 @@ interface ToggleSwitchProps {
   ariaLabel?: string
 }
 
-export default function ToggleSwitch({ checked, onChange, disabled = false, ariaLabel }: ToggleSwitchProps) {
+export default function ToggleSwitch({
+  checked,
+  onChange,
+  disabled = false,
+  ariaLabel,
+}: ToggleSwitchProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return
     if (e.key === 'Enter' || e.key === ' ') {

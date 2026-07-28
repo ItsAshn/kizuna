@@ -91,7 +91,10 @@ function isAudioUrl(url: string): boolean {
   return /\.(mp3|ogg|wav|webm)$/i.test(url)
 }
 
-function parseAttachments(content: string): { text: string; attachments: { url: string; filename: string }[] } {
+function parseAttachments(content: string): {
+  text: string
+  attachments: { url: string; filename: string }[]
+} {
   const attachments: { url: string; filename: string }[] = []
   const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
   let match
@@ -100,7 +103,12 @@ function parseAttachments(content: string): { text: string; attachments: { url: 
   while ((match = markdownImageRegex.exec(content)) !== null) {
     const filename = match[1] || 'file'
     const url = match[2]
-    if (url.startsWith('/uploads/') || url.startsWith('/api/attachments/') || url.startsWith('/api/gifs/') || url.startsWith('http')) {
+    if (
+      url.startsWith('/uploads/') ||
+      url.startsWith('/api/attachments/') ||
+      url.startsWith('/api/gifs/') ||
+      url.startsWith('http')
+    ) {
       attachments.push({ filename, url })
       text = text.replace(match[0], '')
     }
@@ -118,7 +126,6 @@ function parseAttachments(content: string): { text: string; attachments: { url: 
 
   return { text: text.trim(), attachments }
 }
-
 
 function highlightCodeBlocks(html: string): string {
   if (typeof DOMParser === 'undefined') return html
@@ -149,16 +156,17 @@ function highlightCodeBlocks(html: string): string {
 function renderMessageHtml(content: string, currentUsername?: string): string {
   if (!content) return ''
 
-  const withMentions = content.replace(
-    /@(everyone|here|[\w.-]+)/gi,
-    (match) => {
-      const tag = match.slice(1).toLowerCase()
-      const isMe = currentUsername && tag === currentUsername.toLowerCase()
-      const isGroup = tag === 'everyone' || tag === 'here'
-      const cls = isMe ? 'msg-bubble__mention--self' : isGroup ? 'msg-bubble__mention--group' : 'msg-bubble__mention--user'
-      return `<span class="${cls}">${match}</span>`
-    }
-  )
+  const withMentions = content.replace(/@(everyone|here|[\w.-]+)/gi, (match) => {
+    const tag = match.slice(1).toLowerCase()
+    const isMe = currentUsername && tag === currentUsername.toLowerCase()
+    const isGroup = tag === 'everyone' || tag === 'here'
+    const cls = isMe
+      ? 'msg-bubble__mention--self'
+      : isGroup
+        ? 'msg-bubble__mention--group'
+        : 'msg-bubble__mention--user'
+    return `<span class="${cls}">${match}</span>`
+  })
 
   // Discord-style spoilers: ||hidden text|| → click to reveal.
   const html = withMentions.replace(
@@ -169,14 +177,47 @@ function renderMessageHtml(content: string, currentUsername?: string): string {
   const raw = marked.parse(html, { breaks: true, gfm: true }) as string
 
   const clean = DOMPurify.sanitize(raw, {
-    ALLOWED_TAGS: ['span', 'strong', 'em', 'del', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'a', 'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr'],
+    ALLOWED_TAGS: [
+      'span',
+      'strong',
+      'em',
+      'del',
+      'code',
+      'pre',
+      'blockquote',
+      'ul',
+      'ol',
+      'li',
+      'a',
+      'p',
+      'br',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+      'hr',
+    ],
     ALLOWED_ATTR: ['class', 'href', 'target', 'rel'],
   })
 
   return highlightCodeBlocks(clean)
 }
 
-function AttachmentPreview({ url, filename, serverUrl, isMediaOnly, onImageClick }: { url: string; filename: string; serverUrl?: string; isMediaOnly?: boolean; onImageClick?: (url: string, filename: string) => void }) {
+function AttachmentPreview({
+  url,
+  filename,
+  serverUrl,
+  isMediaOnly,
+  onImageClick,
+}: {
+  url: string
+  filename: string
+  serverUrl?: string
+  isMediaOnly?: boolean
+  onImageClick?: (url: string, filename: string) => void
+}) {
   const resolvedUrl = serverUrl && url.startsWith('/') ? `${serverUrl}${url}` : url
   const [loadError, setLoadError] = useState(false)
 
@@ -186,7 +227,16 @@ function AttachmentPreview({ url, filename, serverUrl, isMediaOnly, onImageClick
 
   if (loadError) {
     return (
-      <a href={resolvedUrl} target="_blank" rel="noopener noreferrer" className="msg-bubble__attachment-link" onClick={(e) => { e.preventDefault(); openExternalLink(resolvedUrl) }}>
+      <a
+        href={resolvedUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="msg-bubble__attachment-link"
+        onClick={(e) => {
+          e.preventDefault()
+          openExternalLink(resolvedUrl)
+        }}
+      >
         <span className="msg-bubble__attachment-filename">{displayFilename}</span>
       </a>
     )
@@ -196,7 +246,7 @@ function AttachmentPreview({ url, filename, serverUrl, isMediaOnly, onImageClick
     return (
       <div
         className={`msg-bubble__attachment-image-wrap ${isMediaOnly ? 'msg-bubble__attachment-image-wrap--media-only' : ''}`}
-        onClick={() => onImageClick ? onImageClick(resolvedUrl, displayFilename) : null}
+        onClick={() => (onImageClick ? onImageClick(resolvedUrl, displayFilename) : null)}
       >
         <img
           src={resolvedUrl}
@@ -215,11 +265,23 @@ function AttachmentPreview({ url, filename, serverUrl, isMediaOnly, onImageClick
   }
 
   if (isVideoUrl(url)) {
-    return <video src={resolvedUrl} controls className={`msg-bubble__attachment-video ${isMediaOnly ? 'msg-bubble__attachment-video--media-only' : ''}`} onError={() => setLoadError(true)} />
+    return (
+      <video
+        src={resolvedUrl}
+        controls
+        className={`msg-bubble__attachment-video ${isMediaOnly ? 'msg-bubble__attachment-video--media-only' : ''}`}
+        onError={() => setLoadError(true)}
+      />
+    )
   }
 
   return (
-    <a href={resolvedUrl} target="_blank" rel="noopener noreferrer" className="msg-bubble__attachment-link">
+    <a
+      href={resolvedUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="msg-bubble__attachment-link"
+    >
       <span className="msg-bubble__attachment-filename">{displayFilename}</span>
     </a>
   )
@@ -282,7 +344,10 @@ function MessageBubble({
   })
   const displayName = message.display_name || message.username || 'Unknown'
   const { text, attachments } = useMemo(() => parseAttachments(message.content), [message.content])
-  const renderedHtml = useMemo(() => renderMessageHtml(text, currentUsername), [text, currentUsername])
+  const renderedHtml = useMemo(
+    () => renderMessageHtml(text, currentUsername),
+    [text, currentUsername],
+  )
 
   const handleTextClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement
@@ -296,14 +361,22 @@ function MessageBubble({
     if (spoiler) spoiler.classList.toggle('msg-bubble__spoiler--revealed')
   }
   const isMediaOnly = !text && attachments.length > 0
-  const isStickerOnly = isMediaOnly && attachments.length > 0 && attachments.every(a => {
-    const hasPrefix = /^(gif|sticker):/.test(a.filename)
-    if (hasPrefix) return /^sticker:/.test(a.filename)
-    return /\/api\/gifs\//.test(a.url)
+  const isStickerOnly =
+    isMediaOnly &&
+    attachments.length > 0 &&
+    attachments.every((a) => {
+      const hasPrefix = /^(gif|sticker):/.test(a.filename)
+      if (hasPrefix) return /^sticker:/.test(a.filename)
+      return /\/api\/gifs\//.test(a.url)
+    })
+  const time = new Date(message.created_at).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
   })
-  const time = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const session = useServerStore((s) => s.activeSession)
-  const authorStickerId = useChatStore((s) => s.members.find((m) => m.id === message.user_id)?.status_sticker_id)
+  const authorStickerId = useChatStore(
+    (s) => s.members.find((m) => m.id === message.user_id)?.status_sticker_id,
+  )
 
   /* Single source of truth for "the reaction bar is showing". The mount effect
    * and the bar's own `visible` prop have to agree: they drifted before, and
@@ -325,7 +398,10 @@ function MessageBubble({
   }, [reactionBarVisible])
 
   useEffect(() => {
-    if (!barMounted || !contentRef.current) { setBarPos(null); return }
+    if (!barMounted || !contentRef.current) {
+      setBarPos(null)
+      return
+    }
     const el = contentRef.current
     const update = () => {
       if (!el) return
@@ -342,24 +418,31 @@ function MessageBubble({
     }
   }, [barMounted])
 
-  const showMeta = isMobile ? (mobileActionsVisible || editing) : (hovered || metaHovered || !!message.edited_at || confirmDelete || editing)
+  const showMeta = isMobile
+    ? mobileActionsVisible || editing
+    : hovered || metaHovered || !!message.edited_at || confirmDelete || editing
 
-  const handleToggleReaction = useCallback(async (reactionKey: string, reactionType: string) => {
-    if (!session) return
-    const reactions = message.reactions || []
-    const existing = reactions.find(r => r.reaction_key === reactionKey && r.reaction_type === reactionType)
-    const hasReacted = existing?.users.some(u => u.user_id === session.user.id)
-    haptics.medium()
-    try {
-      if (hasReacted) {
-        await unreactToMessage(session.url, message.id, reactionKey)
-      } else {
-        await reactToMessage(session.url, message.id, reactionKey, reactionType)
+  const handleToggleReaction = useCallback(
+    async (reactionKey: string, reactionType: string) => {
+      if (!session) return
+      const reactions = message.reactions || []
+      const existing = reactions.find(
+        (r) => r.reaction_key === reactionKey && r.reaction_type === reactionType,
+      )
+      const hasReacted = existing?.users.some((u) => u.user_id === session.user.id)
+      haptics.medium()
+      try {
+        if (hasReacted) {
+          await unreactToMessage(session.url, message.id, reactionKey)
+        } else {
+          await reactToMessage(session.url, message.id, reactionKey, reactionType)
+        }
+      } catch (err) {
+        console.error('Reaction toggle failed:', err)
       }
-    } catch (err) {
-      console.error('Reaction toggle failed:', err)
-    }
-  }, [session, message.id, message.reactions, message.channel_id, haptics])
+    },
+    [session, message.id, message.reactions, message.channel_id, haptics],
+  )
 
   const startEdit = () => {
     setEditing(true)
@@ -402,14 +485,17 @@ function MessageBubble({
   useEffect(() => {
     if (editing && editInputRef.current) {
       editInputRef.current.focus()
-      editInputRef.current.setSelectionRange(editInputRef.current.value.length, editInputRef.current.value.length)
+      editInputRef.current.setSelectionRange(
+        editInputRef.current.value.length,
+        editInputRef.current.value.length,
+      )
     }
   }, [editing])
 
   function getContextMenuSections(): ContextMenuSection[] {
     const sections: ContextMenuSection[] = []
 
-    const mainItems: typeof sections[0]['items'] = []
+    const mainItems: (typeof sections)[0]['items'] = []
 
     if (onReply) {
       mainItems.push({
@@ -463,7 +549,7 @@ function MessageBubble({
       sections.push({ items: mainItems })
     }
 
-    const actionItems: typeof sections[0]['items'] = []
+    const actionItems: (typeof sections)[0]['items'] = []
 
     if (canEdit && !isStickerOnly) {
       actionItems.push({
@@ -476,7 +562,10 @@ function MessageBubble({
     if (canDelete) {
       actionItems.push({
         label: 'Delete',
-        onClick: () => { onDelete(message.id); setConfirmDelete(false) },
+        onClick: () => {
+          onDelete(message.id)
+          setConfirmDelete(false)
+        },
         danger: true,
         shortcut: 'Del',
       })
@@ -497,7 +586,12 @@ function MessageBubble({
   return (
     <div
       className={`msg-bubble__row ${isOwn ? 'msg-bubble__row--own' : ''} ${isGrouped ? 'msg-bubble__row--grouped' : ''} ${isMediaOnly ? 'msg-bubble__row--media-only' : ''} ${isSelected ? 'msg-bubble__row--selected' : ''}`}
-      onClick={(e) => { if (e.shiftKey && onSelect) { e.preventDefault(); onSelect(message.id) } }}
+      onClick={(e) => {
+        if (e.shiftKey && onSelect) {
+          e.preventDefault()
+          onSelect(message.id)
+        }
+      }}
     >
       {!isOwn && !isGrouped && (
         <Avatar
@@ -515,8 +609,17 @@ function MessageBubble({
       <div
         className="msg-bubble__content"
         ref={contentRef}
-        onMouseEnter={() => { if (!isMobile) { clearTimeout(metaTimer.current); setHovered(true) } }}
-        onMouseLeave={() => { if (!isMobile) { metaTimer.current = setTimeout(() => setHovered(false), 200) } }}
+        onMouseEnter={() => {
+          if (!isMobile) {
+            clearTimeout(metaTimer.current)
+            setHovered(true)
+          }
+        }}
+        onMouseLeave={() => {
+          if (!isMobile) {
+            metaTimer.current = setTimeout(() => setHovered(false), 200)
+          }
+        }}
         {...(isMobile ? longPressHandlers : {})}
       >
         <div className="msg-bubble__bubble-row">
@@ -527,7 +630,9 @@ function MessageBubble({
             {message.reply_to_message_id && message.reply_to_username && (
               <div className="msg-bubble__reply-preview">
                 <span className="msg-bubble__reply-preview-line" />
-                <span className="msg-bubble__reply-preview-username">@{message.reply_to_username}</span>
+                <span className="msg-bubble__reply-preview-username">
+                  @{message.reply_to_username}
+                </span>
                 <span className="msg-bubble__reply-preview-text">
                   {message.reply_to_content
                     ? message.reply_to_content.length > 120
@@ -540,7 +645,10 @@ function MessageBubble({
             {!isOwn && !isGrouped && (
               <p
                 className="msg-bubble__author"
-                onClick={(e) => { profileAnchorRef.current = e.currentTarget as HTMLElement; setShowProfileCard(true) }}
+                onClick={(e) => {
+                  profileAnchorRef.current = e.currentTarget as HTMLElement
+                  setShowProfileCard(true)
+                }}
                 style={{ cursor: 'pointer' }}
               >
                 {displayName}
@@ -555,23 +663,49 @@ function MessageBubble({
                 onChange={(e) => setEditContent(e.target.value)}
                 onKeyDown={handleEditKeyDown}
               />
-            ) : (
-              text ? <div className="msg-bubble__text" onClick={handleTextClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} /> : null
-            )}
-            {attachments.length > 0 && attachments.map((att, i) => (
-              <AttachmentPreview key={i} url={att.url} filename={att.filename} serverUrl={serverUrl} isMediaOnly={isMediaOnly} onImageClick={onImageClick} />
-            ))}
-            {text && (() => {
-              const urls = (text.match(/(https?:\/\/[^\s<]+)/g) || [])
-                .filter(u => !/\.(jpg|jpeg|png|gif|webp|mp4|webm|mp3|ogg|wav|pdf)$/i.test(u.split('?')[0]))
-                .slice(0, 3)
-              return urls.length > 0 ? <EmbedCard urls={urls} /> : null
-            })()}
+            ) : text ? (
+              <div
+                className="msg-bubble__text"
+                onClick={handleTextClick}
+                dangerouslySetInnerHTML={{ __html: renderedHtml }}
+              />
+            ) : null}
+            {attachments.length > 0 &&
+              attachments.map((att, i) => (
+                <AttachmentPreview
+                  key={i}
+                  url={att.url}
+                  filename={att.filename}
+                  serverUrl={serverUrl}
+                  isMediaOnly={isMediaOnly}
+                  onImageClick={onImageClick}
+                />
+              ))}
+            {text &&
+              (() => {
+                const urls = (text.match(/(https?:\/\/[^\s<]+)/g) || [])
+                  .filter(
+                    (u) =>
+                      !/\.(jpg|jpeg|png|gif|webp|mp4|webm|mp3|ogg|wav|pdf)$/i.test(u.split('?')[0]),
+                  )
+                  .slice(0, 3)
+                return urls.length > 0 ? <EmbedCard urls={urls} /> : null
+              })()}
             {editing && (
               <div className="msg-bubble__meta msg-bubble__meta--editing">
                 <span className="msg-bubble__edit-actions">
-                  <button className="msg-bubble__edit-action-btn msg-bubble__edit-action-btn--save" onClick={saveEdit}>save</button>
-                  <button className="msg-bubble__edit-action-btn msg-bubble__edit-action-btn--cancel" onClick={cancelEdit}>cancel</button>
+                  <button
+                    className="msg-bubble__edit-action-btn msg-bubble__edit-action-btn--save"
+                    onClick={saveEdit}
+                  >
+                    save
+                  </button>
+                  <button
+                    className="msg-bubble__edit-action-btn msg-bubble__edit-action-btn--cancel"
+                    onClick={cancelEdit}
+                  >
+                    cancel
+                  </button>
                 </span>
               </div>
             )}
@@ -579,8 +713,13 @@ function MessageBubble({
           {!editing && (
             <div
               className={`msg-bubble__meta ${isOwn ? 'msg-bubble__meta--own' : ''} ${showMeta ? 'msg-bubble__meta--visible' : ''}`}
-              onMouseEnter={() => { clearTimeout(metaTimer.current); setMetaHovered(true) }}
-              onMouseLeave={() => { metaTimer.current = setTimeout(() => setMetaHovered(false), 200) }}
+              onMouseEnter={() => {
+                clearTimeout(metaTimer.current)
+                setMetaHovered(true)
+              }}
+              onMouseLeave={() => {
+                metaTimer.current = setTimeout(() => setMetaHovered(false), 200)
+              }}
             >
               {showMeta && <span className="msg-bubble__time">{time}</span>}
               {message.edited_at && <span className="msg-bubble__edited">(edited)</span>}
@@ -591,11 +730,28 @@ function MessageBubble({
               )}
               {canDelete && confirmDelete ? (
                 <span className="msg-bubble__delete-confirm">
-                  <button className="msg-bubble__delete-confirm-btn msg-bubble__delete-confirm-btn--yes" onClick={() => { onDelete(message.id); setConfirmDelete(false) }}>confirm</button>
-                  <button className="msg-bubble__delete-confirm-btn msg-bubble__delete-confirm-btn--no" onClick={() => setConfirmDelete(false)}>cancel</button>
+                  <button
+                    className="msg-bubble__delete-confirm-btn msg-bubble__delete-confirm-btn--yes"
+                    onClick={() => {
+                      onDelete(message.id)
+                      setConfirmDelete(false)
+                    }}
+                  >
+                    confirm
+                  </button>
+                  <button
+                    className="msg-bubble__delete-confirm-btn msg-bubble__delete-confirm-btn--no"
+                    onClick={() => setConfirmDelete(false)}
+                  >
+                    cancel
+                  </button>
                 </span>
               ) : canDelete ? (
-                <button className="msg-bubble__delete-btn" onClick={() => setConfirmDelete(true)} title="Delete message">
+                <button
+                  className="msg-bubble__delete-btn"
+                  onClick={() => setConfirmDelete(true)}
+                  title="Delete message"
+                >
                   <Trash2 size={12} />
                 </button>
               ) : null}
@@ -610,39 +766,40 @@ function MessageBubble({
           onToggle={handleToggleReaction}
         />
 
-        {barMounted && barPos && session && createPortal(
-          <div
-            className="msg-bubble__react-bar-portal"
-            style={{ position: 'fixed', top: barPos.top, left: barPos.left, zIndex: 200 }}
-            onMouseEnter={() => setBarHovered(true)}
-            onMouseLeave={() => setBarHovered(false)}
-          >
+        {barMounted &&
+          barPos &&
+          session &&
+          createPortal(
             <div
-              className="msg-bubble__react-bar-bridge"
-              style={{
-                position: 'absolute',
-                bottom: '100%',
-                left: 0,
-                right: 0,
-                height: 25,
-              }}
+              className="msg-bubble__react-bar-portal"
+              style={{ position: 'fixed', top: barPos.top, left: barPos.left, zIndex: 200 }}
               onMouseEnter={() => setBarHovered(true)}
-            />
-            <ReactionBar
-              serverUrl={session.url}
-              
-              onReact={handleToggleReaction}
-              onAddClick={() => setPickerOpen(true)}
-              visible={reactionBarVisible}
-            />
-          </div>,
-          document.body,
-        )}
+              onMouseLeave={() => setBarHovered(false)}
+            >
+              <div
+                className="msg-bubble__react-bar-bridge"
+                style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  left: 0,
+                  right: 0,
+                  height: 25,
+                }}
+                onMouseEnter={() => setBarHovered(true)}
+              />
+              <ReactionBar
+                serverUrl={session.url}
+                onReact={handleToggleReaction}
+                onAddClick={() => setPickerOpen(true)}
+                visible={reactionBarVisible}
+              />
+            </div>,
+            document.body,
+          )}
 
         {pickerOpen && session && (
           <ReactionPicker
             serverUrl={session.url}
-            
             onSelect={(key, type) => {
               handleToggleReaction(key, type)
               setPickerOpen(false)
@@ -664,13 +821,15 @@ function MessageBubble({
           <UserProfileCard
             userId={message.user_id}
             anchorEl={profileAnchorRef.current}
-            onClose={() => { setShowProfileCard(false); profileAnchorRef.current = null }}
+            onClose={() => {
+              setShowProfileCard(false)
+              profileAnchorRef.current = null
+            }}
           />
         )}
       </div>
     </div>
   )
 }
-
 
 export default memo(MessageBubble)

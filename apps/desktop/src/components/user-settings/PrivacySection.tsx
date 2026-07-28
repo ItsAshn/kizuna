@@ -11,10 +11,14 @@ import { SettingsToggleRow } from './rows'
 
 export function PrivacySection() {
   const {
-    shareAppActivity, setShareAppActivity,
-    customAppActivity, setCustomAppActivity,
-    shareMediaActivity, setShareMediaActivity,
-    customMediaActivity, setCustomMediaActivity,
+    shareAppActivity,
+    setShareAppActivity,
+    customAppActivity,
+    setCustomAppActivity,
+    shareMediaActivity,
+    setShareMediaActivity,
+    customMediaActivity,
+    setCustomMediaActivity,
   } = useSettingsStore()
   const userActivities = useVoiceStore((s) => s.userActivities)
   const session = useServerStore((s) => s.activeSession)
@@ -37,7 +41,9 @@ export function PrivacySection() {
         })
         .catch(() => {})
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // Renders the "currently sharing" preview + custom-activity controls shared by
@@ -69,8 +75,14 @@ export function PrivacySection() {
           <span className="settings-activity-current-label">currently sharing</span>
           {previewActivity ? (
             <div className="settings-activity-now">
-              <span className={`settings-activity-now-icon${previewActivity.icon ? ' settings-activity-now-icon--img' : ''}`}>
-                <ActivityIcon activity={previewActivity} size={16} className="settings-activity-now-img" />
+              <span
+                className={`settings-activity-now-icon${previewActivity.icon ? ' settings-activity-now-icon--img' : ''}`}
+              >
+                <ActivityIcon
+                  activity={previewActivity}
+                  size={16}
+                  className="settings-activity-now-img"
+                />
               </span>
               <span className="settings-activity-now-name">{previewActivity.name}</span>
               {!current && <span className="settings-activity-now-tag">custom</span>}
@@ -86,11 +98,24 @@ export function PrivacySection() {
             placeholder="set a custom activity…"
             value={customInput}
             onChange={(e) => setCustomInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') commit(customInput) }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit(customInput)
+            }}
           />
-          <Button size="sm" onClick={() => commit(customInput)} disabled={!customInput.trim()}>set</Button>
+          <Button size="sm" onClick={() => commit(customInput)} disabled={!customInput.trim()}>
+            set
+          </Button>
           {customActivity && (
-            <Button size="sm" variant="danger" onClick={() => { setCustomActivity(null); setCustomInput('') }}>clear</Button>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => {
+                setCustomActivity(null)
+                setCustomInput('')
+              }}
+            >
+              clear
+            </Button>
           )}
         </div>
 
@@ -103,7 +128,10 @@ export function PrivacySection() {
                   key={name}
                   type="button"
                   className={`settings-activity-chip${customActivity === name ? ' settings-activity-chip--active' : ''}`}
-                  onClick={() => { setCustomInput(name); setCustomActivity(name) }}
+                  onClick={() => {
+                    setCustomInput(name)
+                    setCustomActivity(name)
+                  }}
                   title={name}
                 >
                   {name}
@@ -135,21 +163,23 @@ export function PrivacySection() {
           onChange={setShareMediaActivity}
         />
 
-        {shareAppActivity && renderActivitySharing({
-          kind: 'app',
-          customActivity: customAppActivity,
-          setCustomActivity: setCustomAppActivity,
-          customInput: customAppInput,
-          setCustomInput: setCustomAppInput,
-        })}
+        {shareAppActivity &&
+          renderActivitySharing({
+            kind: 'app',
+            customActivity: customAppActivity,
+            setCustomActivity: setCustomAppActivity,
+            customInput: customAppInput,
+            setCustomInput: setCustomAppInput,
+          })}
 
-        {shareMediaActivity && renderActivitySharing({
-          kind: 'media',
-          customActivity: customMediaActivity,
-          setCustomActivity: setCustomMediaActivity,
-          customInput: customMediaInput,
-          setCustomInput: setCustomMediaInput,
-        })}
+        {shareMediaActivity &&
+          renderActivitySharing({
+            kind: 'media',
+            customActivity: customMediaActivity,
+            setCustomActivity: setCustomMediaActivity,
+            customInput: customMediaInput,
+            setCustomInput: setCustomMediaInput,
+          })}
       </div>
     </div>
   )

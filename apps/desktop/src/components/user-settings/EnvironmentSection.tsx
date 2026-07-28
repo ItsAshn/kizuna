@@ -52,7 +52,9 @@ export function EnvironmentSection() {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   const handleCopy = async (cmd: string) => {
     try {
@@ -86,8 +88,8 @@ export function EnvironmentSection() {
   }
 
   const isLinux = diagnostic.os === 'linux'
-  const errors = diagnostic.issues.filter(i => i.severity === 'error')
-  const warnings = diagnostic.issues.filter(i => i.severity === 'warning')
+  const errors = diagnostic.issues.filter((i) => i.severity === 'error')
+  const warnings = diagnostic.issues.filter((i) => i.severity === 'warning')
 
   return (
     <div className="settings-tab-content">
@@ -158,7 +160,9 @@ function IssueCard({
     <div className="env-issue">
       <div className="env-issue-header">
         <span className="env-issue-component">{issue.component}</span>
-        <span className={`env-issue-severity env-issue-severity--${issue.severity === 'error' ? 'error' : 'warning'}`}>
+        <span
+          className={`env-issue-severity env-issue-severity--${issue.severity === 'error' ? 'error' : 'warning'}`}
+        >
           {issue.severity}
         </span>
       </div>
@@ -166,10 +170,7 @@ function IssueCard({
       {issue.fix_command && (
         <div className="env-issue-fix">
           <code className="env-issue-cmd">{issue.fix_command}</code>
-          <button
-            onClick={() => onCopy(issue.fix_command!)}
-            className="settings-btn"
-          >
+          <button onClick={() => onCopy(issue.fix_command!)} className="settings-btn">
             {copiedCmd === issue.fix_command ? 'copied' : 'copy'}
           </button>
         </div>

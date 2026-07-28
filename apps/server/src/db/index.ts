@@ -52,8 +52,10 @@ export function deleteUserAccount(userId: string, deleteData: boolean): void {
     db.prepare('DELETE FROM channel_mutes WHERE user_id = ?').run(userId)
 
     const dmChannelIds = (
-      db.prepare('SELECT id FROM dm_channels WHERE user1_id = ? OR user2_id = ?').all(userId, userId) as { id: string }[]
-    ).map(r => r.id)
+      db
+        .prepare('SELECT id FROM dm_channels WHERE user1_id = ? OR user2_id = ?')
+        .all(userId, userId) as { id: string }[]
+    ).map((r) => r.id)
 
     for (const channelId of dmChannelIds) {
       db.prepare('DELETE FROM dm_reads WHERE channel_id = ?').run(channelId)
@@ -68,18 +70,28 @@ export function deleteUserAccount(userId: string, deleteData: boolean): void {
 
     if (deleteData) {
       const groupDmChannelIds = (
-        db.prepare('SELECT channel_id FROM group_dm_members WHERE user_id = ?').all(userId) as { channel_id: string }[]
-      ).map(r => r.channel_id)
+        db.prepare('SELECT channel_id FROM group_dm_members WHERE user_id = ?').all(userId) as {
+          channel_id: string
+        }[]
+      ).map((r) => r.channel_id)
 
       for (const channelId of groupDmChannelIds) {
-        db.prepare('DELETE FROM group_dm_messages WHERE channel_id = ? AND from_id = ?').run(channelId, userId)
+        db.prepare('DELETE FROM group_dm_messages WHERE channel_id = ? AND from_id = ?').run(
+          channelId,
+          userId,
+        )
       }
       db.prepare('DELETE FROM group_dm_messages WHERE from_id = ?').run(userId)
       db.prepare('DELETE FROM direct_messages WHERE from_id = ? OR to_id = ?').run(userId, userId)
       db.prepare('DELETE FROM messages WHERE author_id = ?').run(userId)
-      db.prepare('DELETE FROM mentions WHERE author_id = ? OR mentioned_user_id = ?').run(userId, userId)
+      db.prepare('DELETE FROM mentions WHERE author_id = ? OR mentioned_user_id = ?').run(
+        userId,
+        userId,
+      )
       db.prepare('DELETE FROM message_edits WHERE edited_by = ?').run(userId)
-      db.prepare('DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE author_id = ?)').run(userId)
+      db.prepare(
+        'DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE author_id = ?)',
+      ).run(userId)
       db.prepare('DELETE FROM polls WHERE created_by = ?').run(userId)
       db.prepare('DELETE FROM webhooks WHERE created_by = ?').run(userId)
       db.prepare('DELETE FROM gifs WHERE uploaded_by = ?').run(userId)
@@ -105,29 +117,114 @@ export function deleteUserAccount(userId: string, deleteData: boolean): void {
 }
 
 const EXPECTED_SCHEMA: Record<string, string[]> = {
-  users: ['id', 'username', 'display_name', 'password_hash', 'avatar', 'banner', 'last_seen_at',
-    'public_key', 'key_salt', 'token_invalidated_at', 'reset_token', 'reset_token_expires_at',
-    'reset_requested_at', 'backuptoken_hash', 'created_at'],
-  channels: ['id', 'name', 'type', 'topic', 'position', 'locked', 'hidden', 'hidden_role_ids', 'write_role_id', 'category_id', 'created_at'],
-  messages: ['id', 'channel_id', 'author_id', 'author_username', 'content', 'edited_at',
-    'updated_at', 'created_at', 'reply_to_message_id', 'reply_to_username', 'reply_to_content',
-    'author_display_name', 'author_avatar', 'webhook_id'],
-  direct_messages: ['id', 'channel_id', 'from_id', 'from_username', 'to_id', 'content',
-    'encrypted', 'edited_at', 'created_at', 'reply_to_message_id', 'reply_to_username', 'reply_to_content'],
+  users: [
+    'id',
+    'username',
+    'display_name',
+    'password_hash',
+    'avatar',
+    'banner',
+    'last_seen_at',
+    'public_key',
+    'key_salt',
+    'token_invalidated_at',
+    'reset_token',
+    'reset_token_expires_at',
+    'reset_requested_at',
+    'backuptoken_hash',
+    'created_at',
+  ],
+  channels: [
+    'id',
+    'name',
+    'type',
+    'topic',
+    'position',
+    'locked',
+    'hidden',
+    'hidden_role_ids',
+    'write_role_id',
+    'category_id',
+    'created_at',
+  ],
+  messages: [
+    'id',
+    'channel_id',
+    'author_id',
+    'author_username',
+    'content',
+    'edited_at',
+    'updated_at',
+    'created_at',
+    'reply_to_message_id',
+    'reply_to_username',
+    'reply_to_content',
+    'author_display_name',
+    'author_avatar',
+    'webhook_id',
+  ],
+  direct_messages: [
+    'id',
+    'channel_id',
+    'from_id',
+    'from_username',
+    'to_id',
+    'content',
+    'encrypted',
+    'edited_at',
+    'created_at',
+    'reply_to_message_id',
+    'reply_to_username',
+    'reply_to_content',
+  ],
   server_members: ['user_id', 'role', 'is_host', 'custom_role_id', 'joined_at'],
-  roles: ['id', 'name', 'color', 'permissions', 'is_admin', 'position', 'hoist', 'mentionable', 'default_on_join', 'created_at'],
+  roles: [
+    'id',
+    'name',
+    'color',
+    'permissions',
+    'is_admin',
+    'position',
+    'hoist',
+    'mentionable',
+    'default_on_join',
+    'created_at',
+  ],
   member_roles: ['user_id', 'role_id'],
   removed_members: ['user_id', 'removed_by', 'removed_at'],
   dm_channels: ['id', 'user1_id', 'user2_id', 'last_message_at', 'created_at'],
-  mentions: ['id', 'message_id', 'channel_id', 'author_id', 'author_username',
-    'mentioned_user_id', 'mention_type', 'content', 'read', 'created_at'],
+  mentions: [
+    'id',
+    'message_id',
+    'channel_id',
+    'author_id',
+    'author_username',
+    'mentioned_user_id',
+    'mention_type',
+    'content',
+    'read',
+    'created_at',
+  ],
   attachments: ['id', 'message_id', 'filename', 'url', 'size', 'content_type', 'created_at'],
   channel_reads: ['user_id', 'channel_id', 'last_read_at'],
   dm_reads: ['user_id', 'channel_id', 'last_read_at'],
   message_edits: ['id', 'message_id', 'old_content', 'edited_by', 'edited_at'],
   channel_mutes: ['user_id', 'channel_id', 'muted_until'],
-  gifs: ['id', 'type', 'display_name', 'category', 'tags', 'pack_name',
-    'stored_filename', 'original_filename', 'file_size', 'width', 'height', 'uploaded_by', 'created_at'],
+  gifs: [
+    'id',
+    'type',
+    'display_name',
+    'category',
+    'tags',
+    'pack_name',
+    'stored_filename',
+    'original_filename',
+    'file_size',
+    'width',
+    'height',
+    'uploaded_by',
+    'created_at',
+  ],
   message_reactions: ['message_id', 'user_id', 'reaction_key', 'reaction_type', 'created_at'],
   server_settings: ['key', 'value'],
   invite_codes: ['code', 'created_by', 'max_uses', 'uses', 'expires_at', 'created_at'],
@@ -136,28 +233,82 @@ const EXPECTED_SCHEMA: Record<string, string[]> = {
   sessions: ['token_id', 'user_id', 'created_at', 'revoked_at'],
   pinned_messages: ['id', 'channel_id', 'message_id', 'pinned_by', 'pinned_at'],
   channel_categories: ['id', 'name', 'position', 'created_at'],
-  threads: ['id', 'channel_id', 'name', 'creator_id', 'created_at', 'message_count', 'last_message_at'],
+  threads: [
+    'id',
+    'channel_id',
+    'name',
+    'creator_id',
+    'created_at',
+    'message_count',
+    'last_message_at',
+  ],
   link_embeds: ['url', 'title', 'description', 'image', 'site_name', 'favicon', 'fetched_at'],
   channel_role_overrides: ['channel_id', 'role_id', 'allow_permissions', 'deny_permissions'],
   group_dm_channels: ['id', 'name', 'owner_id', 'avatar', 'last_message_at', 'created_at'],
   group_dm_members: ['channel_id', 'user_id', 'joined_at'],
-  group_dm_messages: ['id', 'channel_id', 'from_id', 'from_username', 'content', 'encrypted', 'edited_at', 'created_at', 'reply_to_message_id', 'reply_to_username', 'reply_to_content'],
+  group_dm_messages: [
+    'id',
+    'channel_id',
+    'from_id',
+    'from_username',
+    'content',
+    'encrypted',
+    'edited_at',
+    'created_at',
+    'reply_to_message_id',
+    'reply_to_username',
+    'reply_to_content',
+  ],
   group_dm_reads: ['user_id', 'channel_id', 'last_read_at'],
   group_dm_voice_participants: ['id', 'channel_id', 'user_id', 'joined_at', 'left_at'],
-  registry_servers: ['url', 'name', 'description', 'icon', 'password_protected', 'player_count', 'last_heartbeat'],
-  outgoing_webhooks: ['id', 'name', 'url', 'secret', 'channel_id', 'events', 'format', 'enabled',
-    'skip_webhook_messages', 'created_by', 'created_at', 'last_delivery_at', 'last_status',
-    'last_error', 'consecutive_failures', 'disabled_reason'],
-  outgoing_webhook_deliveries: ['id', 'webhook_id', 'event', 'status', 'error', 'duration_ms', 'attempt', 'created_at'],
+  registry_servers: [
+    'url',
+    'name',
+    'description',
+    'icon',
+    'password_protected',
+    'player_count',
+    'last_heartbeat',
+  ],
+  outgoing_webhooks: [
+    'id',
+    'name',
+    'url',
+    'secret',
+    'channel_id',
+    'events',
+    'format',
+    'enabled',
+    'skip_webhook_messages',
+    'created_by',
+    'created_at',
+    'last_delivery_at',
+    'last_status',
+    'last_error',
+    'consecutive_failures',
+    'disabled_reason',
+  ],
+  outgoing_webhook_deliveries: [
+    'id',
+    'webhook_id',
+    'event',
+    'status',
+    'error',
+    'duration_ms',
+    'attempt',
+    'created_at',
+  ],
   _migrations: ['name', 'applied_at'],
 }
 
 function validateSchema(database: Database.Database): void {
-  const tableNames = database.prepare(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'messages_fts%' ORDER BY name"
-  ).all() as { name: string }[]
+  const tableNames = database
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'messages_fts%' ORDER BY name",
+    )
+    .all() as { name: string }[]
 
-  const existingTables = new Set(tableNames.map(r => r.name))
+  const existingTables = new Set(tableNames.map((r) => r.name))
   const missing: string[] = []
 
   for (const [table, expectedCols] of Object.entries(EXPECTED_SCHEMA)) {
@@ -167,7 +318,7 @@ function validateSchema(database: Database.Database): void {
     }
 
     const cols = database.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]
-    const colNames = new Set(cols.map(c => c.name))
+    const colNames = new Set(cols.map((c) => c.name))
 
     for (const col of expectedCols) {
       if (!colNames.has(col)) {
@@ -177,26 +328,30 @@ function validateSchema(database: Database.Database): void {
   }
 
   if (missing.length > 0) {
-    console.error('[DB] Schema validation failed — missing tables/columns:');
-    for (const m of missing) console.error(m);
-    console.error('[DB] The database is out of sync with the current server version.');
-    console.error('[DB] Ensure all migrations have run or restore from a backup.');
-    process.exit(1);
+    console.error('[DB] Schema validation failed — missing tables/columns:')
+    for (const m of missing) console.error(m)
+    console.error('[DB] The database is out of sync with the current server version.')
+    console.error('[DB] Ensure all migrations have run or restore from a backup.')
+    process.exit(1)
   }
 }
 
 function columnExists(database: Database.Database, table: string, column: string): boolean {
   const cols = database.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]
-  return cols.some(c => c.name === column)
+  return cols.some((c) => c.name === column)
 }
 
 function tableExists(database: Database.Database, table: string): boolean {
-  const row = database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(table)
+  const row = database
+    .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?")
+    .get(table)
   return !!row
 }
 
 function indexExists(database: Database.Database, name: string): boolean {
-  const row = database.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name = ?").get(name)
+  const row = database
+    .prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name = ?")
+    .get(name)
   return !!row
 }
 
@@ -326,7 +481,9 @@ function runMigrations(database: Database.Database): void {
   seedPreExistingMigrations(database)
 
   const applied = new Set(
-    (database.prepare('SELECT name FROM _migrations').all() as { name: string }[]).map(r => r.name),
+    (database.prepare('SELECT name FROM _migrations').all() as { name: string }[]).map(
+      (r) => r.name,
+    ),
   )
 
   interface Migration {
@@ -335,11 +492,16 @@ function runMigrations(database: Database.Database): void {
   }
 
   const migrations: Migration[] = [
-    { name: 'server_settings_table', sql: `CREATE TABLE IF NOT EXISTS server_settings (
+    {
+      name: 'server_settings_table',
+      sql: `CREATE TABLE IF NOT EXISTS server_settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
-    )` },
-    { name: 'invite_codes_table', sql: `CREATE TABLE IF NOT EXISTS invite_codes (
+    )`,
+    },
+    {
+      name: 'invite_codes_table',
+      sql: `CREATE TABLE IF NOT EXISTS invite_codes (
       code TEXT PRIMARY KEY,
       created_by TEXT NOT NULL,
       max_uses INTEGER DEFAULT NULL,
@@ -347,40 +509,58 @@ function runMigrations(database: Database.Database): void {
       expires_at INTEGER DEFAULT NULL,
       created_at INTEGER DEFAULT (unixepoch()),
       FOREIGN KEY (created_by) REFERENCES users(id)
-    )` },
-    { name: 'roles_initial', sql: `CREATE TABLE IF NOT EXISTS roles (
+    )`,
+    },
+    {
+      name: 'roles_initial',
+      sql: `CREATE TABLE IF NOT EXISTS roles (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       color TEXT NOT NULL DEFAULT '#5865f2',
       permissions TEXT NOT NULL DEFAULT '{}',
       created_at INTEGER DEFAULT (unixepoch())
-    )` },
-    { name: 'dm_channels_table', sql: `CREATE TABLE IF NOT EXISTS dm_channels (
+    )`,
+    },
+    {
+      name: 'dm_channels_table',
+      sql: `CREATE TABLE IF NOT EXISTS dm_channels (
       id TEXT PRIMARY KEY,
       user1_id TEXT NOT NULL,
       user2_id TEXT NOT NULL,
       created_at INTEGER DEFAULT (unixepoch()),
       FOREIGN KEY (user1_id) REFERENCES users(id),
       FOREIGN KEY (user2_id) REFERENCES users(id)
-    )` },
-    { name: 'idx_dm_channels_users', sql: `CREATE INDEX IF NOT EXISTS idx_dm_channels_users ON dm_channels(user1_id, user2_id)` },
-    { name: 'channel_reads_table', sql: `CREATE TABLE IF NOT EXISTS channel_reads (
+    )`,
+    },
+    {
+      name: 'idx_dm_channels_users',
+      sql: `CREATE INDEX IF NOT EXISTS idx_dm_channels_users ON dm_channels(user1_id, user2_id)`,
+    },
+    {
+      name: 'channel_reads_table',
+      sql: `CREATE TABLE IF NOT EXISTS channel_reads (
       user_id TEXT NOT NULL,
       channel_id TEXT NOT NULL,
       last_read_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, channel_id),
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (channel_id) REFERENCES channels(id)
-    )` },
-    { name: 'dm_reads_table', sql: `CREATE TABLE IF NOT EXISTS dm_reads (
+    )`,
+    },
+    {
+      name: 'dm_reads_table',
+      sql: `CREATE TABLE IF NOT EXISTS dm_reads (
       user_id TEXT NOT NULL,
       channel_id TEXT NOT NULL,
       last_read_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, channel_id),
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (channel_id) REFERENCES dm_channels(id)
-    )` },
-    { name: 'message_edits_table', sql: `CREATE TABLE IF NOT EXISTS message_edits (
+    )`,
+    },
+    {
+      name: 'message_edits_table',
+      sql: `CREATE TABLE IF NOT EXISTS message_edits (
       id TEXT PRIMARY KEY,
       message_id TEXT NOT NULL,
       old_content TEXT NOT NULL,
@@ -388,46 +568,118 @@ function runMigrations(database: Database.Database): void {
       edited_at INTEGER NOT NULL,
       FOREIGN KEY (message_id) REFERENCES messages(id),
       FOREIGN KEY (edited_by) REFERENCES users(id)
-    )` },
-    { name: 'idx_messages_channel_created', sql: `CREATE INDEX IF NOT EXISTS idx_messages_channel_created ON messages(channel_id, created_at)` },
-    { name: 'idx_mentions_user_read', sql: `CREATE INDEX IF NOT EXISTS idx_mentions_user_read ON mentions(mentioned_user_id, read)` },
-    { name: 'idx_direct_messages_channel', sql: `CREATE INDEX IF NOT EXISTS idx_direct_messages_channel ON direct_messages(channel_id)` },
-    { name: 'idx_message_edits_message', sql: `CREATE INDEX IF NOT EXISTS idx_message_edits_message ON message_edits(message_id)` },
-    { name: 'users_add_public_key', sql: `ALTER TABLE users ADD COLUMN public_key TEXT DEFAULT NULL` },
+    )`,
+    },
+    {
+      name: 'idx_messages_channel_created',
+      sql: `CREATE INDEX IF NOT EXISTS idx_messages_channel_created ON messages(channel_id, created_at)`,
+    },
+    {
+      name: 'idx_mentions_user_read',
+      sql: `CREATE INDEX IF NOT EXISTS idx_mentions_user_read ON mentions(mentioned_user_id, read)`,
+    },
+    {
+      name: 'idx_direct_messages_channel',
+      sql: `CREATE INDEX IF NOT EXISTS idx_direct_messages_channel ON direct_messages(channel_id)`,
+    },
+    {
+      name: 'idx_message_edits_message',
+      sql: `CREATE INDEX IF NOT EXISTS idx_message_edits_message ON message_edits(message_id)`,
+    },
+    {
+      name: 'users_add_public_key',
+      sql: `ALTER TABLE users ADD COLUMN public_key TEXT DEFAULT NULL`,
+    },
     { name: 'users_add_key_salt', sql: `ALTER TABLE users ADD COLUMN key_salt TEXT DEFAULT NULL` },
-    { name: 'dm_add_encrypted', sql: `ALTER TABLE direct_messages ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0` },
-    { name: 'dm_add_edited_at', sql: `ALTER TABLE direct_messages ADD COLUMN edited_at INTEGER DEFAULT NULL` },
-    { name: 'users_add_reset_token', sql: `ALTER TABLE users ADD COLUMN reset_token TEXT DEFAULT NULL` },
-    { name: 'users_add_reset_token_expires', sql: `ALTER TABLE users ADD COLUMN reset_token_expires_at INTEGER DEFAULT NULL` },
-    { name: 'users_add_token_invalidated_at', sql: `ALTER TABLE users ADD COLUMN token_invalidated_at INTEGER DEFAULT NULL` },
-    { name: 'member_roles_table', sql: `CREATE TABLE IF NOT EXISTS member_roles (
+    {
+      name: 'dm_add_encrypted',
+      sql: `ALTER TABLE direct_messages ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0`,
+    },
+    {
+      name: 'dm_add_edited_at',
+      sql: `ALTER TABLE direct_messages ADD COLUMN edited_at INTEGER DEFAULT NULL`,
+    },
+    {
+      name: 'users_add_reset_token',
+      sql: `ALTER TABLE users ADD COLUMN reset_token TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'users_add_reset_token_expires',
+      sql: `ALTER TABLE users ADD COLUMN reset_token_expires_at INTEGER DEFAULT NULL`,
+    },
+    {
+      name: 'users_add_token_invalidated_at',
+      sql: `ALTER TABLE users ADD COLUMN token_invalidated_at INTEGER DEFAULT NULL`,
+    },
+    {
+      name: 'member_roles_table',
+      sql: `CREATE TABLE IF NOT EXISTS member_roles (
       user_id TEXT NOT NULL,
       role_id TEXT NOT NULL,
       PRIMARY KEY (user_id, role_id),
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (role_id) REFERENCES roles(id)
-    )` },
-    { name: 'channels_add_locked', sql: `ALTER TABLE channels ADD COLUMN locked INTEGER NOT NULL DEFAULT 0` },
-    { name: 'channels_add_write_role_id', sql: `ALTER TABLE channels ADD COLUMN write_role_id TEXT DEFAULT NULL` },
-    { name: 'channels_add_hidden', sql: `ALTER TABLE channels ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0` },
-    { name: 'channels_add_hidden_role_ids', sql: `ALTER TABLE channels ADD COLUMN hidden_role_ids TEXT DEFAULT NULL` },
-    { name: 'migrate_custom_role_to_member_roles', sql: `INSERT OR IGNORE INTO member_roles (user_id, role_id)
-     SELECT user_id, custom_role_id FROM server_members WHERE custom_role_id IS NOT NULL` },
-    { name: 'roles_add_is_admin', sql: `ALTER TABLE roles ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0` },
-    { name: 'seed_admin_role', sql: `INSERT OR IGNORE INTO roles (id, name, color, permissions, is_admin) VALUES
+    )`,
+    },
+    {
+      name: 'channels_add_locked',
+      sql: `ALTER TABLE channels ADD COLUMN locked INTEGER NOT NULL DEFAULT 0`,
+    },
+    {
+      name: 'channels_add_write_role_id',
+      sql: `ALTER TABLE channels ADD COLUMN write_role_id TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'channels_add_hidden',
+      sql: `ALTER TABLE channels ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0`,
+    },
+    {
+      name: 'channels_add_hidden_role_ids',
+      sql: `ALTER TABLE channels ADD COLUMN hidden_role_ids TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'migrate_custom_role_to_member_roles',
+      sql: `INSERT OR IGNORE INTO member_roles (user_id, role_id)
+     SELECT user_id, custom_role_id FROM server_members WHERE custom_role_id IS NOT NULL`,
+    },
+    {
+      name: 'roles_add_is_admin',
+      sql: `ALTER TABLE roles ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`,
+    },
+    {
+      name: 'seed_admin_role',
+      sql: `INSERT OR IGNORE INTO roles (id, name, color, permissions, is_admin) VALUES
      ('admin-role', 'Admin', '#f59e0b',
       '{"send_messages":true,"send_dm_messages":true,"create_group_dms":true,"add_reactions":true,"upload_attachments":true,"delete_messages":true,"manage_channels":true,"manage_roles":true,"kick_members":true,"manage_invites":true,"use_voice":true,"initiate_dm_calls":true}',
-      1)` },
-    { name: 'assign_admin_role', sql: `INSERT OR IGNORE INTO member_roles (user_id, role_id)
+      1)`,
+    },
+    {
+      name: 'assign_admin_role',
+      sql: `INSERT OR IGNORE INTO member_roles (user_id, role_id)
      SELECT user_id, 'admin-role' FROM server_members WHERE role = 'admin'
-       AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = server_members.user_id AND mr.role_id = 'admin-role')` },
-    { name: 'users_add_reset_requested_at', sql: `ALTER TABLE users ADD COLUMN reset_requested_at INTEGER DEFAULT NULL` },
-    { name: 'users_add_backuptoken_hash', sql: `ALTER TABLE users ADD COLUMN backuptoken_hash TEXT DEFAULT NULL` },
-    { name: 'server_members_add_is_host', sql: `ALTER TABLE server_members ADD COLUMN is_host INTEGER NOT NULL DEFAULT 0` },
-    { name: 'seed_first_host', sql: `UPDATE server_members SET is_host = 1 WHERE user_id = (
+       AND NOT EXISTS (SELECT 1 FROM member_roles mr WHERE mr.user_id = server_members.user_id AND mr.role_id = 'admin-role')`,
+    },
+    {
+      name: 'users_add_reset_requested_at',
+      sql: `ALTER TABLE users ADD COLUMN reset_requested_at INTEGER DEFAULT NULL`,
+    },
+    {
+      name: 'users_add_backuptoken_hash',
+      sql: `ALTER TABLE users ADD COLUMN backuptoken_hash TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'server_members_add_is_host',
+      sql: `ALTER TABLE server_members ADD COLUMN is_host INTEGER NOT NULL DEFAULT 0`,
+    },
+    {
+      name: 'seed_first_host',
+      sql: `UPDATE server_members SET is_host = 1 WHERE user_id = (
        SELECT user_id FROM server_members ORDER BY joined_at ASC LIMIT 1
-     ) AND NOT EXISTS (SELECT 1 FROM server_members WHERE is_host = 1)` },
-    { name: 'attachments_new_table', sql: `CREATE TABLE IF NOT EXISTS attachments_new (
+     ) AND NOT EXISTS (SELECT 1 FROM server_members WHERE is_host = 1)`,
+    },
+    {
+      name: 'attachments_new_table',
+      sql: `CREATE TABLE IF NOT EXISTS attachments_new (
       id TEXT PRIMARY KEY,
       message_id TEXT,
       filename TEXT NOT NULL,
@@ -435,21 +687,30 @@ function runMigrations(database: Database.Database): void {
       size INTEGER,
       content_type TEXT,
       created_at INTEGER DEFAULT (unixepoch())
-    )` },
-    { name: 'migrate_attachments', sql: `INSERT OR IGNORE INTO attachments_new (id, message_id, filename, url, size, content_type, created_at)
+    )`,
+    },
+    {
+      name: 'migrate_attachments',
+      sql: `INSERT OR IGNORE INTO attachments_new (id, message_id, filename, url, size, content_type, created_at)
      SELECT id, CASE WHEN message_id = '' THEN NULL ELSE message_id END, filename, url, size, content_type, created_at
-     FROM attachments` },
+     FROM attachments`,
+    },
     { name: 'drop_attachments', sql: `DROP TABLE IF EXISTS attachments` },
     { name: 'rename_attachments_new', sql: `ALTER TABLE attachments_new RENAME TO attachments` },
-    { name: 'channel_mutes_table', sql: `CREATE TABLE IF NOT EXISTS channel_mutes (
+    {
+      name: 'channel_mutes_table',
+      sql: `CREATE TABLE IF NOT EXISTS channel_mutes (
       user_id TEXT NOT NULL,
       channel_id TEXT NOT NULL,
       muted_until INTEGER DEFAULT NULL,
       PRIMARY KEY (user_id, channel_id),
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (channel_id) REFERENCES channels(id)
-    )` },
-    { name: 'gifs_table', sql: `CREATE TABLE IF NOT EXISTS gifs (
+    )`,
+    },
+    {
+      name: 'gifs_table',
+      sql: `CREATE TABLE IF NOT EXISTS gifs (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL DEFAULT 'gif',
       display_name TEXT NOT NULL,
@@ -464,12 +725,24 @@ function runMigrations(database: Database.Database): void {
       uploaded_by TEXT NOT NULL,
       created_at INTEGER DEFAULT (unixepoch()),
       FOREIGN KEY (uploaded_by) REFERENCES users(id)
-    )` },
+    )`,
+    },
     { name: 'idx_gifs_type', sql: `CREATE INDEX IF NOT EXISTS idx_gifs_type ON gifs(type)` },
-    { name: 'idx_gifs_category', sql: `CREATE INDEX IF NOT EXISTS idx_gifs_category ON gifs(category)` },
-    { name: 'idx_gifs_pack', sql: `CREATE INDEX IF NOT EXISTS idx_gifs_pack ON gifs(type, pack_name)` },
-    { name: 'idx_gifs_name', sql: `CREATE INDEX IF NOT EXISTS idx_gifs_name ON gifs(display_name)` },
-    { name: 'message_reactions_v1', sql: `CREATE TABLE IF NOT EXISTS message_reactions (
+    {
+      name: 'idx_gifs_category',
+      sql: `CREATE INDEX IF NOT EXISTS idx_gifs_category ON gifs(category)`,
+    },
+    {
+      name: 'idx_gifs_pack',
+      sql: `CREATE INDEX IF NOT EXISTS idx_gifs_pack ON gifs(type, pack_name)`,
+    },
+    {
+      name: 'idx_gifs_name',
+      sql: `CREATE INDEX IF NOT EXISTS idx_gifs_name ON gifs(display_name)`,
+    },
+    {
+      name: 'message_reactions_v1',
+      sql: `CREATE TABLE IF NOT EXISTS message_reactions (
       message_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
       reaction_key TEXT NOT NULL,
@@ -478,9 +751,15 @@ function runMigrations(database: Database.Database): void {
       PRIMARY KEY (message_id, user_id, reaction_key),
       FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id)
-    )` },
-    { name: 'idx_msg_reactions_msg_v1', sql: `CREATE INDEX IF NOT EXISTS idx_msg_reactions_msg ON message_reactions(message_id)` },
-    { name: 'message_reactions_new_table', sql: `CREATE TABLE IF NOT EXISTS message_reactions_new (
+    )`,
+    },
+    {
+      name: 'idx_msg_reactions_msg_v1',
+      sql: `CREATE INDEX IF NOT EXISTS idx_msg_reactions_msg ON message_reactions(message_id)`,
+    },
+    {
+      name: 'message_reactions_new_table',
+      sql: `CREATE TABLE IF NOT EXISTS message_reactions_new (
       message_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
       reaction_key TEXT NOT NULL,
@@ -488,19 +767,49 @@ function runMigrations(database: Database.Database): void {
       created_at INTEGER DEFAULT (unixepoch()),
       PRIMARY KEY (message_id, user_id, reaction_key),
       FOREIGN KEY (user_id) REFERENCES users(id)
-    )` },
-    { name: 'migrate_message_reactions', sql: `INSERT INTO message_reactions_new (message_id, user_id, reaction_key, reaction_type, created_at)
-     SELECT message_id, user_id, reaction_key, reaction_type, created_at FROM message_reactions` },
+    )`,
+    },
+    {
+      name: 'migrate_message_reactions',
+      sql: `INSERT INTO message_reactions_new (message_id, user_id, reaction_key, reaction_type, created_at)
+     SELECT message_id, user_id, reaction_key, reaction_type, created_at FROM message_reactions`,
+    },
     { name: 'drop_message_reactions_v1', sql: `DROP TABLE IF EXISTS message_reactions` },
-    { name: 'rename_message_reactions_new', sql: `ALTER TABLE message_reactions_new RENAME TO message_reactions` },
-    { name: 'idx_msg_reactions_msg_v2', sql: `CREATE INDEX IF NOT EXISTS idx_msg_reactions_msg ON message_reactions(message_id)` },
-    { name: 'messages_add_reply_to', sql: `ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT DEFAULT NULL` },
-    { name: 'messages_add_reply_username', sql: `ALTER TABLE messages ADD COLUMN reply_to_username TEXT DEFAULT NULL` },
-    { name: 'messages_add_reply_content', sql: `ALTER TABLE messages ADD COLUMN reply_to_content TEXT DEFAULT NULL` },
-    { name: 'dm_add_reply_to', sql: `ALTER TABLE direct_messages ADD COLUMN reply_to_message_id TEXT DEFAULT NULL` },
-    { name: 'dm_add_reply_username', sql: `ALTER TABLE direct_messages ADD COLUMN reply_to_username TEXT DEFAULT NULL` },
-    { name: 'dm_add_reply_content', sql: `ALTER TABLE direct_messages ADD COLUMN reply_to_content TEXT DEFAULT NULL` },
-    { name: 'bans_table', sql: `CREATE TABLE IF NOT EXISTS bans (
+    {
+      name: 'rename_message_reactions_new',
+      sql: `ALTER TABLE message_reactions_new RENAME TO message_reactions`,
+    },
+    {
+      name: 'idx_msg_reactions_msg_v2',
+      sql: `CREATE INDEX IF NOT EXISTS idx_msg_reactions_msg ON message_reactions(message_id)`,
+    },
+    {
+      name: 'messages_add_reply_to',
+      sql: `ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'messages_add_reply_username',
+      sql: `ALTER TABLE messages ADD COLUMN reply_to_username TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'messages_add_reply_content',
+      sql: `ALTER TABLE messages ADD COLUMN reply_to_content TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'dm_add_reply_to',
+      sql: `ALTER TABLE direct_messages ADD COLUMN reply_to_message_id TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'dm_add_reply_username',
+      sql: `ALTER TABLE direct_messages ADD COLUMN reply_to_username TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'dm_add_reply_content',
+      sql: `ALTER TABLE direct_messages ADD COLUMN reply_to_content TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'bans_table',
+      sql: `CREATE TABLE IF NOT EXISTS bans (
        id TEXT PRIMARY KEY,
        user_id TEXT NOT NULL,
        banned_by TEXT NOT NULL,
@@ -508,9 +817,12 @@ function runMigrations(database: Database.Database): void {
        created_at INTEGER DEFAULT (unixepoch()),
        FOREIGN KEY (user_id) REFERENCES users(id),
        FOREIGN KEY (banned_by) REFERENCES users(id)
-     )` },
+     )`,
+    },
     { name: 'idx_bans_user', sql: `CREATE INDEX IF NOT EXISTS idx_bans_user ON bans(user_id)` },
-    { name: 'audit_logs_table', sql: `CREATE TABLE IF NOT EXISTS audit_logs (
+    {
+      name: 'audit_logs_table',
+      sql: `CREATE TABLE IF NOT EXISTS audit_logs (
        id TEXT PRIMARY KEY,
        action TEXT NOT NULL,
        actor_id TEXT NOT NULL,
@@ -518,26 +830,65 @@ function runMigrations(database: Database.Database): void {
        details TEXT DEFAULT NULL,
        created_at INTEGER DEFAULT (unixepoch()),
        FOREIGN KEY (actor_id) REFERENCES users(id)
-     )` },
-    { name: 'idx_audit_logs_actor', sql: `CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id)` },
-    { name: 'idx_audit_logs_created', sql: `CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at)` },
-    { name: 'normalize_dm_channels', sql: `UPDATE dm_channels SET user1_id = MIN(user1_id, user2_id), user2_id = MAX(user1_id, user2_id) WHERE user1_id > user2_id` },
-    { name: 'idx_server_members_role', sql: `CREATE INDEX IF NOT EXISTS idx_server_members_role ON server_members(role)` },
-    { name: 'idx_message_reactions_user', sql: `CREATE INDEX IF NOT EXISTS idx_message_reactions_user ON message_reactions(user_id, reaction_type)` },
-    { name: 'idx_attachments_message', sql: `CREATE INDEX IF NOT EXISTS idx_attachments_message ON attachments(message_id)` },
-    { name: 'idx_mentions_channel', sql: `CREATE INDEX IF NOT EXISTS idx_mentions_channel ON mentions(channel_id)` },
-    { name: 'idx_invite_codes_created', sql: `CREATE INDEX IF NOT EXISTS idx_invite_codes_created ON invite_codes(created_by)` },
-    { name: 'idx_server_members_custom_role', sql: `CREATE INDEX IF NOT EXISTS idx_server_members_custom_role ON server_members(custom_role_id)` },
-    { name: 'sessions_table', sql: `CREATE TABLE IF NOT EXISTS sessions (
+     )`,
+    },
+    {
+      name: 'idx_audit_logs_actor',
+      sql: `CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id)`,
+    },
+    {
+      name: 'idx_audit_logs_created',
+      sql: `CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at)`,
+    },
+    {
+      name: 'normalize_dm_channels',
+      sql: `UPDATE dm_channels SET user1_id = MIN(user1_id, user2_id), user2_id = MAX(user1_id, user2_id) WHERE user1_id > user2_id`,
+    },
+    {
+      name: 'idx_server_members_role',
+      sql: `CREATE INDEX IF NOT EXISTS idx_server_members_role ON server_members(role)`,
+    },
+    {
+      name: 'idx_message_reactions_user',
+      sql: `CREATE INDEX IF NOT EXISTS idx_message_reactions_user ON message_reactions(user_id, reaction_type)`,
+    },
+    {
+      name: 'idx_attachments_message',
+      sql: `CREATE INDEX IF NOT EXISTS idx_attachments_message ON attachments(message_id)`,
+    },
+    {
+      name: 'idx_mentions_channel',
+      sql: `CREATE INDEX IF NOT EXISTS idx_mentions_channel ON mentions(channel_id)`,
+    },
+    {
+      name: 'idx_invite_codes_created',
+      sql: `CREATE INDEX IF NOT EXISTS idx_invite_codes_created ON invite_codes(created_by)`,
+    },
+    {
+      name: 'idx_server_members_custom_role',
+      sql: `CREATE INDEX IF NOT EXISTS idx_server_members_custom_role ON server_members(custom_role_id)`,
+    },
+    {
+      name: 'sessions_table',
+      sql: `CREATE TABLE IF NOT EXISTS sessions (
        token_id TEXT PRIMARY KEY,
        user_id TEXT NOT NULL,
        created_at INTEGER DEFAULT (unixepoch()),
        revoked_at INTEGER DEFAULT NULL,
        FOREIGN KEY (user_id) REFERENCES users(id)
-     )` },
-    { name: 'idx_sessions_user', sql: `CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)` },
-    { name: 'messages_fts', sql: `CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(content, content_rowid='rowid')` },
-    { name: 'pinned_messages_table', sql: `CREATE TABLE IF NOT EXISTS pinned_messages (
+     )`,
+    },
+    {
+      name: 'idx_sessions_user',
+      sql: `CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`,
+    },
+    {
+      name: 'messages_fts',
+      sql: `CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(content, content_rowid='rowid')`,
+    },
+    {
+      name: 'pinned_messages_table',
+      sql: `CREATE TABLE IF NOT EXISTS pinned_messages (
        id TEXT PRIMARY KEY,
        channel_id TEXT NOT NULL,
        message_id TEXT NOT NULL,
@@ -547,15 +898,24 @@ function runMigrations(database: Database.Database): void {
        FOREIGN KEY (message_id) REFERENCES messages(id),
        FOREIGN KEY (pinned_by) REFERENCES users(id),
        UNIQUE(channel_id, message_id)
-     )` },
-    { name: 'channel_categories_table', sql: `CREATE TABLE IF NOT EXISTS channel_categories (
+     )`,
+    },
+    {
+      name: 'channel_categories_table',
+      sql: `CREATE TABLE IF NOT EXISTS channel_categories (
        id TEXT PRIMARY KEY,
        name TEXT NOT NULL,
        position INTEGER DEFAULT 0,
        created_at INTEGER DEFAULT (unixepoch())
-     )` },
-    { name: 'channels_add_category_id', sql: `ALTER TABLE channels ADD COLUMN category_id TEXT DEFAULT NULL` },
-    { name: 'link_embeds_table', sql: `CREATE TABLE IF NOT EXISTS link_embeds (
+     )`,
+    },
+    {
+      name: 'channels_add_category_id',
+      sql: `ALTER TABLE channels ADD COLUMN category_id TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'link_embeds_table',
+      sql: `CREATE TABLE IF NOT EXISTS link_embeds (
        url TEXT PRIMARY KEY,
        title TEXT DEFAULT NULL,
        description TEXT DEFAULT NULL,
@@ -563,13 +923,31 @@ function runMigrations(database: Database.Database): void {
        site_name TEXT DEFAULT NULL,
        favicon TEXT DEFAULT NULL,
        fetched_at INTEGER DEFAULT (unixepoch())
-     )` },
-    { name: 'roles_add_position', sql: `ALTER TABLE roles ADD COLUMN position INTEGER NOT NULL DEFAULT 0` },
-    { name: 'roles_add_hoist', sql: `ALTER TABLE roles ADD COLUMN hoist INTEGER NOT NULL DEFAULT 0` },
-    { name: 'roles_add_mentionable', sql: `ALTER TABLE roles ADD COLUMN mentionable INTEGER NOT NULL DEFAULT 0` },
-    { name: 'roles_add_default_on_join', sql: `ALTER TABLE roles ADD COLUMN default_on_join INTEGER NOT NULL DEFAULT 0` },
-    { name: 'set_admin_role_position', sql: `UPDATE roles SET position = 9999 WHERE id = 'admin-role'` },
-    { name: 'channel_role_overrides_table', sql: `CREATE TABLE IF NOT EXISTS channel_role_overrides (
+     )`,
+    },
+    {
+      name: 'roles_add_position',
+      sql: `ALTER TABLE roles ADD COLUMN position INTEGER NOT NULL DEFAULT 0`,
+    },
+    {
+      name: 'roles_add_hoist',
+      sql: `ALTER TABLE roles ADD COLUMN hoist INTEGER NOT NULL DEFAULT 0`,
+    },
+    {
+      name: 'roles_add_mentionable',
+      sql: `ALTER TABLE roles ADD COLUMN mentionable INTEGER NOT NULL DEFAULT 0`,
+    },
+    {
+      name: 'roles_add_default_on_join',
+      sql: `ALTER TABLE roles ADD COLUMN default_on_join INTEGER NOT NULL DEFAULT 0`,
+    },
+    {
+      name: 'set_admin_role_position',
+      sql: `UPDATE roles SET position = 9999 WHERE id = 'admin-role'`,
+    },
+    {
+      name: 'channel_role_overrides_table',
+      sql: `CREATE TABLE IF NOT EXISTS channel_role_overrides (
        channel_id TEXT NOT NULL,
        role_id TEXT NOT NULL,
        allow_permissions TEXT NOT NULL DEFAULT '{}',
@@ -577,14 +955,29 @@ function runMigrations(database: Database.Database): void {
        PRIMARY KEY (channel_id, role_id),
        FOREIGN KEY (channel_id) REFERENCES channels(id),
        FOREIGN KEY (role_id) REFERENCES roles(id)
-     )` },
+     )`,
+    },
     { name: 'users_add_banner', sql: `ALTER TABLE users ADD COLUMN banner TEXT DEFAULT NULL` },
-    { name: 'gifs_add_suggested_tags', sql: `ALTER TABLE gifs ADD COLUMN suggested_tags TEXT DEFAULT ''` },
-    { name: 'users_add_status_text', sql: `ALTER TABLE users ADD COLUMN status_text TEXT DEFAULT NULL` },
-    { name: 'users_add_status_emoji', sql: `ALTER TABLE users ADD COLUMN status_emoji TEXT DEFAULT NULL` },
-    { name: 'users_add_status_sticker_id', sql: `ALTER TABLE users ADD COLUMN status_sticker_id TEXT DEFAULT NULL` },
+    {
+      name: 'gifs_add_suggested_tags',
+      sql: `ALTER TABLE gifs ADD COLUMN suggested_tags TEXT DEFAULT ''`,
+    },
+    {
+      name: 'users_add_status_text',
+      sql: `ALTER TABLE users ADD COLUMN status_text TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'users_add_status_emoji',
+      sql: `ALTER TABLE users ADD COLUMN status_emoji TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'users_add_status_sticker_id',
+      sql: `ALTER TABLE users ADD COLUMN status_sticker_id TEXT DEFAULT NULL`,
+    },
     { name: 'users_add_status', sql: `ALTER TABLE users ADD COLUMN status TEXT DEFAULT NULL` },
-    { name: 'threads_table', sql: `CREATE TABLE IF NOT EXISTS threads (
+    {
+      name: 'threads_table',
+      sql: `CREATE TABLE IF NOT EXISTS threads (
        id TEXT PRIMARY KEY,
        channel_id TEXT NOT NULL,
        name TEXT NOT NULL,
@@ -594,11 +987,23 @@ function runMigrations(database: Database.Database): void {
        last_message_at INTEGER DEFAULT (unixepoch()),
        FOREIGN KEY (channel_id) REFERENCES channels(id),
        FOREIGN KEY (creator_id) REFERENCES users(id)
-     )` },
-    { name: 'messages_add_thread_id', sql: `ALTER TABLE messages ADD COLUMN thread_id TEXT DEFAULT NULL` },
-    { name: 'idx_threads_channel', sql: `CREATE INDEX IF NOT EXISTS idx_threads_channel ON threads(channel_id)` },
-    { name: 'idx_messages_thread', sql: `CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)` },
-    { name: 'messages_fts_rebuild', sql: `
+     )`,
+    },
+    {
+      name: 'messages_add_thread_id',
+      sql: `ALTER TABLE messages ADD COLUMN thread_id TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'idx_threads_channel',
+      sql: `CREATE INDEX IF NOT EXISTS idx_threads_channel ON threads(channel_id)`,
+    },
+    {
+      name: 'idx_messages_thread',
+      sql: `CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)`,
+    },
+    {
+      name: 'messages_fts_rebuild',
+      sql: `
       DROP TABLE IF EXISTS messages_fts;
       CREATE VIRTUAL TABLE messages_fts USING fts5(source, message_id, content);
       INSERT INTO messages_fts(source, message_id, content)
@@ -631,8 +1036,11 @@ function runMigrations(database: Database.Database): void {
       BEGIN
         DELETE FROM messages_fts WHERE source='dm' AND message_id=OLD.id;
       END;
-    ` },
-    { name: 'group_dm_channels_table', sql: `CREATE TABLE IF NOT EXISTS group_dm_channels (
+    `,
+    },
+    {
+      name: 'group_dm_channels_table',
+      sql: `CREATE TABLE IF NOT EXISTS group_dm_channels (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       owner_id TEXT NOT NULL,
@@ -640,17 +1048,26 @@ function runMigrations(database: Database.Database): void {
       last_message_at INTEGER DEFAULT NULL,
       created_at INTEGER DEFAULT (unixepoch()),
       FOREIGN KEY (owner_id) REFERENCES users(id)
-    )` },
-    { name: 'group_dm_members_table', sql: `CREATE TABLE IF NOT EXISTS group_dm_members (
+    )`,
+    },
+    {
+      name: 'group_dm_members_table',
+      sql: `CREATE TABLE IF NOT EXISTS group_dm_members (
       channel_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
       joined_at INTEGER DEFAULT (unixepoch()),
       PRIMARY KEY (channel_id, user_id),
       FOREIGN KEY (channel_id) REFERENCES group_dm_channels(id),
       FOREIGN KEY (user_id) REFERENCES users(id)
-    )` },
-    { name: 'idx_group_dm_members_user', sql: `CREATE INDEX IF NOT EXISTS idx_group_dm_members_user ON group_dm_members(user_id)` },
-    { name: 'group_dm_messages_table', sql: `CREATE TABLE IF NOT EXISTS group_dm_messages (
+    )`,
+    },
+    {
+      name: 'idx_group_dm_members_user',
+      sql: `CREATE INDEX IF NOT EXISTS idx_group_dm_members_user ON group_dm_members(user_id)`,
+    },
+    {
+      name: 'group_dm_messages_table',
+      sql: `CREATE TABLE IF NOT EXISTS group_dm_messages (
       id TEXT PRIMARY KEY,
       channel_id TEXT NOT NULL,
       from_id TEXT NOT NULL,
@@ -663,17 +1080,26 @@ function runMigrations(database: Database.Database): void {
       reply_to_username TEXT DEFAULT NULL,
       reply_to_content TEXT DEFAULT NULL,
       FOREIGN KEY (channel_id) REFERENCES group_dm_channels(id)
-    )` },
-    { name: 'idx_group_dm_messages_channel', sql: `CREATE INDEX IF NOT EXISTS idx_group_dm_messages_channel ON group_dm_messages(channel_id, created_at)` },
-    { name: 'group_dm_reads_table', sql: `CREATE TABLE IF NOT EXISTS group_dm_reads (
+    )`,
+    },
+    {
+      name: 'idx_group_dm_messages_channel',
+      sql: `CREATE INDEX IF NOT EXISTS idx_group_dm_messages_channel ON group_dm_messages(channel_id, created_at)`,
+    },
+    {
+      name: 'group_dm_reads_table',
+      sql: `CREATE TABLE IF NOT EXISTS group_dm_reads (
       user_id TEXT NOT NULL,
       channel_id TEXT NOT NULL,
       last_read_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, channel_id),
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (channel_id) REFERENCES group_dm_channels(id)
-    )` },
-    { name: 'group_dm_voice_participants_table', sql: `CREATE TABLE IF NOT EXISTS group_dm_voice_participants (
+    )`,
+    },
+    {
+      name: 'group_dm_voice_participants_table',
+      sql: `CREATE TABLE IF NOT EXISTS group_dm_voice_participants (
       id TEXT PRIMARY KEY,
       channel_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
@@ -681,10 +1107,19 @@ function runMigrations(database: Database.Database): void {
       left_at INTEGER DEFAULT NULL,
       FOREIGN KEY (channel_id) REFERENCES group_dm_channels(id),
       FOREIGN KEY (user_id) REFERENCES users(id)
-    )` },
-    { name: 'idx_group_dm_vp_channel', sql: `CREATE INDEX IF NOT EXISTS idx_group_dm_vp_channel ON group_dm_voice_participants(channel_id)` },
-    { name: 'idx_group_dm_vp_user', sql: `CREATE INDEX IF NOT EXISTS idx_group_dm_vp_user ON group_dm_voice_participants(user_id)` },
-    { name: 'group_dm_fts', sql: `
+    )`,
+    },
+    {
+      name: 'idx_group_dm_vp_channel',
+      sql: `CREATE INDEX IF NOT EXISTS idx_group_dm_vp_channel ON group_dm_voice_participants(channel_id)`,
+    },
+    {
+      name: 'idx_group_dm_vp_user',
+      sql: `CREATE INDEX IF NOT EXISTS idx_group_dm_vp_user ON group_dm_voice_participants(user_id)`,
+    },
+    {
+      name: 'group_dm_fts',
+      sql: `
       INSERT INTO messages_fts(source, message_id, content)
         SELECT 'group_dm', id, content FROM group_dm_messages WHERE content IS NOT NULL AND content != '';
       CREATE TRIGGER IF NOT EXISTS group_dm_fts_insert AFTER INSERT ON group_dm_messages
@@ -700,8 +1135,11 @@ function runMigrations(database: Database.Database): void {
       BEGIN
         DELETE FROM messages_fts WHERE source='group_dm' AND message_id=OLD.id;
       END;
-    ` },
-    { name: 'registry_servers_table', sql: `CREATE TABLE IF NOT EXISTS registry_servers (
+    `,
+    },
+    {
+      name: 'registry_servers_table',
+      sql: `CREATE TABLE IF NOT EXISTS registry_servers (
       url TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
@@ -709,8 +1147,11 @@ function runMigrations(database: Database.Database): void {
       password_protected INTEGER NOT NULL DEFAULT 0,
       player_count INTEGER NOT NULL DEFAULT 0,
       last_heartbeat INTEGER NOT NULL
-    )` },
-    { name: 'polls_tables', sql: `
+    )`,
+    },
+    {
+      name: 'polls_tables',
+      sql: `
       CREATE TABLE IF NOT EXISTS polls (
         id TEXT PRIMARY KEY,
         channel_id TEXT NOT NULL,
@@ -736,8 +1177,11 @@ function runMigrations(database: Database.Database): void {
         created_at INTEGER NOT NULL DEFAULT (unixepoch()),
         UNIQUE(poll_id, user_id, option_id)
       );
-    ` },
-    { name: 'webhooks_table', sql: `
+    `,
+    },
+    {
+      name: 'webhooks_table',
+      sql: `
       CREATE TABLE IF NOT EXISTS webhooks (
         id TEXT PRIMARY KEY,
         channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
@@ -747,12 +1191,27 @@ function runMigrations(database: Database.Database): void {
         created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         created_at INTEGER NOT NULL DEFAULT (unixepoch())
       );
-    ` },
-    { name: 'messages_add_author_display_name', sql: `ALTER TABLE messages ADD COLUMN author_display_name TEXT DEFAULT NULL` },
-    { name: 'messages_add_author_avatar', sql: `ALTER TABLE messages ADD COLUMN author_avatar TEXT DEFAULT NULL` },
-    { name: 'messages_add_webhook_id', sql: `ALTER TABLE messages ADD COLUMN webhook_id TEXT REFERENCES webhooks(id) ON DELETE SET NULL` },
-    { name: 'webhooks_add_last_used_at', sql: `ALTER TABLE webhooks ADD COLUMN last_used_at INTEGER DEFAULT NULL` },
-    { name: 'polls_remove_channel_fk', sql: `
+    `,
+    },
+    {
+      name: 'messages_add_author_display_name',
+      sql: `ALTER TABLE messages ADD COLUMN author_display_name TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'messages_add_author_avatar',
+      sql: `ALTER TABLE messages ADD COLUMN author_avatar TEXT DEFAULT NULL`,
+    },
+    {
+      name: 'messages_add_webhook_id',
+      sql: `ALTER TABLE messages ADD COLUMN webhook_id TEXT REFERENCES webhooks(id) ON DELETE SET NULL`,
+    },
+    {
+      name: 'webhooks_add_last_used_at',
+      sql: `ALTER TABLE webhooks ADD COLUMN last_used_at INTEGER DEFAULT NULL`,
+    },
+    {
+      name: 'polls_remove_channel_fk',
+      sql: `
       CREATE TABLE IF NOT EXISTS polls_new (
         id TEXT PRIMARY KEY,
         channel_id TEXT NOT NULL,
@@ -768,16 +1227,22 @@ function runMigrations(database: Database.Database): void {
         SELECT id, channel_id, 'channel', message_id, question, allow_multiple, closes_at, created_by, created_at FROM polls;
       DROP TABLE polls;
       ALTER TABLE polls_new RENAME TO polls;
-    ` },
+    `,
+    },
     // Webhook management moved off manage_channels onto its own permission.
     // Back-fill so nobody who could manage webhooks yesterday loses the ability
     // today. Runs after seed_admin_role, so fresh installs get it too.
-    { name: 'roles_backfill_manage_webhooks', sql: `
+    {
+      name: 'roles_backfill_manage_webhooks',
+      sql: `
       UPDATE roles
       SET permissions = json_set(permissions, '$.manage_webhooks', json('true'))
       WHERE json_valid(permissions) AND json_extract(permissions, '$.manage_channels') = 1;
-    ` },
-    { name: 'outgoing_webhooks_table', sql: `
+    `,
+    },
+    {
+      name: 'outgoing_webhooks_table',
+      sql: `
       CREATE TABLE IF NOT EXISTS outgoing_webhooks (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -802,8 +1267,11 @@ function runMigrations(database: Database.Database): void {
         consecutive_failures INTEGER NOT NULL DEFAULT 0,
         disabled_reason TEXT DEFAULT NULL
       );
-    ` },
-    { name: 'outgoing_webhook_deliveries_table', sql: `
+    `,
+    },
+    {
+      name: 'outgoing_webhook_deliveries_table',
+      sql: `
       CREATE TABLE IF NOT EXISTS outgoing_webhook_deliveries (
         id TEXT PRIMARY KEY,
         webhook_id TEXT NOT NULL REFERENCES outgoing_webhooks(id) ON DELETE CASCADE,
@@ -815,7 +1283,8 @@ function runMigrations(database: Database.Database): void {
         created_at INTEGER NOT NULL DEFAULT (unixepoch())
       );
       CREATE INDEX IF NOT EXISTS idx_owd_hook ON outgoing_webhook_deliveries(webhook_id, created_at);
-    ` },
+    `,
+    },
   ]
 
   const insertStmt = database.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)')
@@ -826,7 +1295,11 @@ function runMigrations(database: Database.Database): void {
       database.exec(sql)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : ''
-      if (msg.includes('duplicate column') || msg.includes('already exists') || msg.includes('UNIQUE constraint failed')) {
+      if (
+        msg.includes('duplicate column') ||
+        msg.includes('already exists') ||
+        msg.includes('UNIQUE constraint failed')
+      ) {
         insertStmt.run(name)
         applied.add(name)
         continue

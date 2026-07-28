@@ -8,7 +8,18 @@ import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
 import { useSettingsStore } from '../store/settingsStore'
 import type { DMIncomingCall } from '../store/callStore'
-import type { Message, Channel, GroupDMChannelData, UserStatus, UserActivity, MessageReaction, Member, PinnedMessage, Thread, PollData } from '@kizuna/shared'
+import type {
+  Message,
+  Channel,
+  GroupDMChannelData,
+  UserStatus,
+  UserActivity,
+  MessageReaction,
+  Member,
+  PinnedMessage,
+  Thread,
+  PollData,
+} from '@kizuna/shared'
 import { refreshToken } from '@kizuna/shared'
 import { showNotification, ensureNotificationPermission } from '../utils/showNotification'
 import { tryDecryptSocketDM, tryDecryptGroupDM } from '../utils/decryptSocketMessage'
@@ -37,11 +48,14 @@ export function useSocket(): MutableRefObject<Socket | null> {
       socket.emit('user:subscribe')
       socket.emit('user:joined')
       socket.emit('channel:mute:sync')
-      socket.emit('voice:getOccupancy', (res: { channels: Record<string, { userId: string; username: string }[]> }) => {
-        if (res?.channels) {
-          useVoiceStore.getState().setVoiceChannelUsers(res.channels)
-        }
-      })
+      socket.emit(
+        'voice:getOccupancy',
+        (res: { channels: Record<string, { userId: string; username: string }[]> }) => {
+          if (res?.channels) {
+            useVoiceStore.getState().setVoiceChannelUsers(res.channels)
+          }
+        },
+      )
       ensureNotificationPermission()
     })
 
@@ -61,7 +75,11 @@ export function useSocket(): MutableRefObject<Socket | null> {
     socket.on('connect_error', (err) => {
       useSettingsStore.getState().setSocketConnected(false)
       const msg = err.message || ''
-      if (msg.includes('Invalid or expired token') || msg.includes('Authentication required') || msg.includes('User not found')) {
+      if (
+        msg.includes('Invalid or expired token') ||
+        msg.includes('Authentication required') ||
+        msg.includes('User not found')
+      ) {
         ;(async () => {
           const session = useServerStore.getState().activeSession
           if (!session) {
@@ -90,7 +108,9 @@ export function useSocket(): MutableRefObject<Socket | null> {
         if (existing.some((m) => m.id === message.id)) return {}
 
         const serverId = useServerStore.getState().activeSession?.serverId
-        const notif = serverId ? useSettingsStore.getState().notificationSettings[serverId] : undefined
+        const notif = serverId
+          ? useSettingsStore.getState().notificationSettings[serverId]
+          : undefined
         const skipUnread = notif?.level === 'none' || notif?.level === 'mentions'
 
         const newState: Record<string, unknown> = {
@@ -100,7 +120,11 @@ export function useSocket(): MutableRefObject<Socket | null> {
           },
         }
         const currentUserId = useServerStore.getState().activeSession?.user.id
-        if (message.channel_id !== state.activeChannelId && !skipUnread && message.user_id !== currentUserId) {
+        if (
+          message.channel_id !== state.activeChannelId &&
+          !skipUnread &&
+          message.user_id !== currentUserId
+        ) {
           newState.unreadCounts = {
             ...state.unreadCounts,
             [message.channel_id]: (state.unreadCounts[message.channel_id] || 0) + 1,
@@ -143,7 +167,10 @@ export function useSocket(): MutableRefObject<Socket | null> {
         showNotification({
           type: 'message',
           title: decrypted.display_name || decrypted.username || 'Someone',
-          body: decrypted.content.length > 100 ? decrypted.content.slice(0, 100) + '...' : decrypted.content,
+          body:
+            decrypted.content.length > 100
+              ? decrypted.content.slice(0, 100) + '...'
+              : decrypted.content,
           channelId: message.channel_id,
         })
       }
@@ -170,7 +197,10 @@ export function useSocket(): MutableRefObject<Socket | null> {
           },
         }
         const currentUserId = useServerStore.getState().activeSession?.user.id
-        if (message.channel_id !== state.activeGroupDMChannelId && message.user_id !== currentUserId) {
+        if (
+          message.channel_id !== state.activeGroupDMChannelId &&
+          message.user_id !== currentUserId
+        ) {
           newState.unreadCounts = {
             ...state.unreadCounts,
             [message.channel_id]: (state.unreadCounts[message.channel_id] || 0) + 1,
@@ -185,7 +215,10 @@ export function useSocket(): MutableRefObject<Socket | null> {
           showNotification({
             type: 'message',
             title: decrypted.username || 'Group DM',
-            body: decrypted.content?.length > 100 ? decrypted.content.slice(0, 100) + '...' : decrypted.content || '',
+            body:
+              decrypted.content?.length > 100
+                ? decrypted.content.slice(0, 100) + '...'
+                : decrypted.content || '',
             channelId: message.channel_id,
           })
         }
@@ -208,7 +241,9 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     socket.on('group-dm:channel-updated', (channel: GroupDMChannelData) => {
       const store = useChatStore.getState()
-      store.setGroupDMChannels(store.groupDMChannels.map((c) => (c.id === channel.id ? channel : c)))
+      store.setGroupDMChannels(
+        store.groupDMChannels.map((c) => (c.id === channel.id ? channel : c)),
+      )
     })
 
     socket.on('group-dm:channel-deleted', ({ channel_id }: { channel_id: string }) => {
@@ -222,17 +257,22 @@ export function useSocket(): MutableRefObject<Socket | null> {
       }
     })
 
-    socket.on('group-dm:member-left', ({ channel_id, user_id }: { channel_id: string; user_id: string }) => {
-      const store = useChatStore.getState()
-      const channel = store.groupDMChannels.find((c) => c.id === channel_id)
-      if (channel) {
-        store.setGroupDMChannels(store.groupDMChannels.map((c) =>
-          c.id === channel_id
-            ? { ...c, members: c.members.filter((m) => m.user_id !== user_id) }
-            : c
-        ))
-      }
-    })
+    socket.on(
+      'group-dm:member-left',
+      ({ channel_id, user_id }: { channel_id: string; user_id: string }) => {
+        const store = useChatStore.getState()
+        const channel = store.groupDMChannels.find((c) => c.id === channel_id)
+        if (channel) {
+          store.setGroupDMChannels(
+            store.groupDMChannels.map((c) =>
+              c.id === channel_id
+                ? { ...c, members: c.members.filter((m) => m.user_id !== user_id) }
+                : c,
+            ),
+          )
+        }
+      },
+    )
 
     socket.on('group-dm:member-removed', ({ channel_id }: { channel_id: string }) => {
       const store = useChatStore.getState()
@@ -245,33 +285,47 @@ export function useSocket(): MutableRefObject<Socket | null> {
       }
     })
 
-    socket.on('message:mention', (mention: { channel_id: string; author_username?: string; content?: string | null; mention_type?: string }) => {
-      const serverId = useServerStore.getState().activeSession?.serverId
-      const notif = serverId ? useSettingsStore.getState().notificationSettings[serverId] : undefined
-      const isEveryone = mention.mention_type === 'everyone' || mention.mention_type === 'here'
-      const suppress = notif?.suppressEveryone && isEveryone
+    socket.on(
+      'message:mention',
+      (mention: {
+        channel_id: string
+        author_username?: string
+        content?: string | null
+        mention_type?: string
+      }) => {
+        const serverId = useServerStore.getState().activeSession?.serverId
+        const notif = serverId
+          ? useSettingsStore.getState().notificationSettings[serverId]
+          : undefined
+        const isEveryone = mention.mention_type === 'everyone' || mention.mention_type === 'here'
+        const suppress = notif?.suppressEveryone && isEveryone
 
-      if (!suppress) {
-        useChatStore.setState((state) => ({
-          mentionCounts: {
-            ...state.mentionCounts,
-            [mention.channel_id]: (state.mentionCounts[mention.channel_id] || 0) + 1,
-          },
-          serverMentionCounts: {
-            ...state.serverMentionCounts,
-            [session!.serverId]: (state.serverMentionCounts[session!.serverId] || 0) + 1,
-          },
-        }))
-      }
-      if (mention.channel_id !== useChatStore.getState().activeChannelId) {
-        showNotification({
-          type: 'mention',
-          title: mention.author_username || 'Someone',
-          body: mention.content ? (mention.content.length > 100 ? mention.content.slice(0, 100) + '...' : mention.content) : '',
-          channelId: mention.channel_id,
-        })
-      }
-    })
+        if (!suppress) {
+          useChatStore.setState((state) => ({
+            mentionCounts: {
+              ...state.mentionCounts,
+              [mention.channel_id]: (state.mentionCounts[mention.channel_id] || 0) + 1,
+            },
+            serverMentionCounts: {
+              ...state.serverMentionCounts,
+              [session!.serverId]: (state.serverMentionCounts[session!.serverId] || 0) + 1,
+            },
+          }))
+        }
+        if (mention.channel_id !== useChatStore.getState().activeChannelId) {
+          showNotification({
+            type: 'mention',
+            title: mention.author_username || 'Someone',
+            body: mention.content
+              ? mention.content.length > 100
+                ? mention.content.slice(0, 100) + '...'
+                : mention.content
+              : '',
+            channelId: mention.channel_id,
+          })
+        }
+      },
+    )
 
     socket.on('channel:created', (channel: Channel) => {
       const store = useChatStore.getState()
@@ -309,9 +363,12 @@ export function useSocket(): MutableRefObject<Socket | null> {
       showNotification({ type: 'announce', title, body })
     })
 
-    socket.on('channel:mute', ({ channel_id, muted_until }: { channel_id: string; muted_until: number | null }) => {
-      useChatStore.getState().upsertChannelMute(channel_id, muted_until)
-    })
+    socket.on(
+      'channel:mute',
+      ({ channel_id, muted_until }: { channel_id: string; muted_until: number | null }) => {
+        useChatStore.getState().upsertChannelMute(channel_id, muted_until)
+      },
+    )
 
     socket.on('channel:unmute', ({ channel_id }: { channel_id: string }) => {
       useChatStore.getState().removeChannelMute(channel_id)
@@ -321,13 +378,16 @@ export function useSocket(): MutableRefObject<Socket | null> {
       useChatStore.getState().setChannelMutes(mutes)
     })
 
-    socket.on('typing:start', ({ channelId, username }: { channelId: string; username: string }) => {
-      const store = useChatStore.getState()
-      const current = store.typingUsers[channelId] || []
-      if (!current.includes(username)) {
-        store.setTypingUsers(channelId, [...current, username])
-      }
-    })
+    socket.on(
+      'typing:start',
+      ({ channelId, username }: { channelId: string; username: string }) => {
+        const store = useChatStore.getState()
+        const current = store.typingUsers[channelId] || []
+        if (!current.includes(username)) {
+          store.setTypingUsers(channelId, [...current, username])
+        }
+      },
+    )
 
     socket.on('typing:stop', ({ channelId, username }: { channelId: string; username: string }) => {
       const store = useChatStore.getState()
@@ -338,56 +398,86 @@ export function useSocket(): MutableRefObject<Socket | null> {
       )
     })
 
-    socket.on('message:react:add', ({ messageId, channelId, reaction }: { messageId: string; channelId: string; reaction: { reaction_key: string; reaction_type: string; userId: string; username: string } }) => {
-      const store = useChatStore.getState()
-      const msgs = store.messages[channelId] || []
-      const msgIdx = msgs.findIndex(m => m.id === messageId)
-      if (msgIdx === -1) return
-      const msg = msgs[msgIdx]
-      const currentReactions = [...(msg.reactions || [])]
-      const existing = currentReactions.find(r => r.reaction_key === reaction.reaction_key && r.reaction_type === reaction.reaction_type)
-      if (existing) {
-        existing.count++
-        if (!existing.users.some(u => u.user_id === reaction.userId)) {
-          existing.users.push({ user_id: reaction.userId, username: reaction.username })
-        }
-      } else {
-        currentReactions.push({
-          reaction_key: reaction.reaction_key,
-          reaction_type: reaction.reaction_type as 'emoji' | 'sticker',
-          count: 1,
-          users: [{ user_id: reaction.userId, username: reaction.username }],
-        })
-      }
-      store.updateMessageReactions(channelId, messageId, currentReactions)
-    })
-
-    socket.on('message:react:remove', ({ messageId, channelId, reactionKey, userId }: { messageId: string; channelId: string; reactionKey: string; userId: string }) => {
-      const store = useChatStore.getState()
-      const msgs = store.messages[channelId] || []
-      const msgIdx = msgs.findIndex(m => m.id === messageId)
-      if (msgIdx === -1) return
-      const msg = msgs[msgIdx]
-      const currentReactions = (msg.reactions || [])
-        .map(r => {
-          if (r.reaction_key === reactionKey) {
-            const filtered = r.users.filter(u => u.user_id !== userId)
-            if (filtered.length === 0) return null
-            return { ...r, count: filtered.length, users: filtered }
+    socket.on(
+      'message:react:add',
+      ({
+        messageId,
+        channelId,
+        reaction,
+      }: {
+        messageId: string
+        channelId: string
+        reaction: { reaction_key: string; reaction_type: string; userId: string; username: string }
+      }) => {
+        const store = useChatStore.getState()
+        const msgs = store.messages[channelId] || []
+        const msgIdx = msgs.findIndex((m) => m.id === messageId)
+        if (msgIdx === -1) return
+        const msg = msgs[msgIdx]
+        const currentReactions = [...(msg.reactions || [])]
+        const existing = currentReactions.find(
+          (r) =>
+            r.reaction_key === reaction.reaction_key && r.reaction_type === reaction.reaction_type,
+        )
+        if (existing) {
+          existing.count++
+          if (!existing.users.some((u) => u.user_id === reaction.userId)) {
+            existing.users.push({ user_id: reaction.userId, username: reaction.username })
           }
-          return r
-        })
-        .filter(Boolean) as MessageReaction[]
-      store.updateMessageReactions(channelId, messageId, currentReactions)
-    })
+        } else {
+          currentReactions.push({
+            reaction_key: reaction.reaction_key,
+            reaction_type: reaction.reaction_type as 'emoji' | 'sticker',
+            count: 1,
+            users: [{ user_id: reaction.userId, username: reaction.username }],
+          })
+        }
+        store.updateMessageReactions(channelId, messageId, currentReactions)
+      },
+    )
+
+    socket.on(
+      'message:react:remove',
+      ({
+        messageId,
+        channelId,
+        reactionKey,
+        userId,
+      }: {
+        messageId: string
+        channelId: string
+        reactionKey: string
+        userId: string
+      }) => {
+        const store = useChatStore.getState()
+        const msgs = store.messages[channelId] || []
+        const msgIdx = msgs.findIndex((m) => m.id === messageId)
+        if (msgIdx === -1) return
+        const msg = msgs[msgIdx]
+        const currentReactions = (msg.reactions || [])
+          .map((r) => {
+            if (r.reaction_key === reactionKey) {
+              const filtered = r.users.filter((u) => u.user_id !== userId)
+              if (filtered.length === 0) return null
+              return { ...r, count: filtered.length, users: filtered }
+            }
+            return r
+          })
+          .filter(Boolean) as MessageReaction[]
+        store.updateMessageReactions(channelId, messageId, currentReactions)
+      },
+    )
 
     socket.on('message:pin', (pin: PinnedMessage) => {
       useChatStore.getState().addPinnedMessage(pin.channelId, pin)
     })
 
-    socket.on('message:unpin', ({ channelId, messageId }: { channelId: string; messageId: string }) => {
-      useChatStore.getState().removePinnedMessage(channelId, messageId)
-    })
+    socket.on(
+      'message:unpin',
+      ({ channelId, messageId }: { channelId: string; messageId: string }) => {
+        useChatStore.getState().removePinnedMessage(channelId, messageId)
+      },
+    )
 
     socket.on('camera:peerStarted', ({ peerId }: { peerId: string }) => {
       useCallStore.getState().addCameraPeerId(peerId)
@@ -420,76 +510,108 @@ export function useSocket(): MutableRefObject<Socket | null> {
       useVoiceStore.getState().setUserStatus(userId, 'offline')
     })
 
-    socket.on('users:online', (onlineList: Record<string, { username: string; status: UserStatus; activity?: UserActivity | null }>) => {
-      const store = useVoiceStore.getState()
-      const statuses: Record<string, UserStatus> = {}
-      const activities: Record<string, UserActivity> = {}
-      for (const [uid, info] of Object.entries(onlineList)) {
-        statuses[uid] = info.status
-        if (info.activity) {
-          activities[uid] = info.activity
+    socket.on(
+      'users:online',
+      (
+        onlineList: Record<
+          string,
+          { username: string; status: UserStatus; activity?: UserActivity | null }
+        >,
+      ) => {
+        const store = useVoiceStore.getState()
+        const statuses: Record<string, UserStatus> = {}
+        const activities: Record<string, UserActivity> = {}
+        for (const [uid, info] of Object.entries(onlineList)) {
+          statuses[uid] = info.status
+          if (info.activity) {
+            activities[uid] = info.activity
+          }
         }
-      }
-      store.setUserStatuses(statuses)
-      store.setUserActivities(activities)
-    })
+        store.setUserStatuses(statuses)
+        store.setUserActivities(activities)
+      },
+    )
 
-    socket.on('user:status', ({ userId, status, status_text, status_emoji, status_sticker_id, activity }: { userId: string; status?: UserStatus; status_text?: string | null; status_emoji?: string | null; status_sticker_id?: string | null; activity?: UserActivity | null }) => {
-      if (status !== undefined) {
-        useVoiceStore.getState().setUserStatus(userId, status)
-      }
-      if (activity !== undefined) {
+    socket.on(
+      'user:status',
+      ({
+        userId,
+        status,
+        status_text,
+        status_emoji,
+        status_sticker_id,
+        activity,
+      }: {
+        userId: string
+        status?: UserStatus
+        status_text?: string | null
+        status_emoji?: string | null
+        status_sticker_id?: string | null
+        activity?: UserActivity | null
+      }) => {
+        if (status !== undefined) {
+          useVoiceStore.getState().setUserStatus(userId, status)
+        }
+        if (activity !== undefined) {
+          useVoiceStore.getState().setUserActivity(userId, activity)
+        }
+        const serverStore = useServerStore.getState()
+        if (serverStore.activeSession && userId === serverStore.activeSession.user.id) {
+          const sessionUser = { ...serverStore.activeSession.user }
+          let changed = false
+          if (status_text !== undefined) {
+            sessionUser.status_text = status_text
+            changed = true
+          }
+          if (status_emoji !== undefined) {
+            sessionUser.status_emoji = status_emoji
+            changed = true
+          }
+          if (status_sticker_id !== undefined) {
+            sessionUser.status_sticker_id = status_sticker_id
+            changed = true
+          }
+          if (changed) {
+            serverStore.setActiveSession({ ...serverStore.activeSession, user: sessionUser })
+          }
+        }
+        if (
+          status_text !== undefined ||
+          status_emoji !== undefined ||
+          status_sticker_id !== undefined
+        ) {
+          const chatStore = useChatStore.getState()
+          const memberIdx = chatStore.members.findIndex((m) => m.id === userId)
+          if (memberIdx !== -1) {
+            const member = { ...chatStore.members[memberIdx] }
+            if (status_text !== undefined) member.status_text = status_text
+            if (status_emoji !== undefined) member.status_emoji = status_emoji
+            if (status_sticker_id !== undefined) member.status_sticker_id = status_sticker_id
+            const updated = [...chatStore.members]
+            updated[memberIdx] = member
+            chatStore.setMembers(updated)
+          }
+        }
+      },
+    )
+
+    socket.on(
+      'user:activity',
+      ({ userId, activity }: { userId: string; activity: UserActivity | null }) => {
         useVoiceStore.getState().setUserActivity(userId, activity)
-      }
-      const serverStore = useServerStore.getState()
-      if (serverStore.activeSession && userId === serverStore.activeSession.user.id) {
-        const sessionUser = { ...serverStore.activeSession.user }
-        let changed = false
-        if (status_text !== undefined) {
-          sessionUser.status_text = status_text
-          changed = true
-        }
-        if (status_emoji !== undefined) {
-          sessionUser.status_emoji = status_emoji
-          changed = true
-        }
-        if (status_sticker_id !== undefined) {
-          sessionUser.status_sticker_id = status_sticker_id
-          changed = true
-        }
-        if (changed) {
-          serverStore.setActiveSession({ ...serverStore.activeSession, user: sessionUser })
-        }
-      }
-      if (status_text !== undefined || status_emoji !== undefined || status_sticker_id !== undefined) {
-        const chatStore = useChatStore.getState()
-        const memberIdx = chatStore.members.findIndex(m => m.id === userId)
-        if (memberIdx !== -1) {
-          const member = { ...chatStore.members[memberIdx] }
-          if (status_text !== undefined) member.status_text = status_text
-          if (status_emoji !== undefined) member.status_emoji = status_emoji
-          if (status_sticker_id !== undefined) member.status_sticker_id = status_sticker_id
-          const updated = [...chatStore.members]
-          updated[memberIdx] = member
-          chatStore.setMembers(updated)
-        }
-      }
-    })
-
-    socket.on('user:activity', ({ userId, activity }: { userId: string; activity: UserActivity | null }) => {
-      useVoiceStore.getState().setUserActivity(userId, activity)
-    })
+      },
+    )
 
     socket.on('member:added', (member: Member) => {
       const store = useChatStore.getState()
-      if (!store.members.find(m => m.id === member.id)) {
+      if (!store.members.find((m) => m.id === member.id)) {
         store.setMembers([...store.members, member])
       }
     })
 
     socket.on('member:updated', (updatedMember: Member) => {
       const store = useChatStore.getState()
-      store.setMembers(store.members.map(m => m.id === updatedMember.id ? updatedMember : m))
+      store.setMembers(store.members.map((m) => (m.id === updatedMember.id ? updatedMember : m)))
       const serverStore = useServerStore.getState()
       if (serverStore.activeSession && updatedMember.id === serverStore.activeSession.user.id) {
         serverStore.setActiveSession({
@@ -504,7 +626,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     socket.on('member:removed', ({ userId }: { userId: string }) => {
       const store = useChatStore.getState()
-      store.setMembers(store.members.filter(m => m.id !== userId))
+      store.setMembers(store.members.filter((m) => m.id !== userId))
     })
 
     // We're the one who got kicked/banned — the server has already revoked our
@@ -520,13 +642,27 @@ export function useSocket(): MutableRefObject<Socket | null> {
       window.location.href = '/'
     })
 
-    socket.on('voice:userJoinedChannel', ({ channelId, userId, username }: { channelId: string; userId: string; username: string }) => {
-      useVoiceStore.getState().addVoiceChannelUser(channelId, { userId, username })
-    })
+    socket.on(
+      'voice:userJoinedChannel',
+      ({
+        channelId,
+        userId,
+        username,
+      }: {
+        channelId: string
+        userId: string
+        username: string
+      }) => {
+        useVoiceStore.getState().addVoiceChannelUser(channelId, { userId, username })
+      },
+    )
 
-    socket.on('voice:userLeftChannel', ({ channelId, userId }: { channelId: string; userId: string }) => {
-      useVoiceStore.getState().removeVoiceChannelUser(channelId, userId)
-    })
+    socket.on(
+      'voice:userLeftChannel',
+      ({ channelId, userId }: { channelId: string; userId: string }) => {
+        useVoiceStore.getState().removeVoiceChannelUser(channelId, userId)
+      },
+    )
 
     socket.on('dm:call:incoming', (call: DMIncomingCall) => {
       useCallStore.getState().setIncomingCall(call)
@@ -550,29 +686,43 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     socket.on('dm:call:ended', () => {
       const store = useCallStore.getState()
-      if (store.dmCallStatus === 'active' || store.dmCallStatus === 'ringing-outgoing' || store.dmCallStatus === 'ringing-incoming') {
+      if (
+        store.dmCallStatus === 'active' ||
+        store.dmCallStatus === 'ringing-outgoing' ||
+        store.dmCallStatus === 'ringing-incoming'
+      ) {
         store.setDMCallShouldCleanup(true)
       } else {
         store.clearDMCall()
       }
     })
 
-    socket.on('group-dm:call:incoming', ({ channelId, callerUserId, callerUsername }: {
-      channelId: string
-      callerUserId: string
-      callerUsername: string
-    }) => {
-      useCallStore.getState().setGroupDMIncomingCall({ channelId, callerUserId, callerUsername })
-      showNotification({
-        type: 'dmcall',
-        title: `${callerUsername} started a group call`,
-        body: 'Click to join',
-      })
-    })
+    socket.on(
+      'group-dm:call:incoming',
+      ({
+        channelId,
+        callerUserId,
+        callerUsername,
+      }: {
+        channelId: string
+        callerUserId: string
+        callerUsername: string
+      }) => {
+        useCallStore.getState().setGroupDMIncomingCall({ channelId, callerUserId, callerUsername })
+        showNotification({
+          type: 'dmcall',
+          title: `${callerUsername} started a group call`,
+          body: 'Click to join',
+        })
+      },
+    )
 
     socket.on('group-dm:call:accepted', ({ channelId }: { channelId: string }) => {
       const store = useCallStore.getState()
-      if (store.groupDMCallStatus === 'ringing-outgoing' && store.groupDMCallChannelId === channelId) {
+      if (
+        store.groupDMCallStatus === 'ringing-outgoing' &&
+        store.groupDMCallChannelId === channelId
+      ) {
         store.setGroupDMCallStatus('active')
       }
     })
@@ -583,24 +733,38 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     socket.on('group-dm:call:ended', () => {
       const store = useCallStore.getState()
-      if (store.groupDMCallStatus === 'active' || store.groupDMCallStatus === 'ringing-outgoing' || store.groupDMCallStatus === 'ringing-incoming') {
+      if (
+        store.groupDMCallStatus === 'active' ||
+        store.groupDMCallStatus === 'ringing-outgoing' ||
+        store.groupDMCallStatus === 'ringing-incoming'
+      ) {
         store.setGroupDMCallShouldCleanup(true)
       } else {
         store.clearGroupDMCall()
       }
     })
 
-    socket.on('poll:update', (data: { pollId: string; options: { id: string; label: string; position: number; vote_count: number }[]; totalVotes: number }) => {
-      useChatStore.getState().updatePoll(data.pollId, data.options)
-    })
+    socket.on(
+      'poll:update',
+      (data: {
+        pollId: string
+        options: { id: string; label: string; position: number; vote_count: number }[]
+        totalVotes: number
+      }) => {
+        useChatStore.getState().updatePoll(data.pollId, data.options)
+      },
+    )
 
     socket.on('poll:created', (data: PollData) => {
       useChatStore.getState().addPoll(data.channelId, data)
     })
 
-    socket.on('poll:deleted', (data: { pollId: string; channelId: string; channelType: string }) => {
-      useChatStore.getState().removePoll(data.channelId, data.pollId)
-    })
+    socket.on(
+      'poll:deleted',
+      (data: { pollId: string; channelId: string; channelType: string }) => {
+        useChatStore.getState().removePoll(data.channelId, data.pollId)
+      },
+    )
 
     const heartbeatInterval = setInterval(() => {
       if (socket.connected) {

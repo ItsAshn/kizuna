@@ -21,7 +21,11 @@ interface Props {
  * modals. A scope switcher pinned above the nav rail toggles between them; each
  * scope keeps its own proven section list and sizing.
  */
-export default function SettingsModal({ onClose, initialScope = 'you', onBackgroundChanged }: Props) {
+export default function SettingsModal({
+  onClose,
+  initialScope = 'you',
+  onBackgroundChanged,
+}: Props) {
   const hasSession = useServerStore((s) => !!s.activeSession)
   const [scope, setScope] = useState<SettingsScope>(
     initialScope === 'server' && hasSession ? 'server' : 'you',
@@ -66,13 +70,19 @@ export default function SettingsModal({ onClose, initialScope = 'you', onBackgro
       // you switch between "you" and "server"; only the inner body swaps.
       className="settings-modal"
       footer={(handleClose) => (
-        <button onClick={handleClose} className="settings-modal__done-btn">done</button>
+        <button onClick={handleClose} className="settings-modal__done-btn">
+          done
+        </button>
       )}
     >
       {activeScope === 'you' ? (
         <UserSettingsBody onClose={onClose} navHeader={switcher} />
       ) : (
-        <ServerSettingsBody onClose={onClose} onBackgroundChanged={onBackgroundChanged} navHeader={switcher} />
+        <ServerSettingsBody
+          onClose={onClose}
+          onBackgroundChanged={onBackgroundChanged}
+          navHeader={switcher}
+        />
       )}
     </Modal>
   )

@@ -30,7 +30,10 @@ const SELECT_WEBHOOK = `
   LEFT JOIN users u ON u.id = w.created_by
   LEFT JOIN channels c ON c.id = w.channel_id`
 
-type JoinedRow = OutgoingWebhookRow & { created_by_username: string | null; channel_name: string | null }
+type JoinedRow = OutgoingWebhookRow & {
+  created_by_username: string | null
+  channel_name: string | null
+}
 
 /** DB row → wire shape: JSON-decode `events`, and turn 0/1 columns into booleans. */
 function mapWebhook(row: JoinedRow) {
@@ -38,7 +41,9 @@ function mapWebhook(row: JoinedRow) {
   try {
     const parsed = JSON.parse(row.events)
     if (Array.isArray(parsed)) events = parsed.filter((e): e is string => typeof e === 'string')
-  } catch { /* corrupt row — surface it as "no events" rather than failing the list */ }
+  } catch {
+    /* corrupt row — surface it as "no events" rather than failing the list */
+  }
 
   return {
     id: row.id,
@@ -77,13 +82,18 @@ function normalizeName(value: unknown): string | null {
  * events that actually carry a channel — subscribing it to `member.joined`
  * would silently never fire, which is worse than an error.
  */
-function normalizeEvents(value: unknown, channelId: string | null): { events: OutgoingWebhookEvent[] } | { error: string } {
+function normalizeEvents(
+  value: unknown,
+  channelId: string | null,
+): { events: OutgoingWebhookEvent[] } | { error: string } {
   if (!Array.isArray(value)) return { error: 'events must be an array' }
   const events: OutgoingWebhookEvent[] = []
   for (const raw of value) {
     if (!isOutgoingWebhookEvent(raw)) return { error: `unknown event: ${String(raw)}` }
     if (channelId && !isChannelScopedEvent(raw)) {
-      return { error: `"${raw}" is a server-wide event and cannot be used on a channel-scoped webhook` }
+      return {
+        error: `"${raw}" is a server-wide event and cannot be used on a channel-scoped webhook`,
+      }
     }
     if (!events.includes(raw)) events.push(raw)
   }
@@ -98,7 +108,8 @@ function normalizeChannelId(value: unknown): { channelId: string | null } | { er
     | { id: string; type: string }
     | undefined
   if (!channel) return { error: 'channel not found' }
-  if (channel.type !== 'text') return { error: 'outgoing webhooks can only be scoped to text channels' }
+  if (channel.type !== 'text')
+    return { error: 'outgoing webhooks can only be scoped to text channels' }
   return { channelId: channel.id }
 }
 
@@ -116,7 +127,9 @@ outgoingWebhookRoutes.get('/', authMiddleware, requirePermission('manage_webhook
   const channelId = c.req.query('channel_id')
   const rows = (
     channelId
-      ? getDb().prepare(`${SELECT_WEBHOOK} WHERE w.channel_id = ? ORDER BY w.created_at DESC`).all(channelId)
+      ? getDb()
+          .prepare(`${SELECT_WEBHOOK} WHERE w.channel_id = ? ORDER BY w.created_at DESC`)
+          .all(channelId)
       : getDb().prepare(`${SELECT_WEBHOOK} ORDER BY w.created_at DESC`).all()
   ) as JoinedRow[]
   return c.json({ webhooks: rows.map(mapWebhook) })
@@ -145,7 +158,8 @@ outgoingWebhookRoutes.post('/', authMiddleware, requirePermission('manage_webhoo
   const eventsResult = normalizeEvents(body.events, channelResult.channelId)
   if ('error' in eventsResult) return c.json({ error: eventsResult.error }, 400)
 
-  const format = typeof body.format === 'string' && VALID_FORMATS.has(body.format) ? body.format : 'kizuna'
+  const format =
+    typeof body.format === 'string' && VALID_FORMATS.has(body.format) ? body.format : 'kizuna'
 
   const id = uuidv4()
   db.prepare(
@@ -162,83 +176,107 @@ outgoingWebhookRoutes.post('/', authMiddleware, requirePermission('manage_webhoo
     body.skip_webhook_messages ? 1 : 0,
     userId,
   )
-  logAuditEvent(db, 'outgoing_webhook_created', userId, id, JSON.stringify({ name, url: urlResult.url, events: eventsResult.events }))
+  logAuditEvent(
+    db,
+    'outgoing_webhook_created',
+    userId,
+    id,
+    JSON.stringify({ name, url: urlResult.url, events: eventsResult.events }),
+  )
 
   return c.json({ webhook: mapWebhook(getWebhook(id)!) }, 201)
 })
 
-outgoingWebhookRoutes.patch('/:id', authMiddleware, requirePermission('manage_webhooks'), async (c) => {
-  const db = getDb()
-  const id = c.req.param('id')!
-  const { userId } = getAuth(c)
-  const existing = getWebhook(id)
-  if (!existing) return c.json({ error: 'not found' }, 404)
+outgoingWebhookRoutes.patch(
+  '/:id',
+  authMiddleware,
+  requirePermission('manage_webhooks'),
+  async (c) => {
+    const db = getDb()
+    const id = c.req.param('id')!
+    const { userId } = getAuth(c)
+    const existing = getWebhook(id)
+    if (!existing) return c.json({ error: 'not found' }, 404)
 
-  const body = await c.req.json().catch(() => null)
-  if (!body) return c.json({ error: 'invalid JSON body' }, 400)
+    const body = await c.req.json().catch(() => null)
+    if (!body) return c.json({ error: 'invalid JSON body' }, 400)
 
-  const updates: string[] = []
-  const values: unknown[] = []
+    const updates: string[] = []
+    const values: unknown[] = []
 
-  if (body.name !== undefined) {
-    const name = normalizeName(body.name)
-    if (!name) return c.json({ error: `name required (1-${MAX_NAME} chars)` }, 400)
-    updates.push('name = ?'); values.push(name)
-  }
-
-  if (body.url !== undefined) {
-    const urlResult = normalizeUrl(body.url)
-    if ('error' in urlResult) return c.json({ error: urlResult.error }, 400)
-    updates.push('url = ?'); values.push(urlResult.url)
-  }
-
-  // Scope and events interact: narrowing to a channel can invalidate an
-  // existing server-wide subscription, so validate them together against
-  // whichever scope the request ends up with.
-  let scope: string | null = existing.channel_id
-  if (body.channel_id !== undefined) {
-    const channelResult = normalizeChannelId(body.channel_id)
-    if ('error' in channelResult) return c.json({ error: channelResult.error }, 400)
-    scope = channelResult.channelId
-    updates.push('channel_id = ?'); values.push(scope)
-  }
-
-  if (body.events !== undefined || body.channel_id !== undefined) {
-    const raw = body.events !== undefined ? body.events : JSON.parse(existing.events)
-    const eventsResult = normalizeEvents(raw, scope)
-    if ('error' in eventsResult) return c.json({ error: eventsResult.error }, 400)
-    updates.push('events = ?'); values.push(JSON.stringify(eventsResult.events))
-  }
-
-  if (body.format !== undefined) {
-    if (typeof body.format !== 'string' || !VALID_FORMATS.has(body.format)) {
-      return c.json({ error: 'format must be kizuna, discord, or slack' }, 400)
+    if (body.name !== undefined) {
+      const name = normalizeName(body.name)
+      if (!name) return c.json({ error: `name required (1-${MAX_NAME} chars)` }, 400)
+      updates.push('name = ?')
+      values.push(name)
     }
-    updates.push('format = ?'); values.push(body.format)
-  }
 
-  if (body.skip_webhook_messages !== undefined) {
-    updates.push('skip_webhook_messages = ?'); values.push(body.skip_webhook_messages ? 1 : 0)
-  }
-
-  if (body.enabled !== undefined) {
-    const enabled = body.enabled ? 1 : 0
-    updates.push('enabled = ?'); values.push(enabled)
-    // Re-enabling is the admin saying "I fixed it" — clear the auto-disable
-    // state so the hook gets a full run of attempts again.
-    if (enabled === 1) {
-      updates.push('disabled_reason = NULL', 'consecutive_failures = 0')
+    if (body.url !== undefined) {
+      const urlResult = normalizeUrl(body.url)
+      if ('error' in urlResult) return c.json({ error: urlResult.error }, 400)
+      updates.push('url = ?')
+      values.push(urlResult.url)
     }
-  }
 
-  if (updates.length === 0) return c.json({ error: 'nothing to update' }, 400)
+    // Scope and events interact: narrowing to a channel can invalidate an
+    // existing server-wide subscription, so validate them together against
+    // whichever scope the request ends up with.
+    let scope: string | null = existing.channel_id
+    if (body.channel_id !== undefined) {
+      const channelResult = normalizeChannelId(body.channel_id)
+      if ('error' in channelResult) return c.json({ error: channelResult.error }, 400)
+      scope = channelResult.channelId
+      updates.push('channel_id = ?')
+      values.push(scope)
+    }
 
-  values.push(id)
-  db.prepare(`UPDATE outgoing_webhooks SET ${updates.join(', ')} WHERE id = ?`).run(...values)
-  logAuditEvent(db, 'outgoing_webhook_updated', userId, id, JSON.stringify({ name: existing.name }))
+    if (body.events !== undefined || body.channel_id !== undefined) {
+      const raw = body.events !== undefined ? body.events : JSON.parse(existing.events)
+      const eventsResult = normalizeEvents(raw, scope)
+      if ('error' in eventsResult) return c.json({ error: eventsResult.error }, 400)
+      updates.push('events = ?')
+      values.push(JSON.stringify(eventsResult.events))
+    }
 
-  return c.json({ webhook: mapWebhook(getWebhook(id)!) })
-})
+    if (body.format !== undefined) {
+      if (typeof body.format !== 'string' || !VALID_FORMATS.has(body.format)) {
+        return c.json({ error: 'format must be kizuna, discord, or slack' }, 400)
+      }
+      updates.push('format = ?')
+      values.push(body.format)
+    }
+
+    if (body.skip_webhook_messages !== undefined) {
+      updates.push('skip_webhook_messages = ?')
+      values.push(body.skip_webhook_messages ? 1 : 0)
+    }
+
+    if (body.enabled !== undefined) {
+      const enabled = body.enabled ? 1 : 0
+      updates.push('enabled = ?')
+      values.push(enabled)
+      // Re-enabling is the admin saying "I fixed it" — clear the auto-disable
+      // state so the hook gets a full run of attempts again.
+      if (enabled === 1) {
+        updates.push('disabled_reason = NULL', 'consecutive_failures = 0')
+      }
+    }
+
+    if (updates.length === 0) return c.json({ error: 'nothing to update' }, 400)
+
+    values.push(id)
+    db.prepare(`UPDATE outgoing_webhooks SET ${updates.join(', ')} WHERE id = ?`).run(...values)
+    logAuditEvent(
+      db,
+      'outgoing_webhook_updated',
+      userId,
+      id,
+      JSON.stringify({ name: existing.name }),
+    )
+
+    return c.json({ webhook: mapWebhook(getWebhook(id)!) })
+  },
+)
 
 outgoingWebhookRoutes.delete('/:id', authMiddleware, requirePermission('manage_webhooks'), (c) => {
   const db = getDb()
@@ -248,51 +286,87 @@ outgoingWebhookRoutes.delete('/:id', authMiddleware, requirePermission('manage_w
   if (!existing) return c.json({ error: 'not found' }, 404)
 
   db.prepare('DELETE FROM outgoing_webhooks WHERE id = ?').run(id)
-  logAuditEvent(db, 'outgoing_webhook_deleted', userId, id, JSON.stringify({ name: existing.name, url: existing.url }))
+  logAuditEvent(
+    db,
+    'outgoing_webhook_deleted',
+    userId,
+    id,
+    JSON.stringify({ name: existing.name, url: existing.url }),
+  )
   return c.json({ ok: true })
 })
 
 // Rotating invalidates signatures for anything still using the old secret.
-outgoingWebhookRoutes.post('/:id/regenerate', authMiddleware, requirePermission('manage_webhooks'), (c) => {
-  const db = getDb()
-  const id = c.req.param('id')!
-  const { userId } = getAuth(c)
-  const existing = getWebhook(id)
-  if (!existing) return c.json({ error: 'not found' }, 404)
+outgoingWebhookRoutes.post(
+  '/:id/regenerate',
+  authMiddleware,
+  requirePermission('manage_webhooks'),
+  (c) => {
+    const db = getDb()
+    const id = c.req.param('id')!
+    const { userId } = getAuth(c)
+    const existing = getWebhook(id)
+    if (!existing) return c.json({ error: 'not found' }, 404)
 
-  db.prepare('UPDATE outgoing_webhooks SET secret = ? WHERE id = ?').run(generateWebhookSecret(), id)
-  logAuditEvent(db, 'outgoing_webhook_secret_regenerated', userId, id, JSON.stringify({ name: existing.name }))
+    db.prepare('UPDATE outgoing_webhooks SET secret = ? WHERE id = ?').run(
+      generateWebhookSecret(),
+      id,
+    )
+    logAuditEvent(
+      db,
+      'outgoing_webhook_secret_regenerated',
+      userId,
+      id,
+      JSON.stringify({ name: existing.name }),
+    )
 
-  return c.json({ webhook: mapWebhook(getWebhook(id)!) })
-})
+    return c.json({ webhook: mapWebhook(getWebhook(id)!) })
+  },
+)
 
 // Synchronous single delivery so the UI can report what actually happened.
-outgoingWebhookRoutes.post('/:id/test', authMiddleware, requirePermission('manage_webhooks'), async (c) => {
-  const db = getDb()
-  const id = c.req.param('id')!
-  const { userId } = getAuth(c)
-  const existing = getWebhook(id)
-  if (!existing) return c.json({ error: 'not found' }, 404)
+outgoingWebhookRoutes.post(
+  '/:id/test',
+  authMiddleware,
+  requirePermission('manage_webhooks'),
+  async (c) => {
+    const db = getDb()
+    const id = c.req.param('id')!
+    const { userId } = getAuth(c)
+    const existing = getWebhook(id)
+    if (!existing) return c.json({ error: 'not found' }, 404)
 
-  const result = await deliverOnce(id)
-  logAuditEvent(db, 'outgoing_webhook_tested', userId, id, JSON.stringify({ name: existing.name, status: result.status }))
+    const result = await deliverOnce(id)
+    logAuditEvent(
+      db,
+      'outgoing_webhook_tested',
+      userId,
+      id,
+      JSON.stringify({ name: existing.name, status: result.status }),
+    )
 
-  return c.json({ result })
-})
+    return c.json({ result })
+  },
+)
 
-outgoingWebhookRoutes.get('/:id/deliveries', authMiddleware, requirePermission('manage_webhooks'), (c) => {
-  const id = c.req.param('id')!
-  if (!getWebhook(id)) return c.json({ error: 'not found' }, 404)
+outgoingWebhookRoutes.get(
+  '/:id/deliveries',
+  authMiddleware,
+  requirePermission('manage_webhooks'),
+  (c) => {
+    const id = c.req.param('id')!
+    if (!getWebhook(id)) return c.json({ error: 'not found' }, 404)
 
-  const deliveries = getDb()
-    .prepare(
-      `SELECT id, webhook_id, event, status, error, duration_ms, attempt, created_at
+    const deliveries = getDb()
+      .prepare(
+        `SELECT id, webhook_id, event, status, error, duration_ms, attempt, created_at
        FROM outgoing_webhook_deliveries
        WHERE webhook_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`,
-    )
-    .all(id, DELIVERY_LIMIT)
+      )
+      .all(id, DELIVERY_LIMIT)
 
-  return c.json({ deliveries })
-})
+    return c.json({ deliveries })
+  },
+)
 
 export default outgoingWebhookRoutes

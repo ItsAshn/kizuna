@@ -37,7 +37,10 @@ export async function updateWebhook(
 }
 
 /** Rotates the token, invalidating the old URL. */
-export async function regenerateWebhookToken(serverUrl: string, webhookId: string): Promise<Webhook> {
+export async function regenerateWebhookToken(
+  serverUrl: string,
+  webhookId: string,
+): Promise<Webhook> {
   const res = await client(serverUrl).post(`/api/webhooks/${webhookId}/regenerate`)
   return res.data.webhook
 }

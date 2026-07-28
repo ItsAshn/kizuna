@@ -1,5 +1,18 @@
 import { useState } from 'react'
-import { MessageCircle, Mic, Monitor, Lock, Code, Download, ExternalLink, ArrowRight, Server, Container, GitBranch, BookOpen } from 'lucide-react'
+import {
+  MessageCircle,
+  Mic,
+  Monitor,
+  Lock,
+  Code,
+  Download,
+  ExternalLink,
+  ArrowRight,
+  Server,
+  Container,
+  GitBranch,
+  BookOpen,
+} from 'lucide-react'
 import { FaLinux, FaApple, FaWindows } from 'react-icons/fa'
 import { SiBluesky } from 'react-icons/si'
 import ServerBrowser from '../components/ServerBrowser'
@@ -10,9 +23,12 @@ interface LandingProps {
   onEnterApp: () => void
 }
 
-const LINUX_CMD = 'curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install-desktop.sh | bash'
-const MAC_CMD = 'curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install-desktop.sh | bash'
-const WIN_CMD = 'irm https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install-desktop.ps1 | iex'
+const LINUX_CMD =
+  'curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install-desktop.sh | bash'
+const MAC_CMD =
+  'curl -fsSL https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install-desktop.sh | bash'
+const WIN_CMD =
+  'irm https://raw.githubusercontent.com/ItsAshn/kizuna/main/scripts/install-desktop.ps1 | iex'
 const DOCKER_COMPOSE = `git clone https://github.com/ItsAshn/kizuna.git
 cd kizuna
 cp apps/server/.env.example apps/server/.env
@@ -53,9 +69,21 @@ const FEATURES = [
 ]
 
 const STEPS = [
-  { step: '1', title: 'Download', desc: 'Get the desktop app for Linux, macOS, or Windows, or jump straight into the web app.' },
-  { step: '2', title: 'Connect', desc: 'Try the official test server at server.use-kizuna.com or connect to any self-hosted instance.' },
-  { step: '3', title: 'Chat & Voice', desc: 'Send messages, hop into voice channels, and share your screen with your community.' },
+  {
+    step: '1',
+    title: 'Download',
+    desc: 'Get the desktop app for Linux, macOS, or Windows, or jump straight into the web app.',
+  },
+  {
+    step: '2',
+    title: 'Connect',
+    desc: 'Try the official test server at server.use-kizuna.com or connect to any self-hosted instance.',
+  },
+  {
+    step: '3',
+    title: 'Chat & Voice',
+    desc: 'Send messages, hop into voice channels, and share your screen with your community.',
+  },
 ]
 
 export default function Landing({ onConnect, onEnterApp }: LandingProps) {
@@ -80,7 +108,12 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
             <span className="landing-nav__name">Kizuna</span>
           </a>
           <div className="landing-nav__links">
-            <a href="https://itsashn.github.io/kizuna/" target="_blank" rel="noopener noreferrer" className="landing-nav__link">
+            <a
+              href="https://itsashn.github.io/kizuna/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="landing-nav__link"
+            >
               Docs
               <ExternalLink size={12} />
             </a>
@@ -101,27 +134,36 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
           <span className="landing-hero__title-accent">&amp; chat</span>
         </h1>
         <p className="landing-hero__desc">
-          An open-source, privacy-first communication platform.
-          Host your own server, own your data, and stay connected with your community.
+          An open-source, privacy-first communication platform. Host your own server, own your data,
+          and stay connected with your community.
         </p>
         <div className="landing-hero__actions">
           <a href="#download" className="landing-hero__btn landing-hero__btn--primary">
             <Download size={16} />
             Download
           </a>
-          <button className="landing-hero__btn landing-hero__btn--secondary" onClick={() => onConnect('https://server.use-kizuna.com')}>
+          <button
+            className="landing-hero__btn landing-hero__btn--secondary"
+            onClick={() => onConnect('https://server.use-kizuna.com')}
+          >
             Try Official Server
             <ExternalLink size={14} />
           </button>
         </div>
         <p className="landing-hero__hint">
-          Also available as a <button className="landing-hero__link" onClick={onEnterApp}>web app</button> — no download needed.
+          Also available as a{' '}
+          <button className="landing-hero__link" onClick={onEnterApp}>
+            web app
+          </button>{' '}
+          — no download needed.
         </p>
       </section>
 
       <section className="landing-features" id="features">
         <h2 className="landing-section__title">Everything you need</h2>
-        <p className="landing-section__subtitle">A complete communication suite you control end-to-end.</p>
+        <p className="landing-section__subtitle">
+          A complete communication suite you control end-to-end.
+        </p>
         <div className="landing-features__grid">
           {FEATURES.map((f) => (
             <div key={f.title} className="landing-feature-card">
@@ -137,7 +179,9 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
 
       <section className="landing-servers" id="explore">
         <h2 className="landing-section__title">Explore Public Servers</h2>
-        <p className="landing-section__subtitle">Join community-run Kizuna servers. Set <code>IS_PUBLIC=true</code> to list your own.</p>
+        <p className="landing-section__subtitle">
+          Join community-run Kizuna servers. Set <code>IS_PUBLIC=true</code> to list your own.
+        </p>
         <div className="landing-servers__inner">
           <ServerBrowser onConnect={onConnect} />
         </div>
@@ -145,7 +189,9 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
 
       <section className="landing-how" id="how-it-works">
         <h2 className="landing-section__title">How it works</h2>
-        <p className="landing-section__subtitle">Three steps to start chatting with your community.</p>
+        <p className="landing-section__subtitle">
+          Three steps to start chatting with your community.
+        </p>
         <div className="landing-how__grid">
           {STEPS.map((s) => (
             <div key={s.step} className="landing-how-card">
@@ -195,7 +241,8 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
           </div>
           {installTab === 'macos' && (
             <p className="landing-download__note">
-              Apple Silicon only. The build is unsigned — the installer clears the Gatekeeper quarantine flag automatically.
+              Apple Silicon only. The build is unsigned — the installer clears the Gatekeeper
+              quarantine flag automatically.
             </p>
           )}
         </div>
@@ -215,14 +262,18 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
 
       <section className="landing-selfhost" id="self-host">
         <h2 className="landing-section__title">Host your own server</h2>
-        <p className="landing-section__subtitle">Deploy in minutes with Docker Compose. You control everything.</p>
+        <p className="landing-section__subtitle">
+          Deploy in minutes with Docker Compose. You control everything.
+        </p>
         <div className="landing-selfhost__card">
           <div className="landing-selfhost__code">
             <div className="landing-selfhost__code-header">
               <Container size={14} />
               <span>docker compose</span>
             </div>
-            <pre className="landing-selfhost__pre"><code>{DOCKER_COMPOSE}</code></pre>
+            <pre className="landing-selfhost__pre">
+              <code>{DOCKER_COMPOSE}</code>
+            </pre>
             <button
               className="landing-selfhost__copy"
               onClick={() => handleCopy(DOCKER_COMPOSE, setDockerCopied)}
@@ -232,7 +283,12 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
           </div>
         </div>
         <div className="landing-selfhost__more">
-          <a href="https://itsashn.github.io/kizuna/" target="_blank" rel="noopener noreferrer" className="landing-selfhost__link">
+          <a
+            href="https://itsashn.github.io/kizuna/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="landing-selfhost__link"
+          >
             <BookOpen size={14} />
             Full documentation
             <ExternalLink size={12} />
@@ -253,23 +309,58 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
             <a href="https://github.com/ItsAshn/kizuna" target="_blank" rel="noopener noreferrer">
               <GitBranch size={18} />
             </a>
-            <a href="https://bsky.app/profile/use-kizuna.com" target="_blank" rel="noopener noreferrer">
+            <a
+              href="https://bsky.app/profile/use-kizuna.com"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <SiBluesky size={18} />
             </a>
           </div>
         </div>
         <div className="landing-footer__bottom">
           <nav className="landing-footer__legal">
-            <a href="https://itsashn.github.io/kizuna/legal/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
-            <span aria-hidden="true" className="landing-footer__sep">·</span>
-            <a href="https://itsashn.github.io/kizuna/legal/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
-            <span aria-hidden="true" className="landing-footer__sep">·</span>
-            <a href="https://itsashn.github.io/kizuna/legal/license" target="_blank" rel="noopener noreferrer">License</a>
-            <span aria-hidden="true" className="landing-footer__sep">·</span>
+            <a
+              href="https://itsashn.github.io/kizuna/legal/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Privacy Policy
+            </a>
+            <span aria-hidden="true" className="landing-footer__sep">
+              ·
+            </span>
+            <a
+              href="https://itsashn.github.io/kizuna/legal/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Terms of Service
+            </a>
+            <span aria-hidden="true" className="landing-footer__sep">
+              ·
+            </span>
+            <a
+              href="https://itsashn.github.io/kizuna/legal/license"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              License
+            </a>
+            <span aria-hidden="true" className="landing-footer__sep">
+              ·
+            </span>
             <a href="mailto:ashn@use-kizuna.com">ashn@use-kizuna.com</a>
           </nav>
           <p className="landing-footer__copy">
-            Open source under <a href="https://github.com/ItsAshn/kizuna/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPLv3 License</a>
+            Open source under{' '}
+            <a
+              href="https://github.com/ItsAshn/kizuna/blob/main/LICENSE"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              AGPLv3 License
+            </a>
           </p>
         </div>
       </footer>

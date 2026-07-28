@@ -88,7 +88,7 @@ const gateSliderToDb = (threshold: number) => -(threshold * 0.5) - 25 // 0..100 
 let __voiceSeq = 0
 const MAX_VOICE_LOG_LINES = 30
 const __voiceLogBuffer: string[] = []
-function voiceLog(level: 'log'|'err', tag: string, msg: string, extra?: string) {
+function voiceLog(level: 'log' | 'err', tag: string, msg: string, extra?: string) {
   const seq = ++__voiceSeq
   const ts = new Date().toISOString().split('T')[1].slice(0, 12)
   const line = `[${ts}] ${tag}: ${msg}${extra ?? ''}`
@@ -97,7 +97,9 @@ function voiceLog(level: 'log'|'err', tag: string, msg: string, extra?: string) 
   if (level === 'err') console.error(`[VOICE ${seq}] ${line}`)
   else console.log(`[VOICE ${seq}] ${line}`)
 }
-export function getVoiceLogLines(): string[] { return [...__voiceLogBuffer] }
+export function getVoiceLogLines(): string[] {
+  return [...__voiceLogBuffer]
+}
 function vlog(tag: string, msg: string, data?: unknown) {
   const extra = data !== undefined ? ` ${JSON.stringify(data).slice(0, 200)}` : ''
   voiceLog('log', tag, msg, extra)
@@ -114,7 +116,11 @@ function computeQualityFromStats(report: RTCStatsReport): ConnectionQuality {
   let jitterMs = 0
   let lossRate = 0
   report.forEach((stat: RTCStatEntry) => {
-    if (stat.type === 'candidate-pair' && stat.state === 'succeeded' && stat.currentRoundTripTime != null) {
+    if (
+      stat.type === 'candidate-pair' &&
+      stat.state === 'succeeded' &&
+      stat.currentRoundTripTime != null
+    ) {
       rttMs = stat.currentRoundTripTime * 1000
     }
     if (stat.type === 'inbound-rtp' && stat.kind === 'audio') {
@@ -167,7 +173,15 @@ function startSpeakingDetection(
   const poll = () => {
     if (stopped) return
     if (ctx.state === 'suspended') {
-      ctx.resume().then(() => { timer = setTimeout(poll, SPEAKING_POLL_MS) }).catch((err) => { console.error('Failed to resume AudioContext (local speaking):', err); timer = setTimeout(poll, 200) })
+      ctx
+        .resume()
+        .then(() => {
+          timer = setTimeout(poll, SPEAKING_POLL_MS)
+        })
+        .catch((err) => {
+          console.error('Failed to resume AudioContext (local speaking):', err)
+          timer = setTimeout(poll, 200)
+        })
       return
     }
     analyser.getByteTimeDomainData(buf)
@@ -233,7 +247,15 @@ function startRemoteSpeakingDetection(
   const poll = () => {
     if (stopped) return
     if (ctx.state === 'suspended') {
-      ctx.resume().then(() => { timer = setTimeout(poll, SPEAKING_POLL_MS) }).catch((err) => { console.error('Failed to resume AudioContext (remote speaking):', err); timer = setTimeout(poll, 200) })
+      ctx
+        .resume()
+        .then(() => {
+          timer = setTimeout(poll, SPEAKING_POLL_MS)
+        })
+        .catch((err) => {
+          console.error('Failed to resume AudioContext (remote speaking):', err)
+          timer = setTimeout(poll, 200)
+        })
       return
     }
     analyser.getByteFrequencyData(buf)
@@ -406,121 +428,159 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setLiveAudioLevel(0)
     clearScreenSharePeer()
     useVoiceStore.getState().setIceServers([])
-  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, clearScreenSharePeer, clearPeerCameraStreams])
+  }, [
+    setVoicePeers,
+    setIsSpeaking,
+    setLocalConnectionQuality,
+    clearScreenSharePeer,
+    clearPeerCameraStreams,
+  ])
 
-  const consumePeer = useCallback(async (
-    socket: Socket,
-    device: Device,
-    recvTransport: Transport,
-    peerId: string,
-    channelId: string,
-    remoteCtx: AudioContext,
-  ) => {
-    vlog('consume', `consuming peer peerId=${peerId}`)
-    const params: Record<string, unknown> = await new Promise((resolve) =>
-      socket.emit('voice:consume', { channelId, peerId, rtpCapabilities: device.rtpCapabilities }, resolve),
-    )
-    if (!params?.id) {
-      verr('consume', `no id returned for peer ${peerId}`, params)
-      return
-    }
-    const consumer = await recvTransport.consume(params as Parameters<typeof recvTransport.consume>[0])
-    consumersRef.current.set(peerId, consumer)
-    vlog('consume', `consumer created | id=${consumer.id} | kind=${consumer.kind} | paused=${consumer.paused}`)
-
-    await new Promise<void>((resolve) =>
-      socket.emit('voice:resumeConsumer', { channelId, consumerId: consumer.id }, () => resolve()),
-    )
-    await consumer.resume()
-    vlog('consume', `consumer resumed | id=${consumer.id}`)
-
-    const audioEl = new Audio()
-    audioEl.autoplay = true
-    audioEl.srcObject = new MediaStream([consumer.track])
-    audioEl.volume = outputVolume / 100
-    vlog('consume', `audio element created | srcObject set | volume=${audioEl.volume}`)
-    if (audioOutputDeviceId) {
-      try {
-        await (audioEl as HTMLAudioElement & { setSinkId(id: string): Promise<void> }).setSinkId(audioOutputDeviceId)
-        vlog('consume', `sinkId set to ${audioOutputDeviceId}`)
-      } catch (e) {
-        vlog('consume', `setSinkId failed or unsupported: ${String(e)}`)
-      }
-    }
-    const playResult = await audioEl.play().then(() => 'ok').catch((e) => `error: ${e?.name ?? String(e)}`)
-    vlog('consume', `audio.play() -> ${playResult}`)
-    audioElemsRef.current.set(peerId, audioEl)
-
-    const cleanupRemote = startRemoteSpeakingDetection(
-      consumer.track,
-      (speaking) => updateVoicePeer(peerId, { speaking }),
-      remoteCtx,
-    )
-    remoteSpeakingCleanupsRef.current.set(peerId, cleanupRemote)
-
-    const pollPeerQuality = async () => {
-      const c = consumersRef.current.get(peerId)
-      if (!c) return
-      try {
-        const stats = await c.getStats()
-        updateVoicePeer(peerId, {
-          connectionQuality: computeQualityFromStats(stats),
-        })
-      } catch (err) {
-        console.error('Failed to get peer RTC stats:', err)
-      }
-    }
-    pollPeerQuality()
-    const peerQInt = setInterval(pollPeerQuality, QUALITY_POLL_MS)
-    peerQualityIntervalsRef.current.set(peerId, peerQInt)
-  }, [audioOutputDeviceId, updateVoicePeer])
-
-  const consumeScreenShare = useCallback(async (
-    socket: Socket,
-    device: Device,
-    recvTransport: Transport,
-    sharerPeerId: string,
-    channelId: string,
-    username: string,
-  ) => {
-    try {
+  const consumePeer = useCallback(
+    async (
+      socket: Socket,
+      device: Device,
+      recvTransport: Transport,
+      peerId: string,
+      channelId: string,
+      remoteCtx: AudioContext,
+    ) => {
+      vlog('consume', `consuming peer peerId=${peerId}`)
       const params: Record<string, unknown> = await new Promise((resolve) =>
-        socket.emit('voice:consume', {
-          channelId,
-          peerId: sharerPeerId,
-          kind: 'video',
-          source: 'screen',
-          rtpCapabilities: device.rtpCapabilities,
-        }, resolve),
+        socket.emit(
+          'voice:consume',
+          { channelId, peerId, rtpCapabilities: device.rtpCapabilities },
+          resolve,
+        ),
       )
       if (!params?.id) {
-        console.warn('Failed to consume screen share from', sharerPeerId)
+        verr('consume', `no id returned for peer ${peerId}`, params)
         return
       }
-
-      const consumer = await recvTransport.consume(params as Parameters<typeof recvTransport.consume>[0])
-      videoConsumerRef.current = consumer
+      const consumer = await recvTransport.consume(
+        params as Parameters<typeof recvTransport.consume>[0],
+      )
+      consumersRef.current.set(peerId, consumer)
+      vlog(
+        'consume',
+        `consumer created | id=${consumer.id} | kind=${consumer.kind} | paused=${consumer.paused}`,
+      )
 
       await new Promise<void>((resolve) =>
-        socket.emit('voice:resumeConsumer', { channelId, consumerId: consumer.id }, () => resolve()),
+        socket.emit('voice:resumeConsumer', { channelId, consumerId: consumer.id }, () =>
+          resolve(),
+        ),
       )
       await consumer.resume()
+      vlog('consume', `consumer resumed | id=${consumer.id}`)
 
-      const videoEl = document.createElement('video')
-      videoEl.autoplay = true
-      videoEl.playsInline = true
-      videoEl.muted = true
-      videoEl.srcObject = new MediaStream([consumer.track])
-      videoEl.style.width = '100%'
-      videoEl.style.height = '100%'
-      await videoEl.play().catch((err) => { console.error('Failed to play screen share video:', err) })
-      videoElRef.current = videoEl
+      const audioEl = new Audio()
+      audioEl.autoplay = true
+      audioEl.srcObject = new MediaStream([consumer.track])
+      audioEl.volume = outputVolume / 100
+      vlog('consume', `audio element created | srcObject set | volume=${audioEl.volume}`)
+      if (audioOutputDeviceId) {
+        try {
+          await (audioEl as HTMLAudioElement & { setSinkId(id: string): Promise<void> }).setSinkId(
+            audioOutputDeviceId,
+          )
+          vlog('consume', `sinkId set to ${audioOutputDeviceId}`)
+        } catch (e) {
+          vlog('consume', `setSinkId failed or unsupported: ${String(e)}`)
+        }
+      }
+      const playResult = await audioEl
+        .play()
+        .then(() => 'ok')
+        .catch((e) => `error: ${e?.name ?? String(e)}`)
+      vlog('consume', `audio.play() -> ${playResult}`)
+      audioElemsRef.current.set(peerId, audioEl)
 
-      setScreenSharePeer(sharerPeerId, username)
-    } catch (err) {
-      console.error('Failed to consume screen share:', err)
-    }
-  }, [setScreenSharePeer])
+      const cleanupRemote = startRemoteSpeakingDetection(
+        consumer.track,
+        (speaking) => updateVoicePeer(peerId, { speaking }),
+        remoteCtx,
+      )
+      remoteSpeakingCleanupsRef.current.set(peerId, cleanupRemote)
+
+      const pollPeerQuality = async () => {
+        const c = consumersRef.current.get(peerId)
+        if (!c) return
+        try {
+          const stats = await c.getStats()
+          updateVoicePeer(peerId, {
+            connectionQuality: computeQualityFromStats(stats),
+          })
+        } catch (err) {
+          console.error('Failed to get peer RTC stats:', err)
+        }
+      }
+      pollPeerQuality()
+      const peerQInt = setInterval(pollPeerQuality, QUALITY_POLL_MS)
+      peerQualityIntervalsRef.current.set(peerId, peerQInt)
+    },
+    [audioOutputDeviceId, updateVoicePeer],
+  )
+
+  const consumeScreenShare = useCallback(
+    async (
+      socket: Socket,
+      device: Device,
+      recvTransport: Transport,
+      sharerPeerId: string,
+      channelId: string,
+      username: string,
+    ) => {
+      try {
+        const params: Record<string, unknown> = await new Promise((resolve) =>
+          socket.emit(
+            'voice:consume',
+            {
+              channelId,
+              peerId: sharerPeerId,
+              kind: 'video',
+              source: 'screen',
+              rtpCapabilities: device.rtpCapabilities,
+            },
+            resolve,
+          ),
+        )
+        if (!params?.id) {
+          console.warn('Failed to consume screen share from', sharerPeerId)
+          return
+        }
+
+        const consumer = await recvTransport.consume(
+          params as Parameters<typeof recvTransport.consume>[0],
+        )
+        videoConsumerRef.current = consumer
+
+        await new Promise<void>((resolve) =>
+          socket.emit('voice:resumeConsumer', { channelId, consumerId: consumer.id }, () =>
+            resolve(),
+          ),
+        )
+        await consumer.resume()
+
+        const videoEl = document.createElement('video')
+        videoEl.autoplay = true
+        videoEl.playsInline = true
+        videoEl.muted = true
+        videoEl.srcObject = new MediaStream([consumer.track])
+        videoEl.style.width = '100%'
+        videoEl.style.height = '100%'
+        await videoEl.play().catch((err) => {
+          console.error('Failed to play screen share video:', err)
+        })
+        videoElRef.current = videoEl
+
+        setScreenSharePeer(sharerPeerId, username)
+      } catch (err) {
+        console.error('Failed to consume screen share:', err)
+      }
+    },
+    [setScreenSharePeer],
+  )
 
   const stopScreenConsume = useCallback(() => {
     videoConsumerRef.current?.close()
@@ -533,53 +593,67 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     clearScreenSharePeer()
   }, [clearScreenSharePeer])
 
-  const consumeCamera = useCallback(async (
-    socket: Socket,
-    device: Device,
-    recvTransport: Transport,
-    peerId: string,
-    channelId: string,
-  ) => {
-    if (cameraConsumersRef.current.has(peerId)) return
-    try {
-      const params: Record<string, unknown> = await new Promise((resolve) =>
-        socket.emit('voice:consume', {
-          channelId,
-          peerId,
-          kind: 'video',
-          source: 'camera',
-          rtpCapabilities: device.rtpCapabilities,
-        }, resolve),
-      )
-      if (!params?.id) {
-        console.warn('Failed to consume camera from', peerId)
-        return
+  const consumeCamera = useCallback(
+    async (
+      socket: Socket,
+      device: Device,
+      recvTransport: Transport,
+      peerId: string,
+      channelId: string,
+    ) => {
+      if (cameraConsumersRef.current.has(peerId)) return
+      try {
+        const params: Record<string, unknown> = await new Promise((resolve) =>
+          socket.emit(
+            'voice:consume',
+            {
+              channelId,
+              peerId,
+              kind: 'video',
+              source: 'camera',
+              rtpCapabilities: device.rtpCapabilities,
+            },
+            resolve,
+          ),
+        )
+        if (!params?.id) {
+          console.warn('Failed to consume camera from', peerId)
+          return
+        }
+
+        const consumer = await recvTransport.consume(
+          params as Parameters<typeof recvTransport.consume>[0],
+        )
+        cameraConsumersRef.current.set(peerId, consumer)
+
+        await new Promise<void>((resolve) =>
+          socket.emit('voice:resumeConsumer', { channelId, consumerId: consumer.id }, () =>
+            resolve(),
+          ),
+        )
+        await consumer.resume()
+
+        setPeerCameraStream(peerId, new MediaStream([consumer.track]))
+      } catch (err) {
+        console.error('Failed to consume camera:', err)
       }
+    },
+    [setPeerCameraStream],
+  )
 
-      const consumer = await recvTransport.consume(params as Parameters<typeof recvTransport.consume>[0])
-      cameraConsumersRef.current.set(peerId, consumer)
+  const stopCameraConsume = useCallback(
+    (peerId: string) => {
+      const consumer = cameraConsumersRef.current.get(peerId)
+      if (consumer) {
+        consumer.close()
+        cameraConsumersRef.current.delete(peerId)
+      }
+      removePeerCameraStream(peerId)
+    },
+    [removePeerCameraStream],
+  )
 
-      await new Promise<void>((resolve) =>
-        socket.emit('voice:resumeConsumer', { channelId, consumerId: consumer.id }, () => resolve()),
-      )
-      await consumer.resume()
-
-      setPeerCameraStream(peerId, new MediaStream([consumer.track]))
-    } catch (err) {
-      console.error('Failed to consume camera:', err)
-    }
-  }, [setPeerCameraStream])
-
-  const stopCameraConsume = useCallback((peerId: string) => {
-    const consumer = cameraConsumersRef.current.get(peerId)
-    if (consumer) {
-      consumer.close()
-      cameraConsumersRef.current.delete(peerId)
-    }
-    removePeerCameraStream(peerId)
-  }, [removePeerCameraStream])
-
-    const nativeVoiceUnlistenRef = useRef<(() => void) | null>(null)
+  const nativeVoiceUnlistenRef = useRef<(() => void) | null>(null)
   const nativeSpeakingUnlistenRef = useRef<(() => void) | null>(null)
   const nativeInitializedRef = useRef(false)
   const nativePeerHandlersRef = useRef<boolean>(false)
@@ -606,290 +680,384 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const setupNativeVoiceListeners = useCallback((): Promise<void> => {
     nativeVoiceUnlistenRef.current?.()
     nativeSpeakingUnlistenRef.current?.()
-    return import('@tauri-apps/api/event').then(({ listen }) =>
-      Promise.all([
-        listen<VoiceEventPayload>('voice:event', (event) => {
-          const ev = event.payload
-          vlog('voice:event', `type=${ev.type}`, ev)
-          switch (ev.type) {
-            case 'State': {
-              const data = ev.data
-              vlog('voice:state', `state=${data.state} error=${data.error || 'none'}`)
-              if (data.state === 'active' || data.state === 'joined') {
-                setActiveVoiceChannel(channelIdRef.current!)
-              } else if (data.state === 'failed' || data.state === 'disconnected') {
-                if (data.error) {
-                  verr('voice:state', data.error)
-                  setVoiceError(data.error)
+    return import('@tauri-apps/api/event')
+      .then(({ listen }) =>
+        Promise.all([
+          listen<VoiceEventPayload>('voice:event', (event) => {
+            const ev = event.payload
+            vlog('voice:event', `type=${ev.type}`, ev)
+            switch (ev.type) {
+              case 'State': {
+                const data = ev.data
+                vlog('voice:state', `state=${data.state} error=${data.error || 'none'}`)
+                if (data.state === 'active' || data.state === 'joined') {
+                  setActiveVoiceChannel(channelIdRef.current!)
+                } else if (data.state === 'failed' || data.state === 'disconnected') {
+                  if (data.error) {
+                    verr('voice:state', data.error)
+                    setVoiceError(data.error)
+                  }
                 }
+                break
               }
-              break
+              case 'PeerJoined': {
+                addVoicePeer({
+                  id: ev.data.peer_id!,
+                  userId: ev.data.user_id!,
+                  username: ev.data.username!,
+                  speaking: false,
+                  muted: false,
+                })
+                break
+              }
+              case 'PeerLeft': {
+                removeVoicePeer(ev.data.peer_id!)
+                import('@tauri-apps/api/core').then(({ invoke }) =>
+                  invoke('voice_remove_peer', { peerId: ev.data.peer_id }).catch((err) => {
+                    console.error('Failed to remove voice peer (native):', err)
+                  }),
+                )
+                break
+              }
+              case 'PeerSpeaking': {
+                updateVoicePeer(ev.data.peer_id!, { speaking: ev.data.speaking })
+                break
+              }
+              case 'ScreenShareStarted': {
+                setScreenSharePeer(ev.data.peer_id!, ev.data.username!)
+                break
+              }
+              case 'ScreenShareStopped': {
+                clearScreenSharePeer()
+                break
+              }
             }
-            case 'PeerJoined': {
-              addVoicePeer({
-                id: ev.data.peer_id!,
-                userId: ev.data.user_id!,
-                username: ev.data.username!,
-                speaking: false,
-                muted: false,
-              })
-              break
+          }).then((unlisten) => {
+            nativeVoiceUnlistenRef.current = unlisten
+          }),
+          listen<VoiceSpeakingPayload>('voice:speaking', (event) => {
+            const { channelId, speaking, level } = event.payload
+            const socket = socketRef.current
+            if (socket && channelId) {
+              socket.emit('voice:speaking', { channelId, speaking })
             }
-            case 'PeerLeft': {
-              removeVoicePeer(ev.data.peer_id!)
-              import('@tauri-apps/api/core').then(({ invoke }) =>
-                invoke('voice_remove_peer', { peerId: ev.data.peer_id }).catch((err) => { console.error('Failed to remove voice peer (native):', err) })
+            setIsSpeaking(speaking)
+            if (typeof level === 'number') {
+              setLiveAudioLevel(level * 1000)
+            }
+          }).then((unlisten) => {
+            nativeSpeakingUnlistenRef.current = unlisten
+          }),
+        ]).then(() => undefined),
+      )
+      .catch((e) => {
+        verr('setupNativeVoice', 'Failed to setup voice listeners', e)
+      })
+  }, [
+    addVoicePeer,
+    removeVoicePeer,
+    updateVoicePeer,
+    setActiveVoiceChannel,
+    setVoiceError,
+    setScreenSharePeer,
+    clearScreenSharePeer,
+    setIsSpeaking,
+    socketRef,
+  ])
+
+  const joinVoiceNative = useCallback(
+    async (channelId: string): Promise<string | null> => {
+      const socket = socketRef.current
+      if (!session) {
+        const err = 'No active session'
+        setVoiceError(err)
+        return err
+      }
+
+      vlog('joinVoiceNative', `joining channel=${channelId} url=${session.url}`)
+      cleanupVoice()
+      channelIdRef.current = channelId
+      setVoiceError(null)
+
+      await initNativeVoice()
+      await setupNativeVoiceListeners()
+
+      const { invoke } = await import('@tauri-apps/api/core')
+
+      // Set up chat socket peer event handlers
+      if (socket && !nativePeerHandlersRef.current) {
+        nativePeerHandlersRef.current = true
+        socket.on(
+          'voice:newPeer',
+          async (peer: { peerId: string; userId: string; username: string }) => {
+            vlog('nativePeer', `voice:newPeer peerId=${peer.peerId}`)
+            addVoicePeer({
+              id: peer.peerId,
+              userId: peer.userId,
+              username: peer.username,
+              speaking: false,
+              muted: false,
+            })
+            try {
+              const consumeResult: ConsumeResult = await new Promise((resolve) =>
+                socket!.emit(
+                  'voice:consume',
+                  {
+                    channelId: channelIdRef.current,
+                    peerId: peer.peerId,
+                    rtpCapabilities: {
+                      codecs: [
+                        {
+                          mimeType: 'audio/opus',
+                          clockRate: 48000,
+                          channels: 2,
+                          parameters: { useinbandfec: 1, minptime: 10 },
+                          rtcpFeedback: [],
+                        },
+                      ],
+                      headerExtensions: [],
+                    },
+                  },
+                  resolve,
+                ),
               )
-              break
+              if (consumeResult?.error) {
+                verr('nativePeer', `consume ${peer.peerId} failed: ${consumeResult.error}`)
+              } else {
+                const ssrc = consumeResult?.rtpParameters?.encodings?.[0]?.ssrc ?? 0
+                const { invoke: inv } = await import('@tauri-apps/api/core')
+                await inv('voice_add_peer', { peerId: peer.peerId, ssrc })
+                socket!.emit('voice:resumeConsumer', {
+                  channelId: channelIdRef.current,
+                  consumerId: consumeResult.id,
+                })
+              }
+            } catch (e) {
+              verr('nativePeer', `consume ${peer.peerId} error`, e)
             }
-            case 'PeerSpeaking': {
-              updateVoicePeer(ev.data.peer_id!, { speaking: ev.data.speaking })
-              break
-            }
-            case 'ScreenShareStarted': {
-              setScreenSharePeer(ev.data.peer_id!, ev.data.username!)
-              break
-            }
-            case 'ScreenShareStopped': {
-              clearScreenSharePeer()
-              break
-            }
-          }
-        }).then((unlisten) => {
-          nativeVoiceUnlistenRef.current = unlisten
-        }),
-        listen<VoiceSpeakingPayload>('voice:speaking', (event) => {
-          const { channelId, speaking, level } = event.payload
-          const socket = socketRef.current
-          if (socket && channelId) {
-            socket.emit('voice:speaking', { channelId, speaking })
-          }
-          setIsSpeaking(speaking)
-          if (typeof level === 'number') {
-            setLiveAudioLevel(level * 1000)
-          }
-        }).then((unlisten) => {
-          nativeSpeakingUnlistenRef.current = unlisten
-        }),
-      ]).then(() => undefined),
-    ).catch((e) => {
-      verr('setupNativeVoice', 'Failed to setup voice listeners', e)
-    })
-  }, [addVoicePeer, removeVoicePeer, updateVoicePeer, setActiveVoiceChannel, setVoiceError,
-      setScreenSharePeer, clearScreenSharePeer, setIsSpeaking, socketRef])
-
-  const joinVoiceNative = useCallback(async (channelId: string): Promise<string | null> => {
-    const socket = socketRef.current
-    if (!session) {
-      const err = 'No active session'
-      setVoiceError(err)
-      return err
-    }
-
-    vlog('joinVoiceNative', `joining channel=${channelId} url=${session.url}`)
-    cleanupVoice()
-    channelIdRef.current = channelId
-    setVoiceError(null)
-
-    await initNativeVoice()
-    await setupNativeVoiceListeners()
-
-    const { invoke } = await import('@tauri-apps/api/core')
-
-    // Set up chat socket peer event handlers
-    if (socket && !nativePeerHandlersRef.current) {
-      nativePeerHandlersRef.current = true
-      socket.on('voice:newPeer', async (peer: { peerId: string; userId: string; username: string }) => {
-        vlog('nativePeer', `voice:newPeer peerId=${peer.peerId}`)
-        addVoicePeer({ id: peer.peerId, userId: peer.userId, username: peer.username, speaking: false, muted: false })
-        try {
-          const consumeResult: ConsumeResult = await new Promise((resolve) =>
-            socket!.emit('voice:consume', {
-              channelId: channelIdRef.current,
-              peerId: peer.peerId,
-              rtpCapabilities: { codecs: [{ mimeType: 'audio/opus', clockRate: 48000, channels: 2, parameters: { useinbandfec: 1, minptime: 10 }, rtcpFeedback: [] }], headerExtensions: [] },
-            }, resolve),
-          )
-          if (consumeResult?.error) {
-            verr('nativePeer', `consume ${peer.peerId} failed: ${consumeResult.error}`)
-          } else {
-            const ssrc = consumeResult?.rtpParameters?.encodings?.[0]?.ssrc ?? 0
-            const { invoke: inv } = await import('@tauri-apps/api/core')
-            await inv('voice_add_peer', { peerId: peer.peerId, ssrc })
-            socket!.emit('voice:resumeConsumer', { channelId: channelIdRef.current, consumerId: consumeResult.id })
-          }
-        } catch (e) {
-          verr('nativePeer', `consume ${peer.peerId} error`, e)
-        }
-      })
-      socket.on('voice:peerLeft', ({ peerId }: { peerId: string }) => {
-        removeVoicePeer(peerId)
-        invoke('voice_remove_peer', { peerId }).catch((err) => { console.error('Failed to remove voice peer (socket handler):', err) })
-      })
-      socket.on('voice:peerSpeaking', ({ peerId, speaking }: { peerId: string; speaking: boolean }) => {
-        updateVoicePeer(peerId, { speaking })
-      })
-      socket.on('server:voiceBitrateChanged', ({ voiceBitrateKbps: newKbps }: { voiceBitrateKbps: number }) => {
-        vlog('bitrate', `server:voiceBitrateChanged -> ${newKbps} kbps`)
-        serverBitrateRef.current = newKbps
-        setServerVoiceBitrateKbps(newKbps)
-        import('@tauri-apps/api/core').then(({ invoke }) =>
-          invoke('voice_update_bitrate', { voiceBitrateKbps: newKbps }).catch((e) =>
-            verr('bitrate', 'voice_update_bitrate failed', e)
-          )
+          },
         )
-      })
-    }
-
-    try {
-      // Step 1: voice:join via chat socket
-      vlog('joinVoiceNative', 'sending voice:join via chat socket')
-      const joinResult: VoiceJoinResult = await new Promise((resolve) =>
-        socket!.emit('voice:join', { channelId }, resolve),
-      )
-      if (joinResult?.error) {
-        throw new Error(`voice:join failed: ${joinResult.error}`)
-      }
-      vlog('joinVoiceNative', 'voice:join OK', { peers: joinResult?.peers?.length, bitrate: joinResult?.voiceBitrateKbps })
-
-      setActiveVoiceChannel(channelId)
-      useVoiceStore.getState().setRouterRtpCapabilities(joinResult.routerRtpCapabilities!)
-
-      // Enable Socket.IO RTP forwarding as fallback for broken recv DTLS
-      socket!.emit('voice:enableSocketRtp')
-      vlog('joinVoiceNative', 'enabled socket RTP forwarding')
-      socket?.on('voice:socketRtp', async (payload: ArrayBuffer, peerId: string) => {
-        const { invoke: inv } = await import('@tauri-apps/api/core')
-        inv('voice_inject_opus', { peerId, opusData: Array.from(new Uint8Array(payload)) }).catch((err) => { console.error('Failed to inject opus data:', err) })
-      })
-
-      const iceServers = joinResult.iceServers || []
-      const voiceBitrateKbps = joinResult.voiceBitrateKbps ?? 64
-      serverBitrateRef.current = voiceBitrateKbps
-      setServerVoiceBitrateKbps(voiceBitrateKbps)
-
-      useVoiceStore.getState().setIceServers(iceServers)
-
-      // Step 2: create send transport via chat socket
-      const sendParams: TransportResult = await new Promise((resolve) =>
-        socket!.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
-      )
-      if (sendParams?.error) throw new Error(`send transport create: ${sendParams.error}`)
-      vlog('joinVoiceNative', 'send transport created', { id: sendParams?.id })
-
-      // Step 3: create DirectTransport for recv (no ICE/DTLS needed)
-      const recvParams: TransportResult = await new Promise((resolve) =>
-        socket!.emit('voice:createDirectTransport', { channelId }, resolve),
-      )
-      if (recvParams?.error) throw new Error(`recv direct transport create: ${recvParams.error}`)
-      vlog('joinVoiceNative', 'recv direct transport created', { id: recvParams?.id })
-
-      // Step 4: create WebRTC send transport in Rust (recv uses DirectTransport, no Rust PC needed)
-      vlog('joinVoiceNative', 'calling voice_begin')
-      const [sendDtls, _recvDtls, audioRtpParams, videoRtpParams] = await invoke('voice_begin', {
-        channelId,
-        iceServers,
-        sendParams,
-        recvParams,
-        voiceBitrateKbps,
-      }) as [Record<string, unknown>, Record<string, unknown>, Record<string, unknown>, Record<string, unknown>]
-      vlog('joinVoiceNative', 'voice_begin OK')
-
-      // The video track exists on the Rust send transport from here on; the
-      // screenshare hook produces it on the server the first time it is used.
-      nativeVideoRef.current = {
-        transportId: sendParams.id as string,
-        rtpParameters: videoRtpParams,
-        producerId: null,
-      }
-
-      // Step 5: connect send transport
-      const sendConnectResult: TransportResult = await new Promise((resolve) =>
-        socket!.emit('voice:connectTransport', {
-          channelId,
-          transportId: sendParams.id,
-          dtlsParameters: sendDtls,
-        }, resolve),
-      )
-      if (sendConnectResult?.error) throw new Error(`send connectTransport: ${sendConnectResult.error}`)
-      vlog('joinVoiceNative', 'send connectTransport OK')
-
-      // Step 6: produce audio
-      const produceResult: TransportResult = await new Promise((resolve) =>
-        socket!.emit('voice:produce', {
-          channelId,
-          transportId: sendParams.id,
-          kind: 'audio',
-          rtpParameters: audioRtpParams,
-        }, resolve),
-      )
-      if (produceResult?.error) throw new Error(`audio produce: ${produceResult.error}`)
-      vlog('joinVoiceNative', 'audio produce OK', { producerId: produceResult?.id })
-
-      // Step 8: start audio capture in Rust with DSP config
-      const gateDb = gateSliderToDb(noiseGateThreshold)
-      // RNNoise runs at full strength (a dry/wet blend would comb-filter the
-      // voice — see voice/rnnoise.rs). suppressionStrength only affects the
-      // legacy spectral suppressor, which the desktop path no longer selects.
-      await invoke('voice_finish_join', {
-        voiceBitrateKbps,
-        gateEnabled: noiseGateEnabled,
-        gateThresholdDb: gateDb,
-        suppressionEnabled: noiseSuppression,
-        suppressionStrength: 1.0,
-        autoGainEnabled: autoGainControl,
-        deviceName: audioInputDeviceId || null,
-        outputDeviceId: audioOutputDeviceId || null,
-      })
-      vlog('joinVoiceNative', 'finish_join OK')
-
-      // Set initial output volume
-      await invoke('voice_set_output_volume', { volume: outputVolume / 100 })
-
-      // Step 9: consume existing peers
-      if (joinResult.peers) {
-        for (const peer of joinResult.peers) {
-          addVoicePeer({
-            id: peer.id,
-            userId: peer.userId,
-            username: peer.username,
-            speaking: false,
-            muted: false,
+        socket.on('voice:peerLeft', ({ peerId }: { peerId: string }) => {
+          removeVoicePeer(peerId)
+          invoke('voice_remove_peer', { peerId }).catch((err) => {
+            console.error('Failed to remove voice peer (socket handler):', err)
           })
-          const consumeResult: ConsumeResult = await new Promise((resolve) =>
-            socket!.emit('voice:consume', {
-              channelId,
-              peerId: peer.id,
-              rtpCapabilities: joinResult.routerRtpCapabilities,
-            }, resolve),
+        })
+        socket.on(
+          'voice:peerSpeaking',
+          ({ peerId, speaking }: { peerId: string; speaking: boolean }) => {
+            updateVoicePeer(peerId, { speaking })
+          },
+        )
+        socket.on(
+          'server:voiceBitrateChanged',
+          ({ voiceBitrateKbps: newKbps }: { voiceBitrateKbps: number }) => {
+            vlog('bitrate', `server:voiceBitrateChanged -> ${newKbps} kbps`)
+            serverBitrateRef.current = newKbps
+            setServerVoiceBitrateKbps(newKbps)
+            import('@tauri-apps/api/core').then(({ invoke }) =>
+              invoke('voice_update_bitrate', { voiceBitrateKbps: newKbps }).catch((e) =>
+                verr('bitrate', 'voice_update_bitrate failed', e),
+              ),
+            )
+          },
+        )
+      }
+
+      try {
+        // Step 1: voice:join via chat socket
+        vlog('joinVoiceNative', 'sending voice:join via chat socket')
+        const joinResult: VoiceJoinResult = await new Promise((resolve) =>
+          socket!.emit('voice:join', { channelId }, resolve),
+        )
+        if (joinResult?.error) {
+          throw new Error(`voice:join failed: ${joinResult.error}`)
+        }
+        vlog('joinVoiceNative', 'voice:join OK', {
+          peers: joinResult?.peers?.length,
+          bitrate: joinResult?.voiceBitrateKbps,
+        })
+
+        setActiveVoiceChannel(channelId)
+        useVoiceStore.getState().setRouterRtpCapabilities(joinResult.routerRtpCapabilities!)
+
+        // Enable Socket.IO RTP forwarding as fallback for broken recv DTLS
+        socket!.emit('voice:enableSocketRtp')
+        vlog('joinVoiceNative', 'enabled socket RTP forwarding')
+        socket?.on('voice:socketRtp', async (payload: ArrayBuffer, peerId: string) => {
+          const { invoke: inv } = await import('@tauri-apps/api/core')
+          inv('voice_inject_opus', { peerId, opusData: Array.from(new Uint8Array(payload)) }).catch(
+            (err) => {
+              console.error('Failed to inject opus data:', err)
+            },
           )
-          if (consumeResult?.error) {
-            verr('joinVoiceNative', `consume peer ${peer.id} failed: ${consumeResult.error}`)
-          } else {
-            const ssrc = consumeResult?.rtpParameters?.encodings?.[0]?.ssrc ?? 0
-            await invoke('voice_add_peer', { peerId: peer.id, ssrc })
-            socket!.emit('voice:resumeConsumer', { channelId, consumerId: consumeResult.id })
-            vlog('joinVoiceNative', `consumed peer ${peer.id}`)
+        })
+
+        const iceServers = joinResult.iceServers || []
+        const voiceBitrateKbps = joinResult.voiceBitrateKbps ?? 64
+        serverBitrateRef.current = voiceBitrateKbps
+        setServerVoiceBitrateKbps(voiceBitrateKbps)
+
+        useVoiceStore.getState().setIceServers(iceServers)
+
+        // Step 2: create send transport via chat socket
+        const sendParams: TransportResult = await new Promise((resolve) =>
+          socket!.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
+        )
+        if (sendParams?.error) throw new Error(`send transport create: ${sendParams.error}`)
+        vlog('joinVoiceNative', 'send transport created', { id: sendParams?.id })
+
+        // Step 3: create DirectTransport for recv (no ICE/DTLS needed)
+        const recvParams: TransportResult = await new Promise((resolve) =>
+          socket!.emit('voice:createDirectTransport', { channelId }, resolve),
+        )
+        if (recvParams?.error) throw new Error(`recv direct transport create: ${recvParams.error}`)
+        vlog('joinVoiceNative', 'recv direct transport created', { id: recvParams?.id })
+
+        // Step 4: create WebRTC send transport in Rust (recv uses DirectTransport, no Rust PC needed)
+        vlog('joinVoiceNative', 'calling voice_begin')
+        const [sendDtls, _recvDtls, audioRtpParams, videoRtpParams] = (await invoke('voice_begin', {
+          channelId,
+          iceServers,
+          sendParams,
+          recvParams,
+          voiceBitrateKbps,
+        })) as [
+          Record<string, unknown>,
+          Record<string, unknown>,
+          Record<string, unknown>,
+          Record<string, unknown>,
+        ]
+        vlog('joinVoiceNative', 'voice_begin OK')
+
+        // The video track exists on the Rust send transport from here on; the
+        // screenshare hook produces it on the server the first time it is used.
+        nativeVideoRef.current = {
+          transportId: sendParams.id as string,
+          rtpParameters: videoRtpParams,
+          producerId: null,
+        }
+
+        // Step 5: connect send transport
+        const sendConnectResult: TransportResult = await new Promise((resolve) =>
+          socket!.emit(
+            'voice:connectTransport',
+            {
+              channelId,
+              transportId: sendParams.id,
+              dtlsParameters: sendDtls,
+            },
+            resolve,
+          ),
+        )
+        if (sendConnectResult?.error)
+          throw new Error(`send connectTransport: ${sendConnectResult.error}`)
+        vlog('joinVoiceNative', 'send connectTransport OK')
+
+        // Step 6: produce audio
+        const produceResult: TransportResult = await new Promise((resolve) =>
+          socket!.emit(
+            'voice:produce',
+            {
+              channelId,
+              transportId: sendParams.id,
+              kind: 'audio',
+              rtpParameters: audioRtpParams,
+            },
+            resolve,
+          ),
+        )
+        if (produceResult?.error) throw new Error(`audio produce: ${produceResult.error}`)
+        vlog('joinVoiceNative', 'audio produce OK', { producerId: produceResult?.id })
+
+        // Step 8: start audio capture in Rust with DSP config
+        const gateDb = gateSliderToDb(noiseGateThreshold)
+        // RNNoise runs at full strength (a dry/wet blend would comb-filter the
+        // voice — see voice/rnnoise.rs). suppressionStrength only affects the
+        // legacy spectral suppressor, which the desktop path no longer selects.
+        await invoke('voice_finish_join', {
+          voiceBitrateKbps,
+          gateEnabled: noiseGateEnabled,
+          gateThresholdDb: gateDb,
+          suppressionEnabled: noiseSuppression,
+          suppressionStrength: 1.0,
+          autoGainEnabled: autoGainControl,
+          deviceName: audioInputDeviceId || null,
+          outputDeviceId: audioOutputDeviceId || null,
+        })
+        vlog('joinVoiceNative', 'finish_join OK')
+
+        // Set initial output volume
+        await invoke('voice_set_output_volume', { volume: outputVolume / 100 })
+
+        // Step 9: consume existing peers
+        if (joinResult.peers) {
+          for (const peer of joinResult.peers) {
+            addVoicePeer({
+              id: peer.id,
+              userId: peer.userId,
+              username: peer.username,
+              speaking: false,
+              muted: false,
+            })
+            const consumeResult: ConsumeResult = await new Promise((resolve) =>
+              socket!.emit(
+                'voice:consume',
+                {
+                  channelId,
+                  peerId: peer.id,
+                  rtpCapabilities: joinResult.routerRtpCapabilities,
+                },
+                resolve,
+              ),
+            )
+            if (consumeResult?.error) {
+              verr('joinVoiceNative', `consume peer ${peer.id} failed: ${consumeResult.error}`)
+            } else {
+              const ssrc = consumeResult?.rtpParameters?.encodings?.[0]?.ssrc ?? 0
+              await invoke('voice_add_peer', { peerId: peer.id, ssrc })
+              socket!.emit('voice:resumeConsumer', { channelId, consumerId: consumeResult.id })
+              vlog('joinVoiceNative', `consumed peer ${peer.id}`)
+            }
           }
         }
-      }
 
-      await invoke('voice_flush_peers')
-      vlog('joinVoiceNative', 'flush_peers done')
+        await invoke('voice_flush_peers')
+        vlog('joinVoiceNative', 'flush_peers done')
 
-      return null
-    } catch (e: unknown) {
-      const err = (e as { toString?: () => string })?.toString?.() || 'Failed to join voice'
-      verr('joinVoiceNative', 'failed', e)
-      setVoiceError(err)
-      socket?.emit('voice:leave', { channelId })
-      try { await invoke('voice_leave') } catch (e) {
-        console.error('Failed to leave voice after join error:', e)
+        return null
+      } catch (e: unknown) {
+        const err = (e as { toString?: () => string })?.toString?.() || 'Failed to join voice'
+        verr('joinVoiceNative', 'failed', e)
+        setVoiceError(err)
+        socket?.emit('voice:leave', { channelId })
+        try {
+          await invoke('voice_leave')
+        } catch (e) {
+          console.error('Failed to leave voice after join error:', e)
+        }
+        channelIdRef.current = null
+        return err
       }
-      channelIdRef.current = null
-      return err
-    }
-  }, [socketRef, session, cleanupVoice, setVoiceError, initNativeVoice, setupNativeVoiceListeners, setActiveVoiceChannel, addVoicePeer, audioInputDeviceId, audioOutputDeviceId, outputVolume, noiseGateEnabled, noiseGateThreshold, noiseSuppression, noiseSuppressionStrength])
+    },
+    [
+      socketRef,
+      session,
+      cleanupVoice,
+      setVoiceError,
+      initNativeVoice,
+      setupNativeVoiceListeners,
+      setActiveVoiceChannel,
+      addVoicePeer,
+      audioInputDeviceId,
+      audioOutputDeviceId,
+      outputVolume,
+      noiseGateEnabled,
+      noiseGateThreshold,
+      noiseSuppression,
+      noiseSuppressionStrength,
+    ],
+  )
 
   const leaveVoiceNative = useCallback(async () => {
     try {
@@ -933,518 +1101,633 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     }
   }, [isMuted, setIsMuted])
 
-  const joinVoice = useCallback(async (channelId: string): Promise<string | null> => {
-    vlog('joinVoice', `starting | channelId=${channelId} | isTauri=${isTauri()} | socket=${!!socketRef.current} | session=${!!session}`)
+  const joinVoice = useCallback(
+    async (channelId: string): Promise<string | null> => {
+      vlog(
+        'joinVoice',
+        `starting | channelId=${channelId} | isTauri=${isTauri()} | socket=${!!socketRef.current} | session=${!!session}`,
+      )
 
-    if (isTauri() && !isMobileTauri()) {
-      return joinVoiceNative(channelId)
-    }
-
-    const socket = socketRef.current
-    if (!socket || !session) {
-      const err = 'No socket connection'
-      setVoiceError(err)
-      return err
-    }
-
-    cleanupVoice()
-    channelIdRef.current = channelId
-    setVoiceError(null)
-
-    vlog('joinVoice', 'emitting voice:join')
-    const joinResult: VoiceJoinResult = await new Promise((resolve) =>
-      socket.emit('voice:join', { channelId }, resolve),
-    )
-
-    if (joinResult?.error) {
-      verr('joinVoice', 'voice:join error', joinResult.error as string)
-      setVoiceError(joinResult.error as string)
-      cleanupVoice()
-      socket.emit('voice:leave', { channelId })
-      channelIdRef.current = null
-      return joinResult.error
-    }
-    if (!joinResult?.routerRtpCapabilities) {
-      verr('joinVoice', 'no routerRtpCapabilities in response', joinResult)
-      const err = 'Failed to join voice channel'
-      setVoiceError(err)
-      cleanupVoice()
-      socket.emit('voice:leave', { channelId })
-      channelIdRef.current = null
-      return err
-    }
-
-    setActiveVoiceChannel(channelId)
-    useVoiceStore.getState().setRouterRtpCapabilities(joinResult.routerRtpCapabilities)
-
-    if (typeof RTCPeerConnection === 'undefined') {
-      verr('joinVoice', 'RTCPeerConnection undefined - WebRTC not supported')
-      const err = 'WebRTC is not supported in this browser. On Linux, ensure webkit2gtk is built with WebRTC support, or use Chromium/Firefox via pnpm dev:desktop.'
-      setVoiceError(err)
-      cleanupVoice()
-      socket.emit('voice:leave', { channelId })
-      channelIdRef.current = null
-      return err
-    }
-
-    vlog('joinVoice', 'creating mediasoup Device and loading rtpCapabilities')
-    let device: Device
-    try {
-      device = new Device()
-      await device.load({ routerRtpCapabilities: joinResult.routerRtpCapabilities })
-    } catch (loadErr: unknown) {
-      verr('joinVoice', 'mediasoup Device.load() failed', loadErr)
-      const e = loadErr as { message?: string }
-      const err = `WebRTC codec/device initialization failed: ${e?.message || loadErr}. On Linux, ensure webkit2gtk is built with full WebRTC support and required audio codecs (opus) are available.`
-      setVoiceError(err)
-      cleanupVoice()
-      socket.emit('voice:leave', { channelId })
-      channelIdRef.current = null
-      return err
-    }
-    vlog('joinVoice', 'Device loaded successfully')
-    deviceRef.current = device
-
-    const iceServers = joinResult.iceServers || []
-
-    useVoiceStore.getState().setIceServers(iceServers)
-
-    vlog('joinVoice', 'creating send transport')
-    const sendParams: Record<string, unknown> = await new Promise((resolve) =>
-      socket.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
-    )
-    if (sendParams?.error) {
-      verr('joinVoice', 'send transport create failed', sendParams.error as string)
-      const err = `Send transport failed: ${sendParams.error}`
-      setVoiceError(err)
-      cleanupVoice()
-      socket.emit('voice:leave', { channelId })
-      channelIdRef.current = null
-      return err
-    }
-    vlog('joinVoice', 'send transport created', { id: sendParams?.id })
-
-    const sendTransport = device.createSendTransport({
-      ...sendParams,
-      iceServers: iceServers.length > 0 ? iceServers : undefined,
-    } as Parameters<typeof device.createSendTransport>[0])
-    sendTransportRef.current = sendTransport
-
-    sendTransport.on('connect', ({ dtlsParameters }, cb) => {
-      vlog('transport', 'send connect event')
-      socket.emit('voice:connectTransport', { channelId, transportId: sendTransport.id, dtlsParameters }, cb)
-    })
-    sendTransport.on('produce', ({ kind, rtpParameters, appData }, cb) => {
-      const source = (appData as { source?: 'camera' | 'screen' })?.source
-      vlog('transport', `send produce event kind=${kind}${source ? ` source=${source}` : ''}`)
-      socket.emit('voice:produce', { channelId, transportId: sendTransport.id, kind, rtpParameters, source }, cb)
-    })
-
-    sendTransport.on('connectionstatechange', (state) => {
-      vlog('transport', `send connectionstatechange -> ${state}`)
-      if (state === 'failed' || state === 'closed') {
-        verr('transport', `send transport state: ${state}`)
-        handleTransportFailure(socket, channelId)
+      if (isTauri() && !isMobileTauri()) {
+        return joinVoiceNative(channelId)
       }
-      if (state === 'connected') {
-        if (iceTimerRef.current) { clearTimeout(iceTimerRef.current); iceTimerRef.current = null }
-      }
-    })
 
-    vlog('joinVoice', 'creating recv transport')
-    const recvParams: Record<string, unknown> = await new Promise((resolve) =>
-      socket.emit('voice:createTransport', { channelId, direction: 'recv' }, resolve),
-    )
-    if (recvParams?.error) {
-      verr('joinVoice', 'recv transport create failed', recvParams.error as string)
-      const err = `Recv transport failed: ${recvParams.error}`
-      setVoiceError(err)
+      const socket = socketRef.current
+      if (!socket || !session) {
+        const err = 'No socket connection'
+        setVoiceError(err)
+        return err
+      }
+
       cleanupVoice()
-      socket.emit('voice:leave', { channelId })
-      channelIdRef.current = null
-      return err
-    }
-    vlog('joinVoice', 'recv transport created', { id: recvParams?.id })
+      channelIdRef.current = channelId
+      setVoiceError(null)
 
-    const recvTransport = device.createRecvTransport({
-      ...recvParams,
-      iceServers: iceServers.length > 0 ? iceServers : undefined,
-    } as Parameters<typeof device.createRecvTransport>[0])
-    recvTransportRef.current = recvTransport
+      vlog('joinVoice', 'emitting voice:join')
+      const joinResult: VoiceJoinResult = await new Promise((resolve) =>
+        socket.emit('voice:join', { channelId }, resolve),
+      )
 
-    recvTransport.on('connect', ({ dtlsParameters }, cb) => {
-      vlog('transport', 'recv connect event')
-      socket.emit('voice:connectTransport', { channelId, transportId: recvTransport.id, dtlsParameters }, cb)
-    })
-
-    recvTransport.on('connectionstatechange', (state) => {
-      vlog('transport', `recv connectionstatechange -> ${state}`)
-      if (state === 'failed' || state === 'closed') {
-        verr('transport', `recv transport state: ${state}`)
-        handleTransportFailure(socket, channelId)
+      if (joinResult?.error) {
+        verr('joinVoice', 'voice:join error', joinResult.error as string)
+        setVoiceError(joinResult.error as string)
+        cleanupVoice()
+        socket.emit('voice:leave', { channelId })
+        channelIdRef.current = null
+        return joinResult.error
       }
-      if (state === 'connected') {
-        if (iceTimerRef.current) { clearTimeout(iceTimerRef.current); iceTimerRef.current = null }
+      if (!joinResult?.routerRtpCapabilities) {
+        verr('joinVoice', 'no routerRtpCapabilities in response', joinResult)
+        const err = 'Failed to join voice channel'
+        setVoiceError(err)
+        cleanupVoice()
+        socket.emit('voice:leave', { channelId })
+        channelIdRef.current = null
+        return err
       }
-    })
 
-    if (iceTimerRef.current) clearTimeout(iceTimerRef.current)
-    iceTimerRef.current = setTimeout(() => {
-      const sendState = sendTransportRef.current?.connectionState ?? '?'
-      const recvState = recvTransportRef.current?.connectionState ?? '?'
-      const iceWarning = `ICE negotiation timed out after 12s (send=${sendState}, recv=${recvState}). \
+      setActiveVoiceChannel(channelId)
+      useVoiceStore.getState().setRouterRtpCapabilities(joinResult.routerRtpCapabilities)
+
+      if (typeof RTCPeerConnection === 'undefined') {
+        verr('joinVoice', 'RTCPeerConnection undefined - WebRTC not supported')
+        const err =
+          'WebRTC is not supported in this browser. On Linux, ensure webkit2gtk is built with WebRTC support, or use Chromium/Firefox via pnpm dev:desktop.'
+        setVoiceError(err)
+        cleanupVoice()
+        socket.emit('voice:leave', { channelId })
+        channelIdRef.current = null
+        return err
+      }
+
+      vlog('joinVoice', 'creating mediasoup Device and loading rtpCapabilities')
+      let device: Device
+      try {
+        device = new Device()
+        await device.load({ routerRtpCapabilities: joinResult.routerRtpCapabilities })
+      } catch (loadErr: unknown) {
+        verr('joinVoice', 'mediasoup Device.load() failed', loadErr)
+        const e = loadErr as { message?: string }
+        const err = `WebRTC codec/device initialization failed: ${e?.message || loadErr}. On Linux, ensure webkit2gtk is built with full WebRTC support and required audio codecs (opus) are available.`
+        setVoiceError(err)
+        cleanupVoice()
+        socket.emit('voice:leave', { channelId })
+        channelIdRef.current = null
+        return err
+      }
+      vlog('joinVoice', 'Device loaded successfully')
+      deviceRef.current = device
+
+      const iceServers = joinResult.iceServers || []
+
+      useVoiceStore.getState().setIceServers(iceServers)
+
+      vlog('joinVoice', 'creating send transport')
+      const sendParams: Record<string, unknown> = await new Promise((resolve) =>
+        socket.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
+      )
+      if (sendParams?.error) {
+        verr('joinVoice', 'send transport create failed', sendParams.error as string)
+        const err = `Send transport failed: ${sendParams.error}`
+        setVoiceError(err)
+        cleanupVoice()
+        socket.emit('voice:leave', { channelId })
+        channelIdRef.current = null
+        return err
+      }
+      vlog('joinVoice', 'send transport created', { id: sendParams?.id })
+
+      const sendTransport = device.createSendTransport({
+        ...sendParams,
+        iceServers: iceServers.length > 0 ? iceServers : undefined,
+      } as Parameters<typeof device.createSendTransport>[0])
+      sendTransportRef.current = sendTransport
+
+      sendTransport.on('connect', ({ dtlsParameters }, cb) => {
+        vlog('transport', 'send connect event')
+        socket.emit(
+          'voice:connectTransport',
+          { channelId, transportId: sendTransport.id, dtlsParameters },
+          cb,
+        )
+      })
+      sendTransport.on('produce', ({ kind, rtpParameters, appData }, cb) => {
+        const source = (appData as { source?: 'camera' | 'screen' })?.source
+        vlog('transport', `send produce event kind=${kind}${source ? ` source=${source}` : ''}`)
+        socket.emit(
+          'voice:produce',
+          { channelId, transportId: sendTransport.id, kind, rtpParameters, source },
+          cb,
+        )
+      })
+
+      sendTransport.on('connectionstatechange', (state) => {
+        vlog('transport', `send connectionstatechange -> ${state}`)
+        if (state === 'failed' || state === 'closed') {
+          verr('transport', `send transport state: ${state}`)
+          handleTransportFailure(socket, channelId)
+        }
+        if (state === 'connected') {
+          if (iceTimerRef.current) {
+            clearTimeout(iceTimerRef.current)
+            iceTimerRef.current = null
+          }
+        }
+      })
+
+      vlog('joinVoice', 'creating recv transport')
+      const recvParams: Record<string, unknown> = await new Promise((resolve) =>
+        socket.emit('voice:createTransport', { channelId, direction: 'recv' }, resolve),
+      )
+      if (recvParams?.error) {
+        verr('joinVoice', 'recv transport create failed', recvParams.error as string)
+        const err = `Recv transport failed: ${recvParams.error}`
+        setVoiceError(err)
+        cleanupVoice()
+        socket.emit('voice:leave', { channelId })
+        channelIdRef.current = null
+        return err
+      }
+      vlog('joinVoice', 'recv transport created', { id: recvParams?.id })
+
+      const recvTransport = device.createRecvTransport({
+        ...recvParams,
+        iceServers: iceServers.length > 0 ? iceServers : undefined,
+      } as Parameters<typeof device.createRecvTransport>[0])
+      recvTransportRef.current = recvTransport
+
+      recvTransport.on('connect', ({ dtlsParameters }, cb) => {
+        vlog('transport', 'recv connect event')
+        socket.emit(
+          'voice:connectTransport',
+          { channelId, transportId: recvTransport.id, dtlsParameters },
+          cb,
+        )
+      })
+
+      recvTransport.on('connectionstatechange', (state) => {
+        vlog('transport', `recv connectionstatechange -> ${state}`)
+        if (state === 'failed' || state === 'closed') {
+          verr('transport', `recv transport state: ${state}`)
+          handleTransportFailure(socket, channelId)
+        }
+        if (state === 'connected') {
+          if (iceTimerRef.current) {
+            clearTimeout(iceTimerRef.current)
+            iceTimerRef.current = null
+          }
+        }
+      })
+
+      if (iceTimerRef.current) clearTimeout(iceTimerRef.current)
+      iceTimerRef.current = setTimeout(() => {
+        const sendState = sendTransportRef.current?.connectionState ?? '?'
+        const recvState = recvTransportRef.current?.connectionState ?? '?'
+        const iceWarning = `ICE negotiation timed out after 12s (send=${sendState}, recv=${recvState}). \
 This usually means the server's PUBLIC_ADDRESS is misconfigured (pointing to localhost or unreachable). \
 Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP, or leave it blank for auto-detection.`
-      verr('joinVoice', iceWarning)
-      setVoiceError(iceWarning)
-    }, 12000)
+        verr('joinVoice', iceWarning)
+        setVoiceError(iceWarning)
+      }, 12000)
 
-    socket.on('voice:newPeer', async (peer: { peerId: string; userId: string; username: string }) => {
-      vlog('peer', `voice:newPeer peerId=${peer.peerId} userId=${peer.userId}`)
-      await consumePeer(socket, device, recvTransport, peer.peerId, channelId, remoteAudioCtxRef.current!)
-      addVoicePeer({
-        id: peer.peerId,
-        userId: peer.userId,
-        username: peer.username,
-        speaking: false,
-        muted: false,
+      socket.on(
+        'voice:newPeer',
+        async (peer: { peerId: string; userId: string; username: string }) => {
+          vlog('peer', `voice:newPeer peerId=${peer.peerId} userId=${peer.userId}`)
+          await consumePeer(
+            socket,
+            device,
+            recvTransport,
+            peer.peerId,
+            channelId,
+            remoteAudioCtxRef.current!,
+          )
+          addVoicePeer({
+            id: peer.peerId,
+            userId: peer.userId,
+            username: peer.username,
+            speaking: false,
+            muted: false,
+          })
+        },
+      )
+
+      socket.on('voice:peerLeft', ({ peerId }: { peerId: string }) => {
+        vlog('peer', `voice:peerLeft peerId=${peerId}`)
+
+        consumersRef.current.get(peerId)?.close()
+        consumersRef.current.delete(peerId)
+        const leavingEl = audioElemsRef.current.get(peerId)
+        if (leavingEl) {
+          leavingEl.pause()
+          leavingEl.srcObject = null
+        }
+        audioElemsRef.current.delete(peerId)
+        remoteSpeakingCleanupsRef.current.get(peerId)?.()
+        remoteSpeakingCleanupsRef.current.delete(peerId)
+        const peerQInt = peerQualityIntervalsRef.current.get(peerId)
+        if (peerQInt != null) clearInterval(peerQInt)
+        peerQualityIntervalsRef.current.delete(peerId)
+        stopCameraConsume(peerId)
+        removeVoicePeer(peerId)
       })
-    })
 
-    socket.on('voice:peerLeft', ({ peerId }: { peerId: string }) => {
-      vlog('peer', `voice:peerLeft peerId=${peerId}`)
-    
-      consumersRef.current.get(peerId)?.close()
-      consumersRef.current.delete(peerId)
-      const leavingEl = audioElemsRef.current.get(peerId)
-      if (leavingEl) {
-        leavingEl.pause()
-        leavingEl.srcObject = null
-      }
-      audioElemsRef.current.delete(peerId)
-      remoteSpeakingCleanupsRef.current.get(peerId)?.()
-      remoteSpeakingCleanupsRef.current.delete(peerId)
-      const peerQInt = peerQualityIntervalsRef.current.get(peerId)
-      if (peerQInt != null) clearInterval(peerQInt)
-      peerQualityIntervalsRef.current.delete(peerId)
-      stopCameraConsume(peerId)
-      removeVoicePeer(peerId)
-    })
+      socket.on(
+        'voice:peerSpeaking',
+        ({ peerId, speaking }: { peerId: string; speaking: boolean }) => {
+          updateVoicePeer(peerId, { speaking })
+        },
+      )
 
-    socket.on('voice:peerSpeaking', ({ peerId, speaking }: { peerId: string; speaking: boolean }) => {
-      updateVoicePeer(peerId, { speaking })
-    })
+      socket.on(
+        'screen:peerStarted',
+        async (data: { peerId: string; userId: string; username: string }) => {
+          await consumeScreenShare(
+            socket,
+            device,
+            recvTransport,
+            data.peerId,
+            channelId,
+            data.username,
+          )
+        },
+      )
 
-    socket.on('screen:peerStarted', async (data: { peerId: string; userId: string; username: string }) => {
-      await consumeScreenShare(socket, device, recvTransport, data.peerId, channelId, data.username)
-    })
-
-    socket.on('screen:peerStopped', () => {
-      stopScreenConsume()
-    })
-
-    socket.on('camera:peerStarted', async (data: { peerId: string; userId: string; username: string }) => {
-      await consumeCamera(socket, device, recvTransport, data.peerId, channelId)
-    })
-
-    socket.on('camera:peerStopped', ({ peerId }: { peerId: string }) => {
-      stopCameraConsume(peerId)
-    })
-
-    socket.on('voice:consumerClosed', ({ consumerId }: { consumerId: string }) => {
-      if (videoConsumerRef.current?.id === consumerId) {
+      socket.on('screen:peerStopped', () => {
         stopScreenConsume()
-      }
-    })
-
-    // Pin to 48kHz to match the Opus/RTP pipeline. Without this the context
-    // falls back to the system default (often 44.1kHz), forcing the browser to
-    // resample remote voice and introducing artifacts.
-    const remoteCtx = new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE })
-    remoteAudioCtxRef.current = remoteCtx
-    vlog('joinVoice', `remote AudioContext created | state=${remoteCtx.state} | sampleRate=${remoteCtx.sampleRate}`)
-
-    for (const peer of joinResult.peers || []) {
-      const socketId = peer.id
-      await consumePeer(socket, device, recvTransport, socketId, channelId, remoteCtx)
-      addVoicePeer({
-        id: socketId,
-        userId: peer.userId,
-        username: peer.username,
-        speaking: false,
-        muted: false,
       })
-    }
 
-    if (joinResult.screenSharePeer) {
-      const { peerId, username } = joinResult.screenSharePeer
-      await consumeScreenShare(socket, device, recvTransport, peerId, channelId, username)
-    }
+      socket.on(
+        'camera:peerStarted',
+        async (data: { peerId: string; userId: string; username: string }) => {
+          await consumeCamera(socket, device, recvTransport, data.peerId, channelId)
+        },
+      )
 
-    for (const peer of joinResult.peers || []) {
-      if (peer.hasCamera) {
-        await consumeCamera(socket, device, recvTransport, peer.id, channelId)
+      socket.on('camera:peerStopped', ({ peerId }: { peerId: string }) => {
+        stopCameraConsume(peerId)
+      })
+
+      socket.on('voice:consumerClosed', ({ consumerId }: { consumerId: string }) => {
+        if (videoConsumerRef.current?.id === consumerId) {
+          stopScreenConsume()
+        }
+      })
+
+      // Pin to 48kHz to match the Opus/RTP pipeline. Without this the context
+      // falls back to the system default (often 44.1kHz), forcing the browser to
+      // resample remote voice and introducing artifacts.
+      const remoteCtx = new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE })
+      remoteAudioCtxRef.current = remoteCtx
+      vlog(
+        'joinVoice',
+        `remote AudioContext created | state=${remoteCtx.state} | sampleRate=${remoteCtx.sampleRate}`,
+      )
+
+      for (const peer of joinResult.peers || []) {
+        const socketId = peer.id
+        await consumePeer(socket, device, recvTransport, socketId, channelId, remoteCtx)
+        addVoicePeer({
+          id: socketId,
+          userId: peer.userId,
+          username: peer.username,
+          speaking: false,
+          muted: false,
+        })
       }
-    }
 
-    const voiceBitrateKbps = joinResult.voiceBitrateKbps ?? 64
-    serverBitrateRef.current = voiceBitrateKbps
-    setServerVoiceBitrateKbps(voiceBitrateKbps)
-
-    socket.on('server:voiceBitrateChanged', ({ voiceBitrateKbps: newKbps }: { voiceBitrateKbps: number }) => {
-      vlog('bitrate', `server:voiceBitrateChanged -> ${newKbps} kbps`)
-      serverBitrateRef.current = newKbps
-      setServerVoiceBitrateKbps(newKbps)
-      if (producerRef.current) {
-        producerRef.current.setRtpEncodingParameters({ maxBitrate: newKbps * 1000 }).catch(console.error)
+      if (joinResult.screenSharePeer) {
+        const { peerId, username } = joinResult.screenSharePeer
+        await consumeScreenShare(socket, device, recvTransport, peerId, channelId, username)
       }
-    })
 
-    try {
-      vlog('mic', 'taking BROWSER microphone path')
-      await setupBrowserMicrophone(socket, channelId, sendTransport, voiceBitrateKbps)
-      vlog('joinVoice', 'microphone setup complete - voice joined successfully')
-    } catch (err: unknown) {
-      verr('joinVoice', `microphone setup FAILED (isTauri=${isTauri()})`, err)
-      console.error('Microphone access error', err)
-      const e = err as Error & { name?: string }
-      let errorMsg: string
-      if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-        errorMsg = 'Microphone access was denied. Please allow microphone access and try again.'
-      } else if (e.name === 'NotFoundError') {
-        errorMsg = 'No microphone found. Please connect a microphone and try again.'
-      } else if (e.name === 'NotReadableError' || e.name === 'OverconstrainedError' || e.message?.includes('timed out')) {
-        errorMsg = 'Microphone is unavailable or in use by another application. On Linux, ensure pipewire-pulse and pipewire-alsa are installed and running.'
-      } else {
-        const msg = e.message || (e as { toString?: () => string }).toString?.() || 'Unknown error'
-        const linuxHint = navigator.platform?.toLowerCase().includes('linux') || isTauri()
-          ? ' On Linux, ensure pipewire, pipewire-pulse, and pipewire-alsa are installed and your user session is running PipeWire.'
-          : ''
-        errorMsg = `Failed to access microphone: ${msg}.${linuxHint}`
+      for (const peer of joinResult.peers || []) {
+        if (peer.hasCamera) {
+          await consumeCamera(socket, device, recvTransport, peer.id, channelId)
+        }
       }
-      setVoiceError(errorMsg)
-      cleanupVoice()
-      socket.emit('voice:leave', { channelId })
-      channelIdRef.current = null
-      return errorMsg
-    }
 
-    if (qualityIntervalRef.current != null)
-      clearInterval(qualityIntervalRef.current)
-    const pollLocalQuality = async () => {
-      if (!sendTransportRef.current) return
+      const voiceBitrateKbps = joinResult.voiceBitrateKbps ?? 64
+      serverBitrateRef.current = voiceBitrateKbps
+      setServerVoiceBitrateKbps(voiceBitrateKbps)
+
+      socket.on(
+        'server:voiceBitrateChanged',
+        ({ voiceBitrateKbps: newKbps }: { voiceBitrateKbps: number }) => {
+          vlog('bitrate', `server:voiceBitrateChanged -> ${newKbps} kbps`)
+          serverBitrateRef.current = newKbps
+          setServerVoiceBitrateKbps(newKbps)
+          if (producerRef.current) {
+            producerRef.current
+              .setRtpEncodingParameters({ maxBitrate: newKbps * 1000 })
+              .catch(console.error)
+          }
+        },
+      )
+
       try {
-        const stats = await sendTransportRef.current.getStats()
-        setLocalConnectionQuality(computeQualityFromStats(stats))
-      } catch (err) {
-        console.error('Failed to get local transport stats:', err)
+        vlog('mic', 'taking BROWSER microphone path')
+        await setupBrowserMicrophone(socket, channelId, sendTransport, voiceBitrateKbps)
+        vlog('joinVoice', 'microphone setup complete - voice joined successfully')
+      } catch (err: unknown) {
+        verr('joinVoice', `microphone setup FAILED (isTauri=${isTauri()})`, err)
+        console.error('Microphone access error', err)
+        const e = err as Error & { name?: string }
+        let errorMsg: string
+        if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+          errorMsg = 'Microphone access was denied. Please allow microphone access and try again.'
+        } else if (e.name === 'NotFoundError') {
+          errorMsg = 'No microphone found. Please connect a microphone and try again.'
+        } else if (
+          e.name === 'NotReadableError' ||
+          e.name === 'OverconstrainedError' ||
+          e.message?.includes('timed out')
+        ) {
+          errorMsg =
+            'Microphone is unavailable or in use by another application. On Linux, ensure pipewire-pulse and pipewire-alsa are installed and running.'
+        } else {
+          const msg =
+            e.message || (e as { toString?: () => string }).toString?.() || 'Unknown error'
+          const linuxHint =
+            navigator.platform?.toLowerCase().includes('linux') || isTauri()
+              ? ' On Linux, ensure pipewire, pipewire-pulse, and pipewire-alsa are installed and your user session is running PipeWire.'
+              : ''
+          errorMsg = `Failed to access microphone: ${msg}.${linuxHint}`
+        }
+        setVoiceError(errorMsg)
+        cleanupVoice()
+        socket.emit('voice:leave', { channelId })
+        channelIdRef.current = null
+        return errorMsg
       }
-    }
-    pollLocalQuality()
-    qualityIntervalRef.current = setInterval(pollLocalQuality, QUALITY_POLL_MS)
 
-    reconnectAttemptsRef.current = 0
-    return null
-  }, [
-    socketRef, session, cleanupVoice, setActiveVoiceChannel, setVoicePeers,
-    addVoicePeer, removeVoicePeer, updateVoicePeer, setIsSpeaking,
-    setLocalConnectionQuality, serverVoiceBitrateKbps, setServerVoiceBitrateKbps,
-    audioInputDeviceId, audioOutputDeviceId, setVoiceError, consumePeer,
-    consumeScreenShare, stopScreenConsume, setScreenSharePeer,
-    consumeCamera, stopCameraConsume,
-    voiceInputMode,
-    pushToTalkKey, noiseSuppression, autoGainControl, echoCancellation,
-    noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
-    inputVolume,
-  ])
+      if (qualityIntervalRef.current != null) clearInterval(qualityIntervalRef.current)
+      const pollLocalQuality = async () => {
+        if (!sendTransportRef.current) return
+        try {
+          const stats = await sendTransportRef.current.getStats()
+          setLocalConnectionQuality(computeQualityFromStats(stats))
+        } catch (err) {
+          console.error('Failed to get local transport stats:', err)
+        }
+      }
+      pollLocalQuality()
+      qualityIntervalRef.current = setInterval(pollLocalQuality, QUALITY_POLL_MS)
 
-  const setupBrowserMicrophone = useCallback(async (
-    socket: Socket,
-    channelId: string,
-    sendTransport: Transport,
-    bitrateKbps: number,
-  ) => {
-    vlog('browserMic', `starting | inputDeviceId=${audioInputDeviceId} | inputVolume=${inputVolume} | noiseSupp=${noiseSuppression} | agc=${autoGainControl} | bitrate=${bitrateKbps}`)
-    // Let the browser's built-in (well-tuned) WebRTC audio processing handle
-    // echo cancellation, noise suppression and AGC. The custom worklet below
-    // only applies the optional noise gate — the old multiband suppressor and
-    // worklet AGC were broken (coloration + speech-as-noise) and double-processed.
-    const baseAudioProcessing = {
-      echoCancellation: { ideal: echoCancellation },
-      noiseSuppression: { ideal: noiseSuppression },
-      autoGainControl: { ideal: autoGainControl },
-    }
-    const micConstraints: MediaTrackConstraints = audioInputDeviceId
-      ? { deviceId: { exact: audioInputDeviceId }, ...baseAudioProcessing }
-      : { ...baseAudioProcessing }
+      reconnectAttemptsRef.current = 0
+      return null
+    },
+    [
+      socketRef,
+      session,
+      cleanupVoice,
+      setActiveVoiceChannel,
+      setVoicePeers,
+      addVoicePeer,
+      removeVoicePeer,
+      updateVoicePeer,
+      setIsSpeaking,
+      setLocalConnectionQuality,
+      serverVoiceBitrateKbps,
+      setServerVoiceBitrateKbps,
+      audioInputDeviceId,
+      audioOutputDeviceId,
+      setVoiceError,
+      consumePeer,
+      consumeScreenShare,
+      stopScreenConsume,
+      setScreenSharePeer,
+      consumeCamera,
+      stopCameraConsume,
+      voiceInputMode,
+      pushToTalkKey,
+      noiseSuppression,
+      autoGainControl,
+      echoCancellation,
+      noiseGateEnabled,
+      noiseGateThreshold,
+      noiseSuppressionStrength,
+      inputVolume,
+    ],
+  )
 
-    vlog('browserMic', 'calling getUserMedia')
-    let stream: MediaStream
-    try {
-      stream = await Promise.race([
-        navigator.mediaDevices.getUserMedia({ audio: micConstraints }),
-        new Promise<MediaStream>((_, reject) =>
-          setTimeout(() => reject(new Error('Microphone access timed out')), 5000)
-        ),
-      ])
-    } catch (err: unknown) {
-      const e = err as Error & { name?: string }
-      if (audioInputDeviceId && (e.name === 'NotFoundError' || e.name === 'OverconstrainedError')) {
-        vlog('browserMic', `stale device ${audioInputDeviceId}, retrying without device constraint`)
-        setAudioInputDeviceId(null)
+  const setupBrowserMicrophone = useCallback(
+    async (socket: Socket, channelId: string, sendTransport: Transport, bitrateKbps: number) => {
+      vlog(
+        'browserMic',
+        `starting | inputDeviceId=${audioInputDeviceId} | inputVolume=${inputVolume} | noiseSupp=${noiseSuppression} | agc=${autoGainControl} | bitrate=${bitrateKbps}`,
+      )
+      // Let the browser's built-in (well-tuned) WebRTC audio processing handle
+      // echo cancellation, noise suppression and AGC. The custom worklet below
+      // only applies the optional noise gate — the old multiband suppressor and
+      // worklet AGC were broken (coloration + speech-as-noise) and double-processed.
+      const baseAudioProcessing = {
+        echoCancellation: { ideal: echoCancellation },
+        noiseSuppression: { ideal: noiseSuppression },
+        autoGainControl: { ideal: autoGainControl },
+      }
+      const micConstraints: MediaTrackConstraints = audioInputDeviceId
+        ? { deviceId: { exact: audioInputDeviceId }, ...baseAudioProcessing }
+        : { ...baseAudioProcessing }
+
+      vlog('browserMic', 'calling getUserMedia')
+      let stream: MediaStream
+      try {
         stream = await Promise.race([
-          navigator.mediaDevices.getUserMedia({
-            audio: { ...baseAudioProcessing },
-          }),
+          navigator.mediaDevices.getUserMedia({ audio: micConstraints }),
           new Promise<MediaStream>((_, reject) =>
-            setTimeout(() => reject(new Error('Microphone access timed out')), 5000)
+            setTimeout(() => reject(new Error('Microphone access timed out')), 5000),
           ),
         ])
-      } else {
-        throw err
+      } catch (err: unknown) {
+        const e = err as Error & { name?: string }
+        if (
+          audioInputDeviceId &&
+          (e.name === 'NotFoundError' || e.name === 'OverconstrainedError')
+        ) {
+          vlog(
+            'browserMic',
+            `stale device ${audioInputDeviceId}, retrying without device constraint`,
+          )
+          setAudioInputDeviceId(null)
+          stream = await Promise.race([
+            navigator.mediaDevices.getUserMedia({
+              audio: { ...baseAudioProcessing },
+            }),
+            new Promise<MediaStream>((_, reject) =>
+              setTimeout(() => reject(new Error('Microphone access timed out')), 5000),
+            ),
+          ])
+        } else {
+          throw err
+        }
       }
-    }
-    vlog('browserMic', `getUserMedia OK | audioTracks=${stream.getAudioTracks().length} | track0=${stream.getAudioTracks()[0]?.label}`)
-    micStreamRef.current = stream
-    const audioCtx = new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE })
-    audioCtxRef.current = audioCtx
-    vlog('browserMic', `AudioContext created | state=${audioCtx.state} | sampleRate=${audioCtx.sampleRate}`)
-    const source = audioCtx.createMediaStreamSource(stream)
-    const gainNode = audioCtx.createGain()
-    gainNode.gain.value = Math.min(1.0, Math.max(0, inputVolume / 100))
-    gainNodeRef.current = gainNode
-    const destination = audioCtx.createMediaStreamDestination()
+      vlog(
+        'browserMic',
+        `getUserMedia OK | audioTracks=${stream.getAudioTracks().length} | track0=${stream.getAudioTracks()[0]?.label}`,
+      )
+      micStreamRef.current = stream
+      const audioCtx = new AudioContext({ sampleRate: AUDIO_SAMPLE_RATE })
+      audioCtxRef.current = audioCtx
+      vlog(
+        'browserMic',
+        `AudioContext created | state=${audioCtx.state} | sampleRate=${audioCtx.sampleRate}`,
+      )
+      const source = audioCtx.createMediaStreamSource(stream)
+      const gainNode = audioCtx.createGain()
+      gainNode.gain.value = Math.min(1.0, Math.max(0, inputVolume / 100))
+      gainNodeRef.current = gainNode
+      const destination = audioCtx.createMediaStreamDestination()
 
-    // Load AudioWorklet for DSP (noise gate + spectral suppression)
-    let workletNode: AudioWorkletNode | null = null
-    const workletRef = { current: null as AudioWorkletNode | null }
-    try {
-      await audioCtx.audioWorklet.addModule('/audio-processor.js')
-      workletNode = new AudioWorkletNode(audioCtx, 'audio-processor', {
-        parameterData: {
-          gateEnabled: noiseGateEnabled ? 1 : 0,
-          gateThresholdDb: gateSliderToDb(noiseGateThreshold),
-          // Suppression and AGC are handled by the browser's getUserMedia
-          // processing above; the broken worklet implementations stay disabled.
-          suppressionEnabled: 0,
-          suppressionStrength: noiseSuppressionStrength / 100,
-          agcEnabled: 0,
+      // Load AudioWorklet for DSP (noise gate + spectral suppression)
+      let workletNode: AudioWorkletNode | null = null
+      const workletRef = { current: null as AudioWorkletNode | null }
+      try {
+        await audioCtx.audioWorklet.addModule('/audio-processor.js')
+        workletNode = new AudioWorkletNode(audioCtx, 'audio-processor', {
+          parameterData: {
+            gateEnabled: noiseGateEnabled ? 1 : 0,
+            gateThresholdDb: gateSliderToDb(noiseGateThreshold),
+            // Suppression and AGC are handled by the browser's getUserMedia
+            // processing above; the broken worklet implementations stay disabled.
+            suppressionEnabled: 0,
+            suppressionStrength: noiseSuppressionStrength / 100,
+            agcEnabled: 0,
+          },
+        })
+        workletRef.current = workletNode
+        vlog('browserMic', 'AudioWorklet loaded and node created')
+      } catch (e) {
+        vlog('browserMic', `AudioWorklet unavailable, DSP disabled: ${String(e)}`)
+      }
+
+      // Audio graph: source -> worklet -> gain -> destination
+      if (workletNode) {
+        source.connect(workletNode)
+        workletNode.connect(gainNode)
+      } else {
+        source.connect(gainNode)
+      }
+      gainNode.connect(destination)
+
+      const processedTrack = destination.stream.getAudioTracks()[0]
+      vlog(
+        'browserMic',
+        `creating producer | trackKind=${processedTrack.kind} | readyState=${processedTrack.readyState}`,
+      )
+      const producer = await sendTransport.produce({
+        track: processedTrack,
+        encodings: [{ maxBitrate: bitrateKbps * 1000 }],
+        codecOptions: {
+          opusStereo: false,
+          opusDtx: true,
+          opusFec: true,
+          opusMaxAverageBitrate: bitrateKbps * 1000,
+          opusMaxPlaybackRate: 48000,
         },
       })
-      workletRef.current = workletNode
-      vlog('browserMic', 'AudioWorklet loaded and node created')
-    } catch (e) {
-      vlog('browserMic', `AudioWorklet unavailable, DSP disabled: ${String(e)}`)
-    }
+      producerRef.current = producer
+      vlog(
+        'browserMic',
+        `producer created | id=${producer.id} | kind=${producer.kind} | paused=${producer.paused}`,
+      )
 
-    // Audio graph: source -> worklet -> gain -> destination
-    if (workletNode) {
-      source.connect(workletNode)
-      workletNode.connect(gainNode)
-    } else {
-      source.connect(gainNode)
-    }
-    gainNode.connect(destination)
+      localSpeakingCleanupRef.current?.()
+      localSpeakingCleanupRef.current = startSpeakingDetection(
+        stream,
+        (speaking) => {
+          if (voiceInputMode === 'push-to-talk') return
+          setIsSpeaking(speaking)
+          socket.emit('voice:speaking', { channelId, speaking })
+        },
+        (level) => setLiveAudioLevel(level),
+        gainNode,
+        audioCtx,
+      )
 
-    const processedTrack = destination.stream.getAudioTracks()[0]
-    vlog('browserMic', `creating producer | trackKind=${processedTrack.kind} | readyState=${processedTrack.readyState}`)
-    const producer = await sendTransport.produce({
-      track: processedTrack,
-      encodings: [{ maxBitrate: bitrateKbps * 1000 }],
-      codecOptions: {
-        opusStereo: false,
-        opusDtx: true,
-        opusFec: true,
-        opusMaxAverageBitrate: bitrateKbps * 1000,
-        opusMaxPlaybackRate: 48000,
-      },
-    })
-    producerRef.current = producer
-    vlog('browserMic', `producer created | id=${producer.id} | kind=${producer.kind} | paused=${producer.paused}`)
-
-    localSpeakingCleanupRef.current?.()
-    localSpeakingCleanupRef.current = startSpeakingDetection(
-      stream,
-      (speaking) => {
-        if (voiceInputMode === 'push-to-talk') return
-        setIsSpeaking(speaking)
-        socket.emit('voice:speaking', { channelId, speaking })
-      },
-      (level) => setLiveAudioLevel(level),
-      gainNode,
-      audioCtx,
-    )
-
-    if (voiceInputMode === 'push-to-talk') {
-      setupPushToTalk(socket, channelId, producer)
-    }
-  }, [audioInputDeviceId, noiseSuppression, autoGainControl, echoCancellation,
-      noiseGateEnabled, noiseGateThreshold, noiseSuppressionStrength,
-      inputVolume, voiceInputMode,
-      setIsSpeaking, pushToTalkKey, setAudioInputDeviceId])
-
-
-  const setupPushToTalk = useCallback((
-    socket: Socket,
-    channelId: string,
-    producer: Producer,
-  ) => {
-    setIsSpeaking(false)
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === pushToTalkKey && !e.repeat && producerRef.current) {
-        e.preventDefault()
-        pttPressedRef.current = true
-        producerRef.current.resume()
-        setIsSpeaking(true)
-        socket.emit('voice:speaking', { channelId, speaking: true })
+      if (voiceInputMode === 'push-to-talk') {
+        setupPushToTalk(socket, channelId, producer)
       }
-    }
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === pushToTalkKey && producerRef.current) {
-        pttPressedRef.current = false
-        producerRef.current.pause()
-        setIsSpeaking(false)
-        socket.emit('voice:speaking', { channelId, speaking: false })
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('keyup', handleKeyUp)
-    producer.pause()
-    pttCleanupRef.current = () => {
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('keyup', handleKeyUp)
-    }
-  }, [pushToTalkKey, setIsSpeaking])
+    },
+    [
+      audioInputDeviceId,
+      noiseSuppression,
+      autoGainControl,
+      echoCancellation,
+      noiseGateEnabled,
+      noiseGateThreshold,
+      noiseSuppressionStrength,
+      inputVolume,
+      voiceInputMode,
+      setIsSpeaking,
+      pushToTalkKey,
+      setAudioInputDeviceId,
+    ],
+  )
 
-  const handleTransportFailure = useCallback((socket: Socket, channelId: string) => {
-    if (isReconnectingRef.current) return
-    if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
-      console.error('Max reconnect attempts reached')
-      setVoiceError('Connection lost. Please rejoin the voice channel.')
-      cleanupVoice()
-      return
-    }
-    isReconnectingRef.current = true
-    reconnectAttemptsRef.current++
-    setTimeout(async () => {
-      if (!socket.connected) {
-        isReconnectingRef.current = false
+  const setupPushToTalk = useCallback(
+    (socket: Socket, channelId: string, producer: Producer) => {
+      setIsSpeaking(false)
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.code === pushToTalkKey && !e.repeat && producerRef.current) {
+          e.preventDefault()
+          pttPressedRef.current = true
+          producerRef.current.resume()
+          setIsSpeaking(true)
+          socket.emit('voice:speaking', { channelId, speaking: true })
+        }
+      }
+      const handleKeyUp = (e: KeyboardEvent) => {
+        if (e.code === pushToTalkKey && producerRef.current) {
+          pttPressedRef.current = false
+          producerRef.current.pause()
+          setIsSpeaking(false)
+          socket.emit('voice:speaking', { channelId, speaking: false })
+        }
+      }
+      window.addEventListener('keydown', handleKeyDown)
+      window.addEventListener('keyup', handleKeyUp)
+      producer.pause()
+      pttCleanupRef.current = () => {
+        window.removeEventListener('keydown', handleKeyDown)
+        window.removeEventListener('keyup', handleKeyUp)
+      }
+    },
+    [pushToTalkKey, setIsSpeaking],
+  )
+
+  const handleTransportFailure = useCallback(
+    (socket: Socket, channelId: string) => {
+      if (isReconnectingRef.current) return
+      if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+        console.error('Max reconnect attempts reached')
+        setVoiceError('Connection lost. Please rejoin the voice channel.')
+        cleanupVoice()
         return
       }
-      cleanupVoice()
-      try {
-        const error = await joinVoice(channelId)
-        if (error) {
-          console.error('Reconnect failed:', error)
-          setVoiceError(error)
+      isReconnectingRef.current = true
+      reconnectAttemptsRef.current++
+      setTimeout(async () => {
+        if (!socket.connected) {
+          isReconnectingRef.current = false
+          return
         }
-      } catch (err) {
-        console.error('Reconnect error:', err)
-        setVoiceError('Failed to reconnect to voice channel.')
-      }
-      isReconnectingRef.current = false
-    }, RECONNECT_DELAY_MS * reconnectAttemptsRef.current)
-  }, [joinVoice, cleanupVoice, setVoiceError])
+        cleanupVoice()
+        try {
+          const error = await joinVoice(channelId)
+          if (error) {
+            console.error('Reconnect failed:', error)
+            setVoiceError(error)
+          }
+        } catch (err) {
+          console.error('Reconnect error:', err)
+          setVoiceError('Failed to reconnect to voice channel.')
+        }
+        isReconnectingRef.current = false
+      }, RECONNECT_DELAY_MS * reconnectAttemptsRef.current)
+    },
+    [joinVoice, cleanupVoice, setVoiceError],
+  )
 
   const leaveVoice = useCallback(async () => {
     const channelId = channelIdRef.current
@@ -1481,7 +1764,15 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     setActiveVoiceChannel(null)
     setIsMuted(false)
     setVoiceError(null)
-  }, [socketRef, cleanupVoice, setActiveVoiceChannel, setIsMuted, setVoiceError, leaveVoiceNative, clearDMCall])
+  }, [
+    socketRef,
+    cleanupVoice,
+    setActiveVoiceChannel,
+    setIsMuted,
+    setVoiceError,
+    leaveVoiceNative,
+    clearDMCall,
+  ])
 
   const toggleMute = useCallback(() => {
     if (voiceInputMode === 'push-to-talk') return
@@ -1497,51 +1788,77 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     }
   }, [isMuted, setIsMuted, voiceInputMode])
 
-  const startDMCall = useCallback(async (dmChannelId: string, otherUserId: string, otherUsername: string) => {
-    const socket = socketRef.current
-    if (!socket) return
+  const startDMCall = useCallback(
+    async (dmChannelId: string, otherUserId: string, otherUsername: string) => {
+      const socket = socketRef.current
+      if (!socket) return
 
-    setDMCallStatus('ringing-outgoing')
-    setDMCallChannelId(dmChannelId)
-    setDMCallOtherUser(otherUserId, otherUsername)
+      setDMCallStatus('ringing-outgoing')
+      setDMCallChannelId(dmChannelId)
+      setDMCallOtherUser(otherUserId, otherUsername)
 
-    const result: Record<string, unknown> = await new Promise<Record<string, unknown>>((resolve) => {
-      const timeout = setTimeout(() => resolve({ error: 'Call timed out' }), 30_000)
-      socket.emit('dm:call:start', { dmChannelId }, (res: Record<string, unknown>) => {
-        clearTimeout(timeout)
-        resolve(res)
-      })
-    })
+      const result: Record<string, unknown> = await new Promise<Record<string, unknown>>(
+        (resolve) => {
+          const timeout = setTimeout(() => resolve({ error: 'Call timed out' }), 30_000)
+          socket.emit('dm:call:start', { dmChannelId }, (res: Record<string, unknown>) => {
+            clearTimeout(timeout)
+            resolve(res)
+          })
+        },
+      )
 
-    if (result?.error) {
+      if (result?.error) {
+        clearDMCall()
+        setVoiceError(result.error as string)
+      }
+    },
+    [
+      socketRef,
+      setDMCallStatus,
+      setDMCallChannelId,
+      setDMCallOtherUser,
+      clearDMCall,
+      setVoiceError,
+    ],
+  )
+
+  const acceptDMCall = useCallback(
+    async (dmChannelId: string, otherUserId: string, otherUsername: string) => {
+      const socket = socketRef.current
+      if (!socket) return
+
+      setIncomingCall(null)
+      setDMCallStatus('active')
+      setDMCallChannelId(dmChannelId)
+      setDMCallOtherUser(otherUserId, otherUsername)
+
+      const voiceChannelId = `dm:${dmChannelId}`
+      socket.emit('dm:call:accept', { dmChannelId })
+      const error = await joinVoice(voiceChannelId)
+      if (error) {
+        clearDMCall()
+      }
+    },
+    [
+      socketRef,
+      setIncomingCall,
+      setDMCallStatus,
+      setDMCallChannelId,
+      setDMCallOtherUser,
+      joinVoice,
+      clearDMCall,
+    ],
+  )
+
+  const rejectDMCall = useCallback(
+    (dmChannelId: string) => {
+      const socket = socketRef.current
+      if (!socket) return
+      socket.emit('dm:call:reject', { dmChannelId })
       clearDMCall()
-      setVoiceError(result.error as string)
-    }
-  }, [socketRef, setDMCallStatus, setDMCallChannelId, setDMCallOtherUser, clearDMCall, setVoiceError])
-
-  const acceptDMCall = useCallback(async (dmChannelId: string, otherUserId: string, otherUsername: string) => {
-    const socket = socketRef.current
-    if (!socket) return
-
-    setIncomingCall(null)
-    setDMCallStatus('active')
-    setDMCallChannelId(dmChannelId)
-    setDMCallOtherUser(otherUserId, otherUsername)
-
-    const voiceChannelId = `dm:${dmChannelId}`
-    socket.emit('dm:call:accept', { dmChannelId })
-    const error = await joinVoice(voiceChannelId)
-    if (error) {
-      clearDMCall()
-    }
-  }, [socketRef, setIncomingCall, setDMCallStatus, setDMCallChannelId, setDMCallOtherUser, joinVoice, clearDMCall])
-
-  const rejectDMCall = useCallback((dmChannelId: string) => {
-    const socket = socketRef.current
-    if (!socket) return
-    socket.emit('dm:call:reject', { dmChannelId })
-    clearDMCall()
-  }, [socketRef, clearDMCall])
+    },
+    [socketRef, clearDMCall],
+  )
 
   const endDMCall = useCallback(async () => {
     const socket = socketRef.current
@@ -1556,13 +1873,16 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     clearDMCall()
   }, [socketRef, dmCallChannelId, leaveVoice, clearDMCall])
 
-  const connectDMCall = useCallback(async (dmChannelId: string) => {
-    const voiceChannelId = `dm:${dmChannelId}`
-    const error = await joinVoice(voiceChannelId)
-    if (error) {
-      clearDMCall()
-    }
-  }, [joinVoice, clearDMCall])
+  const connectDMCall = useCallback(
+    async (dmChannelId: string) => {
+      const voiceChannelId = `dm:${dmChannelId}`
+      const error = await joinVoice(voiceChannelId)
+      if (error) {
+        clearDMCall()
+      }
+    },
+    [joinVoice, clearDMCall],
+  )
 
   useEffect(() => {
     let prevInputVolume = inputVolume
@@ -1582,12 +1902,27 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         })
         // Sync native audio output volume
         import('@tauri-apps/api/core').then(({ invoke }) =>
-          invoke('voice_set_output_volume', { volume: state.outputVolume / 100 }).catch((err) => { console.error('Failed to set output volume:', err) })
+          invoke('voice_set_output_volume', { volume: state.outputVolume / 100 }).catch((err) => {
+            console.error('Failed to set output volume:', err)
+          }),
         )
       }
     })
     return unsub
   }, [])
 
-  return { joinVoice, leaveVoice, toggleMute, sendTransportRef, recvTransportRef, nativeVideoRef, videoElRef, startDMCall, acceptDMCall, rejectDMCall, endDMCall, connectDMCall }
+  return {
+    joinVoice,
+    leaveVoice,
+    toggleMute,
+    sendTransportRef,
+    recvTransportRef,
+    nativeVideoRef,
+    videoElRef,
+    startDMCall,
+    acceptDMCall,
+    rejectDMCall,
+    endDMCall,
+    connectDMCall,
+  }
 }

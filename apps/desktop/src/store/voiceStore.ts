@@ -1,83 +1,83 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { RtpCapabilities } from 'mediasoup-client/types';
-import type { VoicePeer, ConnectionQuality, UserStatus, UserActivity } from '@kizuna/shared';
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import type { RtpCapabilities } from 'mediasoup-client/types'
+import type { VoicePeer, ConnectionQuality, UserStatus, UserActivity } from '@kizuna/shared'
 
-export type VoiceInputMode = 'voice-activity' | 'push-to-talk';
+export type VoiceInputMode = 'voice-activity' | 'push-to-talk'
 
 // High-level audio-processing preset. 'off' = raw mic, 'standard' = RNNoise
 // noise suppression with a gentle leveler (recommended), 'custom' = the user
 // drives the individual gate/suppression/AGC toggles directly.
-export type VoiceProcessingMode = 'off' | 'standard' | 'custom';
+export type VoiceProcessingMode = 'off' | 'standard' | 'custom'
 
 interface VoiceState {
-  activeVoiceChannelId: string | null;
-  voicePeers: VoicePeer[];
-  isMuted: boolean;
-  isSpeaking: boolean;
-  localConnectionQuality: ConnectionQuality | null;
-  serverVoiceBitrateKbps: number;
-  audioInputDeviceId: string | null;
-  audioOutputDeviceId: string | null;
-  voiceError: string | null;
-  userStatuses: Record<string, UserStatus>;
-  userActivities: Record<string, UserActivity>;
-  voiceInputMode: VoiceInputMode;
-  pushToTalkKey: string;
-  voiceProcessingMode: VoiceProcessingMode;
-  noiseSuppression: boolean;
-  autoGainControl: boolean;
-  echoCancellation: boolean;
-  noiseGateEnabled: boolean;
-  noiseGateThreshold: number;
-  noiseSuppressionStrength: number;
-  inputVolume: number;
-  outputVolume: number;
-  liveAudioLevel: number;
-  voiceChannelUsers: Record<string, { userId: string; username: string }[]>;
-  peerVolumes: Record<string, number>;
+  activeVoiceChannelId: string | null
+  voicePeers: VoicePeer[]
+  isMuted: boolean
+  isSpeaking: boolean
+  localConnectionQuality: ConnectionQuality | null
+  serverVoiceBitrateKbps: number
+  audioInputDeviceId: string | null
+  audioOutputDeviceId: string | null
+  voiceError: string | null
+  userStatuses: Record<string, UserStatus>
+  userActivities: Record<string, UserActivity>
+  voiceInputMode: VoiceInputMode
+  pushToTalkKey: string
+  voiceProcessingMode: VoiceProcessingMode
+  noiseSuppression: boolean
+  autoGainControl: boolean
+  echoCancellation: boolean
+  noiseGateEnabled: boolean
+  noiseGateThreshold: number
+  noiseSuppressionStrength: number
+  inputVolume: number
+  outputVolume: number
+  liveAudioLevel: number
+  voiceChannelUsers: Record<string, { userId: string; username: string }[]>
+  peerVolumes: Record<string, number>
   /** Live remote webcam streams, keyed by peerId. Presence implies that peer's camera is on. */
-  peerCameraStreams: Record<string, MediaStream>;
-  routerRtpCapabilities: RtpCapabilities | null;
-  iceServers: { urls: string; username?: string; credential?: string }[];
+  peerCameraStreams: Record<string, MediaStream>
+  routerRtpCapabilities: RtpCapabilities | null
+  iceServers: { urls: string; username?: string; credential?: string }[]
 
-  setActiveVoiceChannel: (channelId: string | null) => void;
-  setVoicePeers: (peers: VoicePeer[]) => void;
-  addVoicePeer: (peer: VoicePeer) => void;
-  removeVoicePeer: (peerId: string) => void;
-  updateVoicePeer: (peerId: string, patch: Partial<VoicePeer>) => void;
-  setIsMuted: (muted: boolean) => void;
-  setIsSpeaking: (speaking: boolean) => void;
-  setLocalConnectionQuality: (quality: ConnectionQuality | null) => void;
-  setServerVoiceBitrateKbps: (kbps: number) => void;
-  setAudioInputDeviceId: (id: string | null) => void;
-  setAudioOutputDeviceId: (id: string | null) => void;
-  setVoiceError: (error: string | null) => void;
-  setUserStatus: (userId: string, status: UserStatus) => void;
-  setUserStatuses: (statuses: Record<string, UserStatus>) => void;
-  setUserActivity: (userId: string, activity: UserActivity | null) => void;
-  setUserActivities: (activities: Record<string, UserActivity>) => void;
-  setVoiceChannelUsers: (users: Record<string, { userId: string; username: string }[]>) => void;
-  addVoiceChannelUser: (channelId: string, user: { userId: string; username: string }) => void;
-  removeVoiceChannelUser: (channelId: string, userId: string) => void;
-  setPeerVolume: (peerId: string, volume: number) => void;
-  setPeerCameraStream: (peerId: string, stream: MediaStream) => void;
-  removePeerCameraStream: (peerId: string) => void;
-  clearPeerCameraStreams: () => void;
-  setRouterRtpCapabilities: (caps: RtpCapabilities) => void;
-  setIceServers: (servers: { urls: string; username?: string; credential?: string }[]) => void;
-  setVoiceInputMode: (mode: VoiceInputMode) => void;
-  setPushToTalkKey: (key: string) => void;
-  setVoiceProcessingMode: (mode: VoiceProcessingMode) => void;
-  setNoiseSuppression: (enabled: boolean) => void;
-  setAutoGainControl: (enabled: boolean) => void;
-  setEchoCancellation: (enabled: boolean) => void;
-  setNoiseGateEnabled: (enabled: boolean) => void;
-  setNoiseGateThreshold: (threshold: number) => void;
-  setNoiseSuppressionStrength: (strength: number) => void;
-  setInputVolume: (volume: number) => void;
-  setOutputVolume: (volume: number) => void;
-  setLiveAudioLevel: (level: number) => void;
+  setActiveVoiceChannel: (channelId: string | null) => void
+  setVoicePeers: (peers: VoicePeer[]) => void
+  addVoicePeer: (peer: VoicePeer) => void
+  removeVoicePeer: (peerId: string) => void
+  updateVoicePeer: (peerId: string, patch: Partial<VoicePeer>) => void
+  setIsMuted: (muted: boolean) => void
+  setIsSpeaking: (speaking: boolean) => void
+  setLocalConnectionQuality: (quality: ConnectionQuality | null) => void
+  setServerVoiceBitrateKbps: (kbps: number) => void
+  setAudioInputDeviceId: (id: string | null) => void
+  setAudioOutputDeviceId: (id: string | null) => void
+  setVoiceError: (error: string | null) => void
+  setUserStatus: (userId: string, status: UserStatus) => void
+  setUserStatuses: (statuses: Record<string, UserStatus>) => void
+  setUserActivity: (userId: string, activity: UserActivity | null) => void
+  setUserActivities: (activities: Record<string, UserActivity>) => void
+  setVoiceChannelUsers: (users: Record<string, { userId: string; username: string }[]>) => void
+  addVoiceChannelUser: (channelId: string, user: { userId: string; username: string }) => void
+  removeVoiceChannelUser: (channelId: string, userId: string) => void
+  setPeerVolume: (peerId: string, volume: number) => void
+  setPeerCameraStream: (peerId: string, stream: MediaStream) => void
+  removePeerCameraStream: (peerId: string) => void
+  clearPeerCameraStreams: () => void
+  setRouterRtpCapabilities: (caps: RtpCapabilities) => void
+  setIceServers: (servers: { urls: string; username?: string; credential?: string }[]) => void
+  setVoiceInputMode: (mode: VoiceInputMode) => void
+  setPushToTalkKey: (key: string) => void
+  setVoiceProcessingMode: (mode: VoiceProcessingMode) => void
+  setNoiseSuppression: (enabled: boolean) => void
+  setAutoGainControl: (enabled: boolean) => void
+  setEchoCancellation: (enabled: boolean) => void
+  setNoiseGateEnabled: (enabled: boolean) => void
+  setNoiseGateThreshold: (threshold: number) => void
+  setNoiseSuppressionStrength: (strength: number) => void
+  setInputVolume: (volume: number) => void
+  setOutputVolume: (volume: number) => void
+  setLiveAudioLevel: (level: number) => void
 }
 
 export const useVoiceStore = create<VoiceState>()(
@@ -147,22 +147,22 @@ export const useVoiceStore = create<VoiceState>()(
       setVoiceChannelUsers: (voiceChannelUsers) => set({ voiceChannelUsers }),
       addVoiceChannelUser: (channelId, user) =>
         set((s) => {
-          const current = s.voiceChannelUsers[channelId] || [];
-          if (current.some((u) => u.userId === user.userId)) return s;
+          const current = s.voiceChannelUsers[channelId] || []
+          if (current.some((u) => u.userId === user.userId)) return s
           return {
             voiceChannelUsers: { ...s.voiceChannelUsers, [channelId]: [...current, user] },
-          };
+          }
         }),
       removeVoiceChannelUser: (channelId, userId) =>
         set((s) => {
-          const current = s.voiceChannelUsers[channelId] || [];
-          const filtered = current.filter((u) => u.userId !== userId);
+          const current = s.voiceChannelUsers[channelId] || []
+          const filtered = current.filter((u) => u.userId !== userId)
           if (filtered.length === 0) {
-            const next = { ...s.voiceChannelUsers };
-            delete next[channelId];
-            return { voiceChannelUsers: next };
+            const next = { ...s.voiceChannelUsers }
+            delete next[channelId]
+            return { voiceChannelUsers: next }
           }
-          return { voiceChannelUsers: { ...s.voiceChannelUsers, [channelId]: filtered } };
+          return { voiceChannelUsers: { ...s.voiceChannelUsers, [channelId]: filtered } }
         }),
       setPeerVolume: (peerId, volume) =>
         set((s) => ({ peerVolumes: { ...s.peerVolumes, [peerId]: volume } })),
@@ -170,10 +170,10 @@ export const useVoiceStore = create<VoiceState>()(
         set((s) => ({ peerCameraStreams: { ...s.peerCameraStreams, [peerId]: stream } })),
       removePeerCameraStream: (peerId) =>
         set((s) => {
-          if (!s.peerCameraStreams[peerId]) return s;
-          const next = { ...s.peerCameraStreams };
-          delete next[peerId];
-          return { peerCameraStreams: next };
+          if (!s.peerCameraStreams[peerId]) return s
+          const next = { ...s.peerCameraStreams }
+          delete next[peerId]
+          return { peerCameraStreams: next }
         }),
       clearPeerCameraStreams: () => set({ peerCameraStreams: {} }),
       setRouterRtpCapabilities: (routerRtpCapabilities) => set({ routerRtpCapabilities }),
@@ -191,7 +191,7 @@ export const useVoiceStore = create<VoiceState>()(
               noiseSuppression: false,
               noiseGateEnabled: false,
               autoGainControl: false,
-            };
+            }
           }
           if (voiceProcessingMode === 'standard') {
             return {
@@ -199,9 +199,9 @@ export const useVoiceStore = create<VoiceState>()(
               noiseSuppression: true,
               noiseGateEnabled: false,
               autoGainControl: true,
-            };
+            }
           }
-          return { voiceProcessingMode };
+          return { voiceProcessingMode }
         }),
       setNoiseSuppression: (noiseSuppression) => set({ noiseSuppression }),
       setAutoGainControl: (autoGainControl) => set({ autoGainControl }),
@@ -233,4 +233,4 @@ export const useVoiceStore = create<VoiceState>()(
       }),
     },
   ),
-);
+)

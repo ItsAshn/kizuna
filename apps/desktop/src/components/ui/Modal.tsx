@@ -16,7 +16,14 @@ interface ModalProps {
   className?: string
 }
 
-export default function Modal({ open, onClose, title, children, footer, className = '' }: ModalProps) {
+export default function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  className = '',
+}: ModalProps) {
   const [closing, setClosing] = useState(false)
   const [blurred, setBlurred] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
@@ -58,7 +65,7 @@ export default function Modal({ open, onClose, title, children, footer, classNam
     if (!open || !modalRef.current) return
 
     const focusable = modalRef.current.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
     )
     const first = focusable[0]
     const last = focusable[focusable.length - 1]
@@ -99,7 +106,9 @@ export default function Modal({ open, onClose, title, children, footer, classNam
     <div
       className={`modal-overlay${closing ? ' modal-overlay--closing' : ''}${blurred ? ' modal-overlay--blurred' : ''}`}
       onClick={handleClose}
-      onAnimationEnd={() => { if (!closing) setBlurred(true) }}
+      onAnimationEnd={() => {
+        if (!closing) setBlurred(true)
+      }}
       role="presentation"
     >
       <div
@@ -127,12 +136,12 @@ export default function Modal({ open, onClose, title, children, footer, classNam
           onTouchMove={isMobile ? dragHandlers.onTouchMove : undefined}
           onTouchEnd={isMobile ? dragHandlers.onTouchEnd : undefined}
         >
-          <span className="modal__header-title" id={titleId}>{title}</span>
+          <span className="modal__header-title" id={titleId}>
+            {title}
+          </span>
           <IconButton onClick={handleClose} label="Close" size="sm" icon={<X size={14} />} />
         </div>
-        <div className="modal__body">
-          {children}
-        </div>
+        <div className="modal__body">{children}</div>
         {footer && (
           <div className="modal__footer">
             {typeof footer === 'function' ? footer(handleClose) : footer}

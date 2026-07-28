@@ -26,11 +26,11 @@
 
 ## Project Structure
 
-| Package | Path | Purpose |
-|---|---|---|
-| `@kizuna/server` | `apps/server/` | Node.js backend, WebSocket API, mediasoup SFU for WebRTC |
-| `@kizuna/desktop` | `apps/desktop/` | Tauri v2 desktop client (SvelteKit + Vite) |
-| `@kizuna/shared` | `packages/shared/` | Shared TypeScript types and utilities |
+| Package           | Path               | Purpose                                                  |
+| ----------------- | ------------------ | -------------------------------------------------------- |
+| `@kizuna/server`  | `apps/server/`     | Node.js backend, WebSocket API, mediasoup SFU for WebRTC |
+| `@kizuna/desktop` | `apps/desktop/`    | Tauri v2 desktop client (SvelteKit + Vite)               |
+| `@kizuna/shared`  | `packages/shared/` | Shared TypeScript types and utilities                    |
 
 ## Deploy
 
@@ -84,10 +84,12 @@ pnpm start
 All settings are in the `.env` file. See `.env.example` for a full reference.
 
 **Required:**
+
 - `DOMAIN` — your domain name (Caddy needs this for HTTPS)
 - `JWT_SECRET` — generate with `openssl rand -hex 64`
 
 **Optional but recommended:**
+
 - `SERVER_NAME` — display name shown to clients
 - `SERVER_DESCRIPTION` — short description
 - `SERVER_URL` — full HTTPS URL (used for invite codes)
@@ -134,12 +136,12 @@ Open `http://localhost:1420` in Chrome or Firefox. Voice channels require WebRTC
 
 Voice channels need `webkit2gtk-4.1` compiled with `ENABLE_WEB_RTC=ON`. Most distros ship without it.
 
-| Distro | Status | Fix |
-|---|---|---|
-| **Arch / CachyOS** (`extra`) | No WebRTC | `scripts/build-webkit-webrtc.sh` (rebuilds from PKGBUILD, ~45 min) |
-| **Debian / Ubuntu** | No WebRTC | `scripts/build-webkit-webrtc.sh` (rebuilds from apt source, ~60 min) |
-| **Fedora** | No WebRTC | `scripts/build-webkit-webrtc.sh` (rebuilds from dnf source, ~60 min) |
-| **CI AppImage** | WebRTC enabled | Pre-built AppImage bundles patched webkit — voice out of the box |
+| Distro                       | Status         | Fix                                                                  |
+| ---------------------------- | -------------- | -------------------------------------------------------------------- |
+| **Arch / CachyOS** (`extra`) | No WebRTC      | `scripts/build-webkit-webrtc.sh` (rebuilds from PKGBUILD, ~45 min)   |
+| **Debian / Ubuntu**          | No WebRTC      | `scripts/build-webkit-webrtc.sh` (rebuilds from apt source, ~60 min) |
+| **Fedora**                   | No WebRTC      | `scripts/build-webkit-webrtc.sh` (rebuilds from dnf source, ~60 min) |
+| **CI AppImage**              | WebRTC enabled | Pre-built AppImage bundles patched webkit — voice out of the box     |
 
 The install script detects your distro and offers to run `build-webkit-webrtc.sh` automatically. If you skip the rebuild, use `pnpm dev:desktop` and open Chrome/Firefox instead — voice will work there.
 
@@ -149,6 +151,7 @@ The install script detects your distro and offers to run `build-webkit-webrtc.sh
 sudo pacman -S pipewire-pulse
 systemctl --user enable --now pipewire-pulse pipewire-pulse.socket
 ```
+
 </details>
 
 ### Build from Source

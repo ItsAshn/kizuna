@@ -73,7 +73,9 @@
   font-size: 15px;
   font-weight: 500;
   color: var(--text-primary);
-  transition: transform 0.1s ease, background 0.1s ease;
+  transition:
+    transform 0.1s ease,
+    background 0.1s ease;
 }
 
 .mobile-you-menu__item:first-child {

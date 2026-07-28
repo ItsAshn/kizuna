@@ -34,7 +34,9 @@
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .server-browser__search-input::placeholder {
@@ -63,7 +65,10 @@
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .server-browser__sort:hover,
@@ -89,7 +94,9 @@
   border-radius: 50%;
   background: var(--green);
   box-shadow: 0 0 4px rgba(64, 192, 87, 0.5);
-  transition: background 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .server-browser__filter--off .server-browser__filter-dot {
@@ -133,7 +140,11 @@
   border-radius: var(--radius-md);
   cursor: pointer;
   text-align: left;
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
   color: var(--text-primary);
 }
 

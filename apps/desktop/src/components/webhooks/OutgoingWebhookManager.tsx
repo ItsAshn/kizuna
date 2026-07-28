@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  AlertTriangle, Check, ChevronDown, Copy, Eye, EyeOff, RefreshCw, Send, Trash2,
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  Copy,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  Send,
+  Trash2,
 } from 'lucide-react'
 import {
   OUTGOING_WEBHOOK_EVENTS,
@@ -71,7 +79,8 @@ function hostOf(url: string): string {
 
 function statusTone(webhook: OutgoingWebhook): 'ok' | 'fail' | 'idle' {
   if (webhook.last_delivery_at === null) return 'idle'
-  if (webhook.last_status !== null && webhook.last_status >= 200 && webhook.last_status < 300) return 'ok'
+  if (webhook.last_status !== null && webhook.last_status >= 200 && webhook.last_status < 300)
+    return 'ok'
   return 'fail'
 }
 
@@ -99,7 +108,10 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [revealedId, setRevealedId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [pendingAction, setPendingAction] = useState<{ id: string; kind: 'delete' | 'regenerate' } | null>(null)
+  const [pendingAction, setPendingAction] = useState<{
+    id: string
+    kind: 'delete' | 'regenerate'
+  } | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [testing, setTesting] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, OutgoingWebhookTestResult>>({})
@@ -132,17 +144,25 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
     }
   }, [serverUrl, channel?.id])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
-  const channelName = useCallback((webhook: OutgoingWebhook) =>
-    webhook.channel_name ?? channels.find((ch) => ch.id === webhook.channel_id)?.name ?? 'unknown',
-  [channels])
+  const channelName = useCallback(
+    (webhook: OutgoingWebhook) =>
+      webhook.channel_name ??
+      channels.find((ch) => ch.id === webhook.channel_id)?.name ??
+      'unknown',
+    [channels],
+  )
 
   const handleCopy = async (id: string, text: string) => {
     try {
       await navigator.clipboard.writeText(text)
       setCopiedId(id)
-      setTimeout(() => { if (mountedRef.current) setCopiedId(null) }, 2000)
+      setTimeout(() => {
+        if (mountedRef.current) setCopiedId(null)
+      }, 2000)
     } catch {
       setError('clipboard unavailable — reveal the secret and copy it manually')
     }
@@ -150,7 +170,8 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
 
   const handleCreate = async () => {
     if (!serverUrl || !canCreate) return
-    setCreating(true); setError('')
+    setCreating(true)
+    setError('')
     try {
       const webhook = await createOutgoingWebhook(serverUrl, {
         name: newName.trim(),
@@ -161,7 +182,8 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
       })
       if (!mountedRef.current) return
       setWebhooks((prev) => [webhook, ...prev])
-      setNewName(''); setNewUrl('')
+      setNewName('')
+      setNewUrl('')
       setExpandedId(webhook.id)
     } catch (err) {
       if (mountedRef.current) setError(handleApiErr(err))
@@ -184,7 +206,8 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
 
   const handleRegenerate = async (id: string) => {
     if (!serverUrl) return
-    setBusyId(id); setError('')
+    setBusyId(id)
+    setError('')
     try {
       const updated = await regenerateOutgoingWebhookSecret(serverUrl, id)
       if (!mountedRef.current) return
@@ -193,13 +216,17 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
     } catch (err) {
       if (mountedRef.current) setError(handleApiErr(err))
     } finally {
-      if (mountedRef.current) { setBusyId(null); setPendingAction(null) }
+      if (mountedRef.current) {
+        setBusyId(null)
+        setPendingAction(null)
+      }
     }
   }
 
   const handleDelete = async (id: string) => {
     if (!serverUrl) return
-    setBusyId(id); setError('')
+    setBusyId(id)
+    setError('')
     try {
       await deleteOutgoingWebhook(serverUrl, id)
       if (!mountedRef.current) return
@@ -207,13 +234,17 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
     } catch (err) {
       if (mountedRef.current) setError(handleApiErr(err))
     } finally {
-      if (mountedRef.current) { setBusyId(null); setPendingAction(null) }
+      if (mountedRef.current) {
+        setBusyId(null)
+        setPendingAction(null)
+      }
     }
   }
 
   const handleTest = async (id: string) => {
     if (!serverUrl) return
-    setTesting(id); setError('')
+    setTesting(id)
+    setError('')
     try {
       const result = await testOutgoingWebhook(serverUrl, id)
       if (!mountedRef.current) return
@@ -227,13 +258,18 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
     }
   }
 
-  const loadDeliveries = useCallback(async (id: string) => {
-    if (!serverUrl) return
-    try {
-      const list = await fetchOutgoingWebhookDeliveries(serverUrl, id)
-      if (mountedRef.current) setDeliveries((prev) => ({ ...prev, [id]: list }))
-    } catch { /* the panel simply stays empty */ }
-  }, [serverUrl])
+  const loadDeliveries = useCallback(
+    async (id: string) => {
+      if (!serverUrl) return
+      try {
+        const list = await fetchOutgoingWebhookDeliveries(serverUrl, id)
+        if (mountedRef.current) setDeliveries((prev) => ({ ...prev, [id]: list }))
+      } catch {
+        /* the panel simply stays empty */
+      }
+    },
+    [serverUrl],
+  )
 
   const toggleExpanded = (id: string) => {
     const next = expandedId === id ? null : id
@@ -242,7 +278,9 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
   }
 
   const toggleNewEvent = (event: OutgoingWebhookEvent) => {
-    setNewEvents((prev) => (prev.includes(event) ? prev.filter((e) => e !== event) : [...prev, event]))
+    setNewEvents((prev) =>
+      prev.includes(event) ? prev.filter((e) => e !== event) : [...prev, event],
+    )
   }
 
   const canCreate = !!newName.trim() && !!newUrl.trim() && newEvents.length > 0
@@ -276,7 +314,9 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
         <div className="webhook-mgr__create-fields">
           {!channel && (
             <div className="ui-field">
-              <label className="ui-field__label" htmlFor="owh-channel">scope</label>
+              <label className="ui-field__label" htmlFor="owh-channel">
+                scope
+              </label>
               <select
                 id="owh-channel"
                 className="webhook-mgr__select"
@@ -284,12 +324,18 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
                 onChange={(e) => setNewChannelId(e.target.value)}
               >
                 <option value="">all channels (server-wide)</option>
-                {textChannels.map((ch) => <option key={ch.id} value={ch.id}>#{ch.name}</option>)}
+                {textChannels.map((ch) => (
+                  <option key={ch.id} value={ch.id}>
+                    #{ch.name}
+                  </option>
+                ))}
               </select>
             </div>
           )}
           <div className="ui-field">
-            <label className="ui-field__label" htmlFor="owh-format">payload format</label>
+            <label className="ui-field__label" htmlFor="owh-format">
+              payload format
+            </label>
             <select
               id="owh-format"
               className="webhook-mgr__select"
@@ -297,7 +343,9 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
               onChange={(e) => setNewFormat(e.target.value as OutgoingWebhookFormat)}
             >
               {(Object.keys(FORMAT_LABELS) as OutgoingWebhookFormat[]).map((f) => (
-                <option key={f} value={f}>{FORMAT_LABELS[f]}</option>
+                <option key={f} value={f}>
+                  {FORMAT_LABELS[f]}
+                </option>
               ))}
             </select>
           </div>
@@ -329,7 +377,11 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
         </Button>
       </div>
 
-      {error && <p className="webhook-mgr__error" role="alert">{error}</p>}
+      {error && (
+        <p className="webhook-mgr__error" role="alert">
+          {error}
+        </p>
+      )}
 
       <div className="webhook-mgr__list-head">
         <span className="webhook-mgr__list-title">
@@ -355,7 +407,10 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
           const allowed = eventsForScope(!!webhook.channel_id)
 
           return (
-            <div key={webhook.id} className={`webhook-mgr__item${isExpanded ? ' webhook-mgr__item--open' : ''}`}>
+            <div
+              key={webhook.id}
+              className={`webhook-mgr__item${isExpanded ? ' webhook-mgr__item--open' : ''}`}
+            >
               <div className="webhook-mgr__row">
                 <span className={`owh__status owh__status--${tone}`} aria-hidden />
                 <div className="webhook-mgr__meta">
@@ -366,7 +421,8 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
                     {webhook.channel_id ? `#${channelName(webhook)}` : 'all channels'}
                     {' · '}
                     {webhook.events.length} event{webhook.events.length === 1 ? '' : 's'}
-                    {' · last '}{relativeTime(webhook.last_delivery_at)}
+                    {' · last '}
+                    {relativeTime(webhook.last_delivery_at)}
                     {webhook.last_status !== null && ` (${webhook.last_status})`}
                   </span>
                 </div>
@@ -378,7 +434,12 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
                   />
                   <IconButton
                     size="sm"
-                    icon={<ChevronDown size={14} className={isExpanded ? 'webhook-mgr__chevron--open' : ''} />}
+                    icon={
+                      <ChevronDown
+                        size={14}
+                        className={isExpanded ? 'webhook-mgr__chevron--open' : ''}
+                      />
+                    }
                     label={isExpanded ? 'hide details' : 'show details'}
                     title="details"
                     active={isExpanded}
@@ -430,11 +491,13 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
                         <Checkbox
                           key={evt.key}
                           checked={webhook.events.includes(evt.key)}
-                          onChange={(checked) => patch(webhook.id, {
-                            events: checked
-                              ? [...webhook.events, evt.key]
-                              : webhook.events.filter((e) => e !== evt.key),
-                          })}
+                          onChange={(checked) =>
+                            patch(webhook.id, {
+                              events: checked
+                                ? [...webhook.events, evt.key]
+                                : webhook.events.filter((e) => e !== evt.key),
+                            })
+                          }
                           label={evt.label}
                           ariaLabel={evt.desc}
                         />
@@ -444,22 +507,30 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
 
                   <div className="webhook-mgr__create-fields">
                     <div className="ui-field">
-                      <label className="ui-field__label" htmlFor={`owh-fmt-${webhook.id}`}>payload format</label>
+                      <label className="ui-field__label" htmlFor={`owh-fmt-${webhook.id}`}>
+                        payload format
+                      </label>
                       <select
                         id={`owh-fmt-${webhook.id}`}
                         className="webhook-mgr__select"
                         value={webhook.format}
-                        onChange={(e) => patch(webhook.id, { format: e.target.value as OutgoingWebhookFormat })}
+                        onChange={(e) =>
+                          patch(webhook.id, { format: e.target.value as OutgoingWebhookFormat })
+                        }
                       >
                         {(Object.keys(FORMAT_LABELS) as OutgoingWebhookFormat[]).map((f) => (
-                          <option key={f} value={f}>{FORMAT_LABELS[f]}</option>
+                          <option key={f} value={f}>
+                            {FORMAT_LABELS[f]}
+                          </option>
                         ))}
                       </select>
                     </div>
                     <div className="owh__skip">
                       <Checkbox
                         checked={webhook.skip_webhook_messages}
-                        onChange={(skip_webhook_messages) => patch(webhook.id, { skip_webhook_messages })}
+                        onChange={(skip_webhook_messages) =>
+                          patch(webhook.id, { skip_webhook_messages })
+                        }
                         label="skip bridged messages"
                         ariaLabel="skip messages that arrived via an incoming webhook"
                       />
@@ -477,7 +548,7 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
                         <code>{'`${timestamp}.${rawBody}`'}</code> with the secret above:
                       </p>
                       <pre className="webhook-mgr__snippet">
-{`const expected = 'sha256=' + crypto
+                        {`const expected = 'sha256=' + crypto
   .createHmac('sha256', SECRET)
   .update(req.headers['x-kizuna-timestamp'] + '.' + rawBody)
   .digest('hex')
@@ -487,7 +558,10 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
                   )}
 
                   {test && (
-                    <p className={`owh__test owh__test--${test.error ? 'fail' : 'ok'}`} role="status">
+                    <p
+                      className={`owh__test owh__test--${test.error ? 'fail' : 'ok'}`}
+                      role="status"
+                    >
                       {test.error
                         ? `test failed: ${test.error}`
                         : `test delivered — HTTP ${test.status} in ${test.duration_ms}ms`}
@@ -499,10 +573,17 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
                       <span className="ui-field__label">recent deliveries</span>
                       <ul className="owh__delivery-list">
                         {rows.map((d) => (
-                          <li key={d.id} className={`owh__delivery owh__delivery--${d.error ? 'fail' : 'ok'}`}>
+                          <li
+                            key={d.id}
+                            className={`owh__delivery owh__delivery--${d.error ? 'fail' : 'ok'}`}
+                          >
                             <span className="owh__delivery-event">{d.event}</span>
-                            <span className="owh__delivery-status">{d.status ?? 'network error'}</span>
-                            {d.attempt > 1 && <span className="owh__delivery-attempt">try {d.attempt}</span>}
+                            <span className="owh__delivery-status">
+                              {d.status ?? 'network error'}
+                            </span>
+                            {d.attempt > 1 && (
+                              <span className="owh__delivery-attempt">try {d.attempt}</span>
+                            )}
                             <span className="owh__delivery-time">{relativeTime(d.created_at)}</span>
                           </li>
                         ))}
@@ -550,11 +631,21 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
                           size="sm"
                           variant={confirm === 'delete' ? 'danger' : 'primary'}
                           loading={busyId === webhook.id}
-                          onClick={() => (confirm === 'delete' ? handleDelete(webhook.id) : handleRegenerate(webhook.id))}
+                          onClick={() =>
+                            confirm === 'delete'
+                              ? handleDelete(webhook.id)
+                              : handleRegenerate(webhook.id)
+                          }
                         >
                           {confirm === 'delete' ? 'delete' : 'rotate'}
                         </Button>
-                        <Button size="sm" variant="secondary" onClick={() => setPendingAction(null)}>cancel</Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setPendingAction(null)}
+                        >
+                          cancel
+                        </Button>
                       </div>
                     </div>
                   )}

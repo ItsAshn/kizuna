@@ -8,12 +8,7 @@
 }
 
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--bg-hover) 0%,
-    var(--bg-active) 40%,
-    var(--bg-hover) 80%
-  );
+  background: linear-gradient(90deg, var(--bg-hover) 0%, var(--bg-active) 40%, var(--bg-hover) 80%);
   background-size: 800px 100%;
   animation: skeletonShimmer 1.6s ease-in-out infinite;
   border-radius: var(--radius-xs);

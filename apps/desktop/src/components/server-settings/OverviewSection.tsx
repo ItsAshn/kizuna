@@ -10,13 +10,21 @@ import {
 import { handleApiErr, useMountedRef, fileToDataUrl } from './common'
 import './OverviewSection.css'
 
-export function OverviewSection({ serverUrl, onBackgroundChanged }: { serverUrl: string | undefined; onBackgroundChanged?: () => void }) {
+export function OverviewSection({
+  serverUrl,
+  onBackgroundChanged,
+}: {
+  serverUrl: string | undefined
+  onBackgroundChanged?: () => void
+}) {
   const { activeSession: session, updateServerInfo, servers } = useServerStore()
   const mountedRef = useMountedRef()
 
-  const [serverName, setServerName] = useState(session ? servers.find(s => s.id === session.serverId)?.name ?? '' : '')
+  const [serverName, setServerName] = useState(
+    session ? (servers.find((s) => s.id === session.serverId)?.name ?? '') : '',
+  )
   const [serverIconPreview, setServerIconPreview] = useState<string | null>(
-    session ? servers.find(s => s.id === session.serverId)?.icon ?? null : null,
+    session ? (servers.find((s) => s.id === session.serverId)?.icon ?? null) : null,
   )
   const [serverIconChanged, setServerIconChanged] = useState(false)
   const [serverSaving, setServerSaving] = useState(false)
@@ -35,27 +43,35 @@ export function OverviewSection({ serverUrl, onBackgroundChanged }: { serverUrl:
 
   const serverIconDisplay = serverIconPreview
 
-  const bgPreviewUrl = serverUrl && bgHasImage ? `${serverUrl}/api/server/background?t=${bgPreviewTs}` : null
+  const bgPreviewUrl =
+    serverUrl && bgHasImage ? `${serverUrl}/api/server/background?t=${bgPreviewTs}` : null
 
   useEffect(() => {
-    if (!serverUrl) { setInfoLoading(false); return }
-
-    const delay = setTimeout(() => { if (mountedRef.current) setInfoLoading(true) }, 300)
-
-    fetchServerInfo(serverUrl).then(info => {
-      if (!mountedRef.current) return
-      clearTimeout(delay)
-      setBgHasImage(info.hasBackground)
-      setBgBlur(info.backgroundBlur)
-      setVoiceBitrateKbps(info.voiceBitrateKbps ?? 64)
+    if (!serverUrl) {
       setInfoLoading(false)
-    }).catch((err) => {
-      console.error('Failed to fetch server info:', err)
-      if (mountedRef.current) {
+      return
+    }
+
+    const delay = setTimeout(() => {
+      if (mountedRef.current) setInfoLoading(true)
+    }, 300)
+
+    fetchServerInfo(serverUrl)
+      .then((info) => {
+        if (!mountedRef.current) return
         clearTimeout(delay)
+        setBgHasImage(info.hasBackground)
+        setBgBlur(info.backgroundBlur)
+        setVoiceBitrateKbps(info.voiceBitrateKbps ?? 64)
         setInfoLoading(false)
-      }
-    })
+      })
+      .catch((err) => {
+        console.error('Failed to fetch server info:', err)
+        if (mountedRef.current) {
+          clearTimeout(delay)
+          setInfoLoading(false)
+        }
+      })
 
     return () => clearTimeout(delay)
   }, [serverUrl, mountedRef])
@@ -80,20 +96,23 @@ export function OverviewSection({ serverUrl, onBackgroundChanged }: { serverUrl:
 
   // auto-save background blur on change (ref-based so it survives modal close)
   const bgBlurSaveTimerRef = useRef<ReturnType<typeof setTimeout>>()
-  const saveBgBlur = useCallback((blur: number) => {
-    clearTimeout(bgBlurSaveTimerRef.current)
-    bgBlurSaveTimerRef.current = setTimeout(async () => {
-      const url = useServerStore.getState().activeSession?.url
-      if (!url) return
-      try {
-        await updateServerSettings(url, undefined, undefined, blur)
-        onBackgroundChanged?.()
-      } catch (err) {
-        console.error('Failed to save background blur:', err)
-        setServerMsg(handleApiErr(err))
-      }
-    }, 400)
-  }, [onBackgroundChanged])
+  const saveBgBlur = useCallback(
+    (blur: number) => {
+      clearTimeout(bgBlurSaveTimerRef.current)
+      bgBlurSaveTimerRef.current = setTimeout(async () => {
+        const url = useServerStore.getState().activeSession?.url
+        if (!url) return
+        try {
+          await updateServerSettings(url, undefined, undefined, blur)
+          onBackgroundChanged?.()
+        } catch (err) {
+          console.error('Failed to save background blur:', err)
+          setServerMsg(handleApiErr(err))
+        }
+      }, 400)
+    },
+    [onBackgroundChanged],
+  )
 
   const handleServerIconFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -120,7 +139,14 @@ export function OverviewSection({ serverUrl, onBackgroundChanged }: { serverUrl:
           iconPayload = await fileToDataUrl(pendingServerIconFile.current)
         }
       }
-      const res = await updateServerSettings(serverUrl, serverName, iconPayload, bgBlur, undefined, voiceBitrateKbps)
+      const res = await updateServerSettings(
+        serverUrl,
+        serverName,
+        iconPayload,
+        bgBlur,
+        undefined,
+        voiceBitrateKbps,
+      )
       updateServerInfo(session.serverId, { name: res.name, icon: res.icon ?? undefined })
       setServerIconChanged(false)
       setServerIconPreview(res.icon ?? null)
@@ -175,25 +201,60 @@ export function OverviewSection({ serverUrl, onBackgroundChanged }: { serverUrl:
       <div className="server-menu__settings-group">
         <p className="server-menu__settings-group-title">identity</p>
         <div className="server-menu__avatar-row">
-          <div className="server-menu__avatar" onClick={() => serverIconFileRef.current?.click()} title="click to change server icon">
+          <div
+            className="server-menu__avatar"
+            onClick={() => serverIconFileRef.current?.click()}
+            title="click to change server icon"
+          >
             <span>{(serverName || '?').slice(0, 2).toUpperCase()}</span>
             {serverIconDisplay && (
-              <img src={serverIconDisplay} alt="" className="server-menu__avatar-img"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+              <img
+                src={serverIconDisplay}
+                alt=""
+                className="server-menu__avatar-img"
+                onError={(e) => {
+                  ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                }}
+              />
             )}
           </div>
           <div className="server-menu__avatar-actions">
-            <button onClick={() => serverIconFileRef.current?.click()} className="server-menu__upload-btn">upload icon</button>
-            {(serverIconPreview) && (
-              <button onClick={() => { pendingServerIconFile.current = null; setServerIconPreview(null); setServerIconChanged(true) }}
-                className="server-menu__remove-btn">remove icon</button>
+            <button
+              onClick={() => serverIconFileRef.current?.click()}
+              className="server-menu__upload-btn"
+            >
+              upload icon
+            </button>
+            {serverIconPreview && (
+              <button
+                onClick={() => {
+                  pendingServerIconFile.current = null
+                  setServerIconPreview(null)
+                  setServerIconChanged(true)
+                }}
+                className="server-menu__remove-btn"
+              >
+                remove icon
+              </button>
             )}
           </div>
-          <input ref={serverIconFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleServerIconFile} />
+          <input
+            ref={serverIconFileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleServerIconFile}
+          />
         </div>
         <div className="server-menu__field" style={{ marginTop: '10px' }}>
           <label className="server-menu__label">server name</label>
-          <input className="server-menu__input" maxLength={100} value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="server name" />
+          <input
+            className="server-menu__input"
+            maxLength={100}
+            value={serverName}
+            onChange={(e) => setServerName(e.target.value)}
+            placeholder="server name"
+          />
         </div>
       </div>
 
@@ -207,17 +268,31 @@ export function OverviewSection({ serverUrl, onBackgroundChanged }: { serverUrl:
               className={`server-menu__bg-preview${!bgPreviewUrl ? ' server-menu__bg-preview--empty' : ''}`}
               style={bgPreviewUrl ? { backgroundImage: `url(${bgPreviewUrl})` } : undefined}
             >
-              {!bgPreviewUrl && <span className="server-menu__bg-preview-placeholder">no image</span>}
+              {!bgPreviewUrl && (
+                <span className="server-menu__bg-preview-placeholder">no image</span>
+              )}
             </div>
             <div className="server-menu__bg-actions">
-              <button onClick={() => bgFileRef.current?.click()} disabled={bgUploading} className="server-menu__upload-btn">
+              <button
+                onClick={() => bgFileRef.current?.click()}
+                disabled={bgUploading}
+                className="server-menu__upload-btn"
+              >
                 {bgUploading ? 'uploading...' : bgHasImage ? 'change' : 'upload background'}
               </button>
               {bgHasImage && (
-                <button onClick={handleRemoveBg} className="server-menu__remove-btn">remove</button>
+                <button onClick={handleRemoveBg} className="server-menu__remove-btn">
+                  remove
+                </button>
               )}
             </div>
-            <input ref={bgFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBgFile} />
+            <input
+              ref={bgFileRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleBgFile}
+            />
           </div>
         </div>
         <div className="server-menu__field" style={{ marginTop: '10px' }}>
@@ -225,7 +300,16 @@ export function OverviewSection({ serverUrl, onBackgroundChanged }: { serverUrl:
             <label className="server-menu__label">background blur</label>
             <span className="server-menu__value-chip">{bgBlur}px</span>
           </div>
-          <Slider min={0} max={20} value={bgBlur} onChange={(v) => { setBgBlur(v); saveBgBlur(v) }} ariaLabel="Background blur" />
+          <Slider
+            min={0}
+            max={20}
+            value={bgBlur}
+            onChange={(v) => {
+              setBgBlur(v)
+              saveBgBlur(v)
+            }}
+            ariaLabel="Background blur"
+          />
         </div>
       </div>
 
@@ -236,7 +320,11 @@ export function OverviewSection({ serverUrl, onBackgroundChanged }: { serverUrl:
           <label className="server-menu__label">bitrate</label>
           <select
             value={voiceBitrateKbps}
-            onChange={(e) => { const kbps = Number(e.target.value); setVoiceBitrateKbps(kbps); saveVoiceBitrate(kbps) }}
+            onChange={(e) => {
+              const kbps = Number(e.target.value)
+              setVoiceBitrateKbps(kbps)
+              saveVoiceBitrate(kbps)
+            }}
             className="server-menu__select"
           >
             <option value={32}>32 kbps — low bandwidth</option>
@@ -252,11 +340,17 @@ export function OverviewSection({ serverUrl, onBackgroundChanged }: { serverUrl:
       </div>
 
       <div className="server-menu__save-row">
-        <button onClick={handleSaveServer} disabled={serverSaving} className="server-menu__save-btn">
+        <button
+          onClick={handleSaveServer}
+          disabled={serverSaving}
+          className="server-menu__save-btn"
+        >
           {serverSaving ? 'saving...' : 'save settings'}
         </button>
         {serverMsg && (
-          <span className={`server-menu__save-msg ${serverMsg === 'saved' || serverMsg.startsWith('background') ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`}>
+          <span
+            className={`server-menu__save-msg ${serverMsg === 'saved' || serverMsg.startsWith('background') ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`}
+          >
             {serverMsg}
           </span>
         )}

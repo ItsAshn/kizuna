@@ -21,10 +21,20 @@ interface UserProfileCardProps {
 
 function formatDate(ts: number | null | undefined): string | null {
   if (!ts) return null
-  return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  return new Date(ts).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
 }
 
-export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, onMention: _onMention }: UserProfileCardProps) {
+export default function UserProfileCard({
+  userId,
+  anchorEl,
+  onClose,
+  onStartDM,
+  onMention: _onMention,
+}: UserProfileCardProps) {
   const members = useChatStore((s) => s.members)
   const session = useServerStore((s) => s.activeSession)
   const userStatuses = useVoiceStore((s) => s.userStatuses)
@@ -106,8 +116,32 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
   const activity = userActivities[userId]
 
   return createPortal(
-    <div ref={ref} className="user-profile-card" style={{ position: 'fixed', top: pos?.top ?? 0, left: pos?.left ?? 0, visibility: pos ? 'visible' : 'hidden' }}>
-      <div className="user-profile-card__banner" style={profile.banner ? { backgroundImage: `url(${profile.banner})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { backgroundColor: member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)') }} />
+    <div
+      ref={ref}
+      className="user-profile-card"
+      style={{
+        position: 'fixed',
+        top: pos?.top ?? 0,
+        left: pos?.left ?? 0,
+        visibility: pos ? 'visible' : 'hidden',
+      }}
+    >
+      <div
+        className="user-profile-card__banner"
+        style={
+          profile.banner
+            ? {
+                backgroundImage: `url(${profile.banner})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }
+            : {
+                backgroundColor:
+                  member.custom_role_color ||
+                  (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)'),
+              }
+        }
+      />
       <div className="user-profile-card__avatar-wrap">
         <Avatar
           src={member.avatar}
@@ -117,7 +151,10 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
           status={status}
           stickerId={statusStickerId}
           serverUrl={session?.url}
-          bgColor={member.custom_role_color || (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)')}
+          bgColor={
+            member.custom_role_color ||
+            (member.role === 'admin' ? 'var(--yellow)' : 'var(--avatar-bg-default)')
+          }
         />
       </div>
 
@@ -125,21 +162,35 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
         <h3 className="user-profile-card__name">{displayName}</h3>
         <p className="user-profile-card__username">@{member.username}</p>
         <p className="user-profile-card__status-text">
-          {statusEmoji && !statusStickerId && <span className="user-profile-card__status-emoji">{statusEmoji}</span>}
+          {statusEmoji && !statusStickerId && (
+            <span className="user-profile-card__status-emoji">{statusEmoji}</span>
+          )}
           {statusText}
         </p>
         {activity && (
           <div className="user-profile-card__activity">
-            <span className={`user-profile-card__activity-icon${activity.icon ? ' user-profile-card__activity-icon--img' : ''}`}>
-              <ActivityIcon activity={activity} size={20} className="user-profile-card__activity-img" />
+            <span
+              className={`user-profile-card__activity-icon${activity.icon ? ' user-profile-card__activity-icon--img' : ''}`}
+            >
+              <ActivityIcon
+                activity={activity}
+                size={20}
+                className="user-profile-card__activity-img"
+              />
             </span>
             <div className="user-profile-card__activity-body">
               {activityVerb(activity.type) && (
-                <span className="user-profile-card__activity-label">{activityVerb(activity.type)}</span>
+                <span className="user-profile-card__activity-label">
+                  {activityVerb(activity.type)}
+                </span>
               )}
               <span className="user-profile-card__activity-name">{activity.name}</span>
-              {activity.details && <span className="user-profile-card__activity-details">{activity.details}</span>}
-              {activity.state && <span className="user-profile-card__activity-state">{activity.state}</span>}
+              {activity.details && (
+                <span className="user-profile-card__activity-details">{activity.details}</span>
+              )}
+              {activity.state && (
+                <span className="user-profile-card__activity-state">{activity.state}</span>
+              )}
             </div>
           </div>
         )}
@@ -147,7 +198,15 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
 
       <div className="user-profile-card__roles">
         {member.custom_roles?.map((r) => (
-          <span key={r.id} className="user-profile-card__role-badge" style={{ color: r.color || 'var(--brand)', borderColor: hexToRgba(r.color || '#4c6ef5', 0.4), backgroundColor: hexToRgba(r.color || '#4c6ef5', 34 / 255) }}>
+          <span
+            key={r.id}
+            className="user-profile-card__role-badge"
+            style={{
+              color: r.color || 'var(--brand)',
+              borderColor: hexToRgba(r.color || '#4c6ef5', 0.4),
+              backgroundColor: hexToRgba(r.color || '#4c6ef5', 34 / 255),
+            }}
+          >
             {r.name}
           </span>
         ))}
@@ -155,7 +214,9 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
 
       <div className="user-profile-card__meta">
         <div className="user-profile-card__meta-item">
-          <span className={`user-profile-card__status-dot user-profile-card__status-dot--${status}`} />
+          <span
+            className={`user-profile-card__status-dot user-profile-card__status-dot--${status}`}
+          />
           <span>{status.charAt(0).toUpperCase() + status.slice(1)}</span>
         </div>
         {joinedAt && (
@@ -178,9 +239,14 @@ export default function UserProfileCard({ userId, anchorEl, onClose, onStartDM, 
             <MessageCircle size={14} />
             Message
           </button>
-          <button className="user-profile-card__action-btn" onClick={() => { useChatStore.getState().setPendingMention(member.username); onClose() }}>
-            @
-            Mention
+          <button
+            className="user-profile-card__action-btn"
+            onClick={() => {
+              useChatStore.getState().setPendingMention(member.username)
+              onClose()
+            }}
+          >
+            @ Mention
           </button>
         </div>
       )}
