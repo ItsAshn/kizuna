@@ -18,6 +18,7 @@ import type Database from 'better-sqlite3'
 import { getAuth } from '../utils/auth'
 import { getIo, emitToChannel } from '../utils/io'
 import { dispatchOutgoing } from '../services/outgoingWebhooks'
+import { deleteMessageRows } from '../services/messageDeletion'
 
 interface ReactionRow {
   message_id: string
@@ -33,10 +34,6 @@ interface ReactionGroup {
   reaction_type: string
   count: number
   users: Array<{ user_id: string; username: string }>
-}
-
-interface AttachmentRow {
-  url: string
 }
 
 const messageRoutes = new Hono()
@@ -307,13 +304,12 @@ messageRoutes.delete('/:messageId', authMiddleware, async (c) => {
     }
   }
 
+  const attachmentUrls = deleteMessageRows(messageId!)
+
   const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
-  const attachments = db
-    .prepare('SELECT * FROM attachments WHERE message_id = ?')
-    .all(messageId) as AttachmentRow[]
   await Promise.all(
-    attachments.map(async (att) => {
-      const filepath = path.join(uploadsDir, path.basename(att.url))
+    attachmentUrls.map(async (url) => {
+      const filepath = path.join(uploadsDir, path.basename(url))
       try {
         await fs.unlink(filepath)
       } catch {
@@ -321,11 +317,6 @@ messageRoutes.delete('/:messageId', authMiddleware, async (c) => {
       }
     }),
   )
-
-  db.prepare('DELETE FROM attachments WHERE message_id = ?').run(messageId)
-  db.prepare('DELETE FROM mentions WHERE message_id = ?').run(messageId)
-  db.prepare('DELETE FROM message_edits WHERE message_id = ?').run(messageId)
-  db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
 
   emitToChannel(
     c,
