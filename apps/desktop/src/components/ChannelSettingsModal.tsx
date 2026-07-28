@@ -5,13 +5,11 @@ import {
   fetchChannelOverrides,
   setChannelOverride,
   deleteChannelOverride,
-  fetchWebhooks,
-  createWebhook,
-  deleteWebhook,
 } from '@kizuna/shared'
 import type { CustomRole, Permission, Channel } from '@kizuna/shared'
 import Modal from './ui/Modal'
 import Tabs from './ui/Tabs'
+import WebhookManager from './webhooks/WebhookManager'
 import './ChannelSettingsModal.css'
 
 interface Props {
@@ -112,48 +110,6 @@ export default function ChannelSettingsModal({ channel, onClose }: Props) {
     if (serverUrl) setChannelOverride(serverUrl, channel.id, roleId, newAllow, newDeny).catch(() => {})
   }
 
-  const [webhooks, setWebhooks] = useState<{ id: string; name: string; token: string; channel_id: string; created_at: number }[]>([])
-  const [whName, setWhName] = useState('')
-  const [whLoading, setWhLoading] = useState(false)
-  const [whError, setWhError] = useState('')
-  const [copiedId, setCopiedId] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!serverUrl) return
-    fetchWebhooks(serverUrl, channel.id).then((r) => setWebhooks(r.webhooks)).catch(() => {})
-  }, [serverUrl, channel.id])
-
-  const handleCreateWebhook = async () => {
-    if (!serverUrl || !whName.trim()) return
-    setWhLoading(true); setWhError('')
-    try {
-      await createWebhook(serverUrl, channel.id, whName.trim())
-      setWhName('')
-      const r = await fetchWebhooks(serverUrl, channel.id)
-      setWebhooks(r.webhooks)
-    } catch (err: unknown) {
-      setWhError(err instanceof Error ? err.message : String(err))
-    } finally { setWhLoading(false) }
-  }
-
-  const handleDeleteWebhook = async (id: string) => {
-    if (!serverUrl) return
-    try {
-      await deleteWebhook(serverUrl, id)
-      setWebhooks((prev) => prev.filter((w) => w.id !== id))
-    } catch (err: unknown) {
-      setWhError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  const handleCopy = async (token: string, id: string) => {
-    try {
-      await navigator.clipboard.writeText(`${serverUrl ?? ''}/api/webhooks/incoming/${token}`)
-      setCopiedId(id)
-      setTimeout(() => setCopiedId(null), 2000)
-    } catch { /* ignore */ }
-  }
-
   return (
     <Modal
       open
@@ -236,64 +192,7 @@ export default function ChannelSettingsModal({ channel, onClose }: Props) {
 
       {tab === 'integrations' && (
         <div style={{ marginTop: '16px' }}>
-          <p className="channel-settings__section-title">Incoming Webhooks</p>
-          <p className="channel-settings__hint">
-            Post messages to this channel from external services like bots, CI/CD, or GitHub.
-          </p>
-
-          <div className="channel-settings__field" style={{ marginTop: '12px' }}>
-            <label className="channel-settings__label">name</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input
-                className="channel-settings__input"
-                placeholder="My Bot"
-                value={whName}
-                onChange={(e) => setWhName(e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <button
-                className="channel-settings__save-btn"
-                onClick={handleCreateWebhook}
-                disabled={whLoading || !whName.trim()}
-              >
-                {whLoading ? 'creating...' : 'create'}
-              </button>
-            </div>
-          </div>
-
-          {whError && <p className="channel-settings__error">{whError}</p>}
-
-          <div style={{ marginTop: '20px' }}>
-            {webhooks.length > 0 ? (
-              webhooks.map((wh) => (
-                <div key={wh.id} className="channel-settings__webhook-item">
-                  <div className="channel-settings__webhook-item-info">
-                    <span className="channel-settings__webhook-item-name">{wh.name}</span>
-                    <span className="channel-settings__webhook-item-date">
-                      {new Date(wh.created_at * 1000).toLocaleDateString()}
-                    </span>
-                  </div>
-                  <div className="channel-settings__webhook-item-actions">
-                    <button
-                      className={`channel-settings__save-btn${copiedId === wh.id ? ' channel-settings__save-btn--copied' : ''}`}
-                      onClick={() => handleCopy(wh.token, wh.id)}
-                      style={{ fontSize: '11px', padding: '4px 10px' }}
-                    >
-                      {copiedId === wh.id ? 'copied!' : 'copy url'}
-                    </button>
-                    <button
-                      className="channel-settings__delete-btn"
-                      onClick={() => handleDeleteWebhook(wh.id)}
-                    >
-                      delete
-                    </button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="channel-settings__loading">no webhooks configured</p>
-            )}
-          </div>
+          <WebhookManager serverUrl={serverUrl} channel={channel} />
         </div>
       )}
     </Modal>
