@@ -17,7 +17,9 @@ const PENDING_NOTE_KEY = 'kizuna-pending-update-note'
 
 export { isMobileTauri }
 
-type TauriUpdate = NonNullable<Awaited<ReturnType<typeof import('@tauri-apps/plugin-updater').check>>>
+type TauriUpdate = NonNullable<
+  Awaited<ReturnType<typeof import('@tauri-apps/plugin-updater').check>>
+>
 
 /**
  * The handle returned by check() is what actually downloads the update, and the
@@ -36,7 +38,10 @@ function normalizeVersion(v: string): string {
 
 /** Compares dotted numeric versions; returns true when `latest` is newer than `current`. */
 function isNewer(latest: string, current: string): boolean {
-  const parse = (v: string) => normalizeVersion(v).split(/[.-]/).map((p) => parseInt(p, 10) || 0)
+  const parse = (v: string) =>
+    normalizeVersion(v)
+      .split(/[.-]/)
+      .map((p) => parseInt(p, 10) || 0)
   const a = parse(latest)
   const b = parse(current)
   for (let i = 0; i < Math.max(a.length, b.length); i++) {

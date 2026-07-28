@@ -38,14 +38,14 @@ kizuna/
 
 ## Scripts
 
-| Script | Description |
-|--------|-------------|
-| `pnpm dev` | Start server in dev mode |
-| `pnpm typecheck` | Run TypeScript type checking on all packages |
-| `pnpm lint` | Run ESLint on all packages |
-| `pnpm format` | Format code with Prettier |
-| `pnpm format:check` | Check code formatting |
-| `pnpm build` | Build server and desktop |
+| Script              | Description                                  |
+| ------------------- | -------------------------------------------- |
+| `pnpm dev`          | Start server in dev mode                     |
+| `pnpm typecheck`    | Run TypeScript type checking on all packages |
+| `pnpm lint`         | Run ESLint on all packages                   |
+| `pnpm format`       | Format code with Prettier                    |
+| `pnpm format:check` | Check code formatting                        |
+| `pnpm build`        | Build server and desktop                     |
 
 ## Code Conventions
 

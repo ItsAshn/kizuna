@@ -1,6 +1,4 @@
-import type {
-  LinkedIdentity,
-} from '../types'
+import type { LinkedIdentity } from '../types'
 import { client } from './core'
 
 // ─── Identity Linking ─────────────────────────────────────
@@ -36,9 +34,7 @@ export async function completeIdentityLink(
   return res.data.linked_identity
 }
 
-export async function getLinkedIdentities(
-  serverUrl: string,
-): Promise<LinkedIdentity[]> {
+export async function getLinkedIdentities(serverUrl: string): Promise<LinkedIdentity[]> {
   const res = await client(serverUrl).get('/api/auth/identity-links')
   return res.data.linked_identities ?? []
 }
@@ -53,9 +49,6 @@ export async function setLinkedIdentityPublic(
   })
 }
 
-export async function unlinkIdentity(
-  serverUrl: string,
-  linkId: string,
-): Promise<void> {
+export async function unlinkIdentity(serverUrl: string, linkId: string): Promise<void> {
   await client(serverUrl).delete(`/api/auth/identity-links/${linkId}`)
 }

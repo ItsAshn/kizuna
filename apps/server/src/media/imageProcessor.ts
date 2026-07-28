@@ -19,13 +19,14 @@ export function shouldProcessImage(filename: string): boolean {
   return STATIC_IMAGE_EXTS.has(ext) || ext === GIF_EXT
 }
 
-export async function processImage(buffer: Buffer, originalFilename: string): Promise<ProcessedImage> {
+export async function processImage(
+  buffer: Buffer,
+  originalFilename: string,
+): Promise<ProcessedImage> {
   const ext = path.extname(originalFilename).toLowerCase()
 
   if (STATIC_IMAGE_EXTS.has(ext)) {
-    const output = Buffer.from(await sharp(buffer)
-      .webp({ quality: WEBP_QUALITY })
-      .toBuffer())
+    const output = Buffer.from(await sharp(buffer).webp({ quality: WEBP_QUALITY }).toBuffer())
 
     const baseName = path.basename(originalFilename, ext)
     let width = 0
@@ -57,9 +58,9 @@ export async function processImage(buffer: Buffer, originalFilename: string): Pr
 
     let thumbBuffer: Uint8Array | undefined
     try {
-      thumbBuffer = Buffer.from(await sharp(buffer, { animated: true, page: 0 })
-        .webp({ quality: WEBP_QUALITY })
-        .toBuffer())
+      thumbBuffer = Buffer.from(
+        await sharp(buffer, { animated: true, page: 0 }).webp({ quality: WEBP_QUALITY }).toBuffer(),
+      )
     } catch {}
 
     return {

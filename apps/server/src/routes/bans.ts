@@ -1,6 +1,16 @@
 import { Hono } from 'hono'
 import { getDb } from '../db'
-import { authMiddleware, adminMiddleware, hasPermissionForUser, getUserInfo, isUserAdmin, markMemberRemoved, clearMemberRemoval, revokeUserSessions, clearPermissionCache } from '../middleware/auth'
+import {
+  authMiddleware,
+  adminMiddleware,
+  hasPermissionForUser,
+  getUserInfo,
+  isUserAdmin,
+  markMemberRemoved,
+  clearMemberRemoval,
+  revokeUserSessions,
+  clearPermissionCache,
+} from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 import { logAuditEvent } from '../routes/audit'
 import { getAuth } from '../utils/auth'
@@ -12,7 +22,9 @@ const banRoutes = new Hono()
 banRoutes.get('/', authMiddleware, adminMiddleware, (c) => {
   const db = getDb()
   const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 100)
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(
+      `
     SELECT b.*, u.username as banned_username, u.display_name as banned_display_name,
            ub.username as banner_username
     FROM bans b
@@ -20,9 +32,11 @@ banRoutes.get('/', authMiddleware, adminMiddleware, (c) => {
     LEFT JOIN users ub ON b.banned_by = ub.id
     ORDER BY b.created_at DESC
     LIMIT ?
-  `).all(limit) as Record<string, unknown>[]
+  `,
+    )
+    .all(limit) as Record<string, unknown>[]
 
-  const bans = rows.map(r => ({
+  const bans = rows.map((r) => ({
     id: r.id,
     userId: r.user_id,
     bannedBy: r.banned_by,
@@ -46,7 +60,9 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
   }
   if (targetUserId === user.userId) return c.json({ error: 'Cannot ban yourself' }, 400)
 
-  const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId) as Record<string, unknown> | undefined
+  const member = db.prepare('SELECT * FROM server_members WHERE user_id = ?').get(targetUserId) as
+    | Record<string, unknown>
+    | undefined
   if (!member) return c.json({ error: 'Member not found' }, 404)
   if (member.is_host) return c.json({ error: 'Cannot ban the host' }, 403)
 
@@ -55,7 +71,9 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
     return c.json({ error: 'Cannot ban an admin' }, 403)
   }
 
-  const existing = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(targetUserId) as Record<string, unknown> | undefined
+  const existing = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(targetUserId) as
+    | Record<string, unknown>
+    | undefined
   if (existing) return c.json({ error: 'User is already banned' }, 400)
 
   let reason = null
@@ -66,7 +84,12 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
 
   const id = uuidv4()
   db.transaction(() => {
-    db.prepare('INSERT INTO bans (id, user_id, banned_by, reason) VALUES (?, ?, ?, ?)').run(id, targetUserId, user.userId, reason)
+    db.prepare('INSERT INTO bans (id, user_id, banned_by, reason) VALUES (?, ?, ?, ?)').run(
+      id,
+      targetUserId,
+      user.userId,
+      reason,
+    )
     db.prepare('DELETE FROM server_members WHERE user_id = ?').run(targetUserId)
     db.prepare('DELETE FROM member_roles WHERE user_id = ?').run(targetUserId)
     markMemberRemoved(targetUserId, user.userId)
@@ -77,7 +100,11 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
   disconnectUserSockets(c, targetUserId, 'banned')
   emitIo(c, 'member:removed', { userId: targetUserId })
   dispatchOutgoing('member.removed', {
-    user: { id: targetUserId, username: targetInfo?.username, display_name: targetInfo?.displayName },
+    user: {
+      id: targetUserId,
+      username: targetInfo?.username,
+      display_name: targetInfo?.displayName,
+    },
     actor: { id: user.userId, username: user.username },
     reason: typeof reason === 'string' ? `banned: ${reason}` : 'banned',
   })
@@ -96,7 +123,9 @@ banRoutes.delete('/:userId', authMiddleware, (c) => {
     return c.json({ error: 'You do not have permission to manage bans' }, 403)
   }
 
-  const ban = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(targetUserId) as Record<string, unknown> | undefined
+  const ban = db.prepare('SELECT id FROM bans WHERE user_id = ?').get(targetUserId) as
+    | Record<string, unknown>
+    | undefined
   if (!ban) return c.json({ error: 'Ban not found' }, 404)
 
   db.prepare('DELETE FROM bans WHERE user_id = ?').run(targetUserId)

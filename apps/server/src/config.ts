@@ -31,31 +31,102 @@ const envSchema = z.object({
   MAX_PACK_SIZE: z.coerce.number().int().positive().default(15728640),
   MAX_BODY_SIZE: z.coerce.number().int().positive().default(1048576),
   GROUP_DM_MAX_MEMBERS: z.coerce.number().int().positive().default(10),
-  SPAM_RATE_MAX: z.coerce.number().int().positive().default(10).describe('Max messages per user per time window'),
-  SPAM_RATE_WINDOW_MS: z.coerce.number().int().positive().default(10000).describe('Global rate limit window in ms'),
-  SPAM_CHANNEL_RATE_MAX: z.coerce.number().int().positive().default(8).describe('Max messages per channel per time window'),
-  SPAM_CHANNEL_RATE_WINDOW_MS: z.coerce.number().int().positive().default(10000).describe('Channel rate limit window in ms'),
-  SPAM_DUPLICATE_WINDOW_MS: z.coerce.number().int().positive().default(30000).describe('Duplicate content detection window in ms'),
-  SPAM_MENTION_MAX: z.coerce.number().int().positive().default(5).describe('Max mentions per time window'),
-  SPAM_MENTION_WINDOW_MS: z.coerce.number().int().positive().default(10000).describe('Mention rate limit window in ms'),
-  SPAM_AUTO_MUTE_DURATION_MS: z.coerce.number().int().positive().default(300000).describe('Auto-mute duration in ms after exceeding violations'),
-  SPAM_MAX_VIOLATIONS: z.coerce.number().int().positive().default(5).describe('Violations before auto-mute'),
-  OUTGOING_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(10000).describe('Per-request timeout for outgoing webhook deliveries'),
-  OUTGOING_WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().positive().default(4).describe('Delivery attempts before an outgoing webhook event is dropped'),
-  OUTGOING_WEBHOOK_CONCURRENCY: z.coerce.number().int().positive().default(4).describe('Outgoing webhook deliveries in flight at once'),
-  OUTGOING_WEBHOOK_RATE_PER_MIN: z.coerce.number().int().positive().default(60).describe('Max events queued per outgoing webhook per minute; excess is dropped'),
-  ALLOW_PRIVATE_WEBHOOK_TARGETS: z.coerce.boolean().default(false).describe(
-    'Allow outgoing webhooks to target private, loopback, and link-local addresses. ' +
-    'Off by default so a webhook cannot be pointed at services on the host network. ' +
-    'Set to "true" if you are bridging to something on your LAN (e.g. Home Assistant).',
-  ),
-  AUTO_TAGGING_ENABLED: z.coerce.boolean().default(false).describe(
-    'Enable AI-powered auto-tagging for uploaded GIFs. When enabled, a CLIP ViT-B/32 vision model ' +
-    'is loaded on first use (~600MB disk download, cached). The model consumes ~1.2-1.5GB of ' +
-    'additional RAM while loaded and stays in memory after first inference. Tags are generated ' +
-    'as suggestions only — an admin must confirm them before they go live. ' +
-    'Set to "true" to enable, default is "false" (no model loaded, zero overhead).',
-  ),
+  SPAM_RATE_MAX: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10)
+    .describe('Max messages per user per time window'),
+  SPAM_RATE_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10000)
+    .describe('Global rate limit window in ms'),
+  SPAM_CHANNEL_RATE_MAX: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(8)
+    .describe('Max messages per channel per time window'),
+  SPAM_CHANNEL_RATE_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10000)
+    .describe('Channel rate limit window in ms'),
+  SPAM_DUPLICATE_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30000)
+    .describe('Duplicate content detection window in ms'),
+  SPAM_MENTION_MAX: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5)
+    .describe('Max mentions per time window'),
+  SPAM_MENTION_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10000)
+    .describe('Mention rate limit window in ms'),
+  SPAM_AUTO_MUTE_DURATION_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(300000)
+    .describe('Auto-mute duration in ms after exceeding violations'),
+  SPAM_MAX_VIOLATIONS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5)
+    .describe('Violations before auto-mute'),
+  OUTGOING_WEBHOOK_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10000)
+    .describe('Per-request timeout for outgoing webhook deliveries'),
+  OUTGOING_WEBHOOK_MAX_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(4)
+    .describe('Delivery attempts before an outgoing webhook event is dropped'),
+  OUTGOING_WEBHOOK_CONCURRENCY: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(4)
+    .describe('Outgoing webhook deliveries in flight at once'),
+  OUTGOING_WEBHOOK_RATE_PER_MIN: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60)
+    .describe('Max events queued per outgoing webhook per minute; excess is dropped'),
+  ALLOW_PRIVATE_WEBHOOK_TARGETS: z.coerce
+    .boolean()
+    .default(false)
+    .describe(
+      'Allow outgoing webhooks to target private, loopback, and link-local addresses. ' +
+        'Off by default so a webhook cannot be pointed at services on the host network. ' +
+        'Set to "true" if you are bridging to something on your LAN (e.g. Home Assistant).',
+    ),
+  AUTO_TAGGING_ENABLED: z.coerce
+    .boolean()
+    .default(false)
+    .describe(
+      'Enable AI-powered auto-tagging for uploaded GIFs. When enabled, a CLIP ViT-B/32 vision model ' +
+        'is loaded on first use (~600MB disk download, cached). The model consumes ~1.2-1.5GB of ' +
+        'additional RAM while loaded and stays in memory after first inference. Tags are generated ' +
+        'as suggestions only — an admin must confirm them before they go live. ' +
+        'Set to "true" to enable, default is "false" (no model loaded, zero overhead).',
+    ),
 })
 
 export type EnvConfig = z.infer<typeof envSchema>
@@ -77,8 +148,8 @@ export function validateJwtSecret(config: EnvConfig): void {
   if (config.JWT_SECRET === 'change_this_to_a_long_random_secret') {
     console.error(
       '\n[!] JWT_SECRET is using the default placeholder.\n' +
-      '    Generate one with: openssl rand -hex 64\n' +
-      '    Then set it in your .env file.\n',
+        '    Generate one with: openssl rand -hex 64\n' +
+        '    Then set it in your .env file.\n',
     )
     process.exit(1)
   }

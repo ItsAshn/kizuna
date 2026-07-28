@@ -31,7 +31,13 @@ const SECTION_LABELS: Record<string, string> = {
  * chrome. Rendered directly by SettingsModal (unified settings hub) and by the
  * thin UserSettingsModal wrapper below for any standalone use.
  */
-export function UserSettingsBody({ onClose, navHeader }: { onClose: () => void; navHeader?: ReactNode }) {
+export function UserSettingsBody({
+  onClose,
+  navHeader,
+}: {
+  onClose: () => void
+  navHeader?: ReactNode
+}) {
   const { setAudioInputDeviceId, setAudioOutputDeviceId, setPushToTalkKey } = useVoiceStore()
 
   const [activeTab, setActiveTab] = useState('voice')
@@ -50,21 +56,28 @@ export function UserSettingsBody({ onClose, navHeader }: { onClose: () => void; 
         label: 'app',
         items: [
           ...(tauri ? [{ key: 'privacy', label: 'privacy', icon: <Eye size={15} /> }] : []),
-          ...(desktopTauri ? [{ key: 'notifications', label: 'notifications', icon: <Bell size={15} /> }] : []),
+          ...(desktopTauri
+            ? [{ key: 'notifications', label: 'notifications', icon: <Bell size={15} /> }]
+            : []),
           { key: 'data', label: 'data', icon: <Database size={15} /> },
-          ...(desktopTauri ? [{ key: 'environment', label: 'environment', icon: <Activity size={15} /> }] : []),
+          ...(desktopTauri
+            ? [{ key: 'environment', label: 'environment', icon: <Activity size={15} /> }]
+            : []),
           ...(tauri ? [{ key: 'updates', label: 'updates', icon: <Download size={15} /> }] : []),
         ],
       },
     ]
   }, [])
 
-  const handleKeyCapture = useCallback((e: KeyboardEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setPushToTalkKey(e.code)
-    setListeningForKey(false)
-  }, [setPushToTalkKey])
+  const handleKeyCapture = useCallback(
+    (e: KeyboardEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setPushToTalkKey(e.code)
+      setListeningForKey(false)
+    },
+    [setPushToTalkKey],
+  )
 
   // Push-to-talk key capture and Escape-close share one capture-phase listener:
   // capture must win over ui/Modal's own bubble-phase Escape handling while a
@@ -94,14 +107,13 @@ export function UserSettingsBody({ onClose, navHeader }: { onClose: () => void; 
   }, [])
 
   return (
-      <SettingsLayout
-        groups={navGroups}
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        activeLabel={SECTION_LABELS[activeTab]}
-        navHeader={navHeader}
-      >
-
+    <SettingsLayout
+      groups={navGroups}
+      activeKey={activeTab}
+      onChange={setActiveTab}
+      activeLabel={SECTION_LABELS[activeTab]}
+      navHeader={navHeader}
+    >
       {activeTab === 'voice' && (
         <VoiceSection listeningForKey={listeningForKey} setListeningForKey={setListeningForKey} />
       )}
@@ -136,7 +148,7 @@ export function UserSettingsBody({ onClose, navHeader }: { onClose: () => void; 
       )}
 
       {activeTab === 'updates' && isTauri() && <UpdatesSection />}
-      </SettingsLayout>
+    </SettingsLayout>
   )
 }
 
@@ -148,7 +160,9 @@ export default function UserSettingsModal({ onClose }: Props) {
       title="// user settings"
       className="settings-modal"
       footer={(handleClose) => (
-        <button onClick={handleClose} className="settings-modal__done-btn">done</button>
+        <button onClick={handleClose} className="settings-modal__done-btn">
+          done
+        </button>
       )}
     >
       <UserSettingsBody onClose={onClose} />

@@ -26,22 +26,22 @@
   --text-secondary: #a0a0a0;
   --text-muted: #808080;
   --border-color: #2a2a2a;
-  --brand: #A1D93F;
+  --brand: #a1d93f;
   --brand-hover: #8cc22e;
   --brand-dim: rgba(161, 217, 63, 0.15);
   --brand-dim-border: rgba(161, 217, 63, 0.25);
-  --brand-glow: rgba(161, 217, 63, 0.20);
-  --accent-color: #A1D93F;
+  --brand-glow: rgba(161, 217, 63, 0.2);
+  --accent-color: #a1d93f;
   --bg-surface: #1a1a1a;
   --modal-bg: rgba(17, 17, 17, 0.94);
   --modal-backdrop: rgba(0, 0, 0, 0.6);
   --red: #ff4d4d;
   --red-hover: #ff3333;
   --red-dim: rgba(255, 77, 77, 0.15);
-  --red-dim-border: rgba(255, 77, 77, 0.30);
+  --red-dim-border: rgba(255, 77, 77, 0.3);
   --green: #40c057;
   --green-dim: rgba(64, 192, 87, 0.15);
-  --green-dim-border: rgba(64, 192, 87, 0.20);
+  --green-dim-border: rgba(64, 192, 87, 0.2);
   --yellow: #fab005;
   --gray: #6b7280;
   --avatar-bg-default: #374151;
@@ -131,7 +131,9 @@
   padding: 0;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   width: 100%;
   overflow: hidden;
@@ -141,7 +143,10 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
-a, button, [role="button"], [tabindex] {
+a,
+button,
+[role='button'],
+[tabindex] {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
@@ -260,7 +265,9 @@ select:focus:not(:focus-visible) {
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .btn-secondary:hover {
@@ -294,7 +301,9 @@ select:focus:not(:focus-visible) {
 
 .btn-danger:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 3.5px var(--red);
+  box-shadow:
+    0 0 0 2px var(--bg-primary),
+    0 0 0 3.5px var(--red);
 }
 
 .input-field {
@@ -379,7 +388,10 @@ select:focus:not(:focus-visible) {
     -webkit-tap-highlight-color: transparent;
   }
 
-  a, button, [role='button'], [tabindex] {
+  a,
+  button,
+  [role='button'],
+  [tabindex] {
     touch-action: manipulation;
   }
 }

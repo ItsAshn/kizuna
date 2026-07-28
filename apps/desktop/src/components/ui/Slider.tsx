@@ -1,8 +1,10 @@
 import { forwardRef, type InputHTMLAttributes } from 'react'
 import './Slider.css'
 
-interface SliderProps
-  extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value' | 'type' | 'size'> {
+interface SliderProps extends Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  'onChange' | 'value' | 'type' | 'size'
+> {
   value: number
   onChange: (value: number) => void
   min?: number
@@ -29,7 +31,7 @@ const Slider = forwardRef<HTMLInputElement, SliderProps>(function Slider(
     disabled,
     ...props
   },
-  ref
+  ref,
 ) {
   const pct = max === min ? 0 : ((value - min) / (max - min)) * 100
   const fillStyle = fillFromStart

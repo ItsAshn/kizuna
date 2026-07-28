@@ -23,7 +23,8 @@ export default function Login() {
   const [isRegister, setIsRegister] = useState(false)
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null)
 
-  const { authenticate, loading, error, setError, backupToken, clearBackupToken } = useAuth(serverUrl)
+  const { authenticate, loading, error, setError, backupToken, clearBackupToken } =
+    useAuth(serverUrl)
 
   useEffect(() => {
     if (serverUrl) {

@@ -96,14 +96,26 @@
 /* ── Animations ───────────────────────────────────────────── */
 
 @keyframes messageSlideIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes reactionBounce {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.15); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .msg-bubble__row--entering {
@@ -154,7 +166,9 @@
   padding: 8px 14px;
   border-radius: var(--radius-md);
   position: relative;
-  transition: box-shadow 0.15s ease, filter 0.15s ease;
+  transition:
+    box-shadow 0.15s ease,
+    filter 0.15s ease;
 }
 
 .msg-bubble__bubble:hover {
@@ -210,7 +224,9 @@
   border-radius: 4px;
   padding: 0 2px;
   cursor: pointer;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
 }
 
 .msg-bubble__spoiler * {
@@ -285,44 +301,121 @@
 
 /* ── Syntax highlighting (highlight.js dark theme) ──────────── */
 
-.hljs { color: #e0e0e0 }
-.hljs-keyword { color: #c792ea }
-.hljs-type { color: #82aaff }
-.hljs-built_in { color: #ffcb6b }
-.hljs-literal { color: #f78c6c }
-.hljs-number { color: #f78c6c }
-.hljs-regexp { color: #89ddff }
-.hljs-string { color: #c3e88d }
-.hljs-subst { color: #e0e0e0 }
-.hljs-symbol { color: #82aaff }
-.hljs-title { color: #82aaff }
-.hljs-title.function_ { color: #82aaff }
-.hljs-title.class_ { color: #ffcb6b }
-.hljs-title.class_.inherited__ { color: #ffcb6b }
-.hljs-params { color: #e0e0e0 }
-.hljs-comment { color: #546e7a; font-style: italic }
-.hljs-doctag { color: #c792ea }
-.hljs-meta { color: #89ddff }
-.hljs-meta .hljs-keyword { color: #c792ea }
-.hljs-meta .hljs-string { color: #c3e88d }
-.hljs-section { color: #82aaff }
-.hljs-tag { color: #89ddff }
-.hljs-name { color: #89ddff }
-.hljs-attr { color: #c792ea }
-.hljs-attribute { color: #c3e88d }
-.hljs-selector-tag { color: #f07178 }
-.hljs-selector-id { color: #ffcb6b }
-.hljs-selector-class { color: #ffcb6b }
-.hljs-selector-attr { color: #c792ea }
-.hljs-selector-pseudo { color: #c792ea }
-.hljs-addition { color: #c3e88d }
-.hljs-deletion { color: #f07178 }
-.hljs-variable { color: #e0e0e0 }
-.hljs-operator { color: #89ddff }
-.hljs-punctuation { color: #89ddff }
-.hljs-property { color: #82aaff }
-.hljs-template-variable { color: #e0e0e0 }
-.hljs-template-tag { color: #89ddff }
+.hljs {
+  color: #e0e0e0;
+}
+.hljs-keyword {
+  color: #c792ea;
+}
+.hljs-type {
+  color: #82aaff;
+}
+.hljs-built_in {
+  color: #ffcb6b;
+}
+.hljs-literal {
+  color: #f78c6c;
+}
+.hljs-number {
+  color: #f78c6c;
+}
+.hljs-regexp {
+  color: #89ddff;
+}
+.hljs-string {
+  color: #c3e88d;
+}
+.hljs-subst {
+  color: #e0e0e0;
+}
+.hljs-symbol {
+  color: #82aaff;
+}
+.hljs-title {
+  color: #82aaff;
+}
+.hljs-title.function_ {
+  color: #82aaff;
+}
+.hljs-title.class_ {
+  color: #ffcb6b;
+}
+.hljs-title.class_.inherited__ {
+  color: #ffcb6b;
+}
+.hljs-params {
+  color: #e0e0e0;
+}
+.hljs-comment {
+  color: #546e7a;
+  font-style: italic;
+}
+.hljs-doctag {
+  color: #c792ea;
+}
+.hljs-meta {
+  color: #89ddff;
+}
+.hljs-meta .hljs-keyword {
+  color: #c792ea;
+}
+.hljs-meta .hljs-string {
+  color: #c3e88d;
+}
+.hljs-section {
+  color: #82aaff;
+}
+.hljs-tag {
+  color: #89ddff;
+}
+.hljs-name {
+  color: #89ddff;
+}
+.hljs-attr {
+  color: #c792ea;
+}
+.hljs-attribute {
+  color: #c3e88d;
+}
+.hljs-selector-tag {
+  color: #f07178;
+}
+.hljs-selector-id {
+  color: #ffcb6b;
+}
+.hljs-selector-class {
+  color: #ffcb6b;
+}
+.hljs-selector-attr {
+  color: #c792ea;
+}
+.hljs-selector-pseudo {
+  color: #c792ea;
+}
+.hljs-addition {
+  color: #c3e88d;
+}
+.hljs-deletion {
+  color: #f07178;
+}
+.hljs-variable {
+  color: #e0e0e0;
+}
+.hljs-operator {
+  color: #89ddff;
+}
+.hljs-punctuation {
+  color: #89ddff;
+}
+.hljs-property {
+  color: #82aaff;
+}
+.hljs-template-variable {
+  color: #e0e0e0;
+}
+.hljs-template-tag {
+  color: #89ddff;
+}
 
 /* ── Markdown: blockquote ─────────────────────────────────── */
 
@@ -358,9 +451,15 @@
   line-height: 1.3;
 }
 
-.msg-bubble__text h1 { font-size: 1.4em; }
-.msg-bubble__text h2 { font-size: 1.2em; }
-.msg-bubble__text h3 { font-size: 1.1em; }
+.msg-bubble__text h1 {
+  font-size: 1.4em;
+}
+.msg-bubble__text h2 {
+  font-size: 1.2em;
+}
+.msg-bubble__text h3 {
+  font-size: 1.1em;
+}
 
 /* ── Markdown: horizontal rule ────────────────────────────── */
 
@@ -389,7 +488,9 @@
   flex-shrink: 0;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.15s ease, visibility 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    visibility 0.15s ease;
   pointer-events: none;
   white-space: nowrap;
   padding-left: 6px;
@@ -427,8 +528,14 @@
 }
 
 @keyframes msg-bubble-time-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .msg-bubble__edited {
@@ -448,7 +555,9 @@
   background: none;
   cursor: pointer;
   border-radius: 4px;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .msg-bubble__delete-btn:hover {
@@ -503,7 +612,9 @@
   background: none;
   cursor: pointer;
   border-radius: 4px;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .msg-bubble__edit-btn:hover {
@@ -830,7 +941,9 @@
   border: 1px solid var(--border-color);
   background: var(--bg-tertiary);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
   font-size: 15px;
   line-height: 1.2;
 }
@@ -895,7 +1008,9 @@
 .msg-bubble__react-bar {
   opacity: 0;
   transform: translateY(-6px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
   pointer-events: none;
   white-space: nowrap;
 }
@@ -930,7 +1045,9 @@
   cursor: pointer;
   font-size: 16px;
   line-height: 1;
-  transition: background 0.1s, transform 0.1s;
+  transition:
+    background 0.1s,
+    transform 0.1s;
 }
 
 .msg-bubble__react-quick:hover {
@@ -998,7 +1115,9 @@
   font-weight: 500;
   cursor: pointer;
   border-radius: var(--radius-sm, 4px) var(--radius-sm, 4px) 0 0;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .reaction-picker__tab:hover {
@@ -1030,7 +1149,9 @@
   border-radius: 4px;
   cursor: pointer;
   font-size: 18px;
-  transition: background 0.1s, transform 0.1s;
+  transition:
+    background 0.1s,
+    transform 0.1s;
 }
 
 .reaction-picker__emoji-btn:hover {

@@ -101,12 +101,22 @@ export default function PollComposerModal({
       handleClose()
     } catch (err: unknown) {
       setError(
-        (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ??
-          'Failed to create poll',
+        (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data
+          ?.error ?? 'Failed to create poll',
       )
       setSubmitting(false)
     }
-  }, [submitting, channelId, question, options, durationIndex, allowMultiple, channelType, serverUrl, handleClose])
+  }, [
+    submitting,
+    channelId,
+    question,
+    options,
+    durationIndex,
+    allowMultiple,
+    channelType,
+    serverUrl,
+    handleClose,
+  ])
 
   return (
     <Modal

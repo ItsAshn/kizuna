@@ -1,70 +1,70 @@
-import { create } from 'zustand';
+import { create } from 'zustand'
 
-import type { MonitorInfo } from '@kizuna/shared';
+import type { MonitorInfo } from '@kizuna/shared'
 
-export type DMCallStatus = 'idle' | 'ringing-incoming' | 'ringing-outgoing' | 'active';
+export type DMCallStatus = 'idle' | 'ringing-incoming' | 'ringing-outgoing' | 'active'
 
 export interface DMIncomingCall {
-  dmChannelId: string;
-  callerUserId: string;
-  callerUsername: string;
-  calleeUserId: string;
-  calleeUsername: string;
+  dmChannelId: string
+  callerUserId: string
+  callerUsername: string
+  calleeUserId: string
+  calleeUsername: string
 }
 
 export interface GroupDMIncomingCall {
-  channelId: string;
-  callerUserId: string;
-  callerUsername: string;
+  channelId: string
+  callerUserId: string
+  callerUsername: string
 }
 
 interface CallState {
-  dmCallStatus: DMCallStatus;
-  dmCallChannelId: string | null;
-  dmCallOtherUserId: string | null;
-  dmCallOtherUsername: string | null;
-  incomingCall: DMIncomingCall | null;
-  dmCallShouldCleanup: boolean;
+  dmCallStatus: DMCallStatus
+  dmCallChannelId: string | null
+  dmCallOtherUserId: string | null
+  dmCallOtherUsername: string | null
+  incomingCall: DMIncomingCall | null
+  dmCallShouldCleanup: boolean
 
-  groupDMCallStatus: DMCallStatus;
-  groupDMCallChannelId: string | null;
-  groupDMIncomingCall: GroupDMIncomingCall | null;
-  groupDMCallShouldCleanup: boolean;
+  groupDMCallStatus: DMCallStatus
+  groupDMCallChannelId: string | null
+  groupDMIncomingCall: GroupDMIncomingCall | null
+  groupDMCallShouldCleanup: boolean
 
-  screenSharePeerId: string | null;
-  screenShareUsername: string | null;
-  isScreenSharing: boolean;
-  screenShareVideoProducerId: string | null;
-  availableMonitors: MonitorInfo[];
+  screenSharePeerId: string | null
+  screenShareUsername: string | null
+  isScreenSharing: boolean
+  screenShareVideoProducerId: string | null
+  availableMonitors: MonitorInfo[]
 
-  isCameraOn: boolean;
-  cameraPeerIds: string[];
-  localCameraVideoProducerId: string | null;
+  isCameraOn: boolean
+  cameraPeerIds: string[]
+  localCameraVideoProducerId: string | null
 
-  setDMCallStatus: (status: DMCallStatus) => void;
-  setDMCallChannelId: (channelId: string | null) => void;
-  setDMCallOtherUser: (userId: string | null, username: string | null) => void;
-  setIncomingCall: (call: DMIncomingCall | null) => void;
-  setDMCallShouldCleanup: (should: boolean) => void;
-  clearDMCall: () => void;
+  setDMCallStatus: (status: DMCallStatus) => void
+  setDMCallChannelId: (channelId: string | null) => void
+  setDMCallOtherUser: (userId: string | null, username: string | null) => void
+  setIncomingCall: (call: DMIncomingCall | null) => void
+  setDMCallShouldCleanup: (should: boolean) => void
+  clearDMCall: () => void
 
-  setGroupDMCallStatus: (status: DMCallStatus) => void;
-  setGroupDMCallChannelId: (channelId: string | null) => void;
-  setGroupDMIncomingCall: (call: GroupDMIncomingCall | null) => void;
-  setGroupDMCallShouldCleanup: (should: boolean) => void;
-  clearGroupDMCall: () => void;
+  setGroupDMCallStatus: (status: DMCallStatus) => void
+  setGroupDMCallChannelId: (channelId: string | null) => void
+  setGroupDMIncomingCall: (call: GroupDMIncomingCall | null) => void
+  setGroupDMCallShouldCleanup: (should: boolean) => void
+  clearGroupDMCall: () => void
 
-  setScreenSharePeer: (peerId: string | null, username: string | null) => void;
-  clearScreenSharePeer: () => void;
-  setIsScreenSharing: (active: boolean) => void;
-  setScreenShareVideoProducerId: (producerId: string | null) => void;
-  setAvailableMonitors: (monitors: MonitorInfo[]) => void;
+  setScreenSharePeer: (peerId: string | null, username: string | null) => void
+  clearScreenSharePeer: () => void
+  setIsScreenSharing: (active: boolean) => void
+  setScreenShareVideoProducerId: (producerId: string | null) => void
+  setAvailableMonitors: (monitors: MonitorInfo[]) => void
 
-  setIsCameraOn: (on: boolean) => void;
-  setCameraPeerIds: (ids: string[]) => void;
-  addCameraPeerId: (id: string) => void;
-  removeCameraPeerId: (id: string) => void;
-  setLocalCameraVideoProducerId: (producerId: string | null) => void;
+  setIsCameraOn: (on: boolean) => void
+  setCameraPeerIds: (ids: string[]) => void
+  addCameraPeerId: (id: string) => void
+  removeCameraPeerId: (id: string) => void
+  setLocalCameraVideoProducerId: (producerId: string | null) => void
 }
 
 export const useCallStore = create<CallState>()((set) => ({
@@ -128,8 +128,7 @@ export const useCallStore = create<CallState>()((set) => ({
 
   setScreenSharePeer: (screenSharePeerId, screenShareUsername) =>
     set({ screenSharePeerId, screenShareUsername }),
-  clearScreenSharePeer: () =>
-    set({ screenSharePeerId: null, screenShareUsername: null }),
+  clearScreenSharePeer: () => set({ screenSharePeerId: null, screenShareUsername: null }),
   setIsScreenSharing: (isScreenSharing) => set({ isScreenSharing }),
   setScreenShareVideoProducerId: (screenShareVideoProducerId) =>
     set({ screenShareVideoProducerId }),
@@ -147,5 +146,6 @@ export const useCallStore = create<CallState>()((set) => ({
     set((s) => ({
       cameraPeerIds: s.cameraPeerIds.filter((id) => id !== peerId),
     })),
-  setLocalCameraVideoProducerId: (localCameraVideoProducerId) => set({ localCameraVideoProducerId }),
+  setLocalCameraVideoProducerId: (localCameraVideoProducerId) =>
+    set({ localCameraVideoProducerId }),
 }))

@@ -149,7 +149,9 @@ export default function VoiceChannelView({
       {isScreenActive && (
         <div className="vcv__screenshare">
           <div className="vcv__screenshare-body" ref={screenContainerRef}>
-            {!videoElRef.current && <div className="vcv__screenshare-empty">Waiting for video…</div>}
+            {!videoElRef.current && (
+              <div className="vcv__screenshare-empty">Waiting for video…</div>
+            )}
           </div>
           <span className="vcv__screenshare-label">{sharerName}'s screen</span>
         </div>
@@ -203,7 +205,13 @@ export default function VoiceChannelView({
               }
             }}
             className={`vcv__ctrl ${isScreenSharing ? 'vcv__ctrl--active' : ''}`}
-            title={isScreenSharing ? 'Stop sharing' : screenSharePeerId ? 'Someone else is sharing' : 'Share screen'}
+            title={
+              isScreenSharing
+                ? 'Stop sharing'
+                : screenSharePeerId
+                  ? 'Someone else is sharing'
+                  : 'Share screen'
+            }
             disabled={!!screenSharePeerId && !isScreenSharing}
           >
             {isScreenSharing ? <MonitorOff className="icon-sm" /> : <Monitor className="icon-sm" />}

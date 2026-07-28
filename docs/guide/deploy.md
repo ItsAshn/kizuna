@@ -34,9 +34,9 @@ cp .env.example .env
 
 Edit `.env` — set at minimum:
 
-| Variable | Description |
-|---|---|
-| `DOMAIN` | Your domain name |
+| Variable     | Description                |
+| ------------ | -------------------------- |
+| `DOMAIN`     | Your domain name           |
 | `JWT_SECRET` | Run `openssl rand -hex 64` |
 
 See [Configuration](/guide/configuration) for all available variables.

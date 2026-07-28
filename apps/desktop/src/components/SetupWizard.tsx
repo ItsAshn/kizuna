@@ -23,7 +23,13 @@ interface EnvDiagnostic {
 const STORAGE_KEY = 'kizuna-setup-wizard-dismissed'
 
 function StatusIcon({ ok }: { ok: boolean }) {
-  return <span className={`setup-wizard__status-icon ${ok ? 'setup-wizard__status-icon--ok' : 'setup-wizard__status-icon--fail'}`}>{ok ? 'OK' : '!'}</span>
+  return (
+    <span
+      className={`setup-wizard__status-icon ${ok ? 'setup-wizard__status-icon--ok' : 'setup-wizard__status-icon--fail'}`}
+    >
+      {ok ? 'OK' : '!'}
+    </span>
+  )
 }
 
 export default function SetupWizard({ onClose }: { onClose: () => void }) {
@@ -87,30 +93,24 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
 
   const isLinux = diagnostic.os === 'linux'
   const hasIssues = diagnostic.issues.length > 0
-  const criticalIssues = diagnostic.issues.filter(i => i.severity === 'error')
-  const warnings = diagnostic.issues.filter(i => i.severity === 'warning')
+  const criticalIssues = diagnostic.issues.filter((i) => i.severity === 'error')
+  const warnings = diagnostic.issues.filter((i) => i.severity === 'warning')
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="settings-modal setup-wizard__modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="settings-modal setup-wizard__modal" onClick={(e) => e.stopPropagation()}>
         <div className="setup-wizard__header">
-          <span className="setup-wizard__title">
-            environment check
-          </span>
-          <button
-            onClick={onClose}
-            className="setup-wizard__close-btn"
-          >
+          <span className="setup-wizard__title">environment check</span>
+          <button onClick={onClose} className="setup-wizard__close-btn">
             [esc]
           </button>
         </div>
 
         {isLinux ? (
           <div className="setup-wizard__diagnostic-box">
-            <div>session: {diagnostic.session_type} | compositor: {diagnostic.compositor}</div>
+            <div>
+              session: {diagnostic.session_type} | compositor: {diagnostic.compositor}
+            </div>
             <div>
               <StatusIcon ok={diagnostic.pipewire_ok} /> pipewire
               {'  '}
@@ -157,17 +157,11 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
 
         <div className="setup-wizard__footer">
           {hasIssues && (
-            <button
-              onClick={handleDontShowAgain}
-              className="setup-wizard__dismiss-btn"
-            >
+            <button onClick={handleDontShowAgain} className="setup-wizard__dismiss-btn">
               don't show again
             </button>
           )}
-          <button
-            onClick={handleDismiss}
-            className="setup-wizard__confirm-btn"
-          >
+          <button onClick={handleDismiss} className="setup-wizard__confirm-btn">
             {hasIssues ? 'i understand' : 'got it'}
           </button>
         </div>
@@ -189,18 +183,16 @@ function IssueCard({
     <div className="setup-wizard__issue">
       <div className="setup-wizard__issue-header">
         <span className="setup-wizard__issue-component">{issue.component}</span>
-        <span className={`setup-wizard__issue-severity ${issue.severity === 'error' ? 'setup-wizard__issue-severity--error' : 'setup-wizard__issue-severity--warning'}`}>
+        <span
+          className={`setup-wizard__issue-severity ${issue.severity === 'error' ? 'setup-wizard__issue-severity--error' : 'setup-wizard__issue-severity--warning'}`}
+        >
           {issue.severity}
         </span>
       </div>
-      <p className="setup-wizard__issue-message">
-        {issue.message}
-      </p>
+      <p className="setup-wizard__issue-message">{issue.message}</p>
       {issue.fix_command && (
         <div className="setup-wizard__issue-fix-row">
-          <code className="setup-wizard__issue-fix-cmd">
-            {issue.fix_command}
-          </code>
+          <code className="setup-wizard__issue-fix-cmd">{issue.fix_command}</code>
           <button
             onClick={() => onCopy(issue.fix_command!)}
             className={`setup-wizard__issue-copy-btn ${copiedCmd === issue.fix_command ? 'setup-wizard__issue-copy-btn--copied' : ''}`}

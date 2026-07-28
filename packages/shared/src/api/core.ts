@@ -67,4 +67,3 @@ export function client(baseUrl: string, token?: string) {
 
   return instance
 }
-

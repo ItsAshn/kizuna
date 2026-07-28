@@ -81,76 +81,74 @@ export default function CreateGroupDMModal({ onClose }: CreateGroupDMModalProps)
         </>
       }
     >
-          <div className="cgdm__field">
-            <label className="cgdm__label">Group Name</label>
-            <input
-              ref={nameRef}
-              className="cgdm__input"
-              placeholder="e.g. The Squad"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && name.trim() && selectedIds.size >= 2) handleCreate()
-              }}
-              maxLength={100}
-            />
-          </div>
+      <div className="cgdm__field">
+        <label className="cgdm__label">Group Name</label>
+        <input
+          ref={nameRef}
+          className="cgdm__input"
+          placeholder="e.g. The Squad"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && name.trim() && selectedIds.size >= 2) handleCreate()
+          }}
+          maxLength={100}
+        />
+      </div>
 
-          <div className="cgdm__field">
-            <label className="cgdm__label">Add Members (min 2)</label>
-            <div className="cgdm__search-wrap">
-              <Search className="icon-xs" style={{ opacity: 0.4, marginLeft: 8 }} />
-              <input
-                className="cgdm__search-input"
-                placeholder="Search members..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-          </div>
+      <div className="cgdm__field">
+        <label className="cgdm__label">Add Members (min 2)</label>
+        <div className="cgdm__search-wrap">
+          <Search className="icon-xs" style={{ opacity: 0.4, marginLeft: 8 }} />
+          <input
+            className="cgdm__search-input"
+            placeholder="Search members..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
 
-          {selectedIds.size > 0 && (
-            <div className="cgdm__chips">
-              {[...selectedIds].map((id) => {
-                const member = members.find((m) => m.id === id)
-                return (
-                  <span key={id} className="cgdm__chip" onClick={() => toggleMember(id)}>
-                    {member?.display_name || member?.username || id}
-                    <X className="icon-xxs" style={{ marginLeft: 4, cursor: 'pointer' }} />
-                  </span>
-                )
-              })}
-            </div>
-          )}
+      {selectedIds.size > 0 && (
+        <div className="cgdm__chips">
+          {[...selectedIds].map((id) => {
+            const member = members.find((m) => m.id === id)
+            return (
+              <span key={id} className="cgdm__chip" onClick={() => toggleMember(id)}>
+                {member?.display_name || member?.username || id}
+                <X className="icon-xxs" style={{ marginLeft: 4, cursor: 'pointer' }} />
+              </span>
+            )
+          })}
+        </div>
+      )}
 
-          <div className="cgdm__member-list">
-            {filteredMembers.slice(0, 50).map((member) => {
-              const isSelected = selectedIds.has(member.id)
-              return (
-                <button
-                  key={member.id}
-                  className={`cgdm__member ${isSelected ? 'cgdm__member--selected' : ''}`}
-                  onClick={() => toggleMember(member.id)}
-                >
-                  <div className="cgdm__member-avatar">
-                    {member.avatar ? (
-                      <img src={member.avatar} alt="" loading="lazy" decoding="async" />
-                    ) : (
-                      (member.display_name || member.username)[0]?.toUpperCase() || '?'
-                    )}
-                  </div>
-                  <div className="cgdm__member-info">
-                    <span className="cgdm__member-name">{member.display_name || member.username}</span>
-                    <span className="cgdm__member-username">@{member.username}</span>
-                  </div>
-                  {isSelected && <span className="cgdm__check">&#10003;</span>}
-                </button>
-              )
-            })}
-            {filteredMembers.length === 0 && (
-              <p className="cgdm__empty">No members found</p>
-            )}
-          </div>
+      <div className="cgdm__member-list">
+        {filteredMembers.slice(0, 50).map((member) => {
+          const isSelected = selectedIds.has(member.id)
+          return (
+            <button
+              key={member.id}
+              className={`cgdm__member ${isSelected ? 'cgdm__member--selected' : ''}`}
+              onClick={() => toggleMember(member.id)}
+            >
+              <div className="cgdm__member-avatar">
+                {member.avatar ? (
+                  <img src={member.avatar} alt="" loading="lazy" decoding="async" />
+                ) : (
+                  (member.display_name || member.username)[0]?.toUpperCase() || '?'
+                )}
+              </div>
+              <div className="cgdm__member-info">
+                <span className="cgdm__member-name">{member.display_name || member.username}</span>
+                <span className="cgdm__member-username">@{member.username}</span>
+              </div>
+              {isSelected && <span className="cgdm__check">&#10003;</span>}
+            </button>
+          )
+        })}
+        {filteredMembers.length === 0 && <p className="cgdm__empty">No members found</p>}
+      </div>
     </Modal>
   )
 }

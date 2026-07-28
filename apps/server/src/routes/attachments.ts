@@ -13,9 +13,19 @@ const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '10485760', 10)
 
 const ALLOWED_EXTENSIONS = [
-  '.jpg', '.jpeg', '.png', '.gif', '.webp',
-  '.mp4', '.webm', '.mp3', '.ogg', '.wav',
-  '.pdf', '.txt', '.json',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+  '.mp4',
+  '.webm',
+  '.mp3',
+  '.ogg',
+  '.wav',
+  '.pdf',
+  '.txt',
+  '.json',
 ]
 
 const MIME_TYPES: Record<string, string> = {
@@ -40,14 +50,19 @@ function getContentType(filename: string): string {
 }
 
 const MAGIC_BYTES: Record<string, number[][]> = {
-  '.jpg': [[0xFF, 0xD8, 0xFF]],
-  '.jpeg': [[0xFF, 0xD8, 0xFF]],
-  '.png': [[0x89, 0x50, 0x4E, 0x47]],
+  '.jpg': [[0xff, 0xd8, 0xff]],
+  '.jpeg': [[0xff, 0xd8, 0xff]],
+  '.png': [[0x89, 0x50, 0x4e, 0x47]],
   '.gif': [[0x47, 0x49, 0x46, 0x38]],
   '.webp': [[0x52, 0x49, 0x46, 0x46]],
   '.mp4': [[0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]],
-  '.mp3': [[0xFF, 0xFB], [0xFF, 0xF3], [0xFF, 0xF2], [0x49, 0x44, 0x33]],
-  '.ogg': [[0x4F, 0x67, 0x67, 0x53]],
+  '.mp3': [
+    [0xff, 0xfb],
+    [0xff, 0xf3],
+    [0xff, 0xf2],
+    [0x49, 0x44, 0x33],
+  ],
+  '.ogg': [[0x4f, 0x67, 0x67, 0x53]],
   '.wav': [[0x52, 0x49, 0x46, 0x46]],
   '.pdf': [[0x25, 0x50, 0x44, 0x46]],
 }
@@ -59,7 +74,10 @@ function verifyMagicBytes(buffer: Buffer, expectedExtension: string): boolean {
     if (sig.length > buffer.length) continue
     let match = true
     for (let i = 0; i < sig.length; i++) {
-      if (buffer[i] !== sig[i]) { match = false; break }
+      if (buffer[i] !== sig[i]) {
+        match = false
+        break
+      }
     }
     if (match) return true
   }
@@ -82,7 +100,10 @@ attachmentRoutes.post('/:channelId', authMiddleware, async (c) => {
   try {
     const contentLength = parseInt(c.req.header('content-length') || '0', 10)
     if (contentLength > MAX_FILE_SIZE) {
-      return c.json({ error: `File too large. Maximum size is ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB` }, 413)
+      return c.json(
+        { error: `File too large. Maximum size is ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB` },
+        413,
+      )
     }
 
     const formData = await c.req.formData()
@@ -91,11 +112,17 @@ attachmentRoutes.post('/:channelId', authMiddleware, async (c) => {
 
     const ext = path.extname(file.name).toLowerCase()
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
-      return c.json({ error: `File type not allowed. Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}` }, 415)
+      return c.json(
+        { error: `File type not allowed. Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}` },
+        415,
+      )
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      return c.json({ error: `File too large. Maximum size is ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB` }, 413)
+      return c.json(
+        { error: `File too large. Maximum size is ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB` },
+        413,
+      )
     }
 
     const buffer = Buffer.from(await file.arrayBuffer())
@@ -112,7 +139,10 @@ attachmentRoutes.post('/:channelId', authMiddleware, async (c) => {
         storedBuffer = processed.buffer
         storedFilename = `${uuidv4()}${path.extname(processed.filename)}`
       } catch (imgErr: unknown) {
-        console.error('[attachments] Image processing failed, storing original:', imgErr instanceof Error ? imgErr.message : imgErr)
+        console.error(
+          '[attachments] Image processing failed, storing original:',
+          imgErr instanceof Error ? imgErr.message : imgErr,
+        )
       }
     }
 
@@ -122,21 +152,39 @@ attachmentRoutes.post('/:channelId', authMiddleware, async (c) => {
     const id = uuidv4()
     const db = getDb()
     db.prepare(
-      'INSERT INTO attachments (id, message_id, filename, url, size, content_type) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(id, null, file.name, `/api/attachments/file/${storedFilename}`, storedBuffer.length, getContentType(storedFilename))
+      'INSERT INTO attachments (id, message_id, filename, url, size, content_type) VALUES (?, ?, ?, ?, ?, ?)',
+    ).run(
+      id,
+      null,
+      file.name,
+      `/api/attachments/file/${storedFilename}`,
+      storedBuffer.length,
+      getContentType(storedFilename),
+    )
 
-    const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as { id: string; message_id: string | null; filename: string; url: string; size: number; content_type: string | null; created_at: number }
-    return c.json({
-      attachment: {
-        id: attachment.id,
-        message_id: attachment.message_id || null,
-        filename: attachment.filename,
-        url: attachment.url,
-        size: attachment.size,
-        content_type: attachment.content_type || getContentType(attachment.filename),
-        created_at: attachment.created_at * 1000,
+    const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as {
+      id: string
+      message_id: string | null
+      filename: string
+      url: string
+      size: number
+      content_type: string | null
+      created_at: number
+    }
+    return c.json(
+      {
+        attachment: {
+          id: attachment.id,
+          message_id: attachment.message_id || null,
+          filename: attachment.filename,
+          url: attachment.url,
+          size: attachment.size,
+          content_type: attachment.content_type || getContentType(attachment.filename),
+          created_at: attachment.created_at * 1000,
+        },
       },
-    }, 201)
+      201,
+    )
   } catch (err: unknown) {
     console.error('[attachments] Upload failed:', err instanceof Error ? err.message : err)
     return c.json({ error: 'Upload failed' }, 500)
@@ -147,7 +195,17 @@ attachmentRoutes.post('/:channelId', authMiddleware, async (c) => {
 attachmentRoutes.get('/message/:messageId', authMiddleware, (c) => {
   const messageId = c.req.param('messageId')
   const db = getDb()
-  const attachments = db.prepare('SELECT * FROM attachments WHERE message_id = ?').all(messageId) as { id: string; message_id: string | null; filename: string; url: string; size: number; content_type: string | null; created_at: number }[]
+  const attachments = db
+    .prepare('SELECT * FROM attachments WHERE message_id = ?')
+    .all(messageId) as {
+    id: string
+    message_id: string | null
+    filename: string
+    url: string
+    size: number
+    content_type: string | null
+    created_at: number
+  }[]
   const result = attachments.map((a) => ({
     id: a.id,
     message_id: a.message_id,
@@ -191,7 +249,7 @@ attachmentRoutes.get('/file/:filename', (c) => {
     headers: {
       'Content-Type': contentType,
       'Cache-Control': 'public, max-age=86400, immutable',
-      'ETag': etag,
+      ETag: etag,
     },
   })
 })
@@ -200,7 +258,17 @@ attachmentRoutes.get('/file/:filename', (c) => {
 attachmentRoutes.delete('/:id', authMiddleware, (c) => {
   const user = getAuth(c)
   const db = getDb()
-  const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(c.req.param('id')) as { id: string; message_id: string | null; filename: string; url: string; size: number; content_type: string | null; created_at: number } | undefined
+  const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(c.req.param('id')) as
+    | {
+        id: string
+        message_id: string | null
+        filename: string
+        url: string
+        size: number
+        content_type: string | null
+        created_at: number
+      }
+    | undefined
   if (!attachment) return c.json({ error: 'Attachment not found' }, 404)
 
   if (!attachment.message_id) {
@@ -208,14 +276,20 @@ attachmentRoutes.delete('/:id', authMiddleware, (c) => {
       return c.json({ error: 'Cannot delete unattached files' }, 403)
     }
   } else {
-    const message = db.prepare('SELECT author_id FROM messages WHERE id = ?').get(attachment.message_id) as { author_id: string } | undefined
+    const message = db
+      .prepare('SELECT author_id FROM messages WHERE id = ?')
+      .get(attachment.message_id) as { author_id: string } | undefined
     if (message && message.author_id !== user.userId) {
       return c.json({ error: 'Not authorized' }, 403)
     }
   }
 
   const filepath = path.join(UPLOADS_DIR, path.basename(attachment.url))
-  try { fs.unlinkSync(filepath) } catch { /* file may not exist */ }
+  try {
+    fs.unlinkSync(filepath)
+  } catch {
+    /* file may not exist */
+  }
 
   db.prepare('DELETE FROM attachments WHERE id = ?').run(c.req.param('id'))
   return c.json({ ok: true })
@@ -227,7 +301,9 @@ export function startOrphanCleanup(): void {
       const db = getDb()
       const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
 
-      const filenames = (db.prepare('SELECT url FROM attachments').all() as { url: string }[]).map(r => path.basename(r.url))
+      const filenames = (db.prepare('SELECT url FROM attachments').all() as { url: string }[]).map(
+        (r) => path.basename(r.url),
+      )
       const knownFiles = new Set(filenames)
 
       let deletedCount = 0
@@ -248,7 +324,9 @@ export function startOrphanCleanup(): void {
       }
 
       if (deletedCount > 0) {
-        console.log(`[attachments] Cleaned up ${deletedCount} orphan files (${(freedBytes / 1024 / 1024).toFixed(1)} MB)`)
+        console.log(
+          `[attachments] Cleaned up ${deletedCount} orphan files (${(freedBytes / 1024 / 1024).toFixed(1)} MB)`,
+        )
       }
     } catch (err: unknown) {
       console.error('[attachments] Orphan cleanup error:', err instanceof Error ? err.message : err)

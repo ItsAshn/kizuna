@@ -8,7 +8,13 @@ interface CheckboxProps {
   ariaLabel?: string
 }
 
-export default function Checkbox({ checked, onChange, disabled = false, label, ariaLabel }: CheckboxProps) {
+export default function Checkbox({
+  checked,
+  onChange,
+  disabled = false,
+  label,
+  ariaLabel,
+}: CheckboxProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return
     if (e.key === 'Enter' || e.key === ' ') {

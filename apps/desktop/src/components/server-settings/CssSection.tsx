@@ -4,7 +4,13 @@ import { updateServerSettings, fetchServerInfo } from '@kizuna/shared'
 import { handleApiErr, useMountedRef } from './common'
 import './CssSection.css'
 
-export function CssSection({ serverUrl, onBackgroundChanged }: { serverUrl: string | undefined; onBackgroundChanged?: () => void }) {
+export function CssSection({
+  serverUrl,
+  onBackgroundChanged,
+}: {
+  serverUrl: string | undefined
+  onBackgroundChanged?: () => void
+}) {
   const { activeSession: session } = useServerStore()
   const mountedRef = useMountedRef()
 
@@ -14,17 +20,21 @@ export function CssSection({ serverUrl, onBackgroundChanged }: { serverUrl: stri
 
   useEffect(() => {
     if (!serverUrl) return
-    fetchServerInfo(serverUrl).then(info => {
-      if (!mountedRef.current) return
-      setCustomCss(info.customCss || '')
-    }).catch((err) => {
-      console.error('Failed to fetch server info:', err)
-    })
+    fetchServerInfo(serverUrl)
+      .then((info) => {
+        if (!mountedRef.current) return
+        setCustomCss(info.customCss || '')
+      })
+      .catch((err) => {
+        console.error('Failed to fetch server info:', err)
+      })
   }, [serverUrl, mountedRef])
 
   // live preview while editing; removed again on unmount
   useEffect(() => {
-    const previewEl = document.getElementById('kizuna-custom-css-preview') as HTMLStyleElement | null
+    const previewEl = document.getElementById(
+      'kizuna-custom-css-preview',
+    ) as HTMLStyleElement | null
     if (customCss) {
       if (previewEl) {
         previewEl.textContent = customCss
@@ -77,14 +87,22 @@ export function CssSection({ serverUrl, onBackgroundChanged }: { serverUrl: stri
           spellCheck={false}
         />
         <div className="server-menu__save-row" style={{ marginTop: 0 }}>
-          <button onClick={handleSaveCustomCss} disabled={customCssSaving || customCss.length > 50000} className="server-menu__save-btn">
+          <button
+            onClick={handleSaveCustomCss}
+            disabled={customCssSaving || customCss.length > 50000}
+            className="server-menu__save-btn"
+          >
             {customCssSaving ? '...' : 'save css'}
           </button>
-          <span className={`server-menu__css-char-count${customCss.length > 45000 ? ' server-menu__css-char-count--warn' : ''}${customCss.length >= 50000 ? ' server-menu__css-char-count--over' : ''}`}>
+          <span
+            className={`server-menu__css-char-count${customCss.length > 45000 ? ' server-menu__css-char-count--warn' : ''}${customCss.length >= 50000 ? ' server-menu__css-char-count--over' : ''}`}
+          >
             {customCss.length.toLocaleString()} / 50,000
           </span>
           {customCssMsg && (
-            <span className={`server-menu__save-msg ${customCssMsg === 'saved' ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`}>
+            <span
+              className={`server-menu__save-msg ${customCssMsg === 'saved' ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`}
+            >
               {customCssMsg}
             </span>
           )}

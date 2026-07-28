@@ -1,13 +1,13 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import type { MutableRefObject } from 'react';
-import type { Socket } from 'socket.io-client';
-import { Virtuoso } from 'react-virtuoso';
-import type { VirtuosoHandle } from 'react-virtuoso';
-import { useServerStore } from '../store/serverStore';
-import { useChatStore } from '../store/chatStore';
-import { useCallStore } from '../store/callStore';
-import { useMobile } from '../hooks/useMobile';
-import { useHaptics } from '../hooks/useHaptics';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import type { MutableRefObject } from 'react'
+import type { Socket } from 'socket.io-client'
+import { Virtuoso } from 'react-virtuoso'
+import type { VirtuosoHandle } from 'react-virtuoso'
+import { useServerStore } from '../store/serverStore'
+import { useChatStore } from '../store/chatStore'
+import { useCallStore } from '../store/callStore'
+import { useMobile } from '../hooks/useMobile'
+import { useHaptics } from '../hooks/useHaptics'
 import {
   sendMessage,
   sendDMMessage,
@@ -26,8 +26,8 @@ import {
   createDMPoll,
   createGroupDMPoll,
   fetchChannelPolls,
-} from '@kizuna/shared';
-import { getSecretKey } from '../store/keyStore';
+} from '@kizuna/shared'
+import { getSecretKey } from '../store/keyStore'
 import {
   Lock,
   Paperclip,
@@ -48,40 +48,40 @@ import {
   Image as ImageIcon,
   BarChart3,
   MoreHorizontal,
-} from 'lucide-react';
-import type { Message, Member, CustomRole } from '@kizuna/shared';
-import { runChatCommand } from '../lib/chatCommands';
-import { useComposerAutocomplete, MENTION_LIMIT } from '../hooks/useComposerAutocomplete';
-import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
-import { useChatCrypto } from '../hooks/useChatCrypto';
-import { useChannelMessages } from '../hooks/useChannelMessages';
-import { useAttachmentUpload } from '../hooks/useAttachmentUpload';
-import { useFormattingToolbar } from '../hooks/useFormattingToolbar';
-import { useNotificationStore } from '../store/notificationStore';
-import MessageBubble from './MessageBubble';
-import GifPicker from './GifPicker';
-import Skeleton from './Skeleton';
-import Lightbox from './Lightbox';
-import SearchBar from './SearchBar';
-import PinnedMessagesModal from './PinnedMessagesModal';
-import EnvStatus from './EnvStatus';
-import GroupDMSettingsModal from './GroupDMSettingsModal';
-import IconButton from './ui/IconButton';
-import ActionSheet from './ui/ActionSheet';
-import type { ActionSheetItem } from './ui/ActionSheet';
-import MediaGallery from './MediaGallery';
-import PollPanel from './PollPanel';
-import PollComposerModal from './PollComposerModal';
-import './ChatArea.css';
+} from 'lucide-react'
+import type { Message, Member, CustomRole } from '@kizuna/shared'
+import { runChatCommand } from '../lib/chatCommands'
+import { useComposerAutocomplete, MENTION_LIMIT } from '../hooks/useComposerAutocomplete'
+import { useVoiceRecorder } from '../hooks/useVoiceRecorder'
+import { useChatCrypto } from '../hooks/useChatCrypto'
+import { useChannelMessages } from '../hooks/useChannelMessages'
+import { useAttachmentUpload } from '../hooks/useAttachmentUpload'
+import { useFormattingToolbar } from '../hooks/useFormattingToolbar'
+import { useNotificationStore } from '../store/notificationStore'
+import MessageBubble from './MessageBubble'
+import GifPicker from './GifPicker'
+import Skeleton from './Skeleton'
+import Lightbox from './Lightbox'
+import SearchBar from './SearchBar'
+import PinnedMessagesModal from './PinnedMessagesModal'
+import EnvStatus from './EnvStatus'
+import GroupDMSettingsModal from './GroupDMSettingsModal'
+import IconButton from './ui/IconButton'
+import ActionSheet from './ui/ActionSheet'
+import type { ActionSheetItem } from './ui/ActionSheet'
+import MediaGallery from './MediaGallery'
+import PollPanel from './PollPanel'
+import PollComposerModal from './PollComposerModal'
+import './ChatArea.css'
 
 interface ChatAreaProps {
-  socketRef: MutableRefObject<Socket | null>;
-  onStartDMCall?: (dmChannelId: string, otherUserId: string, otherUsername: string) => void;
-  onEndDMCall?: () => void;
-  onBackToSidebar?: () => void;
-  onToggleMembers?: () => void;
-  membersOpen?: boolean;
-  onOpenEnvWizard?: () => void;
+  socketRef: MutableRefObject<Socket | null>
+  onStartDMCall?: (dmChannelId: string, otherUserId: string, otherUsername: string) => void
+  onEndDMCall?: () => void
+  onBackToSidebar?: () => void
+  onToggleMembers?: () => void
+  membersOpen?: boolean
+  onOpenEnvWizard?: () => void
 }
 
 function parsePollArgs(input: string): string[] {
@@ -89,30 +89,30 @@ function parsePollArgs(input: string): string[] {
     return input
       .split('|')
       .map((s) => s.trim())
-      .filter(Boolean);
+      .filter(Boolean)
   }
-  const parts: string[] = [];
-  let i = 0;
+  const parts: string[] = []
+  let i = 0
   while (i < input.length) {
     if (input[i] === '"') {
-      const end = input.indexOf('"', i + 1);
+      const end = input.indexOf('"', i + 1)
       if (end !== -1) {
-        parts.push(input.slice(i + 1, end).trim());
-        i = end + 1;
-        continue;
+        parts.push(input.slice(i + 1, end).trim())
+        i = end + 1
+        continue
       }
     }
-    const nextSpace = input.indexOf(' ', i);
+    const nextSpace = input.indexOf(' ', i)
     if (nextSpace === -1) {
-      const word = input.slice(i).trim();
-      if (word) parts.push(word);
-      break;
+      const word = input.slice(i).trim()
+      if (word) parts.push(word)
+      break
     }
-    const word = input.slice(i, nextSpace).trim();
-    if (word) parts.push(word);
-    i = nextSpace + 1;
+    const word = input.slice(i, nextSpace).trim()
+    if (word) parts.push(word)
+    i = nextSpace + 1
   }
-  return parts;
+  return parts
 }
 
 function hasDeletePermission(
@@ -120,38 +120,38 @@ function hasDeletePermission(
   currentUserId: string,
   currentUserRole?: string,
 ): boolean {
-  if (currentUserRole === 'admin') return true;
-  const me = members.find((m) => m.id === currentUserId);
-  if (!me) return false;
+  if (currentUserRole === 'admin') return true
+  const me = members.find((m) => m.id === currentUserId)
+  if (!me) return false
   return (
     me.custom_roles?.some((r) => r.permissions?.delete_messages === true || r.is_admin) ?? false
-  );
+  )
 }
 
 function formatDateSeparator(date: Date): string {
-  const now = new Date();
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
+  const now = new Date()
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
 
-  if (date.toDateString() === now.toDateString()) return 'Today';
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  if (date.toDateString() === now.toDateString()) return 'Today'
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
 
-  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
   if (diffDays < 7) {
-    return date.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+    return date.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })
   }
   if (date.getFullYear() === now.getFullYear()) {
-    return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
   }
   return date.toLocaleDateString([], {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  });
+  })
 }
 
-const EMPTY_MSGS: Message[] = [];
+const EMPTY_MSGS: Message[] = []
 
 export default function ChatArea({
   socketRef,
@@ -162,129 +162,129 @@ export default function ChatArea({
   membersOpen,
   onOpenEnvWizard,
 }: ChatAreaProps) {
-  const session = useServerStore((s) => s.activeSession);
-  const isMobile = useMobile();
-  const channels = useChatStore((s) => s.channels);
-  const dmChannels = useChatStore((s) => s.dmChannels);
-  const groupDMChannels = useChatStore((s) => s.groupDMChannels);
-  const members = useChatStore((s) => s.members);
-  const activeChannelId = useChatStore((s) => s.activeChannelId);
-  const activeDMChannelId = useChatStore((s) => s.activeDMChannelId);
-  const activeGroupDMChannelId = useChatStore((s) => s.activeGroupDMChannelId);
+  const session = useServerStore((s) => s.activeSession)
+  const isMobile = useMobile()
+  const channels = useChatStore((s) => s.channels)
+  const dmChannels = useChatStore((s) => s.dmChannels)
+  const groupDMChannels = useChatStore((s) => s.groupDMChannels)
+  const members = useChatStore((s) => s.members)
+  const activeChannelId = useChatStore((s) => s.activeChannelId)
+  const activeDMChannelId = useChatStore((s) => s.activeDMChannelId)
+  const activeGroupDMChannelId = useChatStore((s) => s.activeGroupDMChannelId)
   const channelMessages = useChatStore(
     (s) => (activeChannelId ? s.messages[activeChannelId] : undefined) ?? EMPTY_MSGS,
-  );
+  )
   const dmMessages = useChatStore(
     (s) => (activeDMChannelId ? s.messages[activeDMChannelId] : undefined) ?? EMPTY_MSGS,
-  );
+  )
   const groupDMMessages = useChatStore(
     (s) => (activeGroupDMChannelId ? s.messages[activeGroupDMChannelId] : undefined) ?? EMPTY_MSGS,
-  );
-  const addMessage = useChatStore((s) => s.addMessage);
-  const setPolls = useChatStore((s) => s.setPolls);
-  const typingUsers = useChatStore((s) => s.typingUsers);
-  const hasMoreMessages = useChatStore((s) => s.hasMoreMessages);
-  const loadingMoreMessages = useChatStore((s) => s.loadingMoreMessages);
-  const loadMoreErrors = useChatStore((s) => s.loadMoreErrors);
-  const pendingMention = useChatStore((s) => s.pendingMention);
-  const setPendingMention = useChatStore((s) => s.setPendingMention);
-  const pinnedMessages = useChatStore((s) => s.pinnedMessages);
-  const setActiveChannel = useChatStore((s) => s.setActiveChannel);
-  const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel);
-  const setActiveGroupDMChannel = useChatStore((s) => s.setActiveGroupDMChannel);
-  const threadPanelVisible = useChatStore((s) => s.threadPanelVisible);
-  const setThreadPanelVisible = useChatStore((s) => s.setThreadPanelVisible);
-  const dmCallStatus = useCallStore((s) => s.dmCallStatus);
-  const dmCallChannelId = useCallStore((s) => s.dmCallChannelId);
-  const activeAnyChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId || null;
+  )
+  const addMessage = useChatStore((s) => s.addMessage)
+  const setPolls = useChatStore((s) => s.setPolls)
+  const typingUsers = useChatStore((s) => s.typingUsers)
+  const hasMoreMessages = useChatStore((s) => s.hasMoreMessages)
+  const loadingMoreMessages = useChatStore((s) => s.loadingMoreMessages)
+  const loadMoreErrors = useChatStore((s) => s.loadMoreErrors)
+  const pendingMention = useChatStore((s) => s.pendingMention)
+  const setPendingMention = useChatStore((s) => s.setPendingMention)
+  const pinnedMessages = useChatStore((s) => s.pinnedMessages)
+  const setActiveChannel = useChatStore((s) => s.setActiveChannel)
+  const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
+  const setActiveGroupDMChannel = useChatStore((s) => s.setActiveGroupDMChannel)
+  const threadPanelVisible = useChatStore((s) => s.threadPanelVisible)
+  const setThreadPanelVisible = useChatStore((s) => s.setThreadPanelVisible)
+  const dmCallStatus = useCallStore((s) => s.dmCallStatus)
+  const dmCallChannelId = useCallStore((s) => s.dmCallChannelId)
+  const activeAnyChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId || null
   const activeChannelType: 'channel' | 'dm' | 'group-dm' = activeDMChannelId
     ? 'dm'
     : activeGroupDMChannelId
       ? 'group-dm'
-      : 'channel';
+      : 'channel'
 
   // Hydrate polls when the active channel changes so pre-existing polls (created
   // in prior sessions) appear in the panel and can be voted on / deleted.
   useEffect(() => {
-    const url = session?.url;
-    if (!url || !activeAnyChannelId) return;
-    let cancelled = false;
+    const url = session?.url
+    if (!url || !activeAnyChannelId) return
+    let cancelled = false
     fetchChannelPolls(url, activeAnyChannelId, activeChannelType)
       .then((res) => {
-        if (!cancelled) setPolls(activeAnyChannelId, res.polls);
+        if (!cancelled) setPolls(activeAnyChannelId, res.polls)
       })
-      .catch(() => {});
+      .catch(() => {})
     return () => {
-      cancelled = true;
-    };
-  }, [session?.url, activeAnyChannelId, activeChannelType, setPolls]);
-  const [input, setInput] = useState('');
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+      cancelled = true
+    }
+  }, [session?.url, activeAnyChannelId, activeChannelType, setPolls])
+  const [input, setInput] = useState('')
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [replyTo, setReplyTo] = useState<{
-    messageId: string;
-    username: string;
-    content: string;
-  } | null>(null);
-  const [pinsOpen, setPinsOpen] = useState(false);
-  const [mediaGalleryOpen, setMediaGalleryOpen] = useState(false);
-  const [pollPanelOpen, setPollPanelOpen] = useState(false);
-  const [pollComposerOpen, setPollComposerOpen] = useState(false);
-  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
-  const [bulkDeleting, setBulkDeleting] = useState(false);
-  const virtuosoRef = useRef<VirtuosoHandle | null>(null);
-  const sendingRef = useRef(false);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [atBottom, setAtBottom] = useState(true);
-  const lastCountAtBottom = useRef(0);
-  const prevChannelKeyRef = useRef<string | null>(null);
+    messageId: string
+    username: string
+    content: string
+  } | null>(null)
+  const [pinsOpen, setPinsOpen] = useState(false)
+  const [mediaGalleryOpen, setMediaGalleryOpen] = useState(false)
+  const [pollPanelOpen, setPollPanelOpen] = useState(false)
+  const [pollComposerOpen, setPollComposerOpen] = useState(false)
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const virtuosoRef = useRef<VirtuosoHandle | null>(null)
+  const sendingRef = useRef(false)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [atBottom, setAtBottom] = useState(true)
+  const lastCountAtBottom = useRef(0)
+  const prevChannelKeyRef = useRef<string | null>(null)
   const [lightboxImages, setLightboxImages] = useState<{ url: string; filename: string }[] | null>(
     null,
-  );
-  const [lightboxIndex, setLightboxIndex] = useState(0);
-  const [showSearch, setShowSearch] = useState(false);
-  const [showGroupDMSettings, setShowGroupDMSettings] = useState(false);
-  const [overflowOpen, setOverflowOpen] = useState(false);
-  const [mentionableRoles, setMentionableRoles] = useState<CustomRole[]>([]);
+  )
+  const [lightboxIndex, setLightboxIndex] = useState(0)
+  const [showSearch, setShowSearch] = useState(false)
+  const [showGroupDMSettings, setShowGroupDMSettings] = useState(false)
+  const [overflowOpen, setOverflowOpen] = useState(false)
+  const [mentionableRoles, setMentionableRoles] = useState<CustomRole[]>([])
   // Virtual-keyboard tracking is owned by MobileShell — it writes document-level
   // globals, so a second mount here meant whichever unmounted first tore them
   // down for both. Desktop never needed it.
-  const haptics = useHaptics();
-  const { tryDecryptDM, tryDecryptGroupDM, encryptOutgoing } = useChatCrypto(session);
+  const haptics = useHaptics()
+  const { tryDecryptDM, tryDecryptGroupDM, encryptOutgoing } = useChatCrypto(session)
 
   const sendToActiveChannel = useCallback(
     async (plain: string, attIds?: string[], replyToId?: string): Promise<Message | null> => {
-      if (!session) return null;
+      if (!session) return null
       if (activeChannelId) {
-        return sendMessage(session.url, activeChannelId, plain, attIds, replyToId);
+        return sendMessage(session.url, activeChannelId, plain, attIds, replyToId)
       }
       if (activeDMChannelId) {
-        const { content, encrypted } = await encryptOutgoing(plain);
+        const { content, encrypted } = await encryptOutgoing(plain)
         const message = await sendDMMessage(
           session.url,
           activeDMChannelId,
           content,
           encrypted,
           attIds,
-        );
-        return encrypted ? { ...message, content: plain } : message;
+        )
+        return encrypted ? { ...message, content: plain } : message
       }
       if (activeGroupDMChannelId) {
-        const { content, encrypted } = await encryptOutgoing(plain);
+        const { content, encrypted } = await encryptOutgoing(plain)
         const message = await sendGroupDMMessage(
           session.url,
           activeGroupDMChannelId,
           content,
           encrypted,
           attIds,
-        );
-        return encrypted ? { ...message, content: plain } : message;
+        )
+        return encrypted ? { ...message, content: plain } : message
       }
-      return null;
+      return null
     },
     [session, activeChannelId, activeDMChannelId, activeGroupDMChannelId, encryptOutgoing],
-  );
+  )
 
   const {
     loading,
@@ -294,7 +294,7 @@ export default function ChatArea({
     loadMoreMessages,
     retryLoadMoreMessages,
     reloadMessages,
-  } = useChannelMessages({ session, socketRef, tryDecryptDM, tryDecryptGroupDM });
+  } = useChannelMessages({ session, socketRef, tryDecryptDM, tryDecryptGroupDM })
 
   const {
     uploading,
@@ -326,25 +326,30 @@ export default function ChatArea({
     virtuosoRef,
     lastCountAtBottom,
     inputRef,
-  });
+  })
 
   const { formatSel, toolbarCoords, mirrorRef, applyFormat, handleSelect, clearSelection } =
-    useFormattingToolbar(inputRef, input, setInput);
+    useFormattingToolbar(inputRef, input, setInput)
 
-  const activeChannel = channels.find((c) => c.id === activeChannelId);
-  const activeDM = dmChannels.find((d) => d.id === activeDMChannelId);
+  const activeChannel = channels.find((c) => c.id === activeChannelId)
+  const activeDM = dmChannels.find((d) => d.id === activeDMChannelId)
 
   const canDeleteAny =
     activeChannelId && session
       ? hasDeletePermission(members, session.user.id, session.user.role)
-      : false;
+      : false
   const canCall =
-    session?.user.permissions?.initiate_dm_calls === true || session?.user.role === 'admin';
+    session?.user.permissions?.initiate_dm_calls === true || session?.user.role === 'admin'
 
   const mentionCandidates = useMemo(
-    () => ['everyone', 'here', ...mentionableRoles.map((r) => r.name), ...members.map((m) => m.username)],
+    () => [
+      'everyone',
+      'here',
+      ...mentionableRoles.map((r) => r.name),
+      ...members.map((m) => m.username),
+    ],
     [mentionableRoles, members],
-  );
+  )
 
   const autocomplete = useComposerAutocomplete({
     input,
@@ -353,127 +358,127 @@ export default function ChatArea({
     mentionCandidates,
     user: session?.user ?? null,
     slashEnabled: !!activeAnyChannelId,
-  });
-  const { mention, emoji: emojiAutocomplete, slash } = autocomplete;
+  })
+  const { mention, emoji: emojiAutocomplete, slash } = autocomplete
 
   useEffect(() => {
     if (session) {
       fetchRoles(session.url)
         .then((roles) => {
-          setMentionableRoles(roles.filter((r) => r.mentionable));
+          setMentionableRoles(roles.filter((r) => r.mentionable))
         })
         .catch((err) => {
-          console.error('Failed to fetch mentionable roles:', err);
-        });
+          console.error('Failed to fetch mentionable roles:', err)
+        })
     }
-  }, [session]);
+  }, [session])
 
   // Draft persistence: save when leaving a channel, restore when entering
   useEffect(() => {
-    const currentKey = activeAnyChannelId;
-    const prevKey = prevChannelKeyRef.current;
+    const currentKey = activeAnyChannelId
+    const prevKey = prevChannelKeyRef.current
     if (prevKey !== currentKey) {
-      setSendError(null);
+      setSendError(null)
       if (prevKey !== null) {
-        const currentInput = inputRef.current?.value ?? '';
-        useChatStore.getState().setChannelDraft(prevKey, currentInput);
+        const currentInput = inputRef.current?.value ?? ''
+        useChatStore.getState().setChannelDraft(prevKey, currentInput)
       }
       if (currentKey !== null) {
-        const draft = useChatStore.getState().channelDrafts[currentKey] || '';
-        setInput(draft);
+        const draft = useChatStore.getState().channelDrafts[currentKey] || ''
+        setInput(draft)
         requestAnimationFrame(() => {
           if (inputRef.current) {
-            inputRef.current.style.height = 'auto';
+            inputRef.current.style.height = 'auto'
             if (draft)
-              inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 160)}px`;
+              inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 160)}px`
           }
-        });
+        })
       }
-      prevChannelKeyRef.current = currentKey;
+      prevChannelKeyRef.current = currentKey
     }
-  }, [activeChannelId, activeDMChannelId, activeGroupDMChannelId]);
+  }, [activeChannelId, activeDMChannelId, activeGroupDMChannelId])
 
   useEffect(() => {
     return () => {
-      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
-    };
-  }, [pendingPreviewUrl]);
+      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
+    }
+  }, [pendingPreviewUrl])
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault();
-        setShowSearch((v) => !v);
+        e.preventDefault()
+        setShowSearch((v) => !v)
       }
     }
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, []);
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [])
 
   useEffect(() => {
     return () => {
       if (typingTimeout.current) {
-        clearTimeout(typingTimeout.current);
+        clearTimeout(typingTimeout.current)
       }
-    };
-  }, []);
+    }
+  }, [])
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const val = e.target.value;
-      setInput(val);
-      if (sendError) setSendError(null);
+      const val = e.target.value
+      setInput(val)
+      if (sendError) setSendError(null)
 
-      const cursor = e.target.selectionStart ?? val.length;
-      autocomplete.onInputChange(val, cursor);
+      const cursor = e.target.selectionStart ?? val.length
+      autocomplete.onInputChange(val, cursor)
 
-      const el = inputRef.current;
+      const el = inputRef.current
       if (el) {
-        el.style.height = 'auto';
-        el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+        el.style.height = 'auto'
+        el.style.height = `${Math.min(el.scrollHeight, 160)}px`
       }
 
-      const channelId = activeAnyChannelId;
+      const channelId = activeAnyChannelId
       if (channelId && session) {
         if (typingTimeout.current) {
-          clearTimeout(typingTimeout.current);
+          clearTimeout(typingTimeout.current)
         } else {
-          socketRef.current?.emit('typing:start', { channelId });
+          socketRef.current?.emit('typing:start', { channelId })
         }
         typingTimeout.current = setTimeout(() => {
-          socketRef.current?.emit('typing:stop', { channelId });
-          typingTimeout.current = null;
-        }, 3000);
+          socketRef.current?.emit('typing:stop', { channelId })
+          typingTimeout.current = null
+        }, 3000)
       }
     },
     [sendError, activeAnyChannelId, session, autocomplete],
-  );
+  )
 
   useEffect(() => {
     if (pendingMention) {
-      mention.insert(pendingMention);
-      setPendingMention(null);
+      mention.insert(pendingMention)
+      setPendingMention(null)
     }
-  }, [pendingMention]);
+  }, [pendingMention])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (autocomplete.onKeyDown(e)) return;
+    if (autocomplete.onKeyDown(e)) return
     // On mobile, Enter inserts a newline; sending is done via the send button.
     if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
-      e.preventDefault();
-      handleSend();
+      e.preventDefault()
+      handleSend()
     }
-  };
+  }
 
   const performSend = async () => {
-    if ((!input.trim() && !pendingFile) || !session) return;
+    if ((!input.trim() && !pendingFile) || !session) return
 
     if (pendingFile) {
-      await handleUpload();
-      return;
+      await handleUpload()
+      return
     }
 
-    let commandContent: string | null = null;
+    let commandContent: string | null = null
     if (input.trim().startsWith('/')) {
       const result = await runChatCommand(input.trim(), {
         serverUrl: session.url,
@@ -481,401 +486,406 @@ export default function ChatArea({
         members,
         notify: (title, body) =>
           useNotificationStore.getState().addNotification({ type: 'announce', title, body }),
-      });
+      })
       if (result.kind === 'handled') {
-        setInput('');
-        setSendError(null);
-        autocomplete.clear();
-        if (inputRef.current) inputRef.current.style.height = 'auto';
-        return;
+        setInput('')
+        setSendError(null)
+        autocomplete.clear()
+        if (inputRef.current) inputRef.current.style.height = 'auto'
+        return
       }
       if (result.kind === 'compose') {
-        commandContent = result.content;
+        commandContent = result.content
       }
 
       // /poll is handled here because it needs channelId from component scope
-      const trimmedInput = input.trim();
-      const pollChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
+      const trimmedInput = input.trim()
+      const pollChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
       if (trimmedInput.startsWith('/poll ') && pollChannelId) {
-        const pollArgs = trimmedInput.slice(6);
-        const parts = parsePollArgs(pollArgs);
+        const pollArgs = trimmedInput.slice(6)
+        const parts = parsePollArgs(pollArgs)
         if (parts.length < 3) {
           setSendError(
             'Usage: /poll question | option one | option two — or use “Create poll” for timers & multi-select.',
-          );
-          return;
+          )
+          return
         }
-        const [question, ...options] = parts;
-        const pollOpts = { durationSeconds: null, allowMultiple: false };
+        const [question, ...options] = parts
+        const pollOpts = { durationSeconds: null, allowMultiple: false }
         try {
           if (activeDMChannelId) {
-            await createDMPoll(session.url, activeDMChannelId, question, options, pollOpts);
+            await createDMPoll(session.url, activeDMChannelId, question, options, pollOpts)
           } else if (activeGroupDMChannelId) {
-            await createGroupDMPoll(session.url, activeGroupDMChannelId, question, options, pollOpts);
+            await createGroupDMPoll(
+              session.url,
+              activeGroupDMChannelId,
+              question,
+              options,
+              pollOpts,
+            )
           } else {
-            await createPoll(session.url, activeChannelId!, question, options, pollOpts);
+            await createPoll(session.url, activeChannelId!, question, options, pollOpts)
           }
-          setInput('');
-          setSendError(null);
-          if (inputRef.current) inputRef.current.style.height = 'auto';
+          setInput('')
+          setSendError(null)
+          if (inputRef.current) inputRef.current.style.height = 'auto'
         } catch (err: unknown) {
           setSendError(
             (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data
               ?.error ?? 'Failed to create poll',
-          );
+          )
         }
-        return;
+        return
       }
     }
 
-    const channelId = activeAnyChannelId;
-    if (!channelId) return;
+    const channelId = activeAnyChannelId
+    if (!channelId) return
 
-    socketRef.current?.emit('typing:stop', { channelId });
+    socketRef.current?.emit('typing:stop', { channelId })
 
-    const rawInput = input;
-    const outgoing = commandContent ?? rawInput.trim();
-    const attIds = pendingAttachmentId ? [pendingAttachmentId] : undefined;
-    const replyToId = replyTo?.messageId;
+    const rawInput = input
+    const outgoing = commandContent ?? rawInput.trim()
+    const attIds = pendingAttachmentId ? [pendingAttachmentId] : undefined
+    const replyToId = replyTo?.messageId
 
     // Clear the composer before the request so a slow send doesn't wipe text typed meanwhile.
-    setInput('');
-    autocomplete.clear();
-    setSendError(null);
-    if (inputRef.current) inputRef.current.style.height = 'auto';
+    setInput('')
+    autocomplete.clear()
+    setSendError(null)
+    if (inputRef.current) inputRef.current.style.height = 'auto'
 
     try {
-      const message = await sendToActiveChannel(outgoing, attIds, replyToId);
-      if (!message) return;
-      setPendingAttachmentId(null);
-      addMessage(message.channel_id || channelId, message);
-      setReplyTo(null);
-      haptics.tap();
-      inputRef.current?.focus();
+      const message = await sendToActiveChannel(outgoing, attIds, replyToId)
+      if (!message) return
+      setPendingAttachmentId(null)
+      addMessage(message.channel_id || channelId, message)
+      setReplyTo(null)
+      haptics.tap()
+      inputRef.current?.focus()
       // Sending always returns you to the bottom, whether or not you'd scrolled up —
       // you just wrote it, you should see it land. Unconditional rather than relying on
       // followOutput, which only fires while already anchored at the bottom.
       requestAnimationFrame(() => {
-        const msgs = useChatStore.getState().messages[channelId] || [];
+        const msgs = useChatStore.getState().messages[channelId] || []
         if (msgs.length > 0) {
-          virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end' });
+          virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end' })
         }
-        lastCountAtBottom.current = msgs.length;
-      });
+        lastCountAtBottom.current = msgs.length
+      })
     } catch (err: unknown) {
       // Restore the message so a failed send doesn't lose it.
-      setInput(rawInput);
+      setInput(rawInput)
       requestAnimationFrame(() => {
         if (inputRef.current) {
-          inputRef.current.style.height = 'auto';
-          inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 160)}px`;
+          inputRef.current.style.height = 'auto'
+          inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 160)}px`
         }
-      });
+      })
       const e = err as {
-        response?: { status?: number; data?: { error?: string } };
-        message?: string;
-      };
-      const status = e?.response?.status;
-      const serverMsg = e?.response?.data?.error;
-      if (status === 403) setSendError(serverMsg || 'You do not have permission to send messages');
-      else setSendError('Failed to send message. Try again.');
+        response?: { status?: number; data?: { error?: string } }
+        message?: string
+      }
+      const status = e?.response?.status
+      const serverMsg = e?.response?.data?.error
+      if (status === 403) setSendError(serverMsg || 'You do not have permission to send messages')
+      else setSendError('Failed to send message. Try again.')
     }
-  };
+  }
 
   const handleSend = async () => {
-    if (sendingRef.current) return;
-    sendingRef.current = true;
+    if (sendingRef.current) return
+    sendingRef.current = true
     try {
-      await performSend();
+      await performSend()
     } finally {
-      sendingRef.current = false;
+      sendingRef.current = false
     }
-  };
+  }
 
   const handleDeleteMessage = useCallback(
     async (messageId: string) => {
-      if (!session) return;
-      const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
-      if (!channelId) return;
+      if (!session) return
+      const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
+      if (!channelId) return
       try {
         if (activeDMChannelId) {
-          await deleteDMMessage(session.url, messageId);
+          await deleteDMMessage(session.url, messageId)
         } else if (activeGroupDMChannelId) {
-          await deleteGroupDMMessage(session.url, messageId);
+          await deleteGroupDMMessage(session.url, messageId)
         } else {
-          await deleteMessage(session.url, messageId);
+          await deleteMessage(session.url, messageId)
         }
       } catch (err) {
-        console.error('Failed to delete message:', err);
+        console.error('Failed to delete message:', err)
       }
     },
     [session, activeChannelId, activeDMChannelId, activeGroupDMChannelId],
-  );
+  )
 
   const handleBulkDelete = useCallback(async () => {
-    if (!session || selectedMessages.size === 0 || !activeChannelId) return;
-    const count = selectedMessages.size;
-    if (!confirm(`Delete ${count} message${count === 1 ? '' : 's'}? This cannot be undone.`))
-      return;
-    setBulkDeleting(true);
+    if (!session || selectedMessages.size === 0 || !activeChannelId) return
+    const count = selectedMessages.size
+    if (!confirm(`Delete ${count} message${count === 1 ? '' : 's'}? This cannot be undone.`)) return
+    setBulkDeleting(true)
     try {
-      const ids = [...selectedMessages];
-      const results = await Promise.allSettled(ids.map((id) => deleteMessage(session.url, id)));
-      const failedIds = ids.filter((_, i) => results[i].status === 'rejected');
-      setSelectedMessages(new Set(failedIds));
+      const ids = [...selectedMessages]
+      const results = await Promise.allSettled(ids.map((id) => deleteMessage(session.url, id)))
+      const failedIds = ids.filter((_, i) => results[i].status === 'rejected')
+      setSelectedMessages(new Set(failedIds))
       if (failedIds.length > 0) {
-        console.error('Bulk delete failed for', failedIds.length, 'messages');
+        console.error('Bulk delete failed for', failedIds.length, 'messages')
         useNotificationStore.getState().addNotification({
           type: 'announce',
           title: 'Bulk delete',
           body: `${failedIds.length} of ${count} messages could not be deleted. They remain selected.`,
-        });
+        })
       }
     } finally {
-      setBulkDeleting(false);
+      setBulkDeleting(false)
     }
-  }, [session, selectedMessages, activeChannelId]);
+  }, [session, selectedMessages, activeChannelId])
 
   const toggleMessageSelection = useCallback((messageId: string) => {
     setSelectedMessages((prev) => {
-      const next = new Set(prev);
-      if (next.has(messageId)) next.delete(messageId);
-      else next.add(messageId);
-      return next;
-    });
-  }, []);
+      const next = new Set(prev)
+      if (next.has(messageId)) next.delete(messageId)
+      else next.add(messageId)
+      return next
+    })
+  }, [])
 
   const { recording, recordingTime, startRecording, stopRecording } = useVoiceRecorder(
     handleVoiceRecordingComplete,
-  );
+  )
 
   const handleEditMessage = useCallback(
     async (messageId: string, content: string) => {
-      if (!session) return;
-      const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId;
-      if (!channelId) return;
+      if (!session) return
+      const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
+      if (!channelId) return
       try {
         if (activeDMChannelId) {
-          const { content: sendContent, encrypted } = await encryptOutgoing(content);
-          await editDMMessage(session.url, messageId, sendContent, encrypted);
+          const { content: sendContent, encrypted } = await encryptOutgoing(content)
+          await editDMMessage(session.url, messageId, sendContent, encrypted)
         } else if (activeGroupDMChannelId) {
-          const { content: sendContent, encrypted } = await encryptOutgoing(content);
-          await editGroupDMMessage(session.url, messageId, sendContent, encrypted);
+          const { content: sendContent, encrypted } = await encryptOutgoing(content)
+          await editGroupDMMessage(session.url, messageId, sendContent, encrypted)
         } else {
-          await editMessage(session.url, messageId, content);
+          await editMessage(session.url, messageId, content)
         }
       } catch (err) {
-        console.error('Failed to edit message:', err);
+        console.error('Failed to edit message:', err)
       }
     },
     [session, activeChannelId, activeDMChannelId, activeGroupDMChannelId, encryptOutgoing],
-  );
+  )
 
   const handlePinMessage = useCallback(
     async (messageId: string) => {
-      if (!session || !activeChannelId) return;
+      if (!session || !activeChannelId) return
       try {
-        await pinMessage(session.url, activeChannelId, messageId);
+        await pinMessage(session.url, activeChannelId, messageId)
       } catch (err) {
-        console.error('Failed to pin message:', err);
+        console.error('Failed to pin message:', err)
       }
     },
     [session, activeChannelId],
-  );
+  )
 
   const handleUnpinMessage = useCallback(
     async (messageId: string) => {
-      if (!session || !activeChannelId) return;
+      if (!session || !activeChannelId) return
       try {
-        await unpinMessage(session.url, activeChannelId, messageId);
+        await unpinMessage(session.url, activeChannelId, messageId)
       } catch (err) {
-        console.error('Failed to unpin message:', err);
+        console.error('Failed to unpin message:', err)
       }
     },
     [session, activeChannelId],
-  );
+  )
 
   const handleCreateThread = useCallback(
     async (messageId: string, name: string) => {
-      if (!session || !activeChannelId) return;
+      if (!session || !activeChannelId) return
       try {
-        const result = await createThread(session.url, activeChannelId, name, messageId);
-        useChatStore.getState().setActiveThreadId(result.id);
+        const result = await createThread(session.url, activeChannelId, name, messageId)
+        useChatStore.getState().setActiveThreadId(result.id)
       } catch (err) {
-        console.error('Failed to create thread:', err);
+        console.error('Failed to create thread:', err)
       }
     },
     [session, activeChannelId],
-  );
+  )
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
 
-  const activeGroupDM = groupDMChannels.find((g) => g.id === activeGroupDMChannelId);
+  const activeGroupDM = groupDMChannels.find((g) => g.id === activeGroupDMChannelId)
   const headerTitle =
-    activeChannel?.name || activeDM?.other_display_name || activeGroupDM?.name || 'Kizuna';
+    activeChannel?.name || activeDM?.other_display_name || activeGroupDM?.name || 'Kizuna'
   // Members button counts only the people who can see this conversation, not
   // the whole server. 1:1 DMs don't show it at all.
   const headerMemberCount = activeGroupDMChannelId
     ? (activeGroupDM?.members.length ?? 0)
-    : members.length;
+    : members.length
 
   // The header fits ~3 actions on a phone. Call/Members/Search stay inline as
   // icons; the rest collapse into an overflow sheet. These open rather than
   // toggle — the sheet dismisses on tap, so a toggle would let you "close" a
   // panel you can't see. Desktop renders all of them inline instead.
-  const overflowActions: ActionSheetItem[] = [];
+  const overflowActions: ActionSheetItem[] = []
   if (activeGroupDMChannelId && activeGroupDM && activeGroupDM.owner_id === session?.user.id) {
-    overflowActions.push({ label: 'Group settings', onClick: () => setShowGroupDMSettings(true) });
+    overflowActions.push({ label: 'Group settings', onClick: () => setShowGroupDMSettings(true) })
   }
   if (activeChannelId) {
-    overflowActions.push({ label: 'Threads', onClick: () => setThreadPanelVisible(true) });
-    overflowActions.push({ label: 'Pinned messages', onClick: () => setPinsOpen(true) });
+    overflowActions.push({ label: 'Threads', onClick: () => setThreadPanelVisible(true) })
+    overflowActions.push({ label: 'Pinned messages', onClick: () => setPinsOpen(true) })
   }
   if (activeAnyChannelId) {
-    overflowActions.push({ label: 'Media', onClick: () => setMediaGalleryOpen(true) });
-    overflowActions.push({ label: 'Create poll', onClick: () => setPollComposerOpen(true) });
-    overflowActions.push({ label: 'Polls', onClick: () => setPollPanelOpen(true) });
+    overflowActions.push({ label: 'Media', onClick: () => setMediaGalleryOpen(true) })
+    overflowActions.push({ label: 'Create poll', onClick: () => setPollComposerOpen(true) })
+    overflowActions.push({ label: 'Polls', onClick: () => setPollPanelOpen(true) })
   }
 
   const displayMessages = activeDMChannelId
     ? dmMessages
     : activeGroupDMChannelId
       ? groupDMMessages
-      : channelMessages;
+      : channelMessages
 
   // Screen-reader announcement for incoming messages. Virtuoso mounts/unmounts items on
   // scroll, so aria-live on the scrolling container itself fires unreliably — this is a
   // dedicated off-screen region updated only when a genuinely new message arrives.
-  const [liveAnnouncement, setLiveAnnouncement] = useState('');
-  const lastAnnouncedIdRef = useRef<string | null>(null);
-  const announceChannelKeyRef = useRef<string | null>(null);
+  const [liveAnnouncement, setLiveAnnouncement] = useState('')
+  const lastAnnouncedIdRef = useRef<string | null>(null)
+  const announceChannelKeyRef = useRef<string | null>(null)
   useEffect(() => {
-    const last = displayMessages[displayMessages.length - 1];
+    const last = displayMessages[displayMessages.length - 1]
     if (announceChannelKeyRef.current !== activeAnyChannelId) {
       // Switching channels — don't announce the channel's existing history.
-      announceChannelKeyRef.current = activeAnyChannelId;
-      lastAnnouncedIdRef.current = last?.id ?? null;
-      return;
+      announceChannelKeyRef.current = activeAnyChannelId
+      lastAnnouncedIdRef.current = last?.id ?? null
+      return
     }
-    if (!last || last.id === lastAnnouncedIdRef.current) return;
-    lastAnnouncedIdRef.current = last.id;
-    if (last.user_id === session?.user.id) return;
-    const author = last.display_name || last.username || 'Someone';
-    const preview = last.content.length > 140 ? last.content.slice(0, 140) + '…' : last.content;
-    setLiveAnnouncement(`${author}: ${preview}`);
-  }, [displayMessages, activeAnyChannelId, session?.user.id]);
+    if (!last || last.id === lastAnnouncedIdRef.current) return
+    lastAnnouncedIdRef.current = last.id
+    if (last.user_id === session?.user.id) return
+    const author = last.display_name || last.username || 'Someone'
+    const preview = last.content.length > 140 ? last.content.slice(0, 140) + '…' : last.content
+    setLiveAnnouncement(`${author}: ${preview}`)
+  }, [displayMessages, activeAnyChannelId, session?.user.id])
 
   const lightboxImageMap = useMemo(() => {
-    const images: { url: string; filename: string }[] = [];
-    const urlToIndex = new Map<string, number>();
-    const imgRe = /!\[([^\]]*)\]\(([^)]+)\)/g;
-    const urlRe = /(https?:\/\/[^\s]+)/g;
+    const images: { url: string; filename: string }[] = []
+    const urlToIndex = new Map<string, number>()
+    const imgRe = /!\[([^\]]*)\]\(([^)]+)\)/g
+    const urlRe = /(https?:\/\/[^\s]+)/g
     for (const m of displayMessages) {
-      let match;
+      let match
       while ((match = imgRe.exec(m.content)) !== null) {
-        const u = match[2];
+        const u = match[2]
         if (
           u.startsWith('/uploads/') ||
           u.startsWith('/api/attachments/') ||
           u.startsWith('/api/gifs/') ||
           u.startsWith('http')
         ) {
-          const resolved = session?.url && u.startsWith('/') ? `${session.url}${u}` : u;
+          const resolved = session?.url && u.startsWith('/') ? `${session.url}${u}` : u
           if (!urlToIndex.has(resolved)) {
-            urlToIndex.set(resolved, images.length);
-            images.push({ url: resolved, filename: match[1] || 'image' });
+            urlToIndex.set(resolved, images.length)
+            images.push({ url: resolved, filename: match[1] || 'image' })
           }
         }
       }
       while ((match = urlRe.exec(m.content)) !== null) {
-        const u = match[1];
+        const u = match[1]
         if (/\.(jpg|jpeg|png|gif|webp)$/i.test(u)) {
           if (!urlToIndex.has(u)) {
-            urlToIndex.set(u, images.length);
-            images.push({ url: u, filename: u.split('/').pop() || 'image' });
+            urlToIndex.set(u, images.length)
+            images.push({ url: u, filename: u.split('/').pop() || 'image' })
           }
         }
       }
     }
-    return { images, urlToIndex };
-  }, [displayMessages, session?.url]);
+    return { images, urlToIndex }
+  }, [displayMessages, session?.url])
 
   useEffect(() => {
     if (atBottom) {
-      lastCountAtBottom.current = displayMessages.length;
+      lastCountAtBottom.current = displayMessages.length
     }
-  }, [atBottom, displayMessages.length]);
+  }, [atBottom, displayMessages.length])
 
   useEffect(() => {
-    lastCountAtBottom.current = displayMessages.length;
-  }, [activeChannelId, activeDMChannelId, activeGroupDMChannelId]);
+    lastCountAtBottom.current = displayMessages.length
+  }, [activeChannelId, activeDMChannelId, activeGroupDMChannelId])
   const typingList =
-    typingUsers[activeAnyChannelId || '']?.filter((u) => u !== session?.user.username) || [];
+    typingUsers[activeAnyChannelId || '']?.filter((u) => u !== session?.user.username) || []
   const typingText =
     typingList.length === 1
       ? `${typingList[0]} is typing...`
       : typingList.length > 1
         ? `${typingList.length} people are typing...`
-        : '';
-  const dmHasKey = activeDMChannelId ? !!(activeDM?.other_public_key && getSecretKey()) : false;
+        : ''
+  const dmHasKey = activeDMChannelId ? !!(activeDM?.other_public_key && getSecretKey()) : false
   const composerTarget = activeDMChannelId
     ? `@${activeDM?.other_display_name ?? 'user'}`
     : activeGroupDMChannelId
       ? (activeGroupDM?.name ?? 'group')
-      : `#${activeChannel?.name ?? 'channel'}`;
-  const inputMaxLen = activeDMChannelId ? 2700 : 4000;
-  const inputRemaining = inputMaxLen - input.length;
-  const showCharCounter = inputRemaining < 500;
-  const cantWrite = channelPerms?.locked && !channelPerms?.can_write;
+      : `#${activeChannel?.name ?? 'channel'}`
+  const inputMaxLen = activeDMChannelId ? 2700 : 4000
+  const inputRemaining = inputMaxLen - input.length
+  const showCharCounter = inputRemaining < 500
+  const cantWrite = channelPerms?.locked && !channelPerms?.can_write
 
   const handleJumpToMessage = useCallback(
     (messageId: string, targetChannelId: string) => {
-      setShowSearch(false);
+      setShowSearch(false)
 
-      const currentChannelId = activeAnyChannelId;
+      const currentChannelId = activeAnyChannelId
 
       if (targetChannelId !== currentChannelId) {
-        const isDM = dmChannels.some((d) => d.id === targetChannelId);
-        const isGroupDM = groupDMChannels.some((g) => g.id === targetChannelId);
+        const isDM = dmChannels.some((d) => d.id === targetChannelId)
+        const isGroupDM = groupDMChannels.some((g) => g.id === targetChannelId)
         if (isDM) {
-          setActiveDMChannel(targetChannelId);
+          setActiveDMChannel(targetChannelId)
         } else if (isGroupDM) {
-          setActiveGroupDMChannel(targetChannelId);
+          setActiveGroupDMChannel(targetChannelId)
         } else {
-          setActiveChannel(targetChannelId);
+          setActiveChannel(targetChannelId)
         }
       }
 
       const tryScroll = (attempts: number) => {
         // Read fresh from the store — this closure outlives the channel switch,
         // so `displayMessages` here would be the previous channel's list.
-        const msgs = useChatStore.getState().messages[targetChannelId] || [];
-        const idx = msgs.findIndex((m) => m.id === messageId);
+        const msgs = useChatStore.getState().messages[targetChannelId] || []
+        const idx = msgs.findIndex((m) => m.id === messageId)
         if (idx >= 0) {
-          virtuosoRef.current?.scrollToIndex({ index: idx, align: 'center' });
-          const el = document.getElementById(`msg-${messageId}`);
+          virtuosoRef.current?.scrollToIndex({ index: idx, align: 'center' })
+          const el = document.getElementById(`msg-${messageId}`)
           if (el) {
-            el.style.transition = 'background-color 0.3s ease';
-            el.style.backgroundColor = 'var(--bg-highlight, rgba(108, 90, 245, 0.12))';
+            el.style.transition = 'background-color 0.3s ease'
+            el.style.backgroundColor = 'var(--bg-highlight, rgba(108, 90, 245, 0.12))'
             setTimeout(() => {
-              el.style.backgroundColor = '';
-            }, 2500);
+              el.style.backgroundColor = ''
+            }, 2500)
           }
-          return;
+          return
         }
         if (attempts < 15) {
-          setTimeout(() => tryScroll(attempts + 1), 200);
+          setTimeout(() => tryScroll(attempts + 1), 200)
         }
-      };
+      }
 
       if (targetChannelId !== currentChannelId) {
-        setTimeout(() => tryScroll(0), 600);
+        setTimeout(() => tryScroll(0), 600)
       } else {
-        tryScroll(0);
+        tryScroll(0)
       }
     },
     [
@@ -886,7 +896,7 @@ export default function ChatArea({
       setActiveDMChannel,
       setActiveGroupDMChannel,
     ],
-  );
+  )
 
   /* Virtuoso keeps the viewport anchored across a prepend only if `firstItemIndex`
    * shrinks by exactly the number of items added to the front, in the same render as
@@ -895,44 +905,44 @@ export default function ChatArea({
    * prependMessages dedupes and trims to MAX_MESSAGES, so the net front delta is not
    * the number of rows the request returned. Computed during render, not in an
    * effect, since an effect lands a commit too late. */
-  const FIRST_ITEM_BASE = 100_000;
-  const firstItemIndexRef = useRef(FIRST_ITEM_BASE);
-  const prevMessagesRef = useRef<Message[]>([]);
-  const indexChannelKeyRef = useRef<string | null>(null);
+  const FIRST_ITEM_BASE = 100_000
+  const firstItemIndexRef = useRef(FIRST_ITEM_BASE)
+  const prevMessagesRef = useRef<Message[]>([])
+  const indexChannelKeyRef = useRef<string | null>(null)
   if (indexChannelKeyRef.current !== activeAnyChannelId) {
     // Virtuoso is keyed by channel, so a switch remounts it with fresh internal state.
-    indexChannelKeyRef.current = activeAnyChannelId;
-    firstItemIndexRef.current = FIRST_ITEM_BASE;
-    prevMessagesRef.current = displayMessages;
+    indexChannelKeyRef.current = activeAnyChannelId
+    firstItemIndexRef.current = FIRST_ITEM_BASE
+    prevMessagesRef.current = displayMessages
   } else if (displayMessages !== prevMessagesRef.current) {
-    const prev = prevMessagesRef.current;
-    const prevFirstId = prev[0]?.id;
-    const nextFirstId = displayMessages[0]?.id;
+    const prev = prevMessagesRef.current
+    const prevFirstId = prev[0]?.id
+    const nextFirstId = displayMessages[0]?.id
     if (prevFirstId !== nextFirstId) {
-      const prepended = prevFirstId ? displayMessages.findIndex((m) => m.id === prevFirstId) : -1;
+      const prepended = prevFirstId ? displayMessages.findIndex((m) => m.id === prevFirstId) : -1
       if (prepended > 0) {
-        firstItemIndexRef.current -= prepended;
+        firstItemIndexRef.current -= prepended
       } else {
         // Front items were dropped (MAX_MESSAGES trim) rather than added.
-        const trimmed = nextFirstId ? prev.findIndex((m) => m.id === nextFirstId) : -1;
-        if (trimmed > 0) firstItemIndexRef.current += trimmed;
+        const trimmed = nextFirstId ? prev.findIndex((m) => m.id === nextFirstId) : -1
+        if (trimmed > 0) firstItemIndexRef.current += trimmed
       }
     }
-    prevMessagesRef.current = displayMessages;
+    prevMessagesRef.current = displayMessages
   }
-  const firstItemIndex = firstItemIndexRef.current;
+  const firstItemIndex = firstItemIndexRef.current
 
   const renderMessageItem = useCallback(
     (_index: number, msg: Message) => {
       // `_index` is absolute (offset by firstItemIndex); displayMessages is not.
-      const msgIdx = _index - firstItemIndex;
-      const prevMsg = msgIdx > 0 ? displayMessages[msgIdx - 1] : null;
-      const msgDate = new Date(msg.created_at).toDateString();
-      const prevDate = prevMsg ? new Date(prevMsg.created_at).toDateString() : '';
-      const isOwn = msg.user_id === session?.user.id;
-      const isGrouped = prevMsg?.user_id === msg.user_id && !isOwn;
-      const messageCanDelete = isOwn || canDeleteAny;
-      const isFirstNew = newMessagesRef.current === msg.id;
+      const msgIdx = _index - firstItemIndex
+      const prevMsg = msgIdx > 0 ? displayMessages[msgIdx - 1] : null
+      const msgDate = new Date(msg.created_at).toDateString()
+      const prevDate = prevMsg ? new Date(prevMsg.created_at).toDateString() : ''
+      const isOwn = msg.user_id === session?.user.id
+      const isGrouped = prevMsg?.user_id === msg.user_id && !isOwn
+      const messageCanDelete = isOwn || canDeleteAny
+      const isFirstNew = newMessagesRef.current === msg.id
 
       return (
         <div id={`msg-${msg.id}`}>
@@ -965,8 +975,8 @@ export default function ChatArea({
                 messageId: replyMsg.id,
                 username: replyMsg.display_name || replyMsg.username || 'Unknown',
                 content: replyMsg.content,
-              });
-              inputRef.current?.focus();
+              })
+              inputRef.current?.focus()
             }}
             onPin={activeChannelId ? handlePinMessage : undefined}
             onUnpin={activeChannelId ? handleUnpinMessage : undefined}
@@ -977,12 +987,12 @@ export default function ChatArea({
             }
             onCreateThread={activeChannelId ? handleCreateThread : undefined}
             onImageClick={(imageUrl) => {
-              setLightboxImages(lightboxImageMap.images);
-              setLightboxIndex(lightboxImageMap.urlToIndex.get(imageUrl) ?? 0);
+              setLightboxImages(lightboxImageMap.images)
+              setLightboxIndex(lightboxImageMap.urlToIndex.get(imageUrl) ?? 0)
             }}
           />
         </div>
-      );
+      )
     },
     [
       displayMessages,
@@ -1000,7 +1010,7 @@ export default function ChatArea({
       pinnedMessages,
       lightboxImageMap,
     ],
-  );
+  )
 
   return (
     <div
@@ -1056,13 +1066,7 @@ export default function ChatArea({
           </div>
         )}
         <span className="chat-area__header-prefix">
-          {activeGroupDMChannelId ? (
-            <Users className="icon-xs" />
-          ) : activeDMChannelId ? (
-            '@'
-          ) : (
-            '#'
-          )}
+          {activeGroupDMChannelId ? <Users className="icon-xs" /> : activeDMChannelId ? '@' : '#'}
         </span>
         <h2 className="chat-area__header-title">{headerTitle}</h2>
         {(activeDMChannelId || activeGroupDMChannelId) && (
@@ -1099,9 +1103,9 @@ export default function ChatArea({
             <button
               onClick={() => {
                 if (dmCallStatus === 'active' && dmCallChannelId === activeDM.id) {
-                  onEndDMCall?.();
+                  onEndDMCall?.()
                 } else if (dmCallStatus !== 'ringing-outgoing') {
-                  onStartDMCall?.(activeDM.id, activeDM.other_user_id, activeDM.other_display_name);
+                  onStartDMCall?.(activeDM.id, activeDM.other_user_id, activeDM.other_display_name)
                 }
               }}
               className={`chat-area__call-btn ${dmCallStatus === 'active' && dmCallChannelId === activeDM.id ? 'chat-area__call-btn--active' : ''}`}
@@ -1289,11 +1293,11 @@ export default function ChatArea({
               style={{ flex: 1 }}
               components={{
                 Header: () => {
-                  const chId = activeAnyChannelId || '';
-                  const loadingMore = loadingMoreMessages[chId];
-                  const loadError = loadMoreErrors[chId];
-                  const hasMore = hasMoreMessages[chId];
-                  if (!hasMore && !loadingMore && !loadError) return null;
+                  const chId = activeAnyChannelId || ''
+                  const loadingMore = loadingMoreMessages[chId]
+                  const loadError = loadMoreErrors[chId]
+                  const hasMore = hasMoreMessages[chId]
+                  if (!hasMore && !loadingMore && !loadError) return null
                   return (
                     <div className="chat-area__load-more">
                       <div
@@ -1310,7 +1314,7 @@ export default function ChatArea({
                         {loadError || ' '}
                       </button>
                     </div>
-                  );
+                  )
                 },
                 Footer: () =>
                   typingText ? (
@@ -1335,25 +1339,25 @@ export default function ChatArea({
                 index: 'LAST',
                 align: 'end',
                 behavior: 'smooth',
-              });
-              lastCountAtBottom.current = displayMessages.length;
+              })
+              lastCountAtBottom.current = displayMessages.length
             }}
             title="Jump to bottom"
           >
             ↓{' '}
             {(() => {
               if (newMessagesRef.current) {
-                const newIdx = displayMessages.findIndex((m) => m.id === newMessagesRef.current);
+                const newIdx = displayMessages.findIndex((m) => m.id === newMessagesRef.current)
                 const count =
                   newIdx >= 0
                     ? displayMessages.length - newIdx
-                    : Math.max(0, displayMessages.length - lastCountAtBottom.current);
-                if (count > 0) return `${count} new`;
+                    : Math.max(0, displayMessages.length - lastCountAtBottom.current)
+                if (count > 0) return `${count} new`
               } else {
-                const newCount = Math.max(0, displayMessages.length - lastCountAtBottom.current);
-                if (newCount > 0) return `${newCount} new`;
+                const newCount = Math.max(0, displayMessages.length - lastCountAtBottom.current)
+                if (newCount > 0) return `${newCount} new`
               }
-              return null;
+              return null
             })()}
           </button>
         )}
@@ -1372,8 +1376,8 @@ export default function ChatArea({
                 role="option"
                 aria-selected={i === slash.selectedIndex}
                 onMouseDown={(e) => {
-                  e.preventDefault();
-                  slash.insert(cmd);
+                  e.preventDefault()
+                  slash.insert(cmd)
                 }}
                 onMouseEnter={() => slash.setSelectedIndex(i)}
                 className={`chat-area__mention-suggestion ${i === slash.selectedIndex ? 'chat-area__mention-suggestion--selected' : ''}`}
@@ -1394,19 +1398,19 @@ export default function ChatArea({
             aria-label="Mention suggestions"
           >
             {mention.suggestions.slice(0, MENTION_LIMIT).map((u, i) => {
-              const mentionableRole = mentionableRoles.find((r) => r.name === u);
-              const isRole = !!mentionableRole;
+              const mentionableRole = mentionableRoles.find((r) => r.name === u)
+              const isRole = !!mentionableRole
               return (
                 <button
                   key={`${isRole ? 'role' : 'user'}:${u}`}
                   role="option"
                   aria-selected={i === mention.selectedIndex}
                   ref={(el) => {
-                    mention.refs.current[i] = el;
+                    mention.refs.current[i] = el
                   }}
                   onMouseDown={(e) => {
-                    e.preventDefault();
-                    mention.insert(u);
+                    e.preventDefault()
+                    mention.insert(u)
                   }}
                   onMouseEnter={() => mention.setSelectedIndex(i)}
                   className={`chat-area__mention-suggestion ${i === mention.selectedIndex ? 'chat-area__mention-suggestion--selected' : ''}`}
@@ -1424,7 +1428,7 @@ export default function ChatArea({
                     <span className="chat-area__mention-group-tag">group</span>
                   )}
                 </button>
-              );
+              )
             })}
             {mention.suggestions.length > MENTION_LIMIT && (
               <div className="chat-area__mention-capped">
@@ -1446,8 +1450,8 @@ export default function ChatArea({
                 role="option"
                 aria-selected={i === emojiAutocomplete.selectedIndex}
                 onMouseDown={(e) => {
-                  e.preventDefault();
-                  emojiAutocomplete.insert(entry);
+                  e.preventDefault()
+                  emojiAutocomplete.insert(entry)
                 }}
                 onMouseEnter={() => emojiAutocomplete.setSelectedIndex(i)}
                 className={`chat-area__emoji-suggestion ${i === emojiAutocomplete.selectedIndex ? 'chat-area__emoji-suggestion--selected' : ''}`}
@@ -1501,10 +1505,7 @@ export default function ChatArea({
                 </button>
               </>
             ) : (
-              <button
-                className="chat-area__upload-cancel"
-                onClick={clearPendingFile}
-              >
+              <button className="chat-area__upload-cancel" onClick={clearPendingFile}>
                 cancel
               </button>
             )}
@@ -1653,9 +1654,9 @@ export default function ChatArea({
           <GifPicker
             serverUrl={session.url}
             onSelect={(url, displayName, type) => {
-              setInput((prev) => prev + `![${type}:${displayName}](${url})`);
-              setGifPickerOpen(false);
-              inputRef.current?.focus();
+              setInput((prev) => prev + `![${type}:${displayName}](${url})`)
+              setGifPickerOpen(false)
+              inputRef.current?.focus()
             }}
             onClose={() => setGifPickerOpen(false)}
           />
@@ -1691,8 +1692,8 @@ export default function ChatArea({
         <MediaGallery
           images={lightboxImageMap.images}
           onOpen={(i) => {
-            setLightboxImages(lightboxImageMap.images);
-            setLightboxIndex(i);
+            setLightboxImages(lightboxImageMap.images)
+            setLightboxIndex(i)
           }}
           onClose={() => setMediaGalleryOpen(false)}
         />
@@ -1706,5 +1707,5 @@ export default function ChatArea({
         />
       )}
     </div>
-  );
+  )
 }

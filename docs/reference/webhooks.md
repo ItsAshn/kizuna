@@ -7,10 +7,10 @@ description: Kizuna webhooks — incoming webhooks let external services post in
 
 Kizuna supports webhooks in both directions:
 
-| | Direction | Use it for |
-|---|---|---|
+|              | Direction                 | Use it for                                                |
+| ------------ | ------------------------- | --------------------------------------------------------- |
 | **Incoming** | External service → Kizuna | CI results, GitHub activity, alerts posted into a channel |
-| **Outgoing** | Kizuna → external service | Bridging a channel to Discord/Slack, logging, automation |
+| **Outgoing** | Kizuna → external service | Bridging a channel to Discord/Slack, logging, automation  |
 
 Both are managed in **Server Settings → Webhooks**, or per channel in **Channel Settings → Integrations**.
 
@@ -67,17 +67,17 @@ An outgoing webhook POSTs to a URL you choose whenever a subscribed event happen
 
 ### Events
 
-| Event | Fires when | Channel-scoped |
-|---|---|---|
-| `message.created` | A message is posted | yes |
-| `message.updated` | A message is edited | yes |
-| `message.deleted` | A message is deleted | yes |
-| `channel.created` | A channel is created | no |
-| `channel.updated` | A channel is renamed or reconfigured | yes |
-| `channel.deleted` | A channel is deleted | yes |
-| `member.joined` | Someone joins the server | no |
-| `member.left` | Someone deletes their own account | no |
-| `member.removed` | Someone is kicked or banned | no |
+| Event             | Fires when                           | Channel-scoped |
+| ----------------- | ------------------------------------ | -------------- |
+| `message.created` | A message is posted                  | yes            |
+| `message.updated` | A message is edited                  | yes            |
+| `message.deleted` | A message is deleted                 | yes            |
+| `channel.created` | A channel is created                 | no             |
+| `channel.updated` | A channel is renamed or reconfigured | yes            |
+| `channel.deleted` | A channel is deleted                 | yes            |
+| `member.joined`   | Someone joins the server             | no             |
+| `member.left`     | Someone deletes their own account    | no             |
+| `member.removed`  | Someone is kicked or banned          | no             |
 
 A webhook scoped to a single channel only receives that channel's events, and only the
 channel-scoped ones. Choose **all channels** for server-wide events like `member.joined`.
@@ -109,12 +109,12 @@ channel webhook to bridge a Kizuna channel into Discord with no glue code.
 
 Every delivery carries these headers:
 
-| Header | Meaning |
-|---|---|
-| `X-Kizuna-Event` | Event name (or `ping` for a manual test) |
-| `X-Kizuna-Delivery` | Unique id for this delivery, stable across retries |
-| `X-Kizuna-Timestamp` | Epoch seconds, included in the signed material |
-| `X-Kizuna-Signature` | `sha256=<hex HMAC-SHA256>` |
+| Header               | Meaning                                            |
+| -------------------- | -------------------------------------------------- |
+| `X-Kizuna-Event`     | Event name (or `ping` for a manual test)           |
+| `X-Kizuna-Delivery`  | Unique id for this delivery, stable across retries |
+| `X-Kizuna-Timestamp` | Epoch seconds, included in the signed material     |
+| `X-Kizuna-Signature` | `sha256=<hex HMAC-SHA256>`                         |
 
 The signature is computed over `` `${timestamp}.${rawBody}` `` using the webhook's signing secret.
 Verify against the **raw** request body, before any JSON parsing:
@@ -130,9 +130,8 @@ function verify(rawBody, headers, secret) {
   // Reject replays of old deliveries.
   if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false
 
-  const expected = 'sha256=' + createHmac('sha256', secret)
-    .update(`${timestamp}.${rawBody}`)
-    .digest('hex')
+  const expected =
+    'sha256=' + createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex')
 
   const a = Buffer.from(expected)
   const b = Buffer.from(signature)
@@ -179,10 +178,10 @@ ALLOW_PRIVATE_WEBHOOK_TARGETS=true
 
 ### Configuration
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `OUTGOING_WEBHOOK_TIMEOUT_MS` | `10000` | Per-request timeout |
-| `OUTGOING_WEBHOOK_MAX_ATTEMPTS` | `4` | Attempts before an event is dropped |
-| `OUTGOING_WEBHOOK_CONCURRENCY` | `4` | Deliveries in flight at once |
-| `OUTGOING_WEBHOOK_RATE_PER_MIN` | `60` | Events queued per webhook per minute |
-| `ALLOW_PRIVATE_WEBHOOK_TARGETS` | `false` | Allow private/loopback targets |
+| Variable                        | Default | Purpose                              |
+| ------------------------------- | ------- | ------------------------------------ |
+| `OUTGOING_WEBHOOK_TIMEOUT_MS`   | `10000` | Per-request timeout                  |
+| `OUTGOING_WEBHOOK_MAX_ATTEMPTS` | `4`     | Attempts before an event is dropped  |
+| `OUTGOING_WEBHOOK_CONCURRENCY`  | `4`     | Deliveries in flight at once         |
+| `OUTGOING_WEBHOOK_RATE_PER_MIN` | `60`    | Events queued per webhook per minute |
+| `ALLOW_PRIVATE_WEBHOOK_TARGETS` | `false` | Allow private/loopback targets       |

@@ -1,15 +1,9 @@
-import type {
-  Message,
-  DMChannelData,
-  GroupDMChannelData,
-} from '../types'
+import type { Message, DMChannelData, GroupDMChannelData } from '../types'
 import { client } from './core'
 
 // ─── Direct Messages ──────────────────────────────────────
 
-export async function fetchDMChannels(
-  serverUrl: string,
-): Promise<DMChannelData[]> {
+export async function fetchDMChannels(serverUrl: string): Promise<DMChannelData[]> {
   const res = await client(serverUrl).get('/api/dms')
   return res.data.channels ?? res.data
 }
@@ -30,10 +24,7 @@ export async function fetchDMMessages(
 ): Promise<{ messages: Message[]; hasMore: boolean }> {
   const params: Record<string, string | number> = { limit }
   if (before) params.before = before
-  const res = await client(serverUrl).get(
-    `/api/dms/channel/${channelId}/messages`,
-    { params },
-  )
+  const res = await client(serverUrl).get(`/api/dms/channel/${channelId}/messages`, { params })
   return { messages: res.data.messages ?? res.data, hasMore: res.data.hasMore ?? false }
 }
 
@@ -44,10 +35,11 @@ export async function sendDMMessage(
   encrypted?: boolean,
   attachmentIds?: string[],
 ): Promise<Message> {
-  const res = await client(serverUrl).post(
-    `/api/dms/channel/${channelId}/messages`,
-    { content, encrypted: encrypted || false, ...(attachmentIds?.length ? { attachment_ids: attachmentIds } : {}) },
-  )
+  const res = await client(serverUrl).post(`/api/dms/channel/${channelId}/messages`, {
+    content,
+    encrypted: encrypted || false,
+    ...(attachmentIds?.length ? { attachment_ids: attachmentIds } : {}),
+  })
   return res.data.message ?? res.data
 }
 
@@ -57,22 +49,20 @@ export async function editDMMessage(
   content: string,
   encrypted?: boolean,
 ): Promise<Message> {
-  const res = await client(serverUrl).patch(`/api/dms/messages/${messageId}`, { content, encrypted: encrypted || false })
+  const res = await client(serverUrl).patch(`/api/dms/messages/${messageId}`, {
+    content,
+    encrypted: encrypted || false,
+  })
   return res.data.message ?? res.data
 }
 
-export async function deleteDMMessage(
-  serverUrl: string,
-  messageId: string,
-): Promise<void> {
+export async function deleteDMMessage(serverUrl: string, messageId: string): Promise<void> {
   await client(serverUrl).delete(`/api/dms/messages/${messageId}`)
 }
 
 // ─── Group DMs ──────────────────────────────────────────
 
-export async function fetchGroupDMChannels(
-  serverUrl: string,
-): Promise<GroupDMChannelData[]> {
+export async function fetchGroupDMChannels(serverUrl: string): Promise<GroupDMChannelData[]> {
   const res = await client(serverUrl).get('/api/group-dms')
   return res.data.channels ?? res.data
 }
@@ -111,10 +101,7 @@ export async function fetchGroupDMMessages(
 ): Promise<{ messages: Message[]; hasMore: boolean }> {
   const params: Record<string, string | number> = { limit }
   if (before) params.before = before
-  const res = await client(serverUrl).get(
-    `/api/group-dms/${channelId}/messages`,
-    { params },
-  )
+  const res = await client(serverUrl).get(`/api/group-dms/${channelId}/messages`, { params })
   return { messages: res.data.messages ?? res.data, hasMore: res.data.hasMore ?? false }
 }
 
@@ -125,10 +112,11 @@ export async function sendGroupDMMessage(
   encrypted?: boolean,
   attachmentIds?: string[],
 ): Promise<Message> {
-  const res = await client(serverUrl).post(
-    `/api/group-dms/${channelId}/messages`,
-    { content, encrypted: encrypted || false, ...(attachmentIds?.length ? { attachment_ids: attachmentIds } : {}) },
-  )
+  const res = await client(serverUrl).post(`/api/group-dms/${channelId}/messages`, {
+    content,
+    encrypted: encrypted || false,
+    ...(attachmentIds?.length ? { attachment_ids: attachmentIds } : {}),
+  })
   return res.data.message ?? res.data
 }
 
@@ -138,14 +126,14 @@ export async function editGroupDMMessage(
   content: string,
   encrypted?: boolean,
 ): Promise<Message> {
-  const res = await client(serverUrl).patch(`/api/group-dms/messages/${messageId}`, { content, encrypted: encrypted || false })
+  const res = await client(serverUrl).patch(`/api/group-dms/messages/${messageId}`, {
+    content,
+    encrypted: encrypted || false,
+  })
   return res.data.message ?? res.data
 }
 
-export async function deleteGroupDMMessage(
-  serverUrl: string,
-  messageId: string,
-): Promise<void> {
+export async function deleteGroupDMMessage(serverUrl: string, messageId: string): Promise<void> {
   await client(serverUrl).delete(`/api/group-dms/messages/${messageId}`)
 }
 
@@ -165,4 +153,3 @@ export async function removeGroupDMMember(
 ): Promise<void> {
   await client(serverUrl).delete(`/api/group-dms/${channelId}/members/${userId}`)
 }
-

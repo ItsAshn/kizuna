@@ -1,6 +1,11 @@
 import { useChatStore } from '../store/chatStore'
 import { useServerStore } from '../store/serverStore'
-import { decryptDM, isEncryptedContent, decryptGroupDM, isGroupEncryptedContent } from '@kizuna/shared/crypto'
+import {
+  decryptDM,
+  isEncryptedContent,
+  decryptGroupDM,
+  isGroupEncryptedContent,
+} from '@kizuna/shared/crypto'
 import { getSecretKey } from '../store/keyStore'
 import type { Message } from '@kizuna/shared'
 
@@ -31,7 +36,9 @@ export function tryDecryptGroupDM(message: Message): Message {
   if (!currentUserId) return { ...message, content: '[Encrypted - not authenticated]' }
   const channel = useChatStore.getState().groupDMChannels.find((d) => d.id === message.channel_id)
   const senderMember = channel?.members.find((m) => m.user_id === message.user_id)
-  const senderPubKey = senderMember?.public_key || (message as unknown as { sender_public_key?: string }).sender_public_key
+  const senderPubKey =
+    senderMember?.public_key ||
+    (message as unknown as { sender_public_key?: string }).sender_public_key
   if (!senderPubKey) return { ...message, content: '[Encrypted - missing sender key]' }
   try {
     const decrypted = decryptGroupDM(parsed, senderPubKey, currentUserId, secKey)

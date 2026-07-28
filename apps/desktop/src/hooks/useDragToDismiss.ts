@@ -25,23 +25,29 @@ export function useDragToDismiss(
   const dragging = useRef(false)
   const haptics = useHaptics()
 
-  const onTouchStart = useCallback((e: TouchEvent) => {
-    if (!enabled) return
-    startY.current = e.touches[0].clientY
-    offset.current = 0
-    dragging.current = true
-    const el = sheetRef.current
-    if (el) el.style.transition = 'none'
-  }, [enabled, sheetRef])
+  const onTouchStart = useCallback(
+    (e: TouchEvent) => {
+      if (!enabled) return
+      startY.current = e.touches[0].clientY
+      offset.current = 0
+      dragging.current = true
+      const el = sheetRef.current
+      if (el) el.style.transition = 'none'
+    },
+    [enabled, sheetRef],
+  )
 
-  const onTouchMove = useCallback((e: TouchEvent) => {
-    if (!dragging.current) return
-    const dy = e.touches[0].clientY - startY.current
-    // Only follow downward drags; ignore upward pull.
-    offset.current = dy > 0 ? dy : 0
-    const el = sheetRef.current
-    if (el) el.style.transform = offset.current ? `translateY(${offset.current}px)` : ''
-  }, [sheetRef])
+  const onTouchMove = useCallback(
+    (e: TouchEvent) => {
+      if (!dragging.current) return
+      const dy = e.touches[0].clientY - startY.current
+      // Only follow downward drags; ignore upward pull.
+      offset.current = dy > 0 ? dy : 0
+      const el = sheetRef.current
+      if (el) el.style.transform = offset.current ? `translateY(${offset.current}px)` : ''
+    },
+    [sheetRef],
+  )
 
   const onTouchEnd = useCallback(() => {
     if (!dragging.current) return

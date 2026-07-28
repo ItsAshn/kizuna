@@ -38,12 +38,16 @@ export default function MonitorPicker({ onSelect, onCancel }: MonitorPickerProps
     <PickerSurface base="monitor-picker" isMobile={false} onClose={onCancel}>
       <h2 className="monitor-picker__title">Select a screen to share</h2>
 
-      {loading && <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Detecting monitors...</p>}
+      {loading && (
+        <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Detecting monitors...</p>
+      )}
 
       {error && (
         <div>
           <p style={{ color: 'var(--red)', fontSize: '13px', marginBottom: 12 }}>{error}</p>
-          <button className="monitor-picker__cancel" onClick={onCancel}>Cancel</button>
+          <button className="monitor-picker__cancel" onClick={onCancel}>
+            Cancel
+          </button>
         </div>
       )}
 
@@ -69,7 +73,9 @@ export default function MonitorPicker({ onSelect, onCancel }: MonitorPickerProps
               <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No monitors detected</p>
             )}
           </div>
-          <button className="monitor-picker__cancel" onClick={onCancel}>Cancel</button>
+          <button className="monitor-picker__cancel" onClick={onCancel}>
+            Cancel
+          </button>
         </>
       )}
     </PickerSurface>

@@ -6,8 +6,14 @@
 }
 
 @keyframes searchBarSlideIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .search-bar__input-wrap {
@@ -111,7 +117,9 @@
   font-weight: 500;
   cursor: pointer;
   width: 100%;
-  transition: background 0.1s ease, opacity 0.1s ease;
+  transition:
+    background 0.1s ease,
+    opacity 0.1s ease;
 }
 
 .search-bar__load-more:hover {
@@ -131,8 +139,12 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 767px) {

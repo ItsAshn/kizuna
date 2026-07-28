@@ -3,7 +3,14 @@ import { v4 as uuidv4 } from 'uuid'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission, canWriteToChannel, canViewChannel, isUserAdmin } from '../middleware/auth'
+import {
+  authMiddleware,
+  getUserPermissions,
+  hasPermission,
+  canWriteToChannel,
+  canViewChannel,
+  isUserAdmin,
+} from '../middleware/auth'
 import { checkSpam } from '../services/spamFilter'
 import { parseMentions, processMentions } from '../socket/chatHandler'
 import { checkMessageContent } from '../moderation'
@@ -40,8 +47,14 @@ function mapMessage(row: Record<string, unknown>) {
     channel_id: row.channel_id as string,
     user_id: (row.author_id as string) || null,
     username: row.author_username as string,
-    display_name: (row.author_display_name as string | null) || (row.display_name as string | null) || (row.author_username as string),
-    avatar: (row.author_avatar as string | null) || (row.avatar as string | null | undefined) || undefined,
+    display_name:
+      (row.author_display_name as string | null) ||
+      (row.display_name as string | null) ||
+      (row.author_username as string),
+    avatar:
+      (row.author_avatar as string | null) ||
+      (row.avatar as string | null | undefined) ||
+      undefined,
     content: row.content as string,
     edited_at: row.edited_at ? (row.edited_at as number) * 1000 : null,
     created_at: (row.created_at as number) * 1000,
@@ -53,16 +66,23 @@ function mapMessage(row: Record<string, unknown>) {
   }
 }
 
-function fetchReactionsForMessages(db: Database.Database, messageIds: string[]): Record<string, ReactionGroup[]> {
+function fetchReactionsForMessages(
+  db: Database.Database,
+  messageIds: string[],
+): Record<string, ReactionGroup[]> {
   if (messageIds.length === 0) return {}
   const placeholders = messageIds.map(() => '?').join(',')
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(
+      `
     SELECT mr.message_id, mr.reaction_key, mr.reaction_type, mr.user_id, u.username
     FROM message_reactions mr
     LEFT JOIN users u ON mr.user_id = u.id
     WHERE mr.message_id IN (${placeholders})
     ORDER BY mr.created_at
-  `).all(...messageIds) as ReactionRow[]
+  `,
+    )
+    .all(...messageIds) as ReactionRow[]
 
   const map: Record<string, ReactionGroup[]> = {}
   for (const r of rows) {
@@ -117,19 +137,25 @@ messageRoutes.get('/:channelId', authMiddleware, (c) => {
 
   let rows: Record<string, unknown>[]
   if (before) {
-    const anchor = db.prepare('SELECT created_at FROM messages WHERE id = ?').get(before) as { created_at: number } | undefined
+    const anchor = db.prepare('SELECT created_at FROM messages WHERE id = ?').get(before) as
+      | { created_at: number }
+      | undefined
     rows = anchor
-      ? db.prepare(`${SELECT} AND m.created_at < ? ORDER BY m.created_at DESC LIMIT ?`).all(channelId, anchor.created_at, limit) as Record<string, unknown>[]
+      ? (db
+          .prepare(`${SELECT} AND m.created_at < ? ORDER BY m.created_at DESC LIMIT ?`)
+          .all(channelId, anchor.created_at, limit) as Record<string, unknown>[])
       : []
     rows = rows.reverse()
   } else {
-    rows = db.prepare(`${SELECT} ORDER BY m.created_at DESC LIMIT ?`).all(channelId, limit) as Record<string, unknown>[]
+    rows = db
+      .prepare(`${SELECT} ORDER BY m.created_at DESC LIMIT ?`)
+      .all(channelId, limit) as Record<string, unknown>[]
     rows = rows.reverse()
   }
 
   const messages = rows.map(mapMessage)
   const hasMore = rows.length === limit
-  const messageIds = messages.map(m => m.id)
+  const messageIds = messages.map((m) => m.id)
   const reactionsMap = fetchReactionsForMessages(db, messageIds)
   for (const msg of messages) {
     msg.reactions = reactionsMap[msg.id] || []
@@ -154,7 +180,11 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
     return c.json({ error: 'This channel is locked' }, 403)
   }
 
-  const body = await c.req.json() as { content: string; attachment_ids?: string[]; reply_to_message_id?: string }
+  const body = (await c.req.json()) as {
+    content: string
+    attachment_ids?: string[]
+    reply_to_message_id?: string
+  }
   const { content, attachment_ids, reply_to_message_id } = body
   if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)
   if (content.length > 4000) return c.json({ error: 'Message too long (max 4000 chars)' }, 400)
@@ -176,7 +206,11 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   let replyUsername: string | null = null
   let replyContent: string | null = null
   if (reply_to_message_id) {
-    const replyMsg = db.prepare('SELECT author_username, content FROM messages WHERE id = ? AND channel_id = ?').get(reply_to_message_id, channelId) as { author_username: string; content: string } | undefined
+    const replyMsg = db
+      .prepare('SELECT author_username, content FROM messages WHERE id = ? AND channel_id = ?')
+      .get(reply_to_message_id, channelId) as
+      | { author_username: string; content: string }
+      | undefined
     if (replyMsg) {
       replyUsername = replyMsg.author_username
       replyContent = replyMsg.content
@@ -184,11 +218,22 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   }
 
   db.prepare(
-    'INSERT INTO messages (id, channel_id, author_id, author_username, content, reply_to_message_id, reply_to_username, reply_to_content) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, channelId, user.userId, user.username, content.trim(), reply_to_message_id || null, replyUsername, replyContent)
+    'INSERT INTO messages (id, channel_id, author_id, author_username, content, reply_to_message_id, reply_to_username, reply_to_content) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(
+    id,
+    channelId,
+    user.userId,
+    user.username,
+    content.trim(),
+    reply_to_message_id || null,
+    replyUsername,
+    replyContent,
+  )
 
   if (attachment_ids && attachment_ids.length > 0) {
-    const updateStmt = db.prepare('UPDATE attachments SET message_id = ? WHERE id = ? AND message_id IS NULL')
+    const updateStmt = db.prepare(
+      'UPDATE attachments SET message_id = ? WHERE id = ? AND message_id IS NULL',
+    )
     const tx = db.transaction(() => {
       for (const attId of attachment_ids) {
         updateStmt.run(id, attId)
@@ -197,34 +242,49 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
     tx()
   }
 
-  const row = db.prepare(`
+  const row = db
+    .prepare(
+      `
     SELECT m.*, u.display_name, u.avatar
     FROM messages m
     LEFT JOIN users u ON m.author_id = u.id
     WHERE m.id = ?
-  `).get(id) as Record<string, unknown>
+  `,
+    )
+    .get(id) as Record<string, unknown>
 
   const message = mapMessage(row)
   message.reactions = []
 
   emitToChannel(c, channelId, 'message:new', message, user.userId)
-  dispatchOutgoing('message.created', {
-    channel: { id: channelId },
-    user: { id: user.userId, username: user.username },
-    message: { id, content: content.trim() },
-  }, { channelId })
+  dispatchOutgoing(
+    'message.created',
+    {
+      channel: { id: channelId },
+      user: { id: user.userId, username: user.username },
+      message: { id, content: content.trim() },
+    },
+    { channelId },
+  )
 
   const mentions = parseMentions(content.trim())
   try {
     const io = getIo(c)
-    if (io) processMentions(io, {
-      id: row.id as string,
-      channel_id: row.channel_id as string,
-      author_id: row.author_id as string,
-      author_username: row.author_username as string,
-      content: row.content as string,
-    }, mentions)
-  } catch { /* best-effort */ }
+    if (io)
+      processMentions(
+        io,
+        {
+          id: row.id as string,
+          channel_id: row.channel_id as string,
+          author_id: row.author_id as string,
+          author_username: row.author_username as string,
+          content: row.content as string,
+        },
+        mentions,
+      )
+  } catch {
+    /* best-effort */
+  }
 
   return c.json({ message }, 201)
 })
@@ -236,7 +296,9 @@ messageRoutes.delete('/:messageId', authMiddleware, async (c) => {
   const messageId = c.req.param('messageId')
   const db = getDb()
 
-  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as Record<string, unknown> | undefined
+  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as
+    | Record<string, unknown>
+    | undefined
   if (!message) return c.json({ error: 'Message not found' }, 404)
 
   if (message.author_id !== user.userId) {
@@ -246,23 +308,41 @@ messageRoutes.delete('/:messageId', authMiddleware, async (c) => {
   }
 
   const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
-  const attachments = db.prepare('SELECT * FROM attachments WHERE message_id = ?').all(messageId) as AttachmentRow[]
-  await Promise.all(attachments.map(async (att) => {
-    const filepath = path.join(uploadsDir, path.basename(att.url))
-    try { await fs.unlink(filepath) } catch { /* file may not exist */ }
-  }))
+  const attachments = db
+    .prepare('SELECT * FROM attachments WHERE message_id = ?')
+    .all(messageId) as AttachmentRow[]
+  await Promise.all(
+    attachments.map(async (att) => {
+      const filepath = path.join(uploadsDir, path.basename(att.url))
+      try {
+        await fs.unlink(filepath)
+      } catch {
+        /* file may not exist */
+      }
+    }),
+  )
 
   db.prepare('DELETE FROM attachments WHERE message_id = ?').run(messageId)
   db.prepare('DELETE FROM mentions WHERE message_id = ?').run(messageId)
   db.prepare('DELETE FROM message_edits WHERE message_id = ?').run(messageId)
   db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
 
-  emitToChannel(c, message.channel_id as string, 'message:delete', { id: messageId, channel_id: message.channel_id as string }, user.userId)
-  dispatchOutgoing('message.deleted', {
-    channel: { id: message.channel_id as string },
-    user: { id: user.userId, username: user.username },
-    message: { id: messageId! },
-  }, { channelId: message.channel_id as string })
+  emitToChannel(
+    c,
+    message.channel_id as string,
+    'message:delete',
+    { id: messageId, channel_id: message.channel_id as string },
+    user.userId,
+  )
+  dispatchOutgoing(
+    'message.deleted',
+    {
+      channel: { id: message.channel_id as string },
+      user: { id: user.userId, username: user.username },
+      message: { id: messageId! },
+    },
+    { channelId: message.channel_id as string },
+  )
 
   return c.json({ ok: true })
 })
@@ -272,7 +352,7 @@ messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
   const user = getAuth(c)
   const messageId = c.req.param('messageId')
   if (!messageId) return c.json({ error: 'Message ID is required' }, 400)
-  const body = await c.req.json() as { content: string }
+  const body = (await c.req.json()) as { content: string }
   const { content } = body
   if (!content?.trim()) return c.json({ error: 'Content is required' }, 400)
   if (content.length > 4000) return c.json({ error: 'Message too long (max 4000 chars)' }, 400)
@@ -282,32 +362,47 @@ messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
   }
 
   const db = getDb()
-  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as Record<string, unknown> | undefined
+  const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as
+    | Record<string, unknown>
+    | undefined
   if (!message) return c.json({ error: 'Message not found' }, 404)
   if (message.author_id !== user.userId) return c.json({ error: 'Forbidden' }, 403)
 
   const now = Math.floor(Date.now() / 1000)
   db.prepare(
-    'INSERT INTO message_edits (id, message_id, old_content, edited_by, edited_at) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO message_edits (id, message_id, old_content, edited_by, edited_at) VALUES (?, ?, ?, ?, ?)',
   ).run(uuidv4(), messageId, message.content as string, user.userId, now)
-  db.prepare('UPDATE messages SET content = ?, edited_at = ?, updated_at = ? WHERE id = ?').run(content.trim(), now, now, messageId)
+  db.prepare('UPDATE messages SET content = ?, edited_at = ?, updated_at = ? WHERE id = ?').run(
+    content.trim(),
+    now,
+    now,
+    messageId,
+  )
 
-  const row = db.prepare(`
+  const row = db
+    .prepare(
+      `
     SELECT m.*, u.display_name, u.avatar
     FROM messages m
     LEFT JOIN users u ON m.author_id = u.id
     WHERE m.id = ?
-  `).get(messageId) as Record<string, unknown>
+  `,
+    )
+    .get(messageId) as Record<string, unknown>
 
   const result = mapMessage(row)
   result.reactions = fetchReactionsForMessages(db, [messageId])[messageId] || []
 
   emitToChannel(c, message.channel_id as string, 'message:edit', result, user.userId)
-  dispatchOutgoing('message.updated', {
-    channel: { id: message.channel_id as string },
-    user: { id: user.userId, username: user.username },
-    message: { id: messageId, content: content.trim() },
-  }, { channelId: message.channel_id as string })
+  dispatchOutgoing(
+    'message.updated',
+    {
+      channel: { id: message.channel_id as string },
+      user: { id: user.userId, username: user.username },
+      message: { id: messageId, content: content.trim() },
+    },
+    { channelId: message.channel_id as string },
+  )
 
   return c.json({ message: result })
 })

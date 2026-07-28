@@ -50,21 +50,33 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
     if (!serverUrl) return
     setRolesLoading(true)
     fetchRoles(serverUrl)
-      .then(r => { if (mountedRef.current) setRoles(r) })
-      .catch(err => console.error('Failed to fetch roles:', err))
-      .finally(() => { if (mountedRef.current) setRolesLoading(false) })
+      .then((r) => {
+        if (mountedRef.current) setRoles(r)
+      })
+      .catch((err) => console.error('Failed to fetch roles:', err))
+      .finally(() => {
+        if (mountedRef.current) setRolesLoading(false)
+      })
   }, [serverUrl])
 
   function memberRoleCount(roleId: string): number {
-    return members.filter(m => (m.custom_roles || []).some(r => r.id === roleId)).length
+    return members.filter((m) => (m.custom_roles || []).some((r) => r.id === roleId)).length
   }
 
   const handleCreateRole = async () => {
     if (!newRoleName.trim() || !serverUrl) return
     setCreatingRole(true)
     try {
-      const role = await createRole(serverUrl, newRoleName.trim(), newRoleColor, newRolePerms, newRoleHoist, newRoleMentionable, newRoleDefaultOnJoin)
-      setRoles(prev => [...prev, role])
+      const role = await createRole(
+        serverUrl,
+        newRoleName.trim(),
+        newRoleColor,
+        newRolePerms,
+        newRoleHoist,
+        newRoleMentionable,
+        newRoleDefaultOnJoin,
+      )
+      setRoles((prev) => [...prev, role])
       setNewRoleName('')
       setNewRoleColor('#4c6ef5')
       setNewRolePerms({})
@@ -94,15 +106,28 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
     if (!serverUrl) return
     setSavingRoleId(id)
     try {
-      const updated = await updateRole(serverUrl, id, editName, editColor, editPerms, editHoist, editMentionable, editDefaultOnJoin)
-      setRoles(prev => prev.map(r => r.id === id ? updated : r))
-      setMembers(members.map(m => ({
-        ...m,
-        custom_role_id: m.custom_role_id === id ? id : m.custom_role_id,
-        custom_role_name: m.custom_role_id === id ? updated.name : m.custom_role_name,
-        custom_role_color: m.custom_role_id === id ? updated.color : m.custom_role_color,
-        custom_roles: (m.custom_roles || []).map(r => r.id === id ? { ...r, name: updated.name, color: updated.color } : r),
-      })))
+      const updated = await updateRole(
+        serverUrl,
+        id,
+        editName,
+        editColor,
+        editPerms,
+        editHoist,
+        editMentionable,
+        editDefaultOnJoin,
+      )
+      setRoles((prev) => prev.map((r) => (r.id === id ? updated : r)))
+      setMembers(
+        members.map((m) => ({
+          ...m,
+          custom_role_id: m.custom_role_id === id ? id : m.custom_role_id,
+          custom_role_name: m.custom_role_id === id ? updated.name : m.custom_role_name,
+          custom_role_color: m.custom_role_id === id ? updated.color : m.custom_role_color,
+          custom_roles: (m.custom_roles || []).map((r) =>
+            r.id === id ? { ...r, name: updated.name, color: updated.color } : r,
+          ),
+        })),
+      )
       setEditingRoleId(null)
       setRoleError(null)
     } catch (err) {
@@ -119,14 +144,16 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
     if (!serverUrl) return
     try {
       await deleteRole(serverUrl, id)
-      setRoles(prev => prev.filter(r => r.id !== id))
-      setMembers(members.map(m => ({
-        ...m,
-        custom_role_id: m.custom_role_id === id ? null : m.custom_role_id,
-        custom_role_name: m.custom_role_id === id ? null : m.custom_role_name,
-        custom_role_color: m.custom_role_id === id ? null : m.custom_role_color,
-        custom_roles: (m.custom_roles || []).filter(r => r.id !== id),
-      })))
+      setRoles((prev) => prev.filter((r) => r.id !== id))
+      setMembers(
+        members.map((m) => ({
+          ...m,
+          custom_role_id: m.custom_role_id === id ? null : m.custom_role_id,
+          custom_role_name: m.custom_role_id === id ? null : m.custom_role_name,
+          custom_role_color: m.custom_role_id === id ? null : m.custom_role_color,
+          custom_roles: (m.custom_roles || []).filter((r) => r.id !== id),
+        })),
+      )
       if (editingRoleId === id) setEditingRoleId(null)
       setRoleError(null)
     } catch (err) {
@@ -147,18 +174,44 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
         </button>
       ) : (
         <div className="server-menu__role-create">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <p className="server-menu__section-title" style={{ margin: 0 }}>create role</p>
-            <button onClick={() => setShowCreateRole(false)} className="server-menu__member-action-btn">cancel</button>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '8px',
+            }}
+          >
+            <p className="server-menu__section-title" style={{ margin: 0 }}>
+              create role
+            </p>
+            <button
+              onClick={() => setShowCreateRole(false)}
+              className="server-menu__member-action-btn"
+            >
+              cancel
+            </button>
           </div>
           <div className="server-menu__role-create-row">
-            <input className="server-menu__role-create-input" placeholder="role name" value={newRoleName} onChange={(e) => setNewRoleName(e.target.value)} maxLength={50} />
-            <input type="color" className="server-menu__color-input" value={newRoleColor} onChange={(e) => setNewRoleColor(e.target.value)} />
+            <input
+              className="server-menu__role-create-input"
+              placeholder="role name"
+              value={newRoleName}
+              onChange={(e) => setNewRoleName(e.target.value)}
+              maxLength={50}
+            />
+            <input
+              type="color"
+              className="server-menu__color-input"
+              value={newRoleColor}
+              onChange={(e) => setNewRoleColor(e.target.value)}
+            />
           </div>
           <div className="server-menu__perm-toggles">
-            {ALL_PERMISSIONS.map(p => (
-              <button key={p.key}
-                onClick={() => setNewRolePerms(prev => ({ ...prev, [p.key]: !prev[p.key] }))}
+            {ALL_PERMISSIONS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setNewRolePerms((prev) => ({ ...prev, [p.key]: !prev[p.key] }))}
                 className={`server-menu__perm-toggle ${newRolePerms[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
                 title={p.desc}
               >
@@ -168,24 +221,44 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
           </div>
           <div className="server-menu__role-flags">
             <label className="server-menu__role-flag">
-              <input type="checkbox" checked={newRoleHoist} onChange={(e) => setNewRoleHoist(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={newRoleHoist}
+                onChange={(e) => setNewRoleHoist(e.target.checked)}
+              />
               <span>Display members separately</span>
             </label>
             <label className="server-menu__role-flag">
-              <input type="checkbox" checked={newRoleMentionable} onChange={(e) => setNewRoleMentionable(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={newRoleMentionable}
+                onChange={(e) => setNewRoleMentionable(e.target.checked)}
+              />
               <span>Allow @role mentions</span>
             </label>
             <label className="server-menu__role-flag">
-              <input type="checkbox" checked={newRoleDefaultOnJoin} onChange={(e) => setNewRoleDefaultOnJoin(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={newRoleDefaultOnJoin}
+                onChange={(e) => setNewRoleDefaultOnJoin(e.target.checked)}
+              />
               <span>Assign on join</span>
             </label>
           </div>
-          <button onClick={handleCreateRole} disabled={creatingRole || !newRoleName.trim()}
-            className="server-menu__role-create-btn">
+          <button
+            onClick={handleCreateRole}
+            disabled={creatingRole || !newRoleName.trim()}
+            className="server-menu__role-create-btn"
+          >
             {creatingRole ? '...' : 'create role'}
           </button>
           {roleError && (
-            <span className="server-menu__save-msg server-menu__save-msg--err" style={{ marginTop: '6px' }}>{roleError}</span>
+            <span
+              className="server-menu__save-msg server-menu__save-msg--err"
+              style={{ marginTop: '6px' }}
+            >
+              {roleError}
+            </span>
           )}
         </div>
       )}
@@ -202,13 +275,24 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
               {editingRoleId === role.id ? (
                 <div>
                   <div className="server-menu__role-create-row">
-                    <input className="server-menu__role-create-input" value={editName} onChange={(e) => setEditName(e.target.value)} maxLength={50} />
-                    <input type="color" className="server-menu__color-input" value={editColor} onChange={(e) => setEditColor(e.target.value)} />
+                    <input
+                      className="server-menu__role-create-input"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      maxLength={50}
+                    />
+                    <input
+                      type="color"
+                      className="server-menu__color-input"
+                      value={editColor}
+                      onChange={(e) => setEditColor(e.target.value)}
+                    />
                   </div>
                   <div className="server-menu__perm-toggles">
-                    {ALL_PERMISSIONS.map(p => (
-                      <button key={p.key}
-                        onClick={() => setEditPerms(prev => ({ ...prev, [p.key]: !prev[p.key] }))}
+                    {ALL_PERMISSIONS.map((p) => (
+                      <button
+                        key={p.key}
+                        onClick={() => setEditPerms((prev) => ({ ...prev, [p.key]: !prev[p.key] }))}
                         className={`server-menu__perm-toggle ${editPerms[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
                         title={p.desc}
                       >
@@ -218,24 +302,43 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
                   </div>
                   <div className="server-menu__role-flags">
                     <label className="server-menu__role-flag">
-                      <input type="checkbox" checked={editHoist} onChange={(e) => setEditHoist(e.target.checked)} />
+                      <input
+                        type="checkbox"
+                        checked={editHoist}
+                        onChange={(e) => setEditHoist(e.target.checked)}
+                      />
                       <span>Display members separately</span>
                     </label>
                     <label className="server-menu__role-flag">
-                      <input type="checkbox" checked={editMentionable} onChange={(e) => setEditMentionable(e.target.checked)} />
+                      <input
+                        type="checkbox"
+                        checked={editMentionable}
+                        onChange={(e) => setEditMentionable(e.target.checked)}
+                      />
                       <span>Allow @role mentions</span>
                     </label>
                     <label className="server-menu__role-flag">
-                      <input type="checkbox" checked={editDefaultOnJoin} onChange={(e) => setEditDefaultOnJoin(e.target.checked)} />
+                      <input
+                        type="checkbox"
+                        checked={editDefaultOnJoin}
+                        onChange={(e) => setEditDefaultOnJoin(e.target.checked)}
+                      />
                       <span>Assign on join</span>
                     </label>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => handleSaveRole(role.id)} disabled={savingRoleId === role.id}
-                      className="server-menu__save-btn" style={{ fontSize: '10px' }}>
+                    <button
+                      onClick={() => handleSaveRole(role.id)}
+                      disabled={savingRoleId === role.id}
+                      className="server-menu__save-btn"
+                      style={{ fontSize: '10px' }}
+                    >
                       {savingRoleId === role.id ? '...' : 'save'}
                     </button>
-                    <button onClick={() => setEditingRoleId(null)} className="server-menu__member-action-btn">
+                    <button
+                      onClick={() => setEditingRoleId(null)}
+                      className="server-menu__member-action-btn"
+                    >
                       cancel
                     </button>
                   </div>
@@ -243,9 +346,18 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
               ) : (
                 <div>
                   <div className="server-menu__role-header">
-                    <span className="server-menu__role-color-dot" style={{ backgroundColor: role.color }} />
-                    <span className="server-menu__role-name" style={{ color: role.color }}>{role.name}</span>
-                    {count > 0 && <span className="server-menu__role-count">{count} member{count !== 1 ? 's' : ''}</span>}
+                    <span
+                      className="server-menu__role-color-dot"
+                      style={{ backgroundColor: role.color }}
+                    />
+                    <span className="server-menu__role-name" style={{ color: role.color }}>
+                      {role.name}
+                    </span>
+                    {count > 0 && (
+                      <span className="server-menu__role-count">
+                        {count} member{count !== 1 ? 's' : ''}
+                      </span>
+                    )}
                     {role.hoist && <span className="server-menu__role-tag">hoist</span>}
                     {role.mentionable && <span className="server-menu__role-tag">@</span>}
                     {role.default_on_join && <span className="server-menu__role-tag">join</span>}
@@ -280,7 +392,9 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
                             disabled={idx === 0 || reorderingRoles}
                             className="server-menu__role-action-btn"
                             title="Move up"
-                          >&#9650;</button>
+                          >
+                            &#9650;
+                          </button>
                           <button
                             onClick={async () => {
                               if (!serverUrl) return
@@ -309,16 +423,29 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
                             disabled={idx === roles.length - 1 || reorderingRoles}
                             className="server-menu__role-action-btn"
                             title="Move down"
-                          >&#9660;</button>
+                          >
+                            &#9660;
+                          </button>
                         </>
                       )}
-                      <button onClick={() => handleStartEditRole(role)} className="server-menu__role-action-btn">edit</button>
-                      <button onClick={() => handleDeleteRole(role.id)} className="server-menu__role-action-btn server-menu__role-action-btn--danger">delete</button>
+                      <button
+                        onClick={() => handleStartEditRole(role)}
+                        className="server-menu__role-action-btn"
+                      >
+                        edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteRole(role.id)}
+                        className="server-menu__role-action-btn server-menu__role-action-btn--danger"
+                      >
+                        delete
+                      </button>
                     </div>
                   </div>
                   <div className="server-menu__perm-toggles">
-                    {ALL_PERMISSIONS.map(p => (
-                      <span key={p.key}
+                    {ALL_PERMISSIONS.map((p) => (
+                      <span
+                        key={p.key}
                         className={`server-menu__perm-toggle ${role.permissions?.[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
                         style={{ cursor: 'default' }}
                         title={p.desc}
@@ -334,7 +461,12 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
         })
       )}
       {!showCreateRole && roleError && (
-        <span className="server-menu__save-msg server-menu__save-msg--err" style={{ marginTop: '8px', display: 'block' }}>{roleError}</span>
+        <span
+          className="server-menu__save-msg server-menu__save-msg--err"
+          style={{ marginTop: '8px', display: 'block' }}
+        >
+          {roleError}
+        </span>
       )}
     </div>
   )

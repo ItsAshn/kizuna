@@ -32,49 +32,57 @@ export default class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100dvh',
-          width: '100vw',
-          background: 'var(--bg-primary)',
-          color: 'var(--text-primary)',
-          padding: '40px',
-          textAlign: 'center',
-        }}>
-          <div style={{
-            fontSize: '48px',
-            fontWeight: 700,
-            color: 'var(--red)',
-            marginBottom: '16px',
-          }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100dvh',
+            width: '100vw',
+            background: 'var(--bg-primary)',
+            color: 'var(--text-primary)',
+            padding: '40px',
+            textAlign: 'center',
+          }}
+        >
+          <div
+            style={{
+              fontSize: '48px',
+              fontWeight: 700,
+              color: 'var(--red)',
+              marginBottom: '16px',
+            }}
+          >
             Something went wrong
           </div>
-          <p style={{
-            color: 'var(--text-secondary)',
-            fontSize: '15px',
-            maxWidth: '480px',
-            marginBottom: '8px',
-            lineHeight: 1.6,
-          }}>
+          <p
+            style={{
+              color: 'var(--text-secondary)',
+              fontSize: '15px',
+              maxWidth: '480px',
+              marginBottom: '8px',
+              lineHeight: 1.6,
+            }}
+          >
             An unexpected error occurred in the Kizuna client.
           </p>
           {this.state.error && (
-            <pre style={{
-              background: 'var(--bg-tertiary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: 'var(--radius-md)',
-              padding: '12px 16px',
-              marginBottom: '24px',
-              fontSize: '12px',
-              color: 'var(--red)',
-              maxWidth: '600px',
-              overflow: 'auto',
-              textAlign: 'left',
-              fontFamily: 'var(--font-mono)',
-            }}>
+            <pre
+              style={{
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-md)',
+                padding: '12px 16px',
+                marginBottom: '24px',
+                fontSize: '12px',
+                color: 'var(--red)',
+                maxWidth: '600px',
+                overflow: 'auto',
+                textAlign: 'left',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
               {this.state.error.stack ?? this.state.error.message}
             </pre>
           )}
@@ -97,11 +105,13 @@ export default class ErrorBoundary extends Component<Props, State> {
             <RotateCcw size={16} />
             Reload Kizuna
           </button>
-          <p style={{
-            color: 'var(--text-muted)',
-            fontSize: '12px',
-            marginTop: '16px',
-          }}>
+          <p
+            style={{
+              color: 'var(--text-muted)',
+              fontSize: '12px',
+              marginTop: '16px',
+            }}
+          >
             If the problem persists, try clearing your browser data or reinstalling the app.
           </p>
         </div>

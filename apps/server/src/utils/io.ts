@@ -22,7 +22,11 @@ export function emitIo(c: Context, event: string, data: unknown): void {
 // Tells every live socket belonging to a user why they're being cut off, then
 // closes them. Sockets authenticate at handshake time only, so a removed user
 // would otherwise keep a working realtime connection until their token expired.
-export function disconnectUserSockets(c: Context, userId: string, reason: 'kicked' | 'banned'): void {
+export function disconnectUserSockets(
+  c: Context,
+  userId: string,
+  reason: 'kicked' | 'banned',
+): void {
   try {
     const io = getIo(c)
     if (!io) return
@@ -32,7 +36,9 @@ export function disconnectUserSockets(c: Context, userId: string, reason: 'kicke
       // Give the packet a tick to flush before tearing down the transport.
       setTimeout(() => socket.disconnect(true), 100)
     }
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
 }
 
 export function emitToRoom(c: Context, room: string, event: string, data: unknown): void {
@@ -51,7 +57,13 @@ export function emitToRoom(c: Context, room: string, event: string, data: unknow
 // Channel events also fan out to eligible members' personal rooms (skipping
 // the actor, muted users, and anyone who can't view the channel) so clients
 // not actively viewing the channel can still be notified.
-export function emitToChannel(c: Context, channelId: string, event: string, data: unknown, actorUserId: string): void {
+export function emitToChannel(
+  c: Context,
+  channelId: string,
+  event: string,
+  data: unknown,
+  actorUserId: string,
+): void {
   try {
     const io = getIo(c)
     if (!io) {

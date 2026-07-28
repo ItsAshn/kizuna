@@ -1,7 +1,15 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { User, SavedServer } from '@kizuna/shared'
-import { getMe, setClientToken, clearClientToken, refreshToken, setTokenRefreshHandler, logout, normalizeUrl } from '@kizuna/shared'
+import {
+  getMe,
+  setClientToken,
+  clearClientToken,
+  refreshToken,
+  setTokenRefreshHandler,
+  logout,
+  normalizeUrl,
+} from '@kizuna/shared'
 
 export interface ServerSession {
   serverId: string
@@ -219,7 +227,9 @@ export const useServerStore = create<ServerState>()(
 
 setTokenRefreshHandler(async (serverUrl: string) => {
   const sessions = useServerStore.getState().sessions
-  const session = Object.values(sessions).find((s) => normalizeUrl(s.url) === normalizeUrl(serverUrl))
+  const session = Object.values(sessions).find(
+    (s) => normalizeUrl(s.url) === normalizeUrl(serverUrl),
+  )
   // No local session means the user logged out of this server (or never logged
   // in). The refresh cookie may still be valid — a logout that couldn't reach
   // the server never cleared it — and honouring it here would silently sign

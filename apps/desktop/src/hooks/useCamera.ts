@@ -73,166 +73,184 @@ export function useCamera(
     callStore.getState().setLocalCameraVideoProducerId(null)
   }, [])
 
-  const startCamera = useCallback(async (channelId: string) => {
-    try {
-      const socket = socketRef.current
-      if (!socket) throw new Error('No socket connection')
+  const startCamera = useCallback(
+    async (channelId: string) => {
+      try {
+        const socket = socketRef.current
+        if (!socket) throw new Error('No socket connection')
 
-      if (isTauri()) {
-        const rtpCapabilities = voiceStore.getState().routerRtpCapabilities
-        if (!rtpCapabilities) throw new Error('Voice not joined — join a voice channel first')
+        if (isTauri()) {
+          const rtpCapabilities = voiceStore.getState().routerRtpCapabilities
+          if (!rtpCapabilities) throw new Error('Voice not joined — join a voice channel first')
 
-        const device = new Device()
-        await device.load({ routerRtpCapabilities: rtpCapabilities })
-        deviceRef.current = device
+          const device = new Device()
+          await device.load({ routerRtpCapabilities: rtpCapabilities })
+          deviceRef.current = device
 
-        const sendParams: Record<string, unknown> = await new Promise((resolve) =>
-          socket.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
-        )
-        if (sendParams?.error) throw new Error(`Create transport failed: ${sendParams.error}`)
+          const sendParams: Record<string, unknown> = await new Promise((resolve) =>
+            socket.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
+          )
+          if (sendParams?.error) throw new Error(`Create transport failed: ${sendParams.error}`)
 
-        const sendTransport = device.createSendTransport({
-          ...sendParams as Record<string, unknown>,
-          iceServers: voiceStore.getState().iceServers.length > 0 ? voiceStore.getState().iceServers : undefined,
-        } as Parameters<typeof device.createSendTransport>[0])
-        cameraTransportRef.current = sendTransport
+          const sendTransport = device.createSendTransport({
+            ...(sendParams as Record<string, unknown>),
+            iceServers:
+              voiceStore.getState().iceServers.length > 0
+                ? voiceStore.getState().iceServers
+                : undefined,
+          } as Parameters<typeof device.createSendTransport>[0])
+          cameraTransportRef.current = sendTransport
 
-        sendTransport.on('connect', ({ dtlsParameters }, cb) => {
-          socket.emit('voice:connectTransport', {
-            channelId,
-            transportId: sendTransport.id,
-            dtlsParameters,
-          }, cb)
+          sendTransport.on('connect', ({ dtlsParameters }, cb) => {
+            socket.emit(
+              'voice:connectTransport',
+              {
+                channelId,
+                transportId: sendTransport.id,
+                dtlsParameters,
+              },
+              cb,
+            )
+          })
+
+          sendTransport.on('produce', ({ kind, rtpParameters, appData }, cb) => {
+            socket.emit(
+              'voice:produce',
+              {
+                channelId,
+                transportId: sendTransport.id,
+                kind,
+                rtpParameters,
+                source: (appData as { source?: 'camera' | 'screen' })?.source,
+              },
+              cb,
+            )
+          })
+
+          const canvas = document.createElement('canvas')
+          canvas.width = CAMERA_WIDTH
+          canvas.height = CAMERA_HEIGHT
+          canvas.style.display = 'none'
+          document.body.appendChild(canvas)
+          canvasRef.current = canvas
+
+          const ctx = canvas.getContext('2d')
+          if (!ctx) throw new Error('Failed to get canvas context')
+
+          const [{ listen }] = await Promise.all([import('@tauri-apps/api/event')])
+
+          const unlisten = await listen<CameraFramePayload>('camera:frame', (event) => {
+            const { jpeg_base64, width, height } = event.payload
+            try {
+              const bytes = base64ToUint8(jpeg_base64)
+              const blob = new Blob([bytes as BlobPart], { type: 'image/jpeg' })
+              createImageBitmap(blob)
+                .then((bitmap) => {
+                  canvas.width = width
+                  canvas.height = height
+                  ctx.drawImage(bitmap, 0, 0)
+                  bitmap.close()
+                })
+                .catch(() => {})
+            } catch {
+              // skip malformed frames
+            }
+          })
+          unlistenRef.current = unlisten
+
+          const stream = canvas.captureStream(CAMERA_FPS)
+          cameraStreamRef.current = stream
+          const videoTrack = stream.getVideoTracks()[0]
+          if (!videoTrack) throw new Error('No video track from canvas stream')
+
+          const [{ invoke }] = await Promise.all([import('@tauri-apps/api/core')])
+
+          await invoke('camera_start', {
+            cameraIndex: 0,
+            width: CAMERA_WIDTH,
+            height: CAMERA_HEIGHT,
+            fps: CAMERA_FPS,
+          })
+
+          const producer = await sendTransport.produce({
+            track: videoTrack,
+            encodings: [{ maxBitrate: VIDEO_MAX_BITRATE }],
+            codecOptions: {
+              videoGoogleStartBitrate: 300,
+            },
+            appData: { source: 'camera' },
+          })
+
+          cameraProducerRef.current = producer
+          callStore.getState().setIsCameraOn(true)
+          callStore.getState().setLocalCameraVideoProducerId(producer.id)
+
+          socket.emit('camera:started', { channelId, producerId: producer.id })
+        } else {
+          const sendTransport = sendTransportRef.current
+          if (!sendTransport) throw new Error('Send transport not ready')
+
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: CAMERA_WIDTH },
+              height: { ideal: CAMERA_HEIGHT },
+              frameRate: { ideal: CAMERA_FPS },
+            },
+          })
+          cameraStreamRef.current = stream
+
+          const videoTrack = stream.getVideoTracks()[0]
+          if (!videoTrack) throw new Error('No video track')
+
+          const producer = await sendTransport.produce({
+            track: videoTrack,
+            encodings: [{ maxBitrate: VIDEO_MAX_BITRATE }],
+            codecOptions: {
+              videoGoogleStartBitrate: 300,
+            },
+            appData: { source: 'camera' },
+          })
+
+          cameraProducerRef.current = producer
+          callStore.getState().setIsCameraOn(true)
+          callStore.getState().setLocalCameraVideoProducerId(producer.id)
+
+          socket.emit('camera:started', { channelId, producerId: producer.id })
+        }
+      } catch (err) {
+        console.error('Failed to start camera:', err)
+        useNotificationStore.getState().addNotification({
+          type: 'message',
+          title: 'Camera Error',
+          body: `Failed to start camera: ${err instanceof Error ? err.message : String(err)}`,
         })
-
-        sendTransport.on('produce', ({ kind, rtpParameters, appData }, cb) => {
-          socket.emit('voice:produce', {
-            channelId,
-            transportId: sendTransport.id,
-            kind,
-            rtpParameters,
-            source: (appData as { source?: 'camera' | 'screen' })?.source,
-          }, cb)
-        })
-
-        const canvas = document.createElement('canvas')
-        canvas.width = CAMERA_WIDTH
-        canvas.height = CAMERA_HEIGHT
-        canvas.style.display = 'none'
-        document.body.appendChild(canvas)
-        canvasRef.current = canvas
-
-        const ctx = canvas.getContext('2d')
-        if (!ctx) throw new Error('Failed to get canvas context')
-
-        const [{ listen }] = await Promise.all([
-          import('@tauri-apps/api/event'),
-        ])
-
-        const unlisten = await listen<CameraFramePayload>('camera:frame', (event) => {
-          const { jpeg_base64, width, height } = event.payload
-          try {
-            const bytes = base64ToUint8(jpeg_base64)
-            const blob = new Blob([bytes as BlobPart], { type: 'image/jpeg' })
-            createImageBitmap(blob).then((bitmap) => {
-              canvas.width = width
-              canvas.height = height
-              ctx.drawImage(bitmap, 0, 0)
-              bitmap.close()
-            }).catch(() => {})
-          } catch {
-            // skip malformed frames
-          }
-        })
-        unlistenRef.current = unlisten
-
-        const stream = canvas.captureStream(CAMERA_FPS)
-        cameraStreamRef.current = stream
-        const videoTrack = stream.getVideoTracks()[0]
-        if (!videoTrack) throw new Error('No video track from canvas stream')
-
-        const [{ invoke }] = await Promise.all([
-          import('@tauri-apps/api/core'),
-        ])
-
-        await invoke('camera_start', {
-          cameraIndex: 0,
-          width: CAMERA_WIDTH,
-          height: CAMERA_HEIGHT,
-          fps: CAMERA_FPS,
-        })
-
-        const producer = await sendTransport.produce({
-          track: videoTrack,
-          encodings: [{ maxBitrate: VIDEO_MAX_BITRATE }],
-          codecOptions: {
-            videoGoogleStartBitrate: 300,
-          },
-          appData: { source: 'camera' },
-        })
-
-        cameraProducerRef.current = producer
-        callStore.getState().setIsCameraOn(true)
-        callStore.getState().setLocalCameraVideoProducerId(producer.id)
-
-        socket.emit('camera:started', { channelId, producerId: producer.id })
-      } else {
-        const sendTransport = sendTransportRef.current
-        if (!sendTransport) throw new Error('Send transport not ready')
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: CAMERA_WIDTH },
-            height: { ideal: CAMERA_HEIGHT },
-            frameRate: { ideal: CAMERA_FPS },
-          },
-        })
-        cameraStreamRef.current = stream
-
-        const videoTrack = stream.getVideoTracks()[0]
-        if (!videoTrack) throw new Error('No video track')
-
-        const producer = await sendTransport.produce({
-          track: videoTrack,
-          encodings: [{ maxBitrate: VIDEO_MAX_BITRATE }],
-          codecOptions: {
-            videoGoogleStartBitrate: 300,
-          },
-          appData: { source: 'camera' },
-        })
-
-        cameraProducerRef.current = producer
-        callStore.getState().setIsCameraOn(true)
-        callStore.getState().setLocalCameraVideoProducerId(producer.id)
-
-        socket.emit('camera:started', { channelId, producerId: producer.id })
+        await cleanupLocal()
       }
-    } catch (err) {
-      console.error('Failed to start camera:', err)
-      useNotificationStore.getState().addNotification({
-        type: 'message',
-        title: 'Camera Error',
-        body: `Failed to start camera: ${err instanceof Error ? err.message : String(err)}`,
-      })
+    },
+    [socketRef, sendTransportRef, cleanupLocal],
+  )
+
+  const stopCamera = useCallback(
+    async (channelId: string) => {
+      const socket = socketRef.current
+      if (socket) {
+        socket.emit('camera:stopped', { channelId })
+      }
       await cleanupLocal()
-    }
-  }, [socketRef, sendTransportRef, cleanupLocal])
+    },
+    [cleanupLocal],
+  )
 
-  const stopCamera = useCallback(async (channelId: string) => {
-    const socket = socketRef.current
-    if (socket) {
-      socket.emit('camera:stopped', { channelId })
-    }
-    await cleanupLocal()
-  }, [cleanupLocal])
-
-  const toggleCamera = useCallback(async (channelId: string) => {
-    if (cameraProducerRef.current) {
-      await stopCamera(channelId)
-    } else {
-      await startCamera(channelId)
-    }
-  }, [startCamera, stopCamera])
+  const toggleCamera = useCallback(
+    async (channelId: string) => {
+      if (cameraProducerRef.current) {
+        await stopCamera(channelId)
+      } else {
+        await startCamera(channelId)
+      }
+    },
+    [startCamera, stopCamera],
+  )
 
   const getStream = useCallback(() => cameraStreamRef.current, [])
 

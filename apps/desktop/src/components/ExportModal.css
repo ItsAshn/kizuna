@@ -2,12 +2,6 @@
   width: var(--modal-w-xs);
 }
 
-
-
-
-
-
-
 .export-modal__json {
   width: 100%;
   max-height: 200px;
@@ -35,7 +29,10 @@
   font-family: var(--font-mono);
   background: var(--bg-tertiary);
   color: var(--text-muted);
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .export-modal__copy-btn:hover,
@@ -95,9 +92,6 @@
   color: #ef4444;
   background: #ef444411;
 }
-
-
-
 
 /* ── Mobile ────────────────────────────────────────────────── */
 

@@ -17,7 +17,15 @@ const Chat = lazy(() => import('./routes/Chat'))
 const Login = lazy(() => import('./routes/Login'))
 const ResetPassword = lazy(() => import('./routes/ResetPassword'))
 const RouteFallback = () => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
+  <div
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100%',
+      color: 'var(--text-muted)',
+    }}
+  >
     Loading...
   </div>
 )
@@ -55,7 +63,16 @@ function AppContent() {
     <div className="app-shell__content" style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
       <Suspense fallback={<RouteFallback />}>
         <Routes>
-          <Route path="/" element={activeSession ? <Navigate to="/chat" replace /> : <Welcome isLanding={__VERCEL__} onOpenSettings={handleOpenSettings} />} />
+          <Route
+            path="/"
+            element={
+              activeSession ? (
+                <Navigate to="/chat" replace />
+              ) : (
+                <Welcome isLanding={__VERCEL__} onOpenSettings={handleOpenSettings} />
+              )
+            }
+          />
           <Route path="/login/:serverId" element={<Login />} />
           <Route path="/reset-password/:serverId" element={<ResetPassword />} />
           <Route path="/chat" element={activeSession ? <Chat /> : <Navigate to="/" replace />} />

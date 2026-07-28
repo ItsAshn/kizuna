@@ -48,7 +48,9 @@
   padding: 6px 10px;
   border-radius: var(--radius-xs);
   text-align: left;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
   white-space: nowrap;
   width: 100%;
 }

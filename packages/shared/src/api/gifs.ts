@@ -1,14 +1,18 @@
-import type {
-  GifInfo,
-  TaggerStatus,
-} from '../types'
+import type { GifInfo, TaggerStatus } from '../types'
 import { client } from './core'
 
 // ─── GIFs & Stickers ─────────────────────────────────────
 
 export async function fetchGifs(
   serverUrl: string,
-  params?: { type?: 'gif' | 'sticker'; category?: string; pack?: string; search?: string; limit?: number; offset?: number },
+  params?: {
+    type?: 'gif' | 'sticker'
+    category?: string
+    pack?: string
+    search?: string
+    limit?: number
+    offset?: number
+  },
 ): Promise<GifInfo[]> {
   const res = await client(serverUrl).get('/api/gifs', { params })
   return res.data.gifs ?? res.data
@@ -22,9 +26,7 @@ export async function fetchGifCategories(
   return res.data.categories ?? res.data
 }
 
-export async function fetchStickerPacks(
-  serverUrl: string,
-): Promise<string[]> {
+export async function fetchStickerPacks(serverUrl: string): Promise<string[]> {
   const res = await client(serverUrl).get('/api/gifs/packs')
   return res.data.packs ?? res.data
 }
@@ -48,10 +50,7 @@ export async function uploadGif(
   return res.data
 }
 
-export async function uploadGifPack(
-  serverUrl: string,
-  file: File,
-): Promise<{ imported: number }> {
+export async function uploadGifPack(serverUrl: string, file: File): Promise<{ imported: number }> {
   const formData = new FormData()
   formData.append('file', file)
 
@@ -102,38 +101,26 @@ export async function updateGif(
   return res.data
 }
 
-export async function deleteGif(
-  serverUrl: string,
-  gifId: string,
-): Promise<void> {
+export async function deleteGif(serverUrl: string, gifId: string): Promise<void> {
   await client(serverUrl).delete(`/api/gifs/${gifId}`)
 }
 
-export async function generateGifTags(
-  serverUrl: string,
-  gifId: string,
-): Promise<GifInfo> {
+export async function generateGifTags(serverUrl: string, gifId: string): Promise<GifInfo> {
   const res = await client(serverUrl).post(`/api/gifs/${gifId}/generate-tags`)
   return res.data
 }
 
-export async function loadTagger(
-  serverUrl: string,
-): Promise<{ message: string }> {
+export async function loadTagger(serverUrl: string): Promise<{ message: string }> {
   const res = await client(serverUrl).post('/api/gifs/load-tagger')
   return res.data
 }
 
-export async function unloadTagger(
-  serverUrl: string,
-): Promise<{ message: string }> {
+export async function unloadTagger(serverUrl: string): Promise<{ message: string }> {
   const res = await client(serverUrl).post('/api/gifs/unload-tagger')
   return res.data
 }
 
-export async function getTaggerStatus(
-  serverUrl: string,
-): Promise<TaggerStatus> {
+export async function getTaggerStatus(serverUrl: string): Promise<TaggerStatus> {
   const res = await client(serverUrl).get('/api/gifs/tagger-status')
   return res.data
 }
@@ -145,4 +132,3 @@ export async function deleteStickerPack(
   const res = await client(serverUrl).delete(`/api/gifs/pack/${encodeURIComponent(packName)}`)
   return res.data
 }
-

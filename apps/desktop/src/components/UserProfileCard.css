@@ -10,8 +10,14 @@
 }
 
 @keyframes profileCardFadeIn {
-  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .user-profile-card__banner {
@@ -27,7 +33,6 @@
   justify-content: center;
   margin-top: -24px;
 }
-
 
 .user-profile-card__info {
   text-align: center;
@@ -179,12 +184,22 @@
   flex-shrink: 0;
 }
 
-.user-profile-card__status-dot--online { background: var(--green); }
-.user-profile-card__status-dot--idle { background: var(--yellow); }
-.user-profile-card__status-dot--busy { background: var(--red); }
-.user-profile-card__status-dot--offline { background: var(--gray); }
+.user-profile-card__status-dot--online {
+  background: var(--green);
+}
+.user-profile-card__status-dot--idle {
+  background: var(--yellow);
+}
+.user-profile-card__status-dot--busy {
+  background: var(--red);
+}
+.user-profile-card__status-dot--offline {
+  background: var(--gray);
+}
 
-.user-profile-card__status-dot--invisible { background: var(--text-muted); }
+.user-profile-card__status-dot--invisible {
+  background: var(--text-muted);
+}
 
 .user-profile-card__actions {
   display: flex;
@@ -207,7 +222,9 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
 .user-profile-card__action-btn:hover {

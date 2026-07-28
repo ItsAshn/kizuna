@@ -41,7 +41,9 @@
   font-weight: 500;
   cursor: pointer;
   border-radius: var(--radius-sm, 6px) var(--radius-sm, 6px) 0 0;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .gif-picker__tab:hover {
@@ -105,7 +107,10 @@
   border-radius: var(--radius-full, 999px);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
   flex-shrink: 0;
 }
 

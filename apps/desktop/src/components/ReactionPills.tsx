@@ -10,24 +10,31 @@ interface ReactionPillsProps {
   onToggle: (reactionKey: string, reactionType: string) => void
 }
 
-function ReactionPill({ reaction, currentUserId, serverUrl, onToggle }: {
+function ReactionPill({
+  reaction,
+  currentUserId,
+  serverUrl,
+  onToggle,
+}: {
   reaction: MessageReaction
   currentUserId?: string
   serverUrl?: string
   onToggle: (key: string, type: string) => void
 }) {
   const isSticker = reaction.reaction_type === 'sticker'
-  const hasReacted = currentUserId ? reaction.users.some(u => u.user_id === currentUserId) : false
-  const tooltip = reaction.users.map(u => u.username).join(', ')
-  const stickerUrl = isSticker && serverUrl
-    ? `${serverUrl}/api/gifs/${reaction.reaction_key}/file`
-    : null
+  const hasReacted = currentUserId ? reaction.users.some((u) => u.user_id === currentUserId) : false
+  const tooltip = reaction.users.map((u) => u.username).join(', ')
+  const stickerUrl =
+    isSticker && serverUrl ? `${serverUrl}/api/gifs/${reaction.reaction_key}/file` : null
 
   return (
     <button
       key={reaction.reaction_key}
       className={`msg-bubble__reaction ${hasReacted ? 'msg-bubble__reaction--active' : ''}`}
-      onClick={(e) => { e.stopPropagation(); onToggle(reaction.reaction_key, reaction.reaction_type) }}
+      onClick={(e) => {
+        e.stopPropagation()
+        onToggle(reaction.reaction_key, reaction.reaction_type)
+      }}
       title={tooltip}
     >
       {isSticker && stickerUrl ? (
@@ -40,7 +47,12 @@ function ReactionPill({ reaction, currentUserId, serverUrl, onToggle }: {
   )
 }
 
-export default function ReactionPills({ reactions, currentUserId, serverUrl, onToggle }: ReactionPillsProps) {
+export default function ReactionPills({
+  reactions,
+  currentUserId,
+  serverUrl,
+  onToggle,
+}: ReactionPillsProps) {
   const [expanded, setExpanded] = useState(false)
 
   if (!reactions.length) return null
@@ -63,12 +75,13 @@ export default function ReactionPills({ reactions, currentUserId, serverUrl, onT
       {overflows && (
         <button
           className={`msg-bubble__reaction msg-bubble__reaction--overflow ${expanded ? 'msg-bubble__reaction--overflow-expanded' : ''}`}
-          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }}
+          onClick={(e) => {
+            e.stopPropagation()
+            setExpanded(!expanded)
+          }}
           title={expanded ? 'Show less' : `${hiddenCount} more reactions`}
         >
-          <span className="msg-bubble__reaction-emoji">
-            {expanded ? '−' : `+${hiddenCount}`}
-          </span>
+          <span className="msg-bubble__reaction-emoji">{expanded ? '−' : `+${hiddenCount}`}</span>
         </button>
       )}
     </div>

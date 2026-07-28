@@ -2,12 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Hash, ArrowLeft, MessageSquare, Inbox, Send, Trash2 } from 'lucide-react'
 import { useChatStore } from '../store/chatStore'
 import { useServerStore } from '../store/serverStore'
-import {
-  fetchThreadMessages,
-  sendThreadMessage,
-  fetchThreads,
-  deleteThread,
-} from '@kizuna/shared'
+import { fetchThreadMessages, sendThreadMessage, fetchThreads, deleteThread } from '@kizuna/shared'
 import MessageBubble from './MessageBubble'
 import './ThreadPanel.css'
 
@@ -73,11 +68,7 @@ function ThreadListView({
       ) : (
         <div className="thread-panel__thread-items">
           {threads.map((t) => (
-            <button
-              key={t.id}
-              className="thread-panel__thread-item"
-              onClick={() => onSelect(t.id)}
-            >
+            <button key={t.id} className="thread-panel__thread-item" onClick={() => onSelect(t.id)}>
               <Hash className="icon-xs thread-panel__thread-icon" />
               <div className="thread-panel__thread-body">
                 <span className="thread-panel__thread-name">{t.name}</span>
@@ -164,10 +155,14 @@ function ThreadDetailView({ channelId }: { channelId: string }) {
     }
   }, [session, activeThreadId, channelId, deleting, removeThread, setActiveThreadId])
 
-  const canDelete = activeThread && (
-    activeThread.creator_id === session?.user.id ||
-    members.some((m) => m.id === session?.user.id && m.custom_roles?.some((r) => r.is_admin || r.permissions?.delete_messages))
-  )
+  const canDelete =
+    activeThread &&
+    (activeThread.creator_id === session?.user.id ||
+      members.some(
+        (m) =>
+          m.id === session?.user.id &&
+          m.custom_roles?.some((r) => r.is_admin || r.permissions?.delete_messages),
+      ))
 
   return (
     <div className="thread-panel__detail">
@@ -181,9 +176,7 @@ function ThreadDetailView({ channelId }: { channelId: string }) {
             <ArrowLeft className="icon-sm" />
           </button>
           <Hash className="icon-xs thread-panel__header-icon" />
-          <span className="thread-panel__header-title">
-            {activeThread?.name || 'Thread'}
-          </span>
+          <span className="thread-panel__header-title">{activeThread?.name || 'Thread'}</span>
         </div>
         <button
           className="thread-panel__close"
@@ -197,8 +190,7 @@ function ThreadDetailView({ channelId }: { channelId: string }) {
       {activeThread && (
         <div className="thread-panel__meta">
           <span className="thread-panel__meta-count">
-            {activeThread.message_count}{' '}
-            {activeThread.message_count === 1 ? 'message' : 'messages'}
+            {activeThread.message_count} {activeThread.message_count === 1 ? 'message' : 'messages'}
           </span>
           {canDelete && (
             <button

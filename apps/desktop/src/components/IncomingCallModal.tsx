@@ -46,7 +46,11 @@ function playRingtone(ctx: AudioContext, dest: AudioNode) {
   osc2.stop(now + 2)
 }
 
-export default function IncomingCallModal({ incomingCall, onAccept, onReject }: IncomingCallModalProps) {
+export default function IncomingCallModal({
+  incomingCall,
+  onAccept,
+  onReject,
+}: IncomingCallModalProps) {
   useEffect(() => {
     const ctx = new AudioContext()
     const dest = ctx.createGain()
@@ -71,9 +75,7 @@ export default function IncomingCallModal({ incomingCall, onAccept, onReject }: 
   return (
     <div className="incoming-call-overlay">
       <div className="incoming-call-card">
-        <div className="incoming-call-avatar">
-          {incomingCall.callerUsername[0]?.toUpperCase()}
-        </div>
+        <div className="incoming-call-avatar">{incomingCall.callerUsername[0]?.toUpperCase()}</div>
         <h2 className="incoming-call-title">{incomingCall.callerUsername}</h2>
         <p className="incoming-call-subtitle">Incoming Call</p>
         <div className="incoming-call-actions">

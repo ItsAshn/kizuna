@@ -29,7 +29,12 @@ interface Props {
   backLabel?: string
 }
 
-export default function ServerConnectForm({ onConnect, savedServers = [], onBack, backLabel = 'Back' }: Props) {
+export default function ServerConnectForm({
+  onConnect,
+  savedServers = [],
+  onBack,
+  backLabel = 'Back',
+}: Props) {
   const [url, setUrl] = useState('')
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState('')
@@ -70,11 +75,7 @@ export default function ServerConnectForm({ onConnect, savedServers = [], onBack
         onKeyDown={(e) => e.key === 'Enter' && handleConnect(url)}
         autoFocus
       />
-      <Button
-        fullWidth
-        onClick={() => handleConnect(url)}
-        disabled={connecting || !url.trim()}
-      >
+      <Button fullWidth onClick={() => handleConnect(url)} disabled={connecting || !url.trim()}>
         {connecting ? 'Connecting...' : 'Connect'}
       </Button>
 
@@ -97,11 +98,7 @@ export default function ServerConnectForm({ onConnect, savedServers = [], onBack
       )}
 
       {onBack && (
-        <Button
-          variant="secondary"
-          fullWidth
-          onClick={onBack}
-        >
+        <Button variant="secondary" fullWidth onClick={onBack}>
           {backLabel}
         </Button>
       )}

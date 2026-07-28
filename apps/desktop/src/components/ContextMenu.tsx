@@ -55,16 +55,23 @@ export default function ContextMenu({ x, y, sections, onClose, title }: ContextM
       }
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { onClose(); return }
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()
-        const items = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])
+        const items = Array.from(
+          ref.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ??
+            [],
+        )
         if (!items.length) return
         const focused = document.activeElement as HTMLButtonElement
         const idx = items.indexOf(focused)
-        const next = e.key === 'ArrowDown'
-          ? items[(idx + 1) % items.length]
-          : items[(idx - 1 + items.length) % items.length]
+        const next =
+          e.key === 'ArrowDown'
+            ? items[(idx + 1) % items.length]
+            : items[(idx - 1 + items.length) % items.length]
         next?.focus()
       }
     }
@@ -93,7 +100,9 @@ export default function ContextMenu({ x, y, sections, onClose, title }: ContextM
       }}
     >
       {title && (
-        <div className="context-menu__title" role="presentation">{title}</div>
+        <div className="context-menu__title" role="presentation">
+          {title}
+        </div>
       )}
       {sections.map((section, si) => (
         <div key={si} role="group">

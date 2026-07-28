@@ -33,7 +33,13 @@ export default function GifPicker({ serverUrl, onSelect, onClose }: GifPickerPro
     setLoading(true)
     setError(null)
     try {
-      const params: { type?: 'gif' | 'sticker'; category?: string; pack?: string; search?: string; limit: number } = {
+      const params: {
+        type?: 'gif' | 'sticker'
+        category?: string
+        pack?: string
+        search?: string
+        limit: number
+      } = {
         type: activeTab === 'stickers' ? 'sticker' : 'gif',
         limit: 100,
       }
@@ -80,87 +86,99 @@ export default function GifPicker({ serverUrl, onSelect, onClose }: GifPickerPro
   }
 
   const handleSelect = (item: GifInfo) => {
-    const resolvedUrl = item.file_url.startsWith('/') ? `${serverUrl}${item.file_url}` : item.file_url
+    const resolvedUrl = item.file_url.startsWith('/')
+      ? `${serverUrl}${item.file_url}`
+      : item.file_url
     onSelect(resolvedUrl, item.display_name, item.type)
   }
 
   return (
     <PickerSurface base="gif-picker" isMobile={isMobile} onClose={onClose}>
-        <div className="gif-picker__header">
-          <div className="gif-picker__tabs">
-            <button
-              className={`gif-picker__tab ${activeTab === 'gifs' ? 'gif-picker__tab--active' : ''}`}
-              onClick={() => setActiveTab('gifs')}
-            >
-              GIFs
-            </button>
-            <button
-              className={`gif-picker__tab ${activeTab === 'stickers' ? 'gif-picker__tab--active' : ''}`}
-              onClick={() => setActiveTab('stickers')}
-            >
-              Stickers
-            </button>
-          </div>
-          <IconButton size="sm" icon={<X size={18} />} label="Close" onClick={onClose} />
+      <div className="gif-picker__header">
+        <div className="gif-picker__tabs">
+          <button
+            className={`gif-picker__tab ${activeTab === 'gifs' ? 'gif-picker__tab--active' : ''}`}
+            onClick={() => setActiveTab('gifs')}
+          >
+            GIFs
+          </button>
+          <button
+            className={`gif-picker__tab ${activeTab === 'stickers' ? 'gif-picker__tab--active' : ''}`}
+            onClick={() => setActiveTab('stickers')}
+          >
+            Stickers
+          </button>
         </div>
+        <IconButton size="sm" icon={<X size={18} />} label="Close" onClick={onClose} />
+      </div>
 
-        <div className="gif-picker__search">
-          <Search size={14} className="gif-picker__search-icon" />
-          <input
-            className="gif-picker__search-input"
-            placeholder={`Search ${activeTab}...`}
-            onChange={handleSearchChange}
-            /* Auto-focus would pop the keyboard over the sheet on touch. */
-            autoFocus={!isMobile}
-          />
-        </div>
+      <div className="gif-picker__search">
+        <Search size={14} className="gif-picker__search-icon" />
+        <input
+          className="gif-picker__search-input"
+          placeholder={`Search ${activeTab}...`}
+          onChange={handleSearchChange}
+          /* Auto-focus would pop the keyboard over the sheet on touch. */
+          autoFocus={!isMobile}
+        />
+      </div>
 
-        {activeTab === 'gifs' && categories.length > 0 && (
-          <div className="gif-picker__filters">
+      {activeTab === 'gifs' && categories.length > 0 && (
+        <div className="gif-picker__filters">
+          <button
+            className={`gif-picker__filter ${!activeCategory ? 'gif-picker__filter--active' : ''}`}
+            onClick={() => setActiveCategory('')}
+          >
+            All
+          </button>
+          {categories.map((cat) => (
             <button
-              className={`gif-picker__filter ${!activeCategory ? 'gif-picker__filter--active' : ''}`}
-              onClick={() => setActiveCategory('')}
+              key={cat}
+              className={`gif-picker__filter ${activeCategory === cat ? 'gif-picker__filter--active' : ''}`}
+              onClick={() => setActiveCategory(cat)}
             >
-              All
+              {cat}
             </button>
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                className={`gif-picker__filter ${activeCategory === cat ? 'gif-picker__filter--active' : ''}`}
-                onClick={() => setActiveCategory(cat)}
-              >
-                {cat}
-              </button>
-            ))}
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'stickers' && packs.length > 0 && (
+        <div className="gif-picker__filters">
+          {packs.map((pack) => (
+            <button
+              key={pack}
+              className={`gif-picker__filter ${activePack === pack ? 'gif-picker__filter--active' : ''}`}
+              onClick={() => setActivePack(pack)}
+            >
+              {pack}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="gif-picker__grid">
+        {loading && <div className="gif-picker__status">Loading...</div>}
+        {error && <div className="gif-picker__status gif-picker__status--error">{error}</div>}
+        {!loading && !error && items.length === 0 && (
+          <div className="gif-picker__status">
+            {search
+              ? 'Nothing found'
+              : activeTab === 'gifs'
+                ? 'No GIFs yet'
+                : 'No sticker packs yet'}
           </div>
         )}
-
-        {activeTab === 'stickers' && packs.length > 0 && (
-          <div className="gif-picker__filters">
-            {packs.map((pack) => (
-              <button
-                key={pack}
-                className={`gif-picker__filter ${activePack === pack ? 'gif-picker__filter--active' : ''}`}
-                onClick={() => setActivePack(pack)}
-              >
-                {pack}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="gif-picker__grid">
-          {loading && <div className="gif-picker__status">Loading...</div>}
-          {error && <div className="gif-picker__status gif-picker__status--error">{error}</div>}
-          {!loading && !error && items.length === 0 && (
-            <div className="gif-picker__status">
-              {search ? 'Nothing found' : activeTab === 'gifs' ? 'No GIFs yet' : 'No sticker packs yet'}
-            </div>
-          )}
-          {!loading && !error && items.map((item) => {
-            const resolvedUrl = item.file_url.startsWith('/') ? `${serverUrl}${item.file_url}` : item.file_url
+        {!loading &&
+          !error &&
+          items.map((item) => {
+            const resolvedUrl = item.file_url.startsWith('/')
+              ? `${serverUrl}${item.file_url}`
+              : item.file_url
             const isSticker = item.type === 'sticker'
-            const imgClassName = isSticker ? 'gif-picker__img gif-picker__img--sticker' : 'gif-picker__img'
+            const imgClassName = isSticker
+              ? 'gif-picker__img gif-picker__img--sticker'
+              : 'gif-picker__img'
             return (
               <div
                 key={item.id}
@@ -181,7 +199,7 @@ export default function GifPicker({ serverUrl, onSelect, onClose }: GifPickerPro
               </div>
             )
           })}
-        </div>
+      </div>
     </PickerSurface>
   )
 }

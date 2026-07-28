@@ -40,19 +40,28 @@ export default function BackupTokenModal({ backuptoken, onComplete }: Props) {
         {step === 'display' && (
           <>
             <div className="backuptoken-modal__warning">
-              <p>This backup token is the <strong>only way</strong> to recover your account if you forget your password.</p>
+              <p>
+                This backup token is the <strong>only way</strong> to recover your account if you
+                forget your password.
+              </p>
             </div>
 
             <div className="backuptoken-modal__token-box">
               <code className="backuptoken-modal__token">{backuptoken}</code>
-              <button onClick={handleCopy} className="backuptoken-modal__copy-btn" aria-label="Copy backup token">
+              <button
+                onClick={handleCopy}
+                className="backuptoken-modal__copy-btn"
+                aria-label="Copy backup token"
+              >
                 {copied ? <CheckCheck size={16} /> : <Copy size={16} />}
                 {copied ? 'Copied' : 'Copy'}
               </button>
             </div>
 
             <div className="backuptoken-modal__warning">
-              <p>Copy this token <strong>now</strong>. You will not be able to see it again.</p>
+              <p>
+                Copy this token <strong>now</strong>. You will not be able to see it again.
+              </p>
             </div>
 
             <p className="backuptoken-modal__hint">
@@ -80,7 +89,13 @@ export default function BackupTokenModal({ backuptoken, onComplete }: Props) {
             />
 
             <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <Button variant="secondary" onClick={() => { setConfirmInput(''); setStep('display') }}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setConfirmInput('')
+                  setStep('display')
+                }}
+              >
                 Back
               </Button>
               <Button
@@ -98,11 +113,15 @@ export default function BackupTokenModal({ backuptoken, onComplete }: Props) {
         {step === 'agree' && (
           <>
             <div className="backuptoken-modal__warning backuptoken-modal__warning--danger">
-              <p>If you lose this backup token and no admin is available, <strong>your account cannot be recovered</strong>.</p>
+              <p>
+                If you lose this backup token and no admin is available,{' '}
+                <strong>your account cannot be recovered</strong>.
+              </p>
             </div>
 
             <p className="backuptoken-modal__hint">
-              There is no way to recover your account without this token unless a server admin helps you.
+              There is no way to recover your account without this token unless a server admin helps
+              you.
             </p>
 
             <label className="backuptoken-modal__checkbox">
@@ -111,18 +130,17 @@ export default function BackupTokenModal({ backuptoken, onComplete }: Props) {
                 checked={agreed}
                 onChange={(e) => setAgreed(e.target.checked)}
               />
-              <span>I understand. I have saved my backup token and accept that losing it may result in permanent loss of access.</span>
+              <span>
+                I understand. I have saved my backup token and accept that losing it may result in
+                permanent loss of access.
+              </span>
             </label>
 
             <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
               <Button variant="secondary" onClick={() => setStep('confirm')}>
                 Back
               </Button>
-              <Button
-                style={{ flex: 1 }}
-                disabled={!agreed}
-                onClick={onComplete}
-              >
+              <Button style={{ flex: 1 }} disabled={!agreed} onClick={onComplete}>
                 I Have Saved My Backup Token
               </Button>
             </div>

@@ -1,8 +1,4 @@
-import type {
-  Message,
-  LinkEmbed,
-  Thread,
-} from '../types'
+import type { Message, LinkEmbed, Thread } from '../types'
 import { client } from './core'
 
 // ─── Messages ─────────────────────────────────────────────
@@ -33,10 +29,7 @@ export async function sendMessage(
   return res.data.message ?? res.data
 }
 
-export async function deleteMessage(
-  serverUrl: string,
-  messageId: string,
-): Promise<void> {
+export async function deleteMessage(serverUrl: string, messageId: string): Promise<void> {
   await client(serverUrl).delete(`/api/messages/${messageId}`)
 }
 
@@ -69,7 +62,9 @@ export async function unreactToMessage(
   messageId: string,
   reactionKey: string,
 ): Promise<{ reactions: import('../types').MessageReaction[] }> {
-  const res = await client(serverUrl).delete(`/api/reactions/${messageId}/${encodeURIComponent(reactionKey)}`)
+  const res = await client(serverUrl).delete(
+    `/api/reactions/${messageId}/${encodeURIComponent(reactionKey)}`,
+  )
   return res.data
 }
 
@@ -126,10 +121,7 @@ export async function unfurlUrls(
   return res.data.embeds ?? {}
 }
 
-export async function fetchThreads(
-  serverUrl: string,
-  channelId: string,
-): Promise<Thread[]> {
+export async function fetchThreads(serverUrl: string, channelId: string): Promise<Thread[]> {
   const res = await client(serverUrl).get(`/api/threads/${channelId}`)
   return res.data.threads ?? []
 }
@@ -140,7 +132,10 @@ export async function createThread(
   name?: string,
   messageId?: string,
 ): Promise<{ id: string }> {
-  const res = await client(serverUrl).post(`/api/threads/${channelId}`, { name, message_id: messageId })
+  const res = await client(serverUrl).post(`/api/threads/${channelId}`, {
+    name,
+    message_id: messageId,
+  })
   return res.data
 }
 
@@ -153,7 +148,9 @@ export async function fetchThreadMessages(
 ): Promise<{ messages: Message[]; hasMore: boolean }> {
   const params: Record<string, string | number> = { limit }
   if (before) params.before = before
-  const res = await client(serverUrl).get(`/api/threads/${channelId}/${threadId}/messages`, { params })
+  const res = await client(serverUrl).get(`/api/threads/${channelId}/${threadId}/messages`, {
+    params,
+  })
   return { messages: res.data.messages ?? [], hasMore: res.data.hasMore ?? false }
 }
 
@@ -163,7 +160,9 @@ export async function sendThreadMessage(
   threadId: string,
   content: string,
 ): Promise<Message> {
-  const res = await client(serverUrl).post(`/api/threads/${channelId}/${threadId}/messages`, { content })
+  const res = await client(serverUrl).post(`/api/threads/${channelId}/${threadId}/messages`, {
+    content,
+  })
   return res.data.message ?? res.data
 }
 

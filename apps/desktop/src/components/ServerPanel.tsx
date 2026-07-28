@@ -66,7 +66,7 @@ const ServerIcon = memo(function ServerIcon({
           alt=""
           className="server-panel__icon-img"
           onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = 'none'
+            ;(e.currentTarget as HTMLImageElement).style.display = 'none'
           }}
         />
       ) : (
@@ -74,15 +74,19 @@ const ServerIcon = memo(function ServerIcon({
       )}
       <span className={`server-panel__dot${isConnected ? ' server-panel__dot--online' : ''}`} />
       {mentions > 0 && (
-        <span className="server-panel__badge">
-          {mentions > 99 ? '99+' : mentions}
-        </span>
+        <span className="server-panel__badge">{mentions > 99 ? '99+' : mentions}</span>
       )}
     </button>
   )
 })
 
-export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExport, onAddServer, onBackToServers: _onBackToServers }: ServerPanelProps) {
+export default function ServerPanel({
+  onLoginRequired,
+  onOpenSettings,
+  onOpenExport,
+  onAddServer,
+  onBackToServers: _onBackToServers,
+}: ServerPanelProps) {
   const navigate = useNavigate()
   const isMobile = useMobile()
   const haptics = useHaptics()
@@ -96,10 +100,15 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
     reorderServers,
   } = useServerStore()
   const serverMentionCounts = useChatStore((s) => s.serverMentionCounts)
-  const [contextMenu, setContextMenu] = useState<{ serverId: string; x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ serverId: string; x: number; y: number } | null>(
+    null,
+  )
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
   const [drag, setDrag] = useState<string | null>(null)
-  const [dragOver, setDragOver] = useState<{ serverId: string; position: 'above' | 'below' } | null>(null)
+  const [dragOver, setDragOver] = useState<{
+    serverId: string
+    position: 'above' | 'below'
+  } | null>(null)
 
   function handleHome() {
     setActiveServer(null)
@@ -110,23 +119,29 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
   // ActionSheet on mobile).
   const serverLongPress = useLongPressItems({
     enabled: isMobile,
-    onLongPress: useCallback((serverId: string, pos: { x: number; y: number }) => {
-      haptics.longPress()
-      setContextMenu({ serverId, x: pos.x, y: pos.y })
-    }, [haptics]),
+    onLongPress: useCallback(
+      (serverId: string, pos: { x: number; y: number }) => {
+        haptics.longPress()
+        setContextMenu({ serverId, x: pos.x, y: pos.y })
+      },
+      [haptics],
+    ),
   })
 
-  const handleServerClick = useCallback((serverId: string) => {
-    if (serverLongPress.consumedTap()) return
-    if (sessions[serverId]) {
-      setActiveServer(serverId)
-      navigate('/chat')
-    } else if (onLoginRequired) {
-      onLoginRequired(serverId)
-    } else {
-      navigate('/login/' + encodeURIComponent(serverId))
-    }
-  }, [sessions, setActiveServer, navigate, onLoginRequired, serverLongPress])
+  const handleServerClick = useCallback(
+    (serverId: string) => {
+      if (serverLongPress.consumedTap()) return
+      if (sessions[serverId]) {
+        setActiveServer(serverId)
+        navigate('/chat')
+      } else if (onLoginRequired) {
+        onLoginRequired(serverId)
+      } else {
+        navigate('/login/' + encodeURIComponent(serverId))
+      }
+    },
+    [sessions, setActiveServer, navigate, onLoginRequired, serverLongPress],
+  )
 
   const handleContextMenu = useCallback((e: React.MouseEvent, serverId: string) => {
     e.preventDefault()
@@ -134,30 +149,34 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
   }, [])
 
   const contextMenuSections: ContextMenuSection[] = contextMenu
-    ? [{
-        items: [
-          // Log Out ends the session but keeps the server saved; Remove Server
-          // also forgets it. Neither is what the sidebar's back button does —
-          // that just closes the server and leaves the session alone.
-          ...(sessions[contextMenu.serverId]
-            ? [{
-                label: 'Log Out',
-                onClick: () => {
-                  void logoutServer(contextMenu.serverId)
-                  setContextMenu(null)
-                },
-              }]
-            : []),
-          {
-            label: 'Remove Server',
-            onClick: () => {
-              removeServer(contextMenu.serverId)
-              setContextMenu(null)
+    ? [
+        {
+          items: [
+            // Log Out ends the session but keeps the server saved; Remove Server
+            // also forgets it. Neither is what the sidebar's back button does —
+            // that just closes the server and leaves the session alone.
+            ...(sessions[contextMenu.serverId]
+              ? [
+                  {
+                    label: 'Log Out',
+                    onClick: () => {
+                      void logoutServer(contextMenu.serverId)
+                      setContextMenu(null)
+                    },
+                  },
+                ]
+              : []),
+            {
+              label: 'Remove Server',
+              onClick: () => {
+                removeServer(contextMenu.serverId)
+                setContextMenu(null)
+              },
+              danger: true,
             },
-            danger: true,
-          },
-        ],
-      }]
+          ],
+        },
+      ]
     : []
 
   function handleDragStart(e: React.DragEvent, serverId: string) {
@@ -182,7 +201,12 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
 
   function handleDragLeave(e: React.DragEvent, serverId: string) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+    if (
+      e.clientX < rect.left ||
+      e.clientX > rect.right ||
+      e.clientY < rect.top ||
+      e.clientY > rect.bottom
+    ) {
       setDragOver((prev) => (prev?.serverId === serverId ? null : prev))
     }
   }
@@ -195,7 +219,7 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
     setDragOver(null)
   }
 
-  function renderServerIcon(server: typeof servers[number]) {
+  function renderServerIcon(server: (typeof servers)[number]) {
     const serverId = server.id
     const isDragging = drag === serverId
     const isDropAbove = dragOver?.serverId === serverId && dragOver.position === 'above'
@@ -257,12 +281,14 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
             <div key={folder} className="server-panel__folder">
               <button
                 className="server-panel__folder-toggle"
-                onClick={() => setCollapsedFolders((prev) => {
-                  const next = new Set(prev)
-                  if (next.has(folder)) next.delete(folder)
-                  else next.add(folder)
-                  return next
-                })}
+                onClick={() =>
+                  setCollapsedFolders((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(folder)) next.delete(folder)
+                    else next.add(folder)
+                    return next
+                  })
+                }
                 title={isCollapsed ? `Expand ${folder}` : `Collapse ${folder}`}
                 aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${folder}`}
               >
@@ -276,7 +302,9 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
                   </div>
                 )}
               </button>
-              <div className={`server-panel__folder-content${isCollapsed ? ' server-panel__folder-content--collapsed' : ''}`}>
+              <div
+                className={`server-panel__folder-content${isCollapsed ? ' server-panel__folder-content--collapsed' : ''}`}
+              >
                 {folderServers.map((server) => renderServerIcon(server))}
               </div>
             </div>

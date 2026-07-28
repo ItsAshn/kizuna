@@ -28,15 +28,24 @@ interface ServerDMs {
   channels: DMChannelData[]
 }
 
-export default function Welcome({ isLanding = false, onOpenSettings }: { isLanding?: boolean; onOpenSettings: () => void }) {
+export default function Welcome({
+  isLanding = false,
+  onOpenSettings,
+}: {
+  isLanding?: boolean
+  onOpenSettings: () => void
+}) {
   const navigate = useNavigate()
   const isMobile = useMobile()
-  const { addServer, setActiveSession, setActiveServer, logoutServer, servers, sessions } = useServerStore()
+  const { addServer, setActiveSession, setActiveServer, logoutServer, servers, sessions } =
+    useServerStore()
   const mentionCounts = useChatStore((s) => s.mentionCounts)
   const { getVersion } = useUpdaterActions()
   const [serverDMs, setServerDMs] = useState<ServerDMs[]>([])
   const [dmsLoading, setDmsLoading] = useState(false)
-  const [serverStatus, setServerStatus] = useState<Record<string, 'checking' | 'online' | 'offline'>>({})
+  const [serverStatus, setServerStatus] = useState<
+    Record<string, 'checking' | 'online' | 'offline'>
+  >({})
   const [appVersion, setAppVersion] = useState('')
 
   const [showLanding, setShowLanding] = useState(() => {
@@ -44,7 +53,9 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
   })
   const [showConnect, setShowConnect] = useState(false)
   const [serverUrl, setServerUrl] = useState('')
-  const [serverInfo, setServerInfo] = useState<ServerInfo | { serverUrl: string; name: string; description: string } | null>(null)
+  const [serverInfo, setServerInfo] = useState<
+    ServerInfo | { serverUrl: string; name: string; description: string } | null
+  >(null)
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -53,20 +64,30 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
   const [isRegister, setIsRegister] = useState(false)
   const [dashboardTab, setDashboardTab] = useState<'saved' | 'explore'>('saved')
 
-  const { authenticate, loading, error, setError, backupToken, clearBackupToken } = useAuth(serverUrl)
+  const { authenticate, loading, error, setError, backupToken, clearBackupToken } =
+    useAuth(serverUrl)
 
   useEffect(() => {
     async function loadDMs() {
-      if (servers.length === 0) { setServerDMs([]); return }
+      if (servers.length === 0) {
+        setServerDMs([])
+        return
+      }
       setDmsLoading(true)
       const results: ServerDMs[] = []
       for (const server of servers) {
         try {
           const channels = await fetchDMChannels(server.url)
           if (channels.length > 0) {
-            results.push({ serverId: server.id, serverName: server.name, channels: channels.slice(0, 3) })
+            results.push({
+              serverId: server.id,
+              serverName: server.name,
+              channels: channels.slice(0, 3),
+            })
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
       setServerDMs(results)
       setDmsLoading(false)
@@ -75,7 +96,10 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
   }, [servers.length])
 
   useEffect(() => {
-    if (servers.length === 0) { setServerStatus({}); return }
+    if (servers.length === 0) {
+      setServerStatus({})
+      return
+    }
     setServerStatus((prev) => {
       const next: Record<string, 'checking' | 'online' | 'offline'> = {}
       for (const server of servers) next[server.id] = prev[server.id] ?? 'checking'
@@ -120,7 +144,11 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
       setShowConnect(true)
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } }; message?: string }
-      setError(e.response?.data?.error || e.message || 'Could not reach server. Check the URL or invite code and try again.')
+      setError(
+        e.response?.data?.error ||
+          e.message ||
+          'Could not reach server. Check the URL or invite code and try again.',
+      )
     }
   }
 
@@ -194,7 +222,12 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
               error={error}
               loading={loading}
               onSubmit={handleAuth}
-              onBack={() => { setShowConnect(false); setServerInfo(null); setServerUrl(''); setError('') }}
+              onBack={() => {
+                setShowConnect(false)
+                setServerInfo(null)
+                setServerUrl('')
+                setError('')
+              }}
               backLabel="Back to Dashboard"
               onForgotPassword={() => navigate(`/reset-password/${encodeURIComponent(serverUrl)}`)}
             />
@@ -222,7 +255,10 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
                 setServerInfo(info)
               }}
               savedServers={servers.map((s) => ({ id: s.id, name: s.name, url: s.url }))}
-              onBack={() => { setShowConnect(false); setError('') }}
+              onBack={() => {
+                setShowConnect(false)
+                setError('')
+              }}
               backLabel="Back to Dashboard"
             />
           </div>
@@ -232,7 +268,15 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
   }
 
   if (showLanding) {
-    return <Landing onConnect={handleConnect} onEnterApp={() => { setShowLanding(false); localStorage.setItem('kizuna-landing-dismissed', 'true') }} />
+    return (
+      <Landing
+        onConnect={handleConnect}
+        onEnterApp={() => {
+          setShowLanding(false)
+          localStorage.setItem('kizuna-landing-dismissed', 'true')
+        }}
+      />
+    )
   }
 
   return (
@@ -241,10 +285,7 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
         <img src="/Logo.svg" alt="Kizuna" className="welcome__logo" />
         <h1 className="welcome__title">Kizuna</h1>
         <p className="welcome__subtitle">Self-hosted voice & chat</p>
-        <button
-          className="welcome__dev-toggle"
-          onClick={() => setShowLanding((v) => !v)}
-        >
+        <button className="welcome__dev-toggle" onClick={() => setShowLanding((v) => !v)}>
           About Kizuna
         </button>
       </div>
@@ -270,113 +311,76 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
         </div>
       ) : (
         <>
-      <div className="welcome__dashboard-grid">
-        <div className="welcome__dashboard-panel">
-          <div className="welcome__dashboard-panel-header">
-            <span className="welcome__dashboard-panel-label">Servers</span>
-            <span className="welcome__dashboard-panel-count">{servers.length} saved</span>
-          </div>
-          <div className="welcome__dashboard-panel-body">
-            {servers.length === 0 ? (
-              <div className="welcome__dashboard-empty">
-                <p className="welcome__dashboard-empty-text">No servers yet</p>
-                <p className="welcome__dashboard-empty-sub">Click Connect below to add one</p>
-              </div>
-            ) : (
-              servers.map((server) => {
-                const mentions = mentionCounts[server.id] ?? 0
-                const loggedIn = !!sessions[server.id]
-                return (
-                  <div key={server.id} className="welcome__server-row">
-                    <button className="welcome__server-item" onClick={() => handleOpenServer(server)}>
-                      <div className="welcome__server-icon">
-                        {server.icon ? (
-                          <img src={server.icon} alt="" className="welcome__server-icon-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                        ) : server.name.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="welcome__server-info">
-                        <p className="welcome__server-name">
-                          {server.name}
-                          {loggedIn && <span className="welcome__server-session" title={`Signed in as ${sessions[server.id].user.display_name || sessions[server.id].user.username}`} />}
-                        </p>
-                        <p className="welcome__server-url">{server.url}</p>
-                      </div>
-                      {mentions > 0 && <span className="sidebar__unread-badge">{mentions > 99 ? '99+' : mentions}</span>}
-                      <span className="welcome__server-connect-label">{loggedIn ? 'open' : 'connect'}</span>
-                    </button>
-                    {/* The one place a session is actually ended. Leaving a
-                        server anywhere else keeps you signed in. */}
-                    {loggedIn && (
-                      <button
-                        className="welcome__server-logout"
-                        onClick={() => { void logoutServer(server.id) }}
-                        title={`Log out of ${server.name}`}
-                      >
-                        Log out
-                      </button>
-                    )}
-                  </div>
-                )
-              })
-            )}
-          </div>
-        </div>
-
-        {!isMobile && (
-          <>
+          <div className="welcome__dashboard-grid">
             <div className="welcome__dashboard-panel">
               <div className="welcome__dashboard-panel-header">
-                <span className="welcome__dashboard-panel-label">Direct Messages</span>
-              </div>
-              <div className="welcome__dashboard-panel-body">
-                {dmsLoading ? (
-                  <p className="welcome__dashboard-empty-text">Loading...</p>
-                ) : serverDMs.length === 0 ? (
-                  <div className="welcome__dashboard-empty">
-                    <p className="welcome__dashboard-empty-text">No recent conversations</p>
-                    <p className="welcome__dashboard-empty-sub">Join a server to start chatting</p>
-                  </div>
-                ) : (
-                  serverDMs.map((sd) => (
-                    <div key={sd.serverId} style={{ marginBottom: sd.channels.length > 0 ? '12px' : '0' }}>
-                      <p className="welcome__dm-group-label">{sd.serverName}</p>
-                      {sd.channels.map((ch) => (
-                        <div key={ch.id} className="welcome__dm-item">
-                          <div className="welcome__dm-avatar">{ch.other_display_name?.[0]?.toUpperCase()}</div>
-                          <div>
-                            <p className="welcome__dm-name">{ch.other_display_name}</p>
-                            <p className="welcome__dm-username">@{ch.other_username}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="welcome__dashboard-panel">
-              <div className="welcome__dashboard-panel-header">
-                <span className="welcome__dashboard-panel-label">Server Status</span>
+                <span className="welcome__dashboard-panel-label">Servers</span>
+                <span className="welcome__dashboard-panel-count">{servers.length} saved</span>
               </div>
               <div className="welcome__dashboard-panel-body">
                 {servers.length === 0 ? (
                   <div className="welcome__dashboard-empty">
-                    <p className="welcome__dashboard-empty-text">No servers to check</p>
+                    <p className="welcome__dashboard-empty-text">No servers yet</p>
+                    <p className="welcome__dashboard-empty-sub">Click Connect below to add one</p>
                   </div>
                 ) : (
                   servers.map((server) => {
-                    const status = serverStatus[server.id] ?? 'checking'
+                    const mentions = mentionCounts[server.id] ?? 0
+                    const loggedIn = !!sessions[server.id]
                     return (
-                      <div key={server.id} className="welcome__status-row">
-                        <span className="welcome__status-label">{server.name}</span>
-                        <span
-                          className={`welcome__status-value ${
-                            status === 'online' ? 'welcome__status-value--good' : status === 'offline' ? 'welcome__status-value--danger' : ''
-                          }`}
+                      <div key={server.id} className="welcome__server-row">
+                        <button
+                          className="welcome__server-item"
+                          onClick={() => handleOpenServer(server)}
                         >
-                          {status === 'checking' ? 'Checking…' : status === 'online' ? 'Online' : 'Offline'}
-                        </span>
+                          <div className="welcome__server-icon">
+                            {server.icon ? (
+                              <img
+                                src={server.icon}
+                                alt=""
+                                className="welcome__server-icon-img"
+                                onError={(e) => {
+                                  ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                                }}
+                              />
+                            ) : (
+                              server.name.slice(0, 2).toUpperCase()
+                            )}
+                          </div>
+                          <div className="welcome__server-info">
+                            <p className="welcome__server-name">
+                              {server.name}
+                              {loggedIn && (
+                                <span
+                                  className="welcome__server-session"
+                                  title={`Signed in as ${sessions[server.id].user.display_name || sessions[server.id].user.username}`}
+                                />
+                              )}
+                            </p>
+                            <p className="welcome__server-url">{server.url}</p>
+                          </div>
+                          {mentions > 0 && (
+                            <span className="sidebar__unread-badge">
+                              {mentions > 99 ? '99+' : mentions}
+                            </span>
+                          )}
+                          <span className="welcome__server-connect-label">
+                            {loggedIn ? 'open' : 'connect'}
+                          </span>
+                        </button>
+                        {/* The one place a session is actually ended. Leaving a
+                        server anywhere else keeps you signed in. */}
+                        {loggedIn && (
+                          <button
+                            className="welcome__server-logout"
+                            onClick={() => {
+                              void logoutServer(server.id)
+                            }}
+                            title={`Log out of ${server.name}`}
+                          >
+                            Log out
+                          </button>
+                        )}
                       </div>
                     )
                   })
@@ -384,34 +388,135 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
               </div>
             </div>
 
-            <div className="welcome__dashboard-panel">
-              <div className="welcome__dashboard-panel-header">
-                <span className="welcome__dashboard-panel-label">About</span>
-              </div>
-              <div className="welcome__dashboard-panel-body">
-                <p className="welcome__server-name">Kizuna {appVersion && <span className="welcome__dashboard-panel-label">v{appVersion}</span>}</p>
-                <p className="welcome__subtitle" style={{ marginTop: '4px' }}>Self-hosted voice & chat</p>
-                <div className="welcome__about-links">
-                  <a href="https://itsashn.github.io/kizuna/" target="_blank" rel="noopener noreferrer" className="welcome__about-link">
-                    <BookOpen size={14} />
-                    Docs
-                  </a>
-                  <a href="https://github.com/ItsAshn/kizuna" target="_blank" rel="noopener noreferrer" className="welcome__about-link">
-                    <GitBranch size={14} />
-                    GitHub
-                  </a>
-                  <a href="https://github.com/ItsAshn/kizuna/issues" target="_blank" rel="noopener noreferrer" className="welcome__about-link">
-                    <Bug size={14} />
-                    Report Issue
-                  </a>
+            {!isMobile && (
+              <>
+                <div className="welcome__dashboard-panel">
+                  <div className="welcome__dashboard-panel-header">
+                    <span className="welcome__dashboard-panel-label">Direct Messages</span>
+                  </div>
+                  <div className="welcome__dashboard-panel-body">
+                    {dmsLoading ? (
+                      <p className="welcome__dashboard-empty-text">Loading...</p>
+                    ) : serverDMs.length === 0 ? (
+                      <div className="welcome__dashboard-empty">
+                        <p className="welcome__dashboard-empty-text">No recent conversations</p>
+                        <p className="welcome__dashboard-empty-sub">
+                          Join a server to start chatting
+                        </p>
+                      </div>
+                    ) : (
+                      serverDMs.map((sd) => (
+                        <div
+                          key={sd.serverId}
+                          style={{ marginBottom: sd.channels.length > 0 ? '12px' : '0' }}
+                        >
+                          <p className="welcome__dm-group-label">{sd.serverName}</p>
+                          {sd.channels.map((ch) => (
+                            <div key={ch.id} className="welcome__dm-item">
+                              <div className="welcome__dm-avatar">
+                                {ch.other_display_name?.[0]?.toUpperCase()}
+                              </div>
+                              <div>
+                                <p className="welcome__dm-name">{ch.other_display_name}</p>
+                                <p className="welcome__dm-username">@{ch.other_username}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
 
-      <button className="welcome__dashboard-cta" onClick={() => setShowConnect(true)}>Connect to Server</button>
+                <div className="welcome__dashboard-panel">
+                  <div className="welcome__dashboard-panel-header">
+                    <span className="welcome__dashboard-panel-label">Server Status</span>
+                  </div>
+                  <div className="welcome__dashboard-panel-body">
+                    {servers.length === 0 ? (
+                      <div className="welcome__dashboard-empty">
+                        <p className="welcome__dashboard-empty-text">No servers to check</p>
+                      </div>
+                    ) : (
+                      servers.map((server) => {
+                        const status = serverStatus[server.id] ?? 'checking'
+                        return (
+                          <div key={server.id} className="welcome__status-row">
+                            <span className="welcome__status-label">{server.name}</span>
+                            <span
+                              className={`welcome__status-value ${
+                                status === 'online'
+                                  ? 'welcome__status-value--good'
+                                  : status === 'offline'
+                                    ? 'welcome__status-value--danger'
+                                    : ''
+                              }`}
+                            >
+                              {status === 'checking'
+                                ? 'Checking…'
+                                : status === 'online'
+                                  ? 'Online'
+                                  : 'Offline'}
+                            </span>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+
+                <div className="welcome__dashboard-panel">
+                  <div className="welcome__dashboard-panel-header">
+                    <span className="welcome__dashboard-panel-label">About</span>
+                  </div>
+                  <div className="welcome__dashboard-panel-body">
+                    <p className="welcome__server-name">
+                      Kizuna{' '}
+                      {appVersion && (
+                        <span className="welcome__dashboard-panel-label">v{appVersion}</span>
+                      )}
+                    </p>
+                    <p className="welcome__subtitle" style={{ marginTop: '4px' }}>
+                      Self-hosted voice & chat
+                    </p>
+                    <div className="welcome__about-links">
+                      <a
+                        href="https://itsashn.github.io/kizuna/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="welcome__about-link"
+                      >
+                        <BookOpen size={14} />
+                        Docs
+                      </a>
+                      <a
+                        href="https://github.com/ItsAshn/kizuna"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="welcome__about-link"
+                      >
+                        <GitBranch size={14} />
+                        GitHub
+                      </a>
+                      <a
+                        href="https://github.com/ItsAshn/kizuna/issues"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="welcome__about-link"
+                      >
+                        <Bug size={14} />
+                        Report Issue
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <button className="welcome__dashboard-cta" onClick={() => setShowConnect(true)}>
+            Connect to Server
+          </button>
         </>
       )}
 

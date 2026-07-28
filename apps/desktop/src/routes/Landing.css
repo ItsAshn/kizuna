@@ -278,22 +278,42 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-xl);
   padding: 28px var(--space-6);
-  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, border-radius 0.2s ease;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-radius 0.2s ease;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 2px 8px rgba(0, 0, 0, 0.3);
   animation: landingFadeUp 0.5s ease both;
 }
 
-.landing-feature-card:nth-child(1) { animation-delay: 0.1s; }
-.landing-feature-card:nth-child(2) { animation-delay: 0.15s; }
-.landing-feature-card:nth-child(3) { animation-delay: 0.2s; }
-.landing-feature-card:nth-child(4) { animation-delay: 0.25s; }
-.landing-feature-card:nth-child(5) { animation-delay: 0.3s; }
-.landing-feature-card:nth-child(6) { animation-delay: 0.35s; }
+.landing-feature-card:nth-child(1) {
+  animation-delay: 0.1s;
+}
+.landing-feature-card:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.landing-feature-card:nth-child(3) {
+  animation-delay: 0.2s;
+}
+.landing-feature-card:nth-child(4) {
+  animation-delay: 0.25s;
+}
+.landing-feature-card:nth-child(5) {
+  animation-delay: 0.3s;
+}
+.landing-feature-card:nth-child(6) {
+  animation-delay: 0.35s;
+}
 
 .landing-feature-card:hover {
   border-color: var(--brand);
   transform: translateY(-2px);
-  box-shadow: 0 12px 40px rgba(76, 110, 245, 0.15), 0 4px 16px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    0 12px 40px rgba(76, 110, 245, 0.15),
+    0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
 .landing-feature-card__icon {
@@ -307,7 +327,10 @@
   border: 1px solid rgba(76, 110, 245, 0.2);
   color: var(--brand);
   margin-bottom: var(--space-4);
-  transition: border-radius 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  transition:
+    border-radius 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .landing-feature-card:hover .landing-feature-card__icon {
@@ -417,7 +440,9 @@
   border-radius: var(--radius-xl);
   overflow: hidden;
   margin-top: 32px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .landing-download__tabs {
@@ -537,7 +562,9 @@
   border-radius: var(--radius-xl);
   overflow: hidden;
   margin-top: 32px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .landing-selfhost__code {

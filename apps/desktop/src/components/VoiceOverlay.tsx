@@ -4,7 +4,17 @@ import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
 import type { ConnectionQuality } from '@kizuna/shared'
-import { Mic, MicOff, PhoneOff, Monitor, MonitorOff, Video, VideoOff, Signal, ChevronRight } from 'lucide-react'
+import {
+  Mic,
+  MicOff,
+  PhoneOff,
+  Monitor,
+  MonitorOff,
+  Video,
+  VideoOff,
+  Signal,
+  ChevronRight,
+} from 'lucide-react'
 import MonitorPicker from './MonitorPicker'
 import Slider from './ui/Slider'
 import { useMobile } from '../hooks/useMobile'
@@ -38,15 +48,24 @@ interface PeerRowProps {
   onVolumeChange?: (value: number) => void
 }
 
-function PeerRow({ initial, name, speaking, muted, quality, self, volume, onVolumeChange }: PeerRowProps) {
+function PeerRow({
+  initial,
+  name,
+  speaking,
+  muted,
+  quality,
+  self,
+  volume,
+  onVolumeChange,
+}: PeerRowProps) {
   const [expanded, setExpanded] = useState(false)
   const interactive = !self && volume !== undefined && !!onVolumeChange
 
   const avatarClass =
-    'voice-row__avatar'
-    + (speaking ? ' voice-row__avatar--speaking' : '')
-    + (muted ? ' voice-row__avatar--muted' : '')
-    + (self ? ' voice-row__avatar--self' : '')
+    'voice-row__avatar' +
+    (speaking ? ' voice-row__avatar--speaking' : '') +
+    (muted ? ' voice-row__avatar--muted' : '') +
+    (self ? ' voice-row__avatar--self' : '')
 
   return (
     <div className={`voice-row${expanded ? ' voice-row--expanded' : ''}`}>
@@ -79,7 +98,9 @@ function PeerRow({ initial, name, speaking, muted, quality, self, volume, onVolu
             />
           )}
           {interactive && (
-            <ChevronRight className={`voice-row__chevron${expanded ? ' voice-row__chevron--open' : ''}`} />
+            <ChevronRight
+              className={`voice-row__chevron${expanded ? ' voice-row__chevron--open' : ''}`}
+            />
           )}
         </span>
       </div>
@@ -101,10 +122,16 @@ function PeerRow({ initial, name, speaking, muted, quality, self, volume, onVolu
   )
 }
 
-export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare, stopScreenshare, dmCallOtherUsername, toggleCamera, isCameraOn }: VoiceOverlayProps) {
-  const {
-    channels,
-  } = useChatStore()
+export default function VoiceOverlay({
+  leaveVoice,
+  toggleMute,
+  startScreenshare,
+  stopScreenshare,
+  dmCallOtherUsername,
+  toggleCamera,
+  isCameraOn,
+}: VoiceOverlayProps) {
+  const { channels } = useChatStore()
   const {
     activeVoiceChannelId,
     voicePeers,
@@ -116,10 +143,7 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
     peerVolumes,
     setPeerVolume,
   } = useVoiceStore()
-  const {
-    isScreenSharing,
-    screenSharePeerId,
-  } = useCallStore()
+  const { isScreenSharing, screenSharePeerId } = useCallStore()
   const [closing, setClosing] = useState(false)
   const [showMonitorPicker, setShowMonitorPicker] = useState(false)
   const [screenShareError, setScreenShareError] = useState<string | null>(null)
@@ -175,9 +199,9 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
 
   if (!activeVoiceChannelId && !voiceError && !closing) return null
 
-  const channel = channels.find(c => c.id === activeVoiceChannelId)
+  const channel = channels.find((c) => c.id === activeVoiceChannelId)
   const isDMCall = !!dmCallOtherUsername
-  const headerName = isDMCall ? dmCallOtherUsername : (channel?.name || 'Voice Channel')
+  const headerName = isDMCall ? dmCallOtherUsername : channel?.name || 'Voice Channel'
   const peerCount = voicePeers.length + 1
 
   const handleRetry = () => {
@@ -185,7 +209,10 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
   }
 
   return (
-    <div ref={overlayRef} className={`voice-overlay${closing ? ' voice-overlay--closing' : ''}${voiceError ? ' voice-overlay--error' : ''}`}>
+    <div
+      ref={overlayRef}
+      className={`voice-overlay${closing ? ' voice-overlay--closing' : ''}${voiceError ? ' voice-overlay--error' : ''}`}
+    >
       {voiceError && (
         <div className="voice-error">
           <div className="voice-error__label">Voice Error</div>
@@ -210,12 +237,16 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
           <div className="voice-header">
             <Signal className="voice-header__signal" />
             <div className="voice-header__title">
-              <span className="voice-header__status">{isDMCall ? 'In Call' : 'Voice Connected'}</span>
+              <span className="voice-header__status">
+                {isDMCall ? 'In Call' : 'Voice Connected'}
+              </span>
               <span className="voice-header__channel" title={headerName ?? undefined}>
                 {headerName}
               </span>
             </div>
-            <span className="voice-header__count" title={`${peerCount} in call`}>{peerCount}</span>
+            <span className="voice-header__count" title={`${peerCount} in call`}>
+              {peerCount}
+            </span>
           </div>
 
           <div className="voice-peers">
@@ -244,7 +275,10 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
           {screenShareError && (
             <div className="voice-inline-error">
               <span>{screenShareError}</span>
-              <button onClick={() => setScreenShareError(null)} className="voice-inline-error__dismiss">
+              <button
+                onClick={() => setScreenShareError(null)}
+                className="voice-inline-error__dismiss"
+              >
                 dismiss
               </button>
             </div>
@@ -273,10 +307,20 @@ export default function VoiceOverlay({ leaveVoice, toggleMute, startScreenshare,
                   }
                 }}
                 className={`voice-ctrl ${isScreenSharing ? 'voice-ctrl--brand-active' : ''}`}
-                title={isScreenSharing ? 'Stop sharing' : screenSharePeerId ? 'Someone else is sharing' : 'Share screen'}
+                title={
+                  isScreenSharing
+                    ? 'Stop sharing'
+                    : screenSharePeerId
+                      ? 'Someone else is sharing'
+                      : 'Share screen'
+                }
                 disabled={!!screenSharePeerId && !isScreenSharing}
               >
-                {isScreenSharing ? <MonitorOff className="icon-xs" /> : <Monitor className="icon-xs" />}
+                {isScreenSharing ? (
+                  <MonitorOff className="icon-xs" />
+                ) : (
+                  <Monitor className="icon-xs" />
+                )}
               </button>
             )}
 

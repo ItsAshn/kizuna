@@ -28,7 +28,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
     type = 'button',
     ...props
   },
-  ref
+  ref,
 ) {
   const classes = [
     `btn-${variant}`,

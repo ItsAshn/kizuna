@@ -21,7 +21,10 @@ interface CacheEntry<T> {
 
 const adminCache = new Map<string, CacheEntry<boolean>>()
 const hostCache = new Map<string, CacheEntry<boolean>>()
-const permsCache = new Map<string, CacheEntry<{ role: string; permissions: Record<string, boolean> }>>()
+const permsCache = new Map<
+  string,
+  CacheEntry<{ role: string; permissions: Record<string, boolean> }>
+>()
 
 const PERM_CACHE_MAX = 10_000
 
@@ -39,8 +42,6 @@ function cacheSet<T>(map: Map<string, CacheEntry<T>>, key: string, value: T): vo
   if (map.size >= PERM_CACHE_MAX) map.clear()
   map.set(key, { value, at: Date.now() })
 }
-
-
 
 export function clearPermissionCache(userId?: string): void {
   if (userId) {
@@ -60,7 +61,9 @@ export function getJwtSecret(): string {
     throw new Error('JWT_SECRET is not set. Authentication cannot function.')
   }
   if (secret === 'change_this_to_a_long_random_secret') {
-    throw new Error('JWT_SECRET is using the default placeholder. Generate one with: openssl rand -hex 64')
+    throw new Error(
+      'JWT_SECRET is using the default placeholder. Generate one with: openssl rand -hex 64',
+    )
   }
   return secret
 }
@@ -78,7 +81,9 @@ export function isUserAdmin(userId: string): boolean {
   const cached = cacheGet(adminCache, userId)
   if (cached !== null) return cached
   const db = getDb()
-  const row = db.prepare(`
+  const row = db
+    .prepare(
+      `
     SELECT 1 FROM member_roles mr
     JOIN roles r ON mr.role_id = r.id
     WHERE mr.user_id = ? AND r.is_admin = 1
@@ -87,7 +92,9 @@ export function isUserAdmin(userId: string): boolean {
     JOIN roles r ON sm.custom_role_id = r.id
     WHERE sm.user_id = ? AND sm.custom_role_id IS NOT NULL AND r.is_admin = 1
       AND NOT EXISTS (SELECT 1 FROM member_roles mr2 WHERE mr2.user_id = sm.user_id AND mr2.role_id = sm.custom_role_id)
-  `).get(userId, userId)
+  `,
+    )
+    .get(userId, userId)
   const result = !!row
   cacheSet(adminCache, userId, result)
   return result
@@ -97,7 +104,9 @@ export function isUserHost(userId: string): boolean {
   const cached = cacheGet(hostCache, userId)
   if (cached !== null) return cached
   const db = getDb()
-  const row = db.prepare('SELECT 1 FROM server_members WHERE user_id = ? AND is_host = 1').get(userId)
+  const row = db
+    .prepare('SELECT 1 FROM server_members WHERE user_id = ? AND is_host = 1')
+    .get(userId)
   const result = !!row
   cacheSet(hostCache, userId, result)
   return result
@@ -105,9 +114,9 @@ export function isUserHost(userId: string): boolean {
 
 export function assignDefaultRoles(userId: string): void {
   const db = getDb()
-  const defaultRoles = db.prepare(
-    'SELECT id FROM roles WHERE default_on_join = 1'
-  ).all() as { id: string }[]
+  const defaultRoles = db.prepare('SELECT id FROM roles WHERE default_on_join = 1').all() as {
+    id: string
+  }[]
   const stmt = db.prepare('INSERT OR IGNORE INTO member_roles (user_id, role_id) VALUES (?, ?)')
   for (const role of defaultRoles) {
     stmt.run(userId, role.id)
@@ -126,7 +135,7 @@ export function isRemovedMember(userId: string): boolean {
 export function markMemberRemoved(userId: string, removedBy: string | null): void {
   const db = getDb()
   db.prepare(
-    'INSERT OR REPLACE INTO removed_members (user_id, removed_by, removed_at) VALUES (?, ?, unixepoch())'
+    'INSERT OR REPLACE INTO removed_members (user_id, removed_by, removed_at) VALUES (?, ?, unixepoch())',
   ).run(userId, removedBy)
 }
 
@@ -138,13 +147,17 @@ export function clearMemberRemoval(userId: string): void {
 // Ends every REST session for a user; authMiddleware rejects revoked token ids.
 export function revokeUserSessions(userId: string): void {
   const db = getDb()
-  db.prepare('UPDATE sessions SET revoked_at = unixepoch() WHERE user_id = ? AND revoked_at IS NULL').run(userId)
+  db.prepare(
+    'UPDATE sessions SET revoked_at = unixepoch() WHERE user_id = ? AND revoked_at IS NULL',
+  ).run(userId)
   db.prepare('UPDATE users SET token_invalidated_at = unixepoch() WHERE id = ?').run(userId)
 }
 
 export function getUserInfo(userId: string): AuthUser | null {
   const db = getDb()
-  const user = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(userId) as { id: string; username: string; display_name: string } | undefined
+  const user = db
+    .prepare('SELECT id, username, display_name FROM users WHERE id = ?')
+    .get(userId) as { id: string; username: string; display_name: string } | undefined
   if (!user) return null
   return {
     userId: user.id,
@@ -155,7 +168,9 @@ export function getUserInfo(userId: string): AuthUser | null {
   }
 }
 
-export function getUserPermissions(userId: string): { role: string; permissions: Record<string, boolean> } | null {
+export function getUserPermissions(
+  userId: string,
+): { role: string; permissions: Record<string, boolean> } | null {
   const cached = cacheGet(permsCache, userId)
   if (cached) return cached
 
@@ -168,11 +183,17 @@ export function getUserPermissions(userId: string): { role: string; permissions:
     if (isRemovedMember(userId)) return null
 
     try {
-      db.prepare('INSERT OR IGNORE INTO server_members (user_id, role) VALUES (?, ?)').run(userId, 'member')
+      db.prepare('INSERT OR IGNORE INTO server_members (user_id, role) VALUES (?, ?)').run(
+        userId,
+        'member',
+      )
       assignDefaultRoles(userId)
       member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
     } catch (err: unknown) {
-      console.error(`[auth] Failed to auto-insert user ${userId} into server_members:`, err instanceof Error ? err.message : err)
+      console.error(
+        `[auth] Failed to auto-insert user ${userId} into server_members:`,
+        err instanceof Error ? err.message : err,
+      )
     }
     if (!member) return null
   }
@@ -211,7 +232,9 @@ export function getUserPermissions(userId: string): { role: string; permissions:
   }
 
   try {
-    const roles = db.prepare(`
+    const roles = db
+      .prepare(
+        `
       SELECT r.permissions, r.position
       FROM member_roles mr
       JOIN roles r ON mr.role_id = r.id
@@ -223,7 +246,9 @@ export function getUserPermissions(userId: string): { role: string; permissions:
       WHERE sm.user_id = ? AND sm.custom_role_id IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM member_roles mr2 WHERE mr2.user_id = sm.user_id AND mr2.role_id = sm.custom_role_id)
       ORDER BY position ASC
-    `).all(userId, userId) as { permissions: string }[]
+    `,
+      )
+      .all(userId, userId) as { permissions: string }[]
 
     for (const role of roles) {
       try {
@@ -231,10 +256,15 @@ export function getUserPermissions(userId: string): { role: string; permissions:
         for (const [key, value] of Object.entries(rolePerms)) {
           if (value === true) permissions[key] = true
         }
-      } catch { /* skip malformed JSON */ }
+      } catch {
+        /* skip malformed JSON */
+      }
     }
   } catch (err: unknown) {
-    console.error(`[auth] Failed to query role permissions for user ${userId}:`, err instanceof Error ? err.message : err)
+    console.error(
+      `[auth] Failed to query role permissions for user ${userId}:`,
+      err instanceof Error ? err.message : err,
+    )
   }
 
   const result = { role: 'member' as const, permissions }
@@ -250,10 +280,7 @@ export function hasPermission(
   return userInfo.permissions[permission] === true
 }
 
-export function hasPermissionForUser(
-  userId: string,
-  permission: string,
-): boolean {
+export function hasPermissionForUser(userId: string, permission: string): boolean {
   if (isUserAdmin(userId)) return true
   const info = getUserPermissions(userId)
   if (!info) return false
@@ -262,7 +289,9 @@ export function hasPermissionForUser(
 
 export function canWriteToChannel(userId: string, channelId: string): boolean {
   const db = getDb()
-  const channel = db.prepare('SELECT locked FROM channels WHERE id = ?').get(channelId) as { locked: number } | undefined
+  const channel = db.prepare('SELECT locked FROM channels WHERE id = ?').get(channelId) as
+    | { locked: number }
+    | undefined
   if (!channel || !channel.locked) return true
 
   const isMember = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
@@ -272,7 +301,9 @@ export function canWriteToChannel(userId: string, channelId: string): boolean {
 
 export function canViewChannel(userId: string, channelId: string): boolean {
   const db = getDb()
-  const channel = db.prepare('SELECT hidden, hidden_role_ids FROM channels WHERE id = ?').get(channelId) as { hidden: number; hidden_role_ids: string | null } | undefined
+  const channel = db
+    .prepare('SELECT hidden, hidden_role_ids FROM channels WHERE id = ?')
+    .get(channelId) as { hidden: number; hidden_role_ids: string | null } | undefined
   if (!channel || !channel.hidden) return true
   if (isUserAdmin(userId)) return true
 
@@ -281,17 +312,25 @@ export function canViewChannel(userId: string, channelId: string): boolean {
   let hiddenRoleIds: string[] = []
   try {
     hiddenRoleIds = JSON.parse(channel.hidden_role_ids)
-  } catch { return true }
+  } catch {
+    return true
+  }
 
   if (!Array.isArray(hiddenRoleIds) || hiddenRoleIds.length === 0) return true
 
-  const userRoles = db.prepare('SELECT role_id FROM member_roles WHERE user_id = ?').all(userId) as { role_id: string }[]
-  const userRoleIds = new Set(userRoles.map(r => r.role_id))
+  const userRoles = db
+    .prepare('SELECT role_id FROM member_roles WHERE user_id = ?')
+    .all(userId) as { role_id: string }[]
+  const userRoleIds = new Set(userRoles.map((r) => r.role_id))
 
-  const member = db.prepare('SELECT custom_role_id FROM server_members WHERE user_id = ? AND custom_role_id IS NOT NULL').get(userId) as { custom_role_id: string } | undefined
+  const member = db
+    .prepare(
+      'SELECT custom_role_id FROM server_members WHERE user_id = ? AND custom_role_id IS NOT NULL',
+    )
+    .get(userId) as { custom_role_id: string } | undefined
   if (member?.custom_role_id) userRoleIds.add(member.custom_role_id)
 
-  return !hiddenRoleIds.some(roleId => userRoleIds.has(roleId))
+  return !hiddenRoleIds.some((roleId) => userRoleIds.has(roleId))
 }
 
 // Members who should receive a background/off-channel notification for an event
@@ -300,14 +339,20 @@ export function canViewChannel(userId: string, channelId: string): boolean {
 // every connected socket regardless of membership/visibility.
 export function getEligibleNotifyUserIds(channelId: string, excludeUserId: string): string[] {
   const db = getDb()
-  const members = db.prepare('SELECT user_id FROM server_members WHERE user_id != ?').all(excludeUserId) as { user_id: string }[]
+  const members = db
+    .prepare('SELECT user_id FROM server_members WHERE user_id != ?')
+    .all(excludeUserId) as { user_id: string }[]
 
   const now = Math.floor(Date.now() / 1000)
   const muted = new Set(
-    (db.prepare(
-      `SELECT user_id FROM channel_mutes
-       WHERE channel_id = ? AND (muted_until IS NULL OR muted_until > ?)`
-    ).all(channelId, now) as { user_id: string }[]).map((r) => r.user_id)
+    (
+      db
+        .prepare(
+          `SELECT user_id FROM channel_mutes
+       WHERE channel_id = ? AND (muted_until IS NULL OR muted_until > ?)`,
+        )
+        .all(channelId, now) as { user_id: string }[]
+    ).map((r) => r.user_id),
   )
 
   return members
@@ -315,9 +360,14 @@ export function getEligibleNotifyUserIds(channelId: string, excludeUserId: strin
     .filter((userId) => !muted.has(userId) && canViewChannel(userId, channelId))
 }
 
-export function getUserChannelPermissions(userId: string, channelId: string): { can_write: boolean; locked: boolean; can_view: boolean; hidden: boolean } {
+export function getUserChannelPermissions(
+  userId: string,
+  channelId: string,
+): { can_write: boolean; locked: boolean; can_view: boolean; hidden: boolean } {
   const db = getDb()
-  const channel = db.prepare('SELECT locked, hidden FROM channels WHERE id = ?').get(channelId) as { locked: number; hidden: number } | undefined
+  const channel = db.prepare('SELECT locked, hidden FROM channels WHERE id = ?').get(channelId) as
+    | { locked: number; hidden: number }
+    | undefined
   if (!channel) return { can_write: true, locked: false, can_view: true, hidden: false }
 
   const result = {
@@ -339,7 +389,11 @@ export function getUserChannelPermissions(userId: string, channelId: string): { 
   return result
 }
 
-export function getUserChannelPermission(userId: string, channelId: string, permission: string): boolean {
+export function getUserChannelPermission(
+  userId: string,
+  channelId: string,
+  permission: string,
+): boolean {
   if (isUserAdmin(userId)) return true
 
   const basePerms = getUserPermissions(userId)
@@ -348,14 +402,18 @@ export function getUserChannelPermission(userId: string, channelId: string, perm
   const baseValue = basePerms.permissions[permission] === true
 
   const db = getDb()
-  const overrides = db.prepare(`
+  const overrides = db
+    .prepare(
+      `
     SELECT cro.allow_permissions, cro.deny_permissions
     FROM channel_role_overrides cro
     JOIN member_roles mr ON mr.role_id = cro.role_id AND mr.user_id = ?
     JOIN roles r ON r.id = cro.role_id
     WHERE cro.channel_id = ?
     ORDER BY r.position ASC
-  `).all(userId, channelId) as { allow_permissions: string; deny_permissions: string }[]
+  `,
+    )
+    .all(userId, channelId) as { allow_permissions: string; deny_permissions: string }[]
 
   let resolved = baseValue
   for (const override of overrides) {
@@ -364,13 +422,19 @@ export function getUserChannelPermission(userId: string, channelId: string, perm
       const deny = JSON.parse(override.deny_permissions || '{}')
       if (deny[permission] === true) resolved = false
       if (allow[permission] === true) resolved = true
-    } catch { /* skip malformed JSON */ }
+    } catch {
+      /* skip malformed JSON */
+    }
   }
 
   return resolved
 }
 
-export function getResolvedChannelPermissions(userId: string, channelId: string, permissions: string[]): Record<string, boolean> {
+export function getResolvedChannelPermissions(
+  userId: string,
+  channelId: string,
+  permissions: string[],
+): Record<string, boolean> {
   if (isUserAdmin(userId)) {
     const resolved: Record<string, boolean> = {}
     for (const p of permissions) resolved[p] = true
@@ -385,14 +449,18 @@ export function getResolvedChannelPermissions(userId: string, channelId: string,
   }
 
   const db = getDb()
-  const overrides = db.prepare(`
+  const overrides = db
+    .prepare(
+      `
     SELECT cro.allow_permissions, cro.deny_permissions
     FROM channel_role_overrides cro
     JOIN member_roles mr ON mr.role_id = cro.role_id AND mr.user_id = ?
     JOIN roles r ON r.id = cro.role_id
     WHERE cro.channel_id = ?
     ORDER BY r.position ASC
-  `).all(userId, channelId) as { allow_permissions: string; deny_permissions: string }[]
+  `,
+    )
+    .all(userId, channelId) as { allow_permissions: string; deny_permissions: string }[]
 
   const resolved: Record<string, boolean> = {}
   for (const permission of permissions) {
@@ -403,7 +471,9 @@ export function getResolvedChannelPermissions(userId: string, channelId: string,
         const deny = JSON.parse(override.deny_permissions || '{}')
         if (deny[permission] === true) value = false
         if (allow[permission] === true) value = true
-      } catch { /* skip malformed JSON */ }
+      } catch {
+        /* skip malformed JSON */
+      }
     }
     resolved[permission] = value
   }
@@ -435,9 +505,11 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
     const payload = verifyToken(token)
     const db = getDb()
 
-    const userRow = db.prepare(
-      'SELECT id, username, display_name, token_invalidated_at FROM users WHERE id = ?'
-    ).get(payload.userId) as { id: string; username: string; display_name: string; token_invalidated_at: number | null } | undefined
+    const userRow = db
+      .prepare('SELECT id, username, display_name, token_invalidated_at FROM users WHERE id = ?')
+      .get(payload.userId) as
+      | { id: string; username: string; display_name: string; token_invalidated_at: number | null }
+      | undefined
 
     if (!userRow) {
       return c.json({ error: 'User not found' }, 401)
@@ -448,7 +520,9 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
     }
 
     if (payload.tokenId) {
-      const session = db.prepare('SELECT revoked_at FROM sessions WHERE token_id = ?').get(payload.tokenId) as { revoked_at: number | null } | undefined
+      const session = db
+        .prepare('SELECT revoked_at FROM sessions WHERE token_id = ?')
+        .get(payload.tokenId) as { revoked_at: number | null } | undefined
       if (session?.revoked_at) {
         return c.json({ error: 'Token has been revoked' }, 401)
       }

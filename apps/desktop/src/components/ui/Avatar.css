@@ -44,11 +44,21 @@
 }
 
 /* Presence ring — colors mirror the legacy member-list rings. */
-.avatar--status-online { box-shadow: 0 0 0 var(--avatar-ring-width) var(--green); }
-.avatar--status-idle { box-shadow: 0 0 0 var(--avatar-ring-width) var(--yellow); }
-.avatar--status-busy { box-shadow: 0 0 0 var(--avatar-ring-width) var(--red); }
-.avatar--status-offline { box-shadow: 0 0 0 var(--avatar-ring-width) var(--gray); }
-.avatar--status-invisible { box-shadow: 0 0 0 var(--avatar-ring-width) var(--text-muted); }
+.avatar--status-online {
+  box-shadow: 0 0 0 var(--avatar-ring-width) var(--green);
+}
+.avatar--status-idle {
+  box-shadow: 0 0 0 var(--avatar-ring-width) var(--yellow);
+}
+.avatar--status-busy {
+  box-shadow: 0 0 0 var(--avatar-ring-width) var(--red);
+}
+.avatar--status-offline {
+  box-shadow: 0 0 0 var(--avatar-ring-width) var(--gray);
+}
+.avatar--status-invisible {
+  box-shadow: 0 0 0 var(--avatar-ring-width) var(--text-muted);
+}
 
 /* Separator border for avatars sitting over media (e.g. profile-card banner). */
 .avatar--frame {

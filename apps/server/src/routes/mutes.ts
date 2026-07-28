@@ -9,10 +9,12 @@ const mutesRoutes = new Hono()
 mutesRoutes.get('/', authMiddleware, async (c) => {
   const { userId } = getAuth(c)
   const db = getDb()
-  const rows = db.prepare(
-    `SELECT channel_id, muted_until FROM channel_mutes
-     WHERE user_id = ? AND (muted_until IS NULL OR muted_until > unixepoch())`
-  ).all(userId) as { channel_id: string; muted_until: number | null }[]
+  const rows = db
+    .prepare(
+      `SELECT channel_id, muted_until FROM channel_mutes
+     WHERE user_id = ? AND (muted_until IS NULL OR muted_until > unixepoch())`,
+    )
+    .all(userId) as { channel_id: string; muted_until: number | null }[]
 
   const mutes = rows.map((r) => ({
     channel_id: r.channel_id,
@@ -25,17 +27,15 @@ mutesRoutes.get('/', authMiddleware, async (c) => {
 mutesRoutes.put('/:channelId', authMiddleware, async (c) => {
   const { userId } = getAuth(c)
   const { channelId } = c.req.param()
-  const body = await c.req.json() as { muted_until: number | null }
+  const body = (await c.req.json()) as { muted_until: number | null }
 
-  const mutedUntil = body.muted_until
-    ? Math.floor(body.muted_until / 1000)
-    : null
+  const mutedUntil = body.muted_until ? Math.floor(body.muted_until / 1000) : null
 
   const db = getDb()
   db.prepare(
     `INSERT INTO channel_mutes (user_id, channel_id, muted_until)
      VALUES (?, ?, ?)
-     ON CONFLICT(user_id, channel_id) DO UPDATE SET muted_until = excluded.muted_until`
+     ON CONFLICT(user_id, channel_id) DO UPDATE SET muted_until = excluded.muted_until`,
   ).run(userId, channelId, mutedUntil)
 
   const io = getIo(c)
@@ -59,7 +59,10 @@ mutesRoutes.delete('/:channelId', authMiddleware, async (c) => {
   const { channelId } = c.req.param()
 
   const db = getDb()
-  db.prepare('DELETE FROM channel_mutes WHERE user_id = ? AND channel_id = ?').run(userId, channelId)
+  db.prepare('DELETE FROM channel_mutes WHERE user_id = ? AND channel_id = ?').run(
+    userId,
+    channelId,
+  )
 
   const io = getIo(c)
   if (io) {

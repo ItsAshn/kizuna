@@ -16,7 +16,7 @@ export default function ReactionBar({ serverUrl, onReact, onAddClick, visible }:
 
   useEffect(() => {
     fetchPopularReactions(serverUrl)
-      .then(data => {
+      .then((data) => {
         if (data.emojis?.length) setQuickEmojis(data.emojis.slice(0, 5))
         if (data.stickers?.length) setQuickStickers(data.stickers.slice(0, 3))
       })
@@ -28,13 +28,19 @@ export default function ReactionBar({ serverUrl, onReact, onAddClick, visible }:
   }
 
   return (
-    <div className={`msg-bubble__react-bar ${visible ? 'msg-bubble__react-bar--visible' : ''}`} ref={barRef}>
+    <div
+      className={`msg-bubble__react-bar ${visible ? 'msg-bubble__react-bar--visible' : ''}`}
+      ref={barRef}
+    >
       <div className="msg-bubble__react-bar-inner">
         {quickEmojis.map((emoji) => (
           <button
             key={emoji}
             className="msg-bubble__react-quick"
-            onClick={(e) => { e.stopPropagation(); handleQuickReact(emoji, 'emoji') }}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleQuickReact(emoji, 'emoji')
+            }}
             title={emoji}
           >
             {emoji}
@@ -44,7 +50,10 @@ export default function ReactionBar({ serverUrl, onReact, onAddClick, visible }:
           <button
             key={s.id}
             className="msg-bubble__react-quick"
-            onClick={(e) => { e.stopPropagation(); handleQuickReact(s.id, 'sticker') }}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleQuickReact(s.id, 'sticker')
+            }}
             title="sticker"
           >
             <img src={serverUrl + s.url} alt="" className="msg-bubble__react-quick-sticker" />
@@ -52,7 +61,10 @@ export default function ReactionBar({ serverUrl, onReact, onAddClick, visible }:
         ))}
         <button
           className="msg-bubble__react-quick msg-bubble__react-quick--add"
-          onClick={(e) => { e.stopPropagation(); onAddClick() }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onAddClick()
+          }}
           title="Add reaction"
         >
           <Plus size={14} />

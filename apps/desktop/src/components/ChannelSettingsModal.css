@@ -2,15 +2,6 @@
   width: var(--modal-w-lg);
 }
 
-
-
-
-
-
-
-
-
-
 .channel-settings__field {
   margin-bottom: 12px;
 }
@@ -185,9 +176,6 @@
   opacity: 0.8;
 }
 
-
-
-
 @media (max-width: 767px) {
   /* Width/position handled by ui/Modal's mobile bottom sheet. */
 
@@ -216,9 +204,9 @@
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   }
 
-.channel-settings__done-btn {
-  min-height: 44px;
-  font-size: 13px;
-  padding: 8px 20px;
-}
+  .channel-settings__done-btn {
+    min-height: 44px;
+    font-size: 13px;
+    padding: 8px 20px;
+  }
 }

@@ -33,7 +33,8 @@ export function UpdatesSection() {
 
   // Notes are worth showing from the moment an update is found right through to
   // the restart prompt — they're the reason to take it.
-  const showNotes = updateState === 'available' || updateState === 'downloading' || updateState === 'ready'
+  const showNotes =
+    updateState === 'available' || updateState === 'downloading' || updateState === 'ready'
   const notes = showNotes ? parseReleaseNotes(updateNotes) : { lines: [], truncated: false }
 
   // One button, one next step — the label is never a progress readout.
@@ -74,7 +75,12 @@ export function UpdatesSection() {
 
         <div className="settings-version-row">
           <span className="settings-version-text">
-            Kizuna {appVersion ? `v${appVersion}` : <span className="settings-version-dev">(dev build)</span>}
+            Kizuna{' '}
+            {appVersion ? (
+              `v${appVersion}`
+            ) : (
+              <span className="settings-version-dev">(dev build)</span>
+            )}
           </span>
           <button onClick={action.onClick} disabled={busy} className="settings-btn">
             {action.label}

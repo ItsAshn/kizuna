@@ -10,7 +10,10 @@ interface ScreenShareOverlayProps {
   stopScreenshare: () => void
 }
 
-export default function ScreenShareOverlay({ videoElRef, stopScreenshare }: ScreenShareOverlayProps) {
+export default function ScreenShareOverlay({
+  videoElRef,
+  stopScreenshare,
+}: ScreenShareOverlayProps) {
   const { screenSharePeerId, screenShareUsername, isScreenSharing } = useCallStore()
   const { activeVoiceChannelId } = useVoiceStore()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -114,7 +117,7 @@ export default function ScreenShareOverlay({ videoElRef, stopScreenshare }: Scre
   if (!mounted && !isActive) return null
   if (!activeVoiceChannelId && !isScreenSharing) return null
 
-  const sharerName = isScreenSharing ? 'You' : (screenShareUsername || 'Unknown')
+  const sharerName = isScreenSharing ? 'You' : screenShareUsername || 'Unknown'
 
   return (
     <div

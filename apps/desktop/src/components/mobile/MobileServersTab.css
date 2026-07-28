@@ -7,7 +7,9 @@
 
 /* Server card enhancements */
 .mobile-server-card {
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .mobile-server-card:active {

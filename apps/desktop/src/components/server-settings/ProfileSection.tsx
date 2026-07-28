@@ -25,8 +25,8 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
   const bannerFileRef = useRef<HTMLInputElement>(null)
   const pendingBannerFile = useRef<File | null>(null)
 
-  const serverBackgroundEnabled = useSettingsStore(s => s.serverBackgroundEnabled)
-  const customCssEnabled = useSettingsStore(s => s.customCssEnabled)
+  const serverBackgroundEnabled = useSettingsStore((s) => s.serverBackgroundEnabled)
+  const customCssEnabled = useSettingsStore((s) => s.customCssEnabled)
 
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [deletePassword, setDeletePassword] = useState('')
@@ -105,8 +105,7 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-    <section className="server-menu__section">
-
+      <section className="server-menu__section">
         <div className="server-menu__profile-preview">
           <button
             type="button"
@@ -115,12 +114,22 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
             aria-label={bannerPreview ? 'change banner' : 'add banner'}
           >
             {bannerPreview ? (
-              <img src={bannerPreview} alt="" className="server-menu__profile-banner-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+              <img
+                src={bannerPreview}
+                alt=""
+                className="server-menu__profile-banner-img"
+                onError={(e) => {
+                  ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                }}
+              />
             ) : (
               <div className="server-menu__profile-banner-empty" />
             )}
             <div className="server-menu__profile-banner-overlay">
-              <span><ImagePlus size={12} />{bannerPreview ? 'change banner' : 'add banner'}</span>
+              <span>
+                <ImagePlus size={12} />
+                {bannerPreview ? 'change banner' : 'add banner'}
+              </span>
             </div>
           </button>
 
@@ -130,9 +139,18 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
             onClick={() => profileFileRef.current?.click()}
             aria-label={avatarPreview ? 'change avatar' : 'add avatar'}
           >
-            <span className="server-menu__profile-avatar-letter">{(displayName || session?.user?.display_name || '?')[0]?.toUpperCase()}</span>
+            <span className="server-menu__profile-avatar-letter">
+              {(displayName || session?.user?.display_name || '?')[0]?.toUpperCase()}
+            </span>
             {avatarPreview && (
-              <img src={avatarPreview} alt="" className="server-menu__profile-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+              <img
+                src={avatarPreview}
+                alt=""
+                className="server-menu__profile-avatar-img"
+                onError={(e) => {
+                  ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                }}
+              />
             )}
             <div className="server-menu__profile-avatar-overlay">
               <Camera size={18} />
@@ -154,29 +172,53 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <input ref={profileFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFile} />
-        <input ref={bannerFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerFile} />
+        <input
+          ref={profileFileRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleAvatarFile}
+        />
+        <input
+          ref={bannerFileRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleBannerFile}
+        />
 
         <div className="server-menu__settings-group" style={{ marginTop: '16px' }}>
           <p className="server-menu__settings-group-title">identity</p>
           <div className="server-menu__field">
             <label className="server-menu__label">display name</label>
-            <input className="server-menu__input" maxLength={100} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="display name" />
+            <input
+              className="server-menu__input"
+              maxLength={100}
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="display name"
+            />
           </div>
         </div>
 
         <div className="server-menu__settings-group">
           <p className="server-menu__settings-group-title">display</p>
           <div className="server-menu__toggle-row" style={{ marginTop: 0 }}>
-            <label className="server-menu__label" style={{ margin: 0 }}>show server background</label>
+            <label className="server-menu__label" style={{ margin: 0 }}>
+              show server background
+            </label>
             <ToggleSwitch
               checked={serverBackgroundEnabled}
-              onChange={(checked) => useSettingsStore.getState().setServerBackgroundEnabled(checked)}
+              onChange={(checked) =>
+                useSettingsStore.getState().setServerBackgroundEnabled(checked)
+              }
               ariaLabel="show server background"
             />
           </div>
           <div className="server-menu__toggle-row">
-            <label className="server-menu__label" style={{ margin: 0 }}>enable custom css</label>
+            <label className="server-menu__label" style={{ margin: 0 }}>
+              enable custom css
+            </label>
             <ToggleSwitch
               checked={customCssEnabled}
               onChange={(checked) => useSettingsStore.getState().setCustomCssEnabled(checked)}
@@ -186,11 +228,17 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="server-menu__save-row">
-          <button onClick={handleSaveProfile} disabled={profileSaving} className="server-menu__save-btn">
+          <button
+            onClick={handleSaveProfile}
+            disabled={profileSaving}
+            className="server-menu__save-btn"
+          >
             {profileSaving ? '...' : 'save profile'}
           </button>
           {profileMsg && (
-            <span className={`server-menu__save-msg ${profileMsg === 'saved' ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`}>
+            <span
+              className={`server-menu__save-msg ${profileMsg === 'saved' ? 'server-menu__save-msg--ok' : 'server-menu__save-msg--err'}`}
+            >
               {profileMsg}
             </span>
           )}
@@ -199,62 +247,91 @@ export function ProfileSection({ onClose }: { onClose: () => void }) {
         <div className="server-menu__settings-group" style={{ marginTop: '16px' }}>
           <p className="server-menu__settings-group-title">danger zone</p>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <p className="server-menu__hint" style={{ margin: 0 }}>permanently remove your account from this server.</p>
-            <button onClick={() => { setDeleteConfirm(true); setDeleteAllData(false); setDeletePassword(''); setDeleteError('') }} className="server-menu__btn server-menu__btn--danger">
+            <p className="server-menu__hint" style={{ margin: 0 }}>
+              permanently remove your account from this server.
+            </p>
+            <button
+              onClick={() => {
+                setDeleteConfirm(true)
+                setDeleteAllData(false)
+                setDeletePassword('')
+                setDeleteError('')
+              }}
+              className="server-menu__btn server-menu__btn--danger"
+            >
               delete account
             </button>
           </div>
         </div>
       </section>
 
-    <Modal
-      open={deleteConfirm}
-      onClose={() => { setDeleteConfirm(false); setDeletePassword(''); setDeleteAllData(false); setDeleteError('') }}
-      title="// delete account"
-      footer={
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-          <button
-            className="server-menu__confirm-cancel"
-            onClick={() => { setDeleteConfirm(false); setDeletePassword(''); setDeleteAllData(false); setDeleteError('') }}
-            disabled={deleting}
-          >
-                cancel
-          </button>
-          <button
-            onClick={handleDeleteAccount}
-            disabled={deleting || !deletePassword}
-            className="server-menu__btn server-menu__btn--danger"
-          >
-            {deleting ? 'deleting...' : 'delete account'}
-          </button>
-        </div>
-      }
-    >
-      <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '16px' }}>
-        your account will be permanently removed. your public messages remain visible to others
-        unless you choose to delete all data below.
-      </p>
-      <Checkbox
-        checked={deleteAllData}
-        onChange={setDeleteAllData}
-                    label="also delete all my data"
-      />
-      <div style={{ marginTop: '16px' }}>
-        <label className="server-menu__label" style={{ marginBottom: '6px' }}>enter your password to confirm</label>
-        <input
-          type="password"
-          className="server-menu__input"
-          placeholder="your password"
-          value={deletePassword}
-          onChange={(e) => setDeletePassword(e.target.value)}
-          autoFocus
-          onKeyDown={(e) => { if (e.key === 'Enter') handleDeleteAccount() }}
+      <Modal
+        open={deleteConfirm}
+        onClose={() => {
+          setDeleteConfirm(false)
+          setDeletePassword('')
+          setDeleteAllData(false)
+          setDeleteError('')
+        }}
+        title="// delete account"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <button
+              className="server-menu__confirm-cancel"
+              onClick={() => {
+                setDeleteConfirm(false)
+                setDeletePassword('')
+                setDeleteAllData(false)
+                setDeleteError('')
+              }}
+              disabled={deleting}
+            >
+              cancel
+            </button>
+            <button
+              onClick={handleDeleteAccount}
+              disabled={deleting || !deletePassword}
+              className="server-menu__btn server-menu__btn--danger"
+            >
+              {deleting ? 'deleting...' : 'delete account'}
+            </button>
+          </div>
+        }
+      >
+        <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '16px' }}>
+          your account will be permanently removed. your public messages remain visible to others
+          unless you choose to delete all data below.
+        </p>
+        <Checkbox
+          checked={deleteAllData}
+          onChange={setDeleteAllData}
+          label="also delete all my data"
         />
-      </div>
-      {deleteError && (
-        <span className="server-menu__save-msg server-menu__save-msg--err" style={{ display: 'block', marginTop: '8px' }}>{deleteError}</span>
-      )}
-    </Modal>
+        <div style={{ marginTop: '16px' }}>
+          <label className="server-menu__label" style={{ marginBottom: '6px' }}>
+            enter your password to confirm
+          </label>
+          <input
+            type="password"
+            className="server-menu__input"
+            placeholder="your password"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleDeleteAccount()
+            }}
+          />
+        </div>
+        {deleteError && (
+          <span
+            className="server-menu__save-msg server-menu__save-msg--err"
+            style={{ display: 'block', marginTop: '8px' }}
+          >
+            {deleteError}
+          </span>
+        )}
+      </Modal>
     </>
   )
 }

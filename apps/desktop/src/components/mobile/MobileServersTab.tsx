@@ -34,26 +34,30 @@ export default function MobileServersTab({
   const isMobile = useMobile()
   const logoutServer = useServerStore((s) => s.logoutServer)
   const removeServer = useServerStore((s) => s.removeServer)
-  const [contextMenu, setContextMenu] = useState<{ serverId: string; x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ serverId: string; x: number; y: number } | null>(
+    null,
+  )
 
   const handleRefresh = useCallback(async () => {
     // Refresh is handled by parent; pull-to-refresh provides the gesture
   }, [])
 
-  const { containerRef, pulling, refreshing, pullDistance, indicatorOpacity } =
-    usePullToRefresh({
-      onRefresh: handleRefresh,
-      disabled: !isMobile,
-    })
+  const { containerRef, pulling, refreshing, pullDistance, indicatorOpacity } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    disabled: !isMobile,
+  })
 
   // Long-press is the mobile equivalent of the desktop server rail's right-click
   // menu — the only place a session can actually be ended on mobile.
   const serverLongPress = useLongPressItems({
     enabled: isMobile,
-    onLongPress: useCallback((serverId: string, pos: { x: number; y: number }) => {
-      haptics.longPress()
-      setContextMenu({ serverId, x: pos.x, y: pos.y })
-    }, [haptics]),
+    onLongPress: useCallback(
+      (serverId: string, pos: { x: number; y: number }) => {
+        haptics.longPress()
+        setContextMenu({ serverId, x: pos.x, y: pos.y })
+      },
+      [haptics],
+    ),
   })
 
   const handleServerTap = useCallback(
@@ -70,27 +74,31 @@ export default function MobileServersTab({
   )
 
   const contextMenuSections: ContextMenuSection[] = contextMenu
-    ? [{
-        items: [
-          ...(sessions[contextMenu.serverId]
-            ? [{
-                label: 'Log Out',
-                onClick: () => {
-                  void logoutServer(contextMenu.serverId)
-                  setContextMenu(null)
-                },
-              }]
-            : []),
-          {
-            label: 'Remove Server',
-            onClick: () => {
-              removeServer(contextMenu.serverId)
-              setContextMenu(null)
+    ? [
+        {
+          items: [
+            ...(sessions[contextMenu.serverId]
+              ? [
+                  {
+                    label: 'Log Out',
+                    onClick: () => {
+                      void logoutServer(contextMenu.serverId)
+                      setContextMenu(null)
+                    },
+                  },
+                ]
+              : []),
+            {
+              label: 'Remove Server',
+              onClick: () => {
+                removeServer(contextMenu.serverId)
+                setContextMenu(null)
+              },
+              danger: true,
             },
-            danger: true,
-          },
-        ],
-      }]
+          ],
+        },
+      ]
     : []
 
   return (
@@ -108,10 +116,7 @@ export default function MobileServersTab({
           <Settings size={20} />
         </button>
       </div>
-      <div
-        ref={containerRef}
-        className="mobile-tab__body mobile-servers-tab__body"
-      >
+      <div ref={containerRef} className="mobile-tab__body mobile-servers-tab__body">
         {/* Pull-to-refresh indicator */}
         <div
           className="mobile-tab__pull-indicator"
@@ -125,9 +130,10 @@ export default function MobileServersTab({
               size={22}
               className={refreshing ? 'mobile-tab__pull-spinner--spinning' : ''}
               style={{
-                transform: pulling && !refreshing
-                  ? `rotate(${Math.min(pullDistance * 3, 360)}deg)`
-                  : undefined,
+                transform:
+                  pulling && !refreshing
+                    ? `rotate(${Math.min(pullDistance * 3, 360)}deg)`
+                    : undefined,
               }}
             />
           </div>
@@ -139,9 +145,7 @@ export default function MobileServersTab({
               <span className="mobile-tab__empty-emoji">🌐</span>
             </div>
             <p className="mobile-tab__empty-text">No servers yet</p>
-            <p className="mobile-tab__empty-sub">
-              Connect to a self-hosted server to get started
-            </p>
+            <p className="mobile-tab__empty-sub">Connect to a self-hosted server to get started</p>
           </div>
         ) : (
           <div className="mobile-server-grid">
@@ -170,9 +174,7 @@ export default function MobileServersTab({
                         {server.name.slice(0, 2).toUpperCase()}
                       </span>
                     )}
-                    {isConnected && (
-                      <span className="mobile-server-card__dot" />
-                    )}
+                    {isConnected && <span className="mobile-server-card__dot" />}
                   </div>
                   <div className="mobile-server-card__info">
                     <p className="mobile-server-card__name">{server.name}</p>

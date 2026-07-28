@@ -24,9 +24,13 @@ export default function ConnectDialog({ onClose }: Props) {
   const [serverPassword, setServerPassword] = useState('')
   const [isRegister, setIsRegister] = useState(false)
 
-  const { authenticate, loading, error, setError, backupToken, clearBackupToken } = useAuth(serverUrl)
+  const { authenticate, loading, error, setError, backupToken, clearBackupToken } =
+    useAuth(serverUrl)
 
-  function handleServerConnect(resolvedUrl: string, info: ServerInfo | { serverUrl: string; name: string; description: string }) {
+  function handleServerConnect(
+    resolvedUrl: string,
+    info: ServerInfo | { serverUrl: string; name: string; description: string },
+  ) {
     setServerUrl(resolvedUrl)
     setServerInfo(info as ServerInfo)
   }

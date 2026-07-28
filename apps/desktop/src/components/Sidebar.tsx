@@ -10,7 +10,13 @@ import { useHaptics } from '../hooks/useHaptics'
 import { useLongPressItems } from '../hooks/useLongPressItems'
 import { isTauri } from '../utils/platform'
 import { useNavigate } from 'react-router-dom'
-import { createChannel, setChannelMute, deleteChannelMute, deleteChannel, reorderChannels } from '@kizuna/shared'
+import {
+  createChannel,
+  setChannelMute,
+  deleteChannelMute,
+  deleteChannel,
+  reorderChannels,
+} from '@kizuna/shared'
 import type { Channel } from '@kizuna/shared'
 import { BellOff, ChevronLeft, Ellipsis, Bell, Settings } from 'lucide-react'
 import UserStatusPicker from './UserStatusPicker'
@@ -33,7 +39,16 @@ interface SidebarProps {
   voicePanel?: React.ReactNode
 }
 
-export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, onBackToServers, onOpenChat, onOpenVoiceStage, voicePanel }: SidebarProps) {
+export default function Sidebar({
+  joinVoice,
+  leaveVoice,
+  socketRef,
+  onOpenMenu,
+  onBackToServers,
+  onOpenChat,
+  onOpenVoiceStage,
+  voicePanel,
+}: SidebarProps) {
   const navigate = useNavigate()
   const isMobile = useMobile()
   const haptics = useHaptics()
@@ -56,11 +71,7 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
   const setActiveGroupDMChannel = useChatStore((s) => s.setActiveGroupDMChannel)
   const setViewedVoiceChannel = useChatStore((s) => s.setViewedVoiceChannel)
   const setChannels = useChatStore((s) => s.setChannels)
-  const {
-    activeVoiceChannelId,
-    voiceChannelUsers,
-    userActivities,
-  } = useVoiceStore()
+  const { activeVoiceChannelId, voiceChannelUsers, userActivities } = useVoiceStore()
   const shareMediaActivity = useSettingsStore((s) => s.shareMediaActivity)
   const shareAppActivity = useSettingsStore((s) => s.shareAppActivity)
   const channelNotifLevels = useSettingsStore((s) => s.channelNotificationLevels)
@@ -76,7 +87,10 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
   const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null)
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
   const [drag, setDrag] = useState<{ channelId: string; type: 'text' | 'voice' } | null>(null)
-  const [dragOver, setDragOver] = useState<{ channelId: string; position: 'above' | 'below' } | null>(null)
+  const [dragOver, setDragOver] = useState<{
+    channelId: string
+    position: 'above' | 'below'
+  } | null>(null)
 
   function handleDragStart(e: React.DragEvent, ch: Channel) {
     if (isMobile) return
@@ -95,12 +109,20 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    setDragOver({ channelId: ch.id, position: e.clientY < rect.top + rect.height / 2 ? 'above' : 'below' })
+    setDragOver({
+      channelId: ch.id,
+      position: e.clientY < rect.top + rect.height / 2 ? 'above' : 'below',
+    })
   }
 
   function handleDragLeave(e: React.DragEvent, ch: Channel) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+    if (
+      e.clientX < rect.left ||
+      e.clientX > rect.right ||
+      e.clientY < rect.top ||
+      e.clientY > rect.bottom
+    ) {
       setDragOver((prev) => (prev?.channelId === ch.id ? null : prev))
     }
   }
@@ -126,14 +148,15 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
     const basePos = drag.type === 'text' ? 0 : otherType.length
     const order = reordered.map((c, i) => ({ id: c.id, position: basePos + i }))
 
-    const allOrdered = drag.type === 'text'
-      ? [...reordered, ...otherType]
-      : [...otherType, ...reordered]
+    const allOrdered =
+      drag.type === 'text' ? [...reordered, ...otherType] : [...otherType, ...reordered]
 
     setChannels(allOrdered)
     setDrag(null)
     setDragOver(null)
-    reorderChannels(session.url, order).catch((err) => { console.error('Failed to reorder channels:', err) })
+    reorderChannels(session.url, order).catch((err) => {
+      console.error('Failed to reorder channels:', err)
+    })
   }
 
   // Leaving a server is navigation, not a logout: the session stays alive so
@@ -191,37 +214,112 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
   })
 
   function getMuteMenuItems(channelId: string) {
-    const ch = channels.find(c => c.id === channelId)
+    const ch = channels.find((c) => c.id === channelId)
     const isMuted = channelMutes[channelId] !== undefined
     const sections: { items: { label: string; onClick: () => void; danger?: boolean }[] }[] = []
 
     if (ch && isAdmin) {
       sections.push({
         items: [
-          { label: 'Edit Channel', onClick: () => { setContextMenuChannelId(null); setSettingsChannel(ch) } },
-          { label: 'Delete Channel', danger: true, onClick: () => {
-            if (confirm(`Delete #${ch.name}? This will permanently delete the channel and all its messages.`)) {
-              if (session) deleteChannel(session.url, ch.id).catch((err) => { console.error('Failed to delete channel:', err) })
-            }
-          }},
+          {
+            label: 'Edit Channel',
+            onClick: () => {
+              setContextMenuChannelId(null)
+              setSettingsChannel(ch)
+            },
+          },
+          {
+            label: 'Delete Channel',
+            danger: true,
+            onClick: () => {
+              if (
+                confirm(
+                  `Delete #${ch.name}? This will permanently delete the channel and all its messages.`,
+                )
+              ) {
+                if (session)
+                  deleteChannel(session.url, ch.id).catch((err) => {
+                    console.error('Failed to delete channel:', err)
+                  })
+              }
+            },
+          },
         ],
       })
     }
 
     if (isMuted) {
       sections.push({
-        items: [{ label: 'Unmute Channel', onClick: () => { if (session) deleteChannelMute(session.url, channelId).catch((err) => { console.error('Failed to unmute channel:', err) }) } }],
+        items: [
+          {
+            label: 'Unmute Channel',
+            onClick: () => {
+              if (session)
+                deleteChannelMute(session.url, channelId).catch((err) => {
+                  console.error('Failed to unmute channel:', err)
+                })
+            },
+          },
+        ],
       })
     } else {
       const now = Date.now()
       sections.push({
         items: [
-          { label: 'Mute for 15 minutes', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 15 * 60 * 1000).catch((err) => { console.error('Failed to mute channel:', err) }) } },
-          { label: 'Mute for 1 hour', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 60 * 60 * 1000).catch((err) => { console.error('Failed to mute channel:', err) }) } },
-          { label: 'Mute for 3 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 3 * 60 * 60 * 1000).catch((err) => { console.error('Failed to mute channel:', err) }) } },
-          { label: 'Mute for 8 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 8 * 60 * 60 * 1000).catch((err) => { console.error('Failed to mute channel:', err) }) } },
-          { label: 'Mute for 24 hours', onClick: () => { if (session) setChannelMute(session.url, channelId, now + 24 * 60 * 60 * 1000).catch((err) => { console.error('Failed to mute channel:', err) }) } },
-          { label: 'Mute forever', onClick: () => { if (session) setChannelMute(session.url, channelId, null).catch((err) => { console.error('Failed to mute channel:', err) }) } },
+          {
+            label: 'Mute for 15 minutes',
+            onClick: () => {
+              if (session)
+                setChannelMute(session.url, channelId, now + 15 * 60 * 1000).catch((err) => {
+                  console.error('Failed to mute channel:', err)
+                })
+            },
+          },
+          {
+            label: 'Mute for 1 hour',
+            onClick: () => {
+              if (session)
+                setChannelMute(session.url, channelId, now + 60 * 60 * 1000).catch((err) => {
+                  console.error('Failed to mute channel:', err)
+                })
+            },
+          },
+          {
+            label: 'Mute for 3 hours',
+            onClick: () => {
+              if (session)
+                setChannelMute(session.url, channelId, now + 3 * 60 * 60 * 1000).catch((err) => {
+                  console.error('Failed to mute channel:', err)
+                })
+            },
+          },
+          {
+            label: 'Mute for 8 hours',
+            onClick: () => {
+              if (session)
+                setChannelMute(session.url, channelId, now + 8 * 60 * 60 * 1000).catch((err) => {
+                  console.error('Failed to mute channel:', err)
+                })
+            },
+          },
+          {
+            label: 'Mute for 24 hours',
+            onClick: () => {
+              if (session)
+                setChannelMute(session.url, channelId, now + 24 * 60 * 60 * 1000).catch((err) => {
+                  console.error('Failed to mute channel:', err)
+                })
+            },
+          },
+          {
+            label: 'Mute forever',
+            onClick: () => {
+              if (session)
+                setChannelMute(session.url, channelId, null).catch((err) => {
+                  console.error('Failed to mute channel:', err)
+                })
+            },
+          },
         ],
       })
     }
@@ -229,10 +327,22 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
     const currentOverride = channelNotifLevels[channelId]
     sections.push({
       items: [
-        { label: `Notifications: ${currentOverride === 'all' ? '✓ ' : ''}All Messages`, onClick: () => setChannelNotifLevel(channelId, 'all') },
-        { label: `Notifications: ${currentOverride === 'mentions' ? '✓ ' : ''}Only @mentions`, onClick: () => setChannelNotifLevel(channelId, 'mentions') },
-        { label: `Notifications: ${currentOverride === 'none' ? '✓ ' : ''}Nothing`, onClick: () => setChannelNotifLevel(channelId, 'none') },
-        { label: `Notifications: ${!currentOverride ? '✓ ' : ''}Use server default`, onClick: () => setChannelNotifLevel(channelId, null) },
+        {
+          label: `Notifications: ${currentOverride === 'all' ? '✓ ' : ''}All Messages`,
+          onClick: () => setChannelNotifLevel(channelId, 'all'),
+        },
+        {
+          label: `Notifications: ${currentOverride === 'mentions' ? '✓ ' : ''}Only @mentions`,
+          onClick: () => setChannelNotifLevel(channelId, 'mentions'),
+        },
+        {
+          label: `Notifications: ${currentOverride === 'none' ? '✓ ' : ''}Nothing`,
+          onClick: () => setChannelNotifLevel(channelId, 'none'),
+        },
+        {
+          label: `Notifications: ${!currentOverride ? '✓ ' : ''}Use server default`,
+          onClick: () => setChannelNotifLevel(channelId, null),
+        },
       ],
     })
 
@@ -241,7 +351,7 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
 
   function renderChannel(ch: Channel) {
     const isText = ch.type === 'text'
-    const voiceUsers = isText ? [] : (voiceChannelUsers[ch.id] || [])
+    const voiceUsers = isText ? [] : voiceChannelUsers[ch.id] || []
     const mentionBadge = mentionCounts[ch.id]
     const unreadOnly = !mentionBadge && unreadCounts[ch.id]
     const isDragging = drag?.channelId === ch.id
@@ -251,58 +361,89 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
     if (isDragging) wrapClass += ' sidebar__channel-wrap--dragging'
     if (isDropAbove) wrapClass += ' sidebar__channel-wrap--drop-above'
     if (isDropBelow) wrapClass += ' sidebar__channel-wrap--drop-below'
-    const channelActive = isText
-      ? activeChannelId === ch.id
-      : activeVoiceChannelId === ch.id
+    const channelActive = isText ? activeChannelId === ch.id : activeVoiceChannelId === ch.id
 
     return (
       <div
         key={ch.id}
         className={wrapClass}
-          onDragOver={(e) => { if (isAdmin && !isMobile) handleDragOver(e, ch) }}
-          onDragLeave={(e) => { if (isAdmin && !isMobile) handleDragLeave(e, ch) }}
-          onDrop={(e) => { if (isAdmin && !isMobile) handleDrop(e, ch) }}
+        onDragOver={(e) => {
+          if (isAdmin && !isMobile) handleDragOver(e, ch)
+        }}
+        onDragLeave={(e) => {
+          if (isAdmin && !isMobile) handleDragLeave(e, ch)
+        }}
+        onDrop={(e) => {
+          if (isAdmin && !isMobile) handleDrop(e, ch)
+        }}
       >
         <button
           draggable={isAdmin && !isMobile}
-          onDragStart={(e) => { if (isAdmin && !isMobile) handleDragStart(e, ch) }}
+          onDragStart={(e) => {
+            if (isAdmin && !isMobile) handleDragStart(e, ch)
+          }}
           onDragEnd={handleDragEnd}
           {...channelLongPress.bind(ch.id)}
           onClick={() => {
             if (channelLongPress.consumedTap()) return
             haptics.tap()
             if (isText) {
-              setActiveChannel(ch.id); onOpenChat?.()
+              setActiveChannel(ch.id)
+              onOpenChat?.()
             } else {
-              setViewedVoiceChannel(ch.id); onOpenVoiceStage?.(ch.id)
+              setViewedVoiceChannel(ch.id)
+              onOpenVoiceStage?.(ch.id)
               if (activeVoiceChannelId !== ch.id) {
-                (async () => {
+                ;(async () => {
                   if (activeVoiceChannelId) await leaveVoice()
-                  joinVoice(ch.id); haptics.success()
+                  joinVoice(ch.id)
+                  haptics.success()
                 })()
               }
             }
           }}
           onContextMenu={(e) => handleChannelContextMenu(e, ch.id)}
           className={`sidebar__channel ${channelActive ? (isText ? 'sidebar__channel--active' : 'sidebar__channel--voice-active') : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
-          aria-label={(isText ? 'Text' : 'Voice') + ' channel ' + ch.name + (mentionBadge ? ' — ' + mentionBadge + ' mentions' : '') + (unreadOnly ? ' — unread' : '')}
+          aria-label={
+            (isText ? 'Text' : 'Voice') +
+            ' channel ' +
+            ch.name +
+            (mentionBadge ? ' — ' + mentionBadge + ' mentions' : '') +
+            (unreadOnly ? ' — unread' : '')
+          }
           aria-current={channelActive ? 'page' : undefined}
         >
           <span className="sidebar__channel-icon">{isText ? '#' : '~'}</span>
           <span className="sidebar__channel-name">{ch.name}</span>
-          {channelMutes[ch.id] !== undefined && <BellOff size={10} className="sidebar__mute-icon" />}
+          {channelMutes[ch.id] !== undefined && (
+            <BellOff size={10} className="sidebar__mute-icon" />
+          )}
           {isText && channelNotifLevels[ch.id] && (
-            <span className={`sidebar__notif-icon sidebar__notif-icon--${channelNotifLevels[ch.id]}`} title={`Notifications: ${channelNotifLevels[ch.id]}`}>
+            <span
+              className={`sidebar__notif-icon sidebar__notif-icon--${channelNotifLevels[ch.id]}`}
+              title={`Notifications: ${channelNotifLevels[ch.id]}`}
+            >
               <Bell size={10} />
             </span>
           )}
-          {mentionBadge ? <span className="sidebar__unread-badge">{mentionBadge > 99 ? '99+' : mentionBadge}</span> : unreadOnly ? <span className="sidebar__unread-dot" /> : null}
-          {!isText && activeVoiceChannelId === ch.id && <span className="sidebar__voice-indicator" />}
+          {mentionBadge ? (
+            <span className="sidebar__unread-badge">
+              {mentionBadge > 99 ? '99+' : mentionBadge}
+            </span>
+          ) : unreadOnly ? (
+            <span className="sidebar__unread-dot" />
+          ) : null}
+          {!isText && activeVoiceChannelId === ch.id && (
+            <span className="sidebar__voice-indicator" />
+          )}
         </button>
         {isAdmin && isText && (
           <button
-            onClick={(e) => { e.stopPropagation(); setAccessModalChannel(ch) }}
-            className={`sidebar__settings-btn ${(ch.locked || ch.hidden) ? 'sidebar__settings-btn--active' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              setAccessModalChannel(ch)
+            }}
+            className={`sidebar__settings-btn ${ch.locked || ch.hidden ? 'sidebar__settings-btn--active' : ''}`}
             title="Channel access settings"
           >
             <Settings size={12} />
@@ -320,7 +461,9 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
                         src={member.avatar}
                         alt=""
                         className="sidebar__voice-user-avatar-img"
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                        onError={(e) => {
+                          ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                        }}
                       />
                     ) : (
                       (member?.display_name || u.username)[0]?.toUpperCase()
@@ -343,10 +486,22 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
     )
   }
 
-  const activeServer = servers.find(s => s.id === session?.serverId)
+  const activeServer = servers.find((s) => s.id === session?.serverId)
 
-  const hasOwnStatus = !!(session?.user?.status_text || (session?.user?.status_emoji && !session?.user?.status_sticker_id))
-  const hasActivity = !(session?.user?.status_text || session?.user?.status_emoji || session?.user?.status_sticker_id) && isTauri() && (shareMediaActivity || shareAppActivity) && session?.user?.id && userActivities[session.user.id]
+  const hasOwnStatus = !!(
+    session?.user?.status_text ||
+    (session?.user?.status_emoji && !session?.user?.status_sticker_id)
+  )
+  const hasActivity =
+    !(
+      session?.user?.status_text ||
+      session?.user?.status_emoji ||
+      session?.user?.status_sticker_id
+    ) &&
+    isTauri() &&
+    (shareMediaActivity || shareAppActivity) &&
+    session?.user?.id &&
+    userActivities[session.user.id]
   const showStatusLine = hasOwnStatus || hasActivity
 
   return (
@@ -363,9 +518,7 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
           {activeServer && activeServer.icon && (
             <img src={activeServer.icon} alt="" className="sidebar__mobile-server-icon" />
           )}
-          <span className="sidebar__mobile-server-name">
-            {activeServer?.name || 'Kizuna'}
-          </span>
+          <span className="sidebar__mobile-server-name">{activeServer?.name || 'Kizuna'}</span>
           <button
             onClick={onOpenMenu}
             className="sidebar__mobile-menu-btn"
@@ -388,16 +541,36 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
                 bgColor="var(--brand)"
               />
             </UserStatusPicker>
-            <div className={`sidebar__user-info${showStatusLine ? '' : ' sidebar__user-info--centered'}`}>
-              <p className="sidebar__user-displayname">{session?.user?.display_name || session?.user?.username}</p>
-              <p className="sidebar__user-subtitle">@{session?.user?.username}{isAdmin ? ' · admin' : ''}</p>
+            <div
+              className={`sidebar__user-info${showStatusLine ? '' : ' sidebar__user-info--centered'}`}
+            >
+              <p className="sidebar__user-displayname">
+                {session?.user?.display_name || session?.user?.username}
+              </p>
+              <p className="sidebar__user-subtitle">
+                @{session?.user?.username}
+                {isAdmin ? ' · admin' : ''}
+              </p>
               {showStatusLine && (
                 <p className="sidebar__user-status">
-                  {session?.user?.status_emoji && !session?.user?.status_sticker_id && <span className="sidebar__user-status-emoji">{session.user.status_emoji}</span>}
-                  {session?.user?.status_text && <span className="sidebar__user-status-text">{session.user.status_text}</span>}
+                  {session?.user?.status_emoji && !session?.user?.status_sticker_id && (
+                    <span className="sidebar__user-status-emoji">{session.user.status_emoji}</span>
+                  )}
+                  {session?.user?.status_text && (
+                    <span className="sidebar__user-status-text">{session.user.status_text}</span>
+                  )}
                   {hasActivity && (
                     <>
-                      {userActivities[session.user.id].type === 'game' ? '\u{1F3AE}' : userActivities[session.user.id].type === 'music' ? '\u{1F3B5}' : userActivities[session.user.id].type === 'video' ? '\u25B6' : userActivities[session.user.id].type === 'app' ? '\u{1F4BB}' : '\u25B6'} {userActivities[session.user.id].name}
+                      {userActivities[session.user.id].type === 'game'
+                        ? '\u{1F3AE}'
+                        : userActivities[session.user.id].type === 'music'
+                          ? '\u{1F3B5}'
+                          : userActivities[session.user.id].type === 'video'
+                            ? '\u25B6'
+                            : userActivities[session.user.id].type === 'app'
+                              ? '\u{1F4BB}'
+                              : '\u25B6'}{' '}
+                      {userActivities[session.user.id].name}
                     </>
                   )}
                 </p>
@@ -406,7 +579,15 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
             <button
               onClick={onOpenMenu}
               className="sidebar__channel-icon"
-              style={{ marginLeft: 'auto', fontSize: '14px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+              style={{
+                marginLeft: 'auto',
+                fontSize: '14px',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                padding: '4px',
+              }}
               title="Server Menu"
               data-tooltip="Server Menu"
             >
@@ -418,33 +599,41 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
 
       <div className="sidebar__content">
         {/* Render categories with their channels */}
-        {categories.sort((a, b) => a.position - b.position).map((cat) => {
-          const catChannels = channels.filter(c => c.category_id === cat.id)
-          if (catChannels.length === 0) return null
-          const isCollapsed = collapsedCategories.has(cat.id)
-          return (
-            <div key={cat.id} className="sidebar__section">
-              <button
-                className="sidebar__category-header"
-                onClick={() => setCollapsedCategories(prev => {
-                  const next = new Set(prev)
-                  if (next.has(cat.id)) next.delete(cat.id)
-                  else next.add(cat.id)
-                  return next
-                })}
-                title={isCollapsed ? 'Expand' : 'Collapse'}
-              >
-                <span className={`sidebar__category-arrow${isCollapsed ? ' sidebar__category-arrow--collapsed' : ''}`}>▾</span>
-                <span className="sidebar__section-title">{cat.name}</span>
-              </button>
-              {!isCollapsed && catChannels.map((ch) => renderChannel(ch))}
-            </div>
-          )
-        })}
+        {categories
+          .sort((a, b) => a.position - b.position)
+          .map((cat) => {
+            const catChannels = channels.filter((c) => c.category_id === cat.id)
+            if (catChannels.length === 0) return null
+            const isCollapsed = collapsedCategories.has(cat.id)
+            return (
+              <div key={cat.id} className="sidebar__section">
+                <button
+                  className="sidebar__category-header"
+                  onClick={() =>
+                    setCollapsedCategories((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(cat.id)) next.delete(cat.id)
+                      else next.add(cat.id)
+                      return next
+                    })
+                  }
+                  title={isCollapsed ? 'Expand' : 'Collapse'}
+                >
+                  <span
+                    className={`sidebar__category-arrow${isCollapsed ? ' sidebar__category-arrow--collapsed' : ''}`}
+                  >
+                    ▾
+                  </span>
+                  <span className="sidebar__section-title">{cat.name}</span>
+                </button>
+                {!isCollapsed && catChannels.map((ch) => renderChannel(ch))}
+              </div>
+            )
+          })}
 
         {/* Uncategorized text channels */}
         {(() => {
-          const uncatText = textChannels.filter(c => !c.category_id)
+          const uncatText = textChannels.filter((c) => !c.category_id)
           if (uncatText.length === 0) return null
           return (
             <div className="sidebar__section">
@@ -456,7 +645,7 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
 
         {/* Uncategorized voice channels */}
         {(() => {
-          const uncatVoice = voiceChannels.filter(c => !c.category_id)
+          const uncatVoice = voiceChannels.filter((c) => !c.category_id)
           if (uncatVoice.length === 0) return null
           return (
             <div className="sidebar__section">
@@ -479,19 +668,37 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
               const mentionBadge = mentionCounts[dm.id]
               const unreadOnly = !mentionBadge && unreadCounts[dm.id]
               return (
-              <button
-                key={dm.id}
-                onClick={() => { setActiveDMChannel(dm.id); onOpenChat?.() }}
-                className={`sidebar__channel ${activeDMChannelId === dm.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
-              >
-                <div className="sidebar__dm-avatar">
-                  {dm.other_avatar ? (
-                    <img src={dm.other_avatar} alt="" className="sidebar__dm-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                  ) : dm.other_display_name?.[0]?.toUpperCase() || '?'}
-                </div>
-                <span className="sidebar__channel-name">{dm.other_display_name}</span>
-                {mentionBadge ? <span className="sidebar__unread-badge">{mentionBadge > 99 ? '99+' : mentionBadge}</span> : unreadOnly ? <span className="sidebar__unread-dot" /> : null}
-              </button>
+                <button
+                  key={dm.id}
+                  onClick={() => {
+                    setActiveDMChannel(dm.id)
+                    onOpenChat?.()
+                  }}
+                  className={`sidebar__channel ${activeDMChannelId === dm.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
+                >
+                  <div className="sidebar__dm-avatar">
+                    {dm.other_avatar ? (
+                      <img
+                        src={dm.other_avatar}
+                        alt=""
+                        className="sidebar__dm-avatar-img"
+                        onError={(e) => {
+                          ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                        }}
+                      />
+                    ) : (
+                      dm.other_display_name?.[0]?.toUpperCase() || '?'
+                    )}
+                  </div>
+                  <span className="sidebar__channel-name">{dm.other_display_name}</span>
+                  {mentionBadge ? (
+                    <span className="sidebar__unread-badge">
+                      {mentionBadge > 99 ? '99+' : mentionBadge}
+                    </span>
+                  ) : unreadOnly ? (
+                    <span className="sidebar__unread-dot" />
+                  ) : null}
+                </button>
               )
             })}
           </div>
@@ -516,28 +723,43 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
             const unreadOnly = !mentionBadge && unreadCounts[gdm.id]
             const nameInitials = gdm.name.slice(0, 2).toUpperCase()
             return (
-            <button
-              key={gdm.id}
-              onClick={() => { setActiveGroupDMChannel(gdm.id); onOpenChat?.() }}
-              className={`sidebar__channel ${activeGroupDMChannelId === gdm.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
-            >
-              <div className="sidebar__dm-avatar">{
-                gdm.avatar ? (
-                  <img src={gdm.avatar} alt="" className="sidebar__dm-avatar-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                ) : nameInitials
-              }</div>
-              <span className="sidebar__channel-name">{gdm.name}</span>
-              {mentionBadge ? <span className="sidebar__unread-badge">{mentionBadge > 99 ? '99+' : mentionBadge}</span> : unreadOnly ? <span className="sidebar__unread-dot" /> : null}
-            </button>
+              <button
+                key={gdm.id}
+                onClick={() => {
+                  setActiveGroupDMChannel(gdm.id)
+                  onOpenChat?.()
+                }}
+                className={`sidebar__channel ${activeGroupDMChannelId === gdm.id ? 'sidebar__channel--active' : ''}${unreadOnly ? ' sidebar__channel--unread' : ''}`}
+              >
+                <div className="sidebar__dm-avatar">
+                  {gdm.avatar ? (
+                    <img
+                      src={gdm.avatar}
+                      alt=""
+                      className="sidebar__dm-avatar-img"
+                      onError={(e) => {
+                        ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                  ) : (
+                    nameInitials
+                  )}
+                </div>
+                <span className="sidebar__channel-name">{gdm.name}</span>
+                {mentionBadge ? (
+                  <span className="sidebar__unread-badge">
+                    {mentionBadge > 99 ? '99+' : mentionBadge}
+                  </span>
+                ) : unreadOnly ? (
+                  <span className="sidebar__unread-dot" />
+                ) : null}
+              </button>
             )
           })}
         </div>
 
         {isAdmin && (
-          <button
-            onClick={() => setShowCreateForm((v) => !v)}
-            className="sidebar__create-toggle"
-          >
+          <button onClick={() => setShowCreateForm((v) => !v)} className="sidebar__create-toggle">
             {showCreateForm ? '—' : '+'}
           </button>
         )}
@@ -599,26 +821,29 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
         />
       )}
 
-      {settingsChannel && createPortal(
-        <ChannelSettingsModal
-          channel={settingsChannel}
-          onClose={() => setSettingsChannel(null)}
-        />,
-        document.body,
-      )}
+      {settingsChannel &&
+        createPortal(
+          <ChannelSettingsModal
+            channel={settingsChannel}
+            onClose={() => setSettingsChannel(null)}
+          />,
+          document.body,
+        )}
 
-      {accessModalChannel && createPortal(
-        <ChannelAccessModal
-          channel={accessModalChannel}
-          onClose={() => setAccessModalChannel(null)}
-        />,
-        document.body,
-      )}
+      {accessModalChannel &&
+        createPortal(
+          <ChannelAccessModal
+            channel={accessModalChannel}
+            onClose={() => setAccessModalChannel(null)}
+          />,
+          document.body,
+        )}
 
-      {showCreateGroupDM && createPortal(
-        <CreateGroupDMModal onClose={() => setShowCreateGroupDM(false)} />,
-        document.body,
-      )}
+      {showCreateGroupDM &&
+        createPortal(
+          <CreateGroupDMModal onClose={() => setShowCreateGroupDM(false)} />,
+          document.body,
+        )}
     </div>
   )
 }

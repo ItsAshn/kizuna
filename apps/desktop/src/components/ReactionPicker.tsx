@@ -13,14 +13,70 @@ interface ReactionPickerProps {
 }
 
 const EMOJI_GRID = [
-  '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂',
-  '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😋',
-  '🤔', '🤨', '😐', '😑', '😶', '🙄', '😏', '😒',
-  '😮', '😯', '😲', '😳', '🥺', '😢', '😭', '😱',
-  '👍', '👎', '👌', '✌️', '🤞', '🤟', '👏', '🙌',
-  '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍',
-  '🔥', '⭐', '🎉', '✨', '💯', '✅', '❌', '💀',
-  '🤡', '🙈', '🐐', '🚀', '🎯', '💪', '🙏', '👀',
+  '😀',
+  '😃',
+  '😄',
+  '😁',
+  '😆',
+  '😅',
+  '🤣',
+  '😂',
+  '😊',
+  '😇',
+  '🥰',
+  '😍',
+  '🤩',
+  '😘',
+  '😗',
+  '😋',
+  '🤔',
+  '🤨',
+  '😐',
+  '😑',
+  '😶',
+  '🙄',
+  '😏',
+  '😒',
+  '😮',
+  '😯',
+  '😲',
+  '😳',
+  '🥺',
+  '😢',
+  '😭',
+  '😱',
+  '👍',
+  '👎',
+  '👌',
+  '✌️',
+  '🤞',
+  '🤟',
+  '👏',
+  '🙌',
+  '❤️',
+  '🧡',
+  '💛',
+  '💚',
+  '💙',
+  '💜',
+  '🖤',
+  '🤍',
+  '🔥',
+  '⭐',
+  '🎉',
+  '✨',
+  '💯',
+  '✅',
+  '❌',
+  '💀',
+  '🤡',
+  '🙈',
+  '🐐',
+  '🚀',
+  '🎯',
+  '💪',
+  '🙏',
+  '👀',
 ]
 
 type Tab = 'emoji' | 'sticker'
@@ -36,10 +92,13 @@ export default function ReactionPicker({ serverUrl, onSelect, onClose }: Reactio
   useEffect(() => {
     if (tab === 'sticker') {
       setLoading(true)
-      fetchStickerPacks(serverUrl).then(packs => {
-        setStickerPacks(packs)
-        if (packs.length > 0 && !activePack) setActivePack(packs[0])
-      }).catch(() => {}).finally(() => setLoading(false))
+      fetchStickerPacks(serverUrl)
+        .then((packs) => {
+          setStickerPacks(packs)
+          if (packs.length > 0 && !activePack) setActivePack(packs[0])
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false))
     }
   }, [tab, serverUrl])
 
@@ -55,60 +114,61 @@ export default function ReactionPicker({ serverUrl, onSelect, onClose }: Reactio
 
   return (
     <PickerSurface base="reaction-picker" isMobile={isMobile} onClose={onClose}>
-        <div className="reaction-picker__header">
-          <div className="reaction-picker__tabs">
-            <button
-              className={`reaction-picker__tab ${tab === 'emoji' ? 'reaction-picker__tab--active' : ''}`}
-              onClick={() => setTab('emoji')}
-            >
-              Emojis
-            </button>
-            <button
-              className={`reaction-picker__tab ${tab === 'sticker' ? 'reaction-picker__tab--active' : ''}`}
-              onClick={() => setTab('sticker')}
-            >
-              Stickers
-            </button>
-          </div>
-          <IconButton size="sm" icon={<X size={16} />} label="Close" onClick={onClose} />
+      <div className="reaction-picker__header">
+        <div className="reaction-picker__tabs">
+          <button
+            className={`reaction-picker__tab ${tab === 'emoji' ? 'reaction-picker__tab--active' : ''}`}
+            onClick={() => setTab('emoji')}
+          >
+            Emojis
+          </button>
+          <button
+            className={`reaction-picker__tab ${tab === 'sticker' ? 'reaction-picker__tab--active' : ''}`}
+            onClick={() => setTab('sticker')}
+          >
+            Stickers
+          </button>
         </div>
+        <IconButton size="sm" icon={<X size={16} />} label="Close" onClick={onClose} />
+      </div>
 
-        {tab === 'emoji' && (
-          <div className="reaction-picker__emoji-grid">
-            {EMOJI_GRID.map(emoji => (
-              <button
-                key={emoji}
-                className="reaction-picker__emoji-btn"
-                onClick={() => onSelect(emoji, 'emoji')}
-                title={emoji}
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        )}
+      {tab === 'emoji' && (
+        <div className="reaction-picker__emoji-grid">
+          {EMOJI_GRID.map((emoji) => (
+            <button
+              key={emoji}
+              className="reaction-picker__emoji-btn"
+              onClick={() => onSelect(emoji, 'emoji')}
+              title={emoji}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
 
-        {tab === 'sticker' && (
-          <>
-            {stickerPacks.length > 0 && (
-              <div className="reaction-picker__packs">
-                {stickerPacks.map(pack => (
-                  <button
-                    key={pack}
-                    className={`reaction-picker__pack-btn ${activePack === pack ? 'reaction-picker__pack-btn--active' : ''}`}
-                    onClick={() => setActivePack(pack)}
-                  >
-                    {pack}
-                  </button>
-                ))}
-              </div>
+      {tab === 'sticker' && (
+        <>
+          {stickerPacks.length > 0 && (
+            <div className="reaction-picker__packs">
+              {stickerPacks.map((pack) => (
+                <button
+                  key={pack}
+                  className={`reaction-picker__pack-btn ${activePack === pack ? 'reaction-picker__pack-btn--active' : ''}`}
+                  onClick={() => setActivePack(pack)}
+                >
+                  {pack}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="reaction-picker__sticker-grid">
+            {loading && <div className="reaction-picker__status">Loading...</div>}
+            {!loading && stickers.length === 0 && (
+              <div className="reaction-picker__status">No stickers in this pack</div>
             )}
-            <div className="reaction-picker__sticker-grid">
-              {loading && <div className="reaction-picker__status">Loading...</div>}
-              {!loading && stickers.length === 0 && (
-                <div className="reaction-picker__status">No stickers in this pack</div>
-              )}
-              {!loading && stickers.map(s => {
+            {!loading &&
+              stickers.map((s) => {
                 const url = s.file_url.startsWith('/') ? `${serverUrl}${s.file_url}` : s.file_url
                 return (
                   <button
@@ -117,13 +177,18 @@ export default function ReactionPicker({ serverUrl, onSelect, onClose }: Reactio
                     onClick={() => onSelect(s.id, 'sticker')}
                     title={s.display_name}
                   >
-                    <img src={url} alt={s.display_name} className="reaction-picker__sticker-img" loading="lazy" />
+                    <img
+                      src={url}
+                      alt={s.display_name}
+                      className="reaction-picker__sticker-img"
+                      loading="lazy"
+                    />
                   </button>
                 )
               })}
-            </div>
-          </>
-        )}
+          </div>
+        </>
+      )}
     </PickerSurface>
   )
 }

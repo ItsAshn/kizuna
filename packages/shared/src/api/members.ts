@@ -1,24 +1,14 @@
-import type {
-  User,
-  Member,
-  CustomRole,
-  Permission,
-} from '../types'
+import type { User, Member, CustomRole, Permission } from '../types'
 import { client } from './core'
 
 // ─── Members ──────────────────────────────────────────────
 
-export async function fetchMembers(
-  serverUrl: string,
-): Promise<Member[]> {
+export async function fetchMembers(serverUrl: string): Promise<Member[]> {
   const res = await client(serverUrl).get('/api/auth/users')
   return res.data.users ?? res.data
 }
 
-export async function getUserProfile(
-  serverUrl: string,
-  userId: string,
-): Promise<Member> {
+export async function getUserProfile(serverUrl: string, userId: string): Promise<Member> {
   const res = await client(serverUrl).get(`/api/auth/users/${userId}`)
   return res.data
 }
@@ -49,10 +39,7 @@ export async function setMemberRole(
   await client(serverUrl).patch(`/api/server/members/${userId}/role`, { role })
 }
 
-export async function kickMember(
-  serverUrl: string,
-  userId: string,
-): Promise<void> {
+export async function kickMember(serverUrl: string, userId: string): Promise<void> {
   await client(serverUrl).delete(`/api/server/members/${userId}`)
 }
 
@@ -72,26 +59,17 @@ export async function removeMemberRole(
   await client(serverUrl).delete(`/api/server/members/${userId}/roles/${roleId}`)
 }
 
-export async function banUser(
-  serverUrl: string,
-  userId: string,
-  reason?: string,
-): Promise<void> {
+export async function banUser(serverUrl: string, userId: string, reason?: string): Promise<void> {
   await client(serverUrl).post(`/api/bans/${userId}`, { reason: reason ?? null })
 }
 
-export async function unbanUser(
-  serverUrl: string,
-  userId: string,
-): Promise<void> {
+export async function unbanUser(serverUrl: string, userId: string): Promise<void> {
   await client(serverUrl).delete(`/api/bans/${userId}`)
 }
 
 // ─── Roles ────────────────────────────────────────────────
 
-export async function fetchRoles(
-  serverUrl: string,
-): Promise<CustomRole[]> {
+export async function fetchRoles(serverUrl: string): Promise<CustomRole[]> {
   const res = await client(serverUrl).get('/api/roles')
   return res.data.roles ?? res.data
 }
@@ -137,10 +115,7 @@ export async function updateRole(
   return res.data.role ?? res.data
 }
 
-export async function deleteRole(
-  serverUrl: string,
-  id: string,
-): Promise<void> {
+export async function deleteRole(serverUrl: string, id: string): Promise<void> {
   await client(serverUrl).delete(`/api/roles/${id}`)
 }
 
@@ -150,4 +125,3 @@ export async function reorderRoles(
 ): Promise<void> {
   await client(serverUrl).patch('/api/roles/reorder', { order })
 }
-

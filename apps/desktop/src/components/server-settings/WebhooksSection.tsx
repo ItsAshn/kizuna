@@ -17,9 +17,11 @@ export function WebhooksSection() {
     <div className="server-menu__settings-group">
       <p className="server-menu__settings-group-title">webhooks</p>
       <Tabs tabs={TABS} activeKey={tab} onChange={setTab} />
-      {tab === 'incoming'
-        ? <WebhookManager serverUrl={session?.url} />
-        : <OutgoingWebhookManager serverUrl={session?.url} />}
+      {tab === 'incoming' ? (
+        <WebhookManager serverUrl={session?.url} />
+      ) : (
+        <OutgoingWebhookManager serverUrl={session?.url} />
+      )}
     </div>
   )
 }

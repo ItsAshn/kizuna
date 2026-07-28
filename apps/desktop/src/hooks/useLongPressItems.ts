@@ -54,10 +54,7 @@ export function useLongPressItems({
         const s = start.current
         if (!s) return
         const t = e.touches[0]
-        if (
-          Math.abs(t.clientX - s.x) > MOVE_SLOP_PX ||
-          Math.abs(t.clientY - s.y) > MOVE_SLOP_PX
-        ) {
+        if (Math.abs(t.clientX - s.x) > MOVE_SLOP_PX || Math.abs(t.clientY - s.y) > MOVE_SLOP_PX) {
           cancel()
         }
       },

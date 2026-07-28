@@ -8,7 +8,13 @@ interface SkeletonProps {
   fullWidth?: boolean
 }
 
-export default function Skeleton({ width, height, variant = 'rect', lines = 1, fullWidth = false }: SkeletonProps) {
+export default function Skeleton({
+  width,
+  height,
+  variant = 'rect',
+  lines = 1,
+  fullWidth = false,
+}: SkeletonProps) {
   if (variant === 'text' && lines > 1) {
     return (
       <div className="skeleton-text-block" role="status" aria-label="Loading" aria-busy="true">

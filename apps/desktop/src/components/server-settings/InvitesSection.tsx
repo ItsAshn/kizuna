@@ -28,7 +28,9 @@ export function InvitesSection({ serverUrl }: { serverUrl: string | null | undef
     async function loadInvites() {
       if (!serverUrl) return
       setInvitesLoading(true)
-      try { if (mountedRef.current) setInvites(await fetchInvites(serverUrl)) } catch (err) {
+      try {
+        if (mountedRef.current) setInvites(await fetchInvites(serverUrl))
+      } catch (err) {
         console.error('Failed to fetch invites:', err)
       }
       if (mountedRef.current) setInvitesLoading(false)
@@ -43,7 +45,7 @@ export function InvitesSection({ serverUrl }: { serverUrl: string | null | undef
       const maxUses = newMaxUses ? parseInt(newMaxUses, 10) : undefined
       const expiresInHours = newExpiry !== '0' ? parseFloat(newExpiry) : undefined
       const invite = await createInvite(serverUrl, maxUses, expiresInHours)
-      setInvites(prev => [invite, ...prev])
+      setInvites((prev) => [invite, ...prev])
       const deepLink = `kizuna://join?server=${encodeURIComponent(serverUrl)}&code=${invite.code}`
       const qrDataUrl = await QRCode.toDataURL(deepLink, {
         width: 200,
@@ -79,7 +81,7 @@ export function InvitesSection({ serverUrl }: { serverUrl: string | null | undef
     if (!serverUrl) return
     try {
       await revokeInvite(serverUrl, code)
-      setInvites(prev => prev.filter(i => i.code !== code))
+      setInvites((prev) => prev.filter((i) => i.code !== code))
     } catch (err) {
       console.error('Failed to revoke invite:', err)
       setInviteError(handleApiErr(err))
@@ -89,24 +91,50 @@ export function InvitesSection({ serverUrl }: { serverUrl: string | null | undef
   return (
     <div className="server-menu__section">
       <div className="server-menu__invite-create">
-        <p className="server-menu__section-title" style={{ marginBottom: '8px' }}>create invite</p>
+        <p className="server-menu__section-title" style={{ marginBottom: '8px' }}>
+          create invite
+        </p>
         <div className="server-menu__invite-row">
           <div className="server-menu__field">
             <label className="server-menu__label">max uses (blank = infinite)</label>
-            <input type="number" min="1" className="server-menu__input" placeholder="unlimited" value={newMaxUses} onChange={(e) => setNewMaxUses(e.target.value)} />
+            <input
+              type="number"
+              min="1"
+              className="server-menu__input"
+              placeholder="unlimited"
+              value={newMaxUses}
+              onChange={(e) => setNewMaxUses(e.target.value)}
+            />
           </div>
           <div className="server-menu__field">
             <label className="server-menu__label">expires after</label>
-            <select className="server-menu__select" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)}>
-              {EXPIRY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            <select
+              className="server-menu__select"
+              value={newExpiry}
+              onChange={(e) => setNewExpiry(e.target.value)}
+            >
+              {EXPIRY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
-        <button onClick={handleCreateInvite} disabled={creatingInvite} className="server-menu__role-create-btn">
+        <button
+          onClick={handleCreateInvite}
+          disabled={creatingInvite}
+          className="server-menu__role-create-btn"
+        >
           {creatingInvite ? '...' : 'generate invite code'}
         </button>
         {inviteError && (
-          <span className="server-menu__save-msg server-menu__save-msg--err" style={{ marginTop: '6px', display: 'block' }}>{inviteError}</span>
+          <span
+            className="server-menu__save-msg server-menu__save-msg--err"
+            style={{ marginTop: '6px', display: 'block' }}
+          >
+            {inviteError}
+          </span>
         )}
       </div>
 
@@ -123,7 +151,9 @@ export function InvitesSection({ serverUrl }: { serverUrl: string | null | undef
               copy
             </button>
           </div>
-          <p className="server-menu__qr-hint">share this code — recipients join with just the code</p>
+          <p className="server-menu__qr-hint">
+            share this code — recipients join with just the code
+          </p>
           <button onClick={() => setActiveQr(null)} className="server-menu__qr-dismiss-btn">
             dismiss
           </button>
@@ -136,18 +166,33 @@ export function InvitesSection({ serverUrl }: { serverUrl: string | null | undef
       ) : invites.length === 0 ? (
         <p className="server-menu__loading">no active invite codes</p>
       ) : (
-        invites.map(inv => (
+        invites.map((inv) => (
           <div key={inv.code} className="server-menu__invite-item">
             <code className="server-menu__invite-code">{inv.code}</code>
             <div className="server-menu__invite-stats">
-              <div>{inv.uses}/{inv.max_uses ?? '∞'} uses</div>
-              <div>{inv.expires_at ? new Date(inv.expires_at * 1000).toLocaleDateString() : 'never'}</div>
+              <div>
+                {inv.uses}/{inv.max_uses ?? '∞'} uses
+              </div>
+              <div>
+                {inv.expires_at ? new Date(inv.expires_at * 1000).toLocaleDateString() : 'never'}
+              </div>
             </div>
             <div className="server-menu__invite-actions">
-              <button onClick={() => handleShowQr(inv)} className={`server-menu__invite-qr-btn ${activeQr?.code === inv.code ? 'server-menu__invite-qr-btn--active' : ''}`}>
+              <button
+                onClick={() => handleShowQr(inv)}
+                className={`server-menu__invite-qr-btn ${activeQr?.code === inv.code ? 'server-menu__invite-qr-btn--active' : ''}`}
+              >
                 qr
               </button>
-              <button onClick={() => { if (activeQr?.code === inv.code) setActiveQr(null); handleRevokeInvite(inv.code) }} className="server-menu__invite-revoke">revoke</button>
+              <button
+                onClick={() => {
+                  if (activeQr?.code === inv.code) setActiveQr(null)
+                  handleRevokeInvite(inv.code)
+                }}
+                className="server-menu__invite-revoke"
+              >
+                revoke
+              </button>
             </div>
           </div>
         ))

@@ -16,15 +16,60 @@ export const OUTGOING_WEBHOOK_EVENTS: {
   /** Fires per-channel, so a channel-scoped webhook can receive it. */
   channelScoped: boolean
 }[] = [
-  { key: 'message.created', label: 'message sent', desc: 'A message was posted in a channel', channelScoped: true },
-  { key: 'message.updated', label: 'message edited', desc: 'A message was edited', channelScoped: true },
-  { key: 'message.deleted', label: 'message deleted', desc: 'A message was deleted', channelScoped: true },
-  { key: 'channel.created', label: 'channel created', desc: 'A channel was created', channelScoped: false },
-  { key: 'channel.updated', label: 'channel updated', desc: 'A channel was renamed or reconfigured', channelScoped: true },
-  { key: 'channel.deleted', label: 'channel deleted', desc: 'A channel was deleted', channelScoped: true },
-  { key: 'member.joined', label: 'member joined', desc: 'Someone joined the server', channelScoped: false },
-  { key: 'member.left', label: 'member left', desc: 'Someone left the server on their own', channelScoped: false },
-  { key: 'member.removed', label: 'member removed', desc: 'Someone was kicked or banned', channelScoped: false },
+  {
+    key: 'message.created',
+    label: 'message sent',
+    desc: 'A message was posted in a channel',
+    channelScoped: true,
+  },
+  {
+    key: 'message.updated',
+    label: 'message edited',
+    desc: 'A message was edited',
+    channelScoped: true,
+  },
+  {
+    key: 'message.deleted',
+    label: 'message deleted',
+    desc: 'A message was deleted',
+    channelScoped: true,
+  },
+  {
+    key: 'channel.created',
+    label: 'channel created',
+    desc: 'A channel was created',
+    channelScoped: false,
+  },
+  {
+    key: 'channel.updated',
+    label: 'channel updated',
+    desc: 'A channel was renamed or reconfigured',
+    channelScoped: true,
+  },
+  {
+    key: 'channel.deleted',
+    label: 'channel deleted',
+    desc: 'A channel was deleted',
+    channelScoped: true,
+  },
+  {
+    key: 'member.joined',
+    label: 'member joined',
+    desc: 'Someone joined the server',
+    channelScoped: false,
+  },
+  {
+    key: 'member.left',
+    label: 'member left',
+    desc: 'Someone left the server on their own',
+    channelScoped: false,
+  },
+  {
+    key: 'member.removed',
+    label: 'member removed',
+    desc: 'Someone was kicked or banned',
+    channelScoped: false,
+  },
 ]
 
 const EVENT_KEYS = new Set<string>(OUTGOING_WEBHOOK_EVENTS.map((e) => e.key))
@@ -92,7 +137,9 @@ export function renderEventText(
     case 'message.created':
       return truncateText(`${where} · ${who}: ${data.message?.content ?? ''}`.trimEnd())
     case 'message.updated':
-      return truncateText(`✏️ ${where} · ${who} edited a message: ${data.message?.content ?? ''}`.trimEnd())
+      return truncateText(
+        `✏️ ${where} · ${who} edited a message: ${data.message?.content ?? ''}`.trimEnd(),
+      )
     case 'message.deleted':
       return truncateText(`🗑️ ${where} · a message was deleted`)
     case 'channel.created':

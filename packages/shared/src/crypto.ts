@@ -79,7 +79,12 @@ export function decryptDM(
 export function isEncryptedContent(content: string): EncryptedMessage | null {
   try {
     const parsed = JSON.parse(content)
-    if (parsed && typeof parsed.v === 'number' && typeof parsed.ct === 'string' && typeof parsed.n === 'string') {
+    if (
+      parsed &&
+      typeof parsed.v === 'number' &&
+      typeof parsed.ct === 'string' &&
+      typeof parsed.n === 'string'
+    ) {
       return parsed as EncryptedMessage
     }
   } catch {
@@ -124,7 +129,12 @@ export function decryptGroupDM(
 export function isGroupEncryptedContent(content: string): GroupEncryptedMessage | null {
   try {
     const parsed = JSON.parse(content)
-    if (parsed && typeof parsed.v === 'number' && parsed.recipients && typeof parsed.recipients === 'object') {
+    if (
+      parsed &&
+      typeof parsed.v === 'number' &&
+      parsed.recipients &&
+      typeof parsed.recipients === 'object'
+    ) {
       return parsed as GroupEncryptedMessage
     }
   } catch {
@@ -135,13 +145,9 @@ export function isGroupEncryptedContent(content: string): GroupEncryptedMessage 
 
 async function deriveKey(password: string, salt: Uint8Array): Promise<Uint8Array> {
   const enc = new TextEncoder()
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits'],
-  )
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, [
+    'deriveBits',
+  ])
   const bits = await crypto.subtle.deriveBits(
     {
       name: 'PBKDF2',

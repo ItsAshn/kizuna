@@ -1,6 +1,4 @@
-import {
-  deriveKeyPair,
-} from '@kizuna/shared/crypto'
+import { deriveKeyPair } from '@kizuna/shared/crypto'
 import { uploadPublicKey } from '@kizuna/shared'
 
 interface KeyState {
@@ -23,7 +21,11 @@ function encodeSecretKey(sk: Uint8Array): string {
 }
 
 function decodeSecretKey(encoded: string): Uint8Array {
-  return new Uint8Array(atob(encoded).split('').map(c => c.charCodeAt(0)))
+  return new Uint8Array(
+    atob(encoded)
+      .split('')
+      .map((c) => c.charCodeAt(0)),
+  )
 }
 
 export function getPublicKey(): string | null {
@@ -43,11 +45,16 @@ export function hasStoredKey(serverUrl: string): boolean {
 }
 
 export function restoreFromSession(serverUrl: string): boolean {
-  const encoded = localStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}`) || sessionStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}`)
+  const encoded =
+    localStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}`) ||
+    sessionStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}`)
   if (!encoded) return false
   try {
     state.secretKey = decodeSecretKey(encoded)
-    state.publicKey = localStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}-pub`) || sessionStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}-pub`) || null
+    state.publicKey =
+      localStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}-pub`) ||
+      sessionStorage.getItem(`${SS_KEY_PREFIX}${serverUrl}-pub`) ||
+      null
     state.initialized = true
     return true
   } catch {
@@ -60,17 +67,20 @@ export async function generateAndStoreKey(
   password: string,
   existingSalt?: Uint8Array,
 ): Promise<{ publicKey: string; salt: Uint8Array }> {
-  const salt = existingSalt || window.crypto.getRandomValues(new Uint8Array(16));
+  const salt = existingSalt || window.crypto.getRandomValues(new Uint8Array(16))
   const kp = await deriveKeyPair(password, salt)
 
   const encoded = encodeSecretKey(kp.secretKey)
   localStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}`, encoded)
   localStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}-pub`, kp.publicKeyString)
 
-  localStorage.setItem(`${LS_PREFIX}${serverUrl}`, JSON.stringify({
-    publicKey: kp.publicKeyString,
-    salt: Array.from(salt),
-  }))
+  localStorage.setItem(
+    `${LS_PREFIX}${serverUrl}`,
+    JSON.stringify({
+      publicKey: kp.publicKeyString,
+      salt: Array.from(salt),
+    }),
+  )
 
   state.publicKey = kp.publicKeyString
   state.secretKey = kp.secretKey
@@ -90,10 +100,13 @@ export async function initializeCrypto(
       const kp = await deriveKeyPair(password, serverSalt)
       localStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}`, encodeSecretKey(kp.secretKey))
       localStorage.setItem(`${SS_KEY_PREFIX}${serverUrl}-pub`, kp.publicKeyString)
-      localStorage.setItem(`${LS_PREFIX}${serverUrl}`, JSON.stringify({
-        publicKey: kp.publicKeyString,
-        salt: Array.from(serverSalt),
-      }))
+      localStorage.setItem(
+        `${LS_PREFIX}${serverUrl}`,
+        JSON.stringify({
+          publicKey: kp.publicKeyString,
+          salt: Array.from(serverSalt),
+        }),
+      )
       state.publicKey = kp.publicKeyString
       state.secretKey = kp.secretKey
       state.initialized = true
@@ -114,7 +127,10 @@ export async function initializeCrypto(
   return generateAndStoreKey(serverUrl, password)
 }
 
-export function userNeedsKeyUpload(userPublicKey: string | null | undefined, serverUrl: string): boolean {
+export function userNeedsKeyUpload(
+  userPublicKey: string | null | undefined,
+  serverUrl: string,
+): boolean {
   if (!userPublicKey) return true
   const storedKey = localStorage.getItem(`${LS_PREFIX}${serverUrl}`)
   if (!storedKey) return true

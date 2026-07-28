@@ -39,10 +39,7 @@
     "createUpdaterArtifacts": true,
     "linux": {
       "deb": {
-        "depends": [
-          "gstreamer1.0-plugins-base",
-          "gstreamer1.0-plugins-good"
-        ]
+        "depends": ["gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good"]
       }
     },
     "macOS": {
@@ -55,9 +52,7 @@
   },
   "plugins": {
     "updater": {
-      "endpoints": [
-        "https://github.com/ItsAshn/kizuna/releases/latest/download/latest.json"
-      ],
+      "endpoints": ["https://github.com/ItsAshn/kizuna/releases/latest/download/latest.json"],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUxODQxQzk2MDQ2QjQwNjkKUldScFFHc0VsaHlFVVI2RlhXKzJPVGRjS05HUWRFN1FITVhLTk5SdXlzZ3R2U0ErY08rbHR2R0sK"
     }
   }

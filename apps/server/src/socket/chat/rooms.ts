@@ -8,10 +8,12 @@ export function registerRoomHandlers(_io: Server, socket: Socket): void {
   socket.on('channel:mute:sync', () => {
     if (!userId) return
     const db = getDb()
-    const rows = db.prepare(
-      `SELECT channel_id, muted_until FROM channel_mutes
-       WHERE user_id = ? AND (muted_until IS NULL OR muted_until > unixepoch())`
-    ).all(userId) as { channel_id: string; muted_until: number | null }[]
+    const rows = db
+      .prepare(
+        `SELECT channel_id, muted_until FROM channel_mutes
+       WHERE user_id = ? AND (muted_until IS NULL OR muted_until > unixepoch())`,
+      )
+      .all(userId) as { channel_id: string; muted_until: number | null }[]
 
     const mutes: Record<string, number | null> = {}
     for (const r of rows) {

@@ -60,7 +60,7 @@ export default function QuickSwitcher({ onClose }: QuickSwitcherProps) {
         type: ch.type,
         name: ch.name,
         subtitle: ch.type === 'voice' ? 'Voice Channel' : 'Text Channel',
-        score: q ? score : (isRecent ? 100 : 0),
+        score: q ? score : isRecent ? 100 : 0,
         isRecent,
       })
     }
@@ -68,14 +68,20 @@ export default function QuickSwitcher({ onClose }: QuickSwitcherProps) {
     for (const dm of dmChannels) {
       const name = dm.other_display_name || dm.other_username
       const score = q ? Math.max(fuzzyMatch(q, name), fuzzyMatch(q, dm.other_username)) : 0
-      if (q && score === 0 && !name.toLowerCase().includes(q) && !dm.other_username.toLowerCase().includes(q)) continue
+      if (
+        q &&
+        score === 0 &&
+        !name.toLowerCase().includes(q) &&
+        !dm.other_username.toLowerCase().includes(q)
+      )
+        continue
       const isRecent = recentChannels.some((r) => r.id === dm.id && r.type === 'dm')
       items.push({
         id: dm.id,
         type: 'dm',
         name,
         subtitle: `@${dm.other_username}`,
-        score: q ? score : (isRecent ? 50 : 0),
+        score: q ? score : isRecent ? 50 : 0,
         isRecent,
       })
     }
@@ -147,13 +153,13 @@ export default function QuickSwitcher({ onClose }: QuickSwitcherProps) {
           />
         </div>
         <div className="quick-switcher__results">
-          {results.length === 0 && (
-            <div className="quick-switcher__empty">No results found</div>
-          )}
+          {results.length === 0 && <div className="quick-switcher__empty">No results found</div>}
           {results.map((item, i) => (
             <button
               key={item.id + item.type}
-              ref={(el) => { itemRefs.current[i] = el }}
+              ref={(el) => {
+                itemRefs.current[i] = el
+              }}
               className={`quick-switcher__item ${i === selectedIndex ? 'quick-switcher__item--selected' : ''}`}
               onClick={() => handleSelect(item)}
               onMouseEnter={() => setSelectedIndex(i)}
@@ -167,7 +173,9 @@ export default function QuickSwitcher({ onClose }: QuickSwitcherProps) {
                 <span className="quick-switcher__item-name">
                   {item.name}
                   {item.isRecent && !query && (
-                    <span className="quick-switcher__item-recent-badge"><Clock size={10} /></span>
+                    <span className="quick-switcher__item-recent-badge">
+                      <Clock size={10} />
+                    </span>
                   )}
                 </span>
                 <span className="quick-switcher__item-subtitle">{item.subtitle}</span>
@@ -176,9 +184,15 @@ export default function QuickSwitcher({ onClose }: QuickSwitcherProps) {
           ))}
         </div>
         <div className="quick-switcher__footer">
-          <span><kbd>↑↓</kbd> navigate</span>
-          <span><kbd>↵</kbd> select</span>
-          <span><kbd>esc</kbd> close</span>
+          <span>
+            <kbd>↑↓</kbd> navigate
+          </span>
+          <span>
+            <kbd>↵</kbd> select
+          </span>
+          <span>
+            <kbd>esc</kbd> close
+          </span>
         </div>
       </div>
     </div>

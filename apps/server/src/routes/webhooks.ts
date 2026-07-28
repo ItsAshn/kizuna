@@ -1,6 +1,11 @@
 import { Hono } from 'hono'
 import { getDb } from '../db'
-import { authMiddleware, isUserAdmin, canViewChannel, getUserChannelPermission } from '../middleware/auth'
+import {
+  authMiddleware,
+  isUserAdmin,
+  canViewChannel,
+  getUserChannelPermission,
+} from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 import crypto from 'crypto'
 import type { Context } from 'hono'
@@ -82,9 +87,12 @@ webhooksRouter.post('/channels/:channelId/webhooks', authMiddleware, async (c) =
   const channelId = c.req.param('channelId')!
   const { userId } = getAuth(c)
 
-  const channel = db.prepare('SELECT id, type FROM channels WHERE id = ?').get(channelId) as { id: string; type: string } | undefined
+  const channel = db.prepare('SELECT id, type FROM channels WHERE id = ?').get(channelId) as
+    | { id: string; type: string }
+    | undefined
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
-  if (channel.type !== 'text') return c.json({ error: 'Webhooks are only supported in text channels' }, 400)
+  if (channel.type !== 'text')
+    return c.json({ error: 'Webhooks are only supported in text channels' }, 400)
   if (!canManageWebhooks(userId, channelId)) return c.json({ error: 'Forbidden' }, 403)
 
   const body = await c.req.json().catch(() => null)
@@ -94,8 +102,9 @@ webhooksRouter.post('/channels/:channelId/webhooks', authMiddleware, async (c) =
 
   const id = uuidv4()
   const token = crypto.randomBytes(32).toString('hex')
-  db.prepare('INSERT INTO webhooks (id, channel_id, name, token, avatar, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(id, channelId, name, token, avatar, userId)
+  db.prepare(
+    'INSERT INTO webhooks (id, channel_id, name, token, avatar, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(id, channelId, name, token, avatar, userId)
   logAuditEvent(db, 'webhook_created', userId, id, JSON.stringify({ name, channelId }))
 
   const webhook = db.prepare(`${SELECT_WEBHOOK} WHERE w.id = ?`).get(id)
@@ -108,7 +117,9 @@ webhooksRouter.get('/channels/:channelId/webhooks', authMiddleware, async (c) =>
   const { userId } = getAuth(c)
   if (!canManageWebhooks(userId, channelId)) return c.json({ error: 'Forbidden' }, 403)
 
-  const webhooks = db.prepare(`${SELECT_WEBHOOK} WHERE w.channel_id = ? ORDER BY w.created_at DESC`).all(channelId)
+  const webhooks = db
+    .prepare(`${SELECT_WEBHOOK} WHERE w.channel_id = ? ORDER BY w.created_at DESC`)
+    .all(channelId)
   return c.json({ webhooks })
 })
 
@@ -117,7 +128,9 @@ webhooksRouter.get('/channels/:channelId/webhooks', authMiddleware, async (c) =>
 webhooksRouter.get('/webhooks', authMiddleware, async (c) => {
   const db = getDb()
   const { userId } = getAuth(c)
-  const rows = db.prepare(`${SELECT_WEBHOOK} ORDER BY w.created_at DESC`).all() as (WebhookRow & { channel_name: string | null })[]
+  const rows = db.prepare(`${SELECT_WEBHOOK} ORDER BY w.created_at DESC`).all() as (WebhookRow & {
+    channel_name: string | null
+  })[]
   const webhooks = rows.filter((w) => canManageWebhooks(userId, w.channel_id))
   return c.json({ webhooks })
 })
@@ -131,7 +144,13 @@ webhooksRouter.delete('/webhooks/:webhookId', authMiddleware, async (c) => {
   if (!canManageWebhooks(userId, webhook.channel_id)) return c.json({ error: 'Forbidden' }, 403)
 
   db.prepare('DELETE FROM webhooks WHERE id = ?').run(webhookId)
-  logAuditEvent(db, 'webhook_deleted', userId, webhookId, JSON.stringify({ name: webhook.name, channelId: webhook.channel_id }))
+  logAuditEvent(
+    db,
+    'webhook_deleted',
+    userId,
+    webhookId,
+    JSON.stringify({ name: webhook.name, channelId: webhook.channel_id }),
+  )
   return c.json({ ok: true })
 })
 
@@ -160,10 +179,17 @@ webhooksRouter.patch('/webhooks/:webhookId', authMiddleware, async (c) => {
     // rather than silently dropped so the UI can show why.
     const cleared = body.avatar === null || body.avatar === ''
     const avatar = cleared ? null : normalizeAvatar(body.avatar)
-    if (!cleared && !avatar) return c.json({ error: 'avatar must be an http(s) or data:image URL' }, 400)
+    if (!cleared && !avatar)
+      return c.json({ error: 'avatar must be an http(s) or data:image URL' }, 400)
     db.prepare('UPDATE webhooks SET avatar = ? WHERE id = ?').run(avatar, webhookId)
   }
-  logAuditEvent(db, 'webhook_updated', userId, webhookId, JSON.stringify({ name: normalizeName(body.name) ?? webhook.name }))
+  logAuditEvent(
+    db,
+    'webhook_updated',
+    userId,
+    webhookId,
+    JSON.stringify({ name: normalizeName(body.name) ?? webhook.name }),
+  )
 
   const updated = db.prepare(`${SELECT_WEBHOOK} WHERE w.id = ?`).get(webhookId)
   return c.json({ webhook: updated })
@@ -181,7 +207,13 @@ webhooksRouter.post('/webhooks/:webhookId/regenerate', authMiddleware, async (c)
 
   const token = crypto.randomBytes(32).toString('hex')
   db.prepare('UPDATE webhooks SET token = ? WHERE id = ?').run(token, webhookId)
-  logAuditEvent(db, 'webhook_token_regenerated', userId, webhookId, JSON.stringify({ name: webhook.name }))
+  logAuditEvent(
+    db,
+    'webhook_token_regenerated',
+    userId,
+    webhookId,
+    JSON.stringify({ name: webhook.name }),
+  )
 
   const updated = db.prepare(`${SELECT_WEBHOOK} WHERE w.id = ?`).get(webhookId)
   return c.json({ webhook: updated })
@@ -192,7 +224,9 @@ function truncate(text: string, max: number): string {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
 }
 
 function asString(value: unknown): string | undefined {
@@ -225,10 +259,15 @@ function formatGitHubEvent(event: string, body: Record<string, unknown>): Format
     // Branch deletions and tag pushes arrive with no commits — not worth a message.
     if (commits.length === 0) return { skip: 'push without commits' }
     let msg = `🔨 **${repo}**: ${commits.length} commit${commits.length === 1 ? '' : 's'} pushed to \`${branch}\``
-    msg += '\n' + commits.slice(0, 5).map((commit) => {
-      const sha = asString(commit.id)?.slice(0, 7) ?? '???????'
-      return `- \`${sha}\` ${firstLine(commit.message)}`
-    }).join('\n')
+    msg +=
+      '\n' +
+      commits
+        .slice(0, 5)
+        .map((commit) => {
+          const sha = asString(commit.id)?.slice(0, 7) ?? '???????'
+          return `- \`${sha}\` ${firstLine(commit.message)}`
+        })
+        .join('\n')
     if (commits.length > 5) msg += `\n...and ${commits.length - 5} more`
     const compare = asString(body.compare)
     if (compare) msg += `\n${compare}`
@@ -240,27 +279,39 @@ function formatGitHubEvent(event: string, body: Record<string, unknown>): Format
     const tag = asString(release?.tag_name) ?? asString(release?.name) ?? 'unknown'
     const prerelease = release?.prerelease ? ' (pre-release)' : ''
     const url = asString(release?.html_url) ?? ''
-    return { content: `${action === 'published' ? '🚀' : '📦'} **${repo}**: Release ${tag}${prerelease}\n${url}`.trim() }
+    return {
+      content:
+        `${action === 'published' ? '🚀' : '📦'} **${repo}**: Release ${tag}${prerelease}\n${url}`.trim(),
+    }
   }
 
   if (event === 'issues') {
     const issue = asRecord(body.issue)
-    return { content: `📝 **${repo}**: Issue ${action ?? 'updated'}: ${firstLine(issue?.title)}\n${asString(issue?.html_url) ?? ''}`.trim() }
+    return {
+      content:
+        `📝 **${repo}**: Issue ${action ?? 'updated'}: ${firstLine(issue?.title)}\n${asString(issue?.html_url) ?? ''}`.trim(),
+    }
   }
 
   if (event === 'issue_comment' && action === 'created') {
     const issue = asRecord(body.issue)
     const comment = asRecord(body.comment)
     const who = asString(asRecord(body.sender)?.login) ?? 'someone'
-    return { content: `💬 **${repo}**: ${who} commented on ${firstLine(issue?.title)}\n${asString(comment?.html_url) ?? ''}`.trim() }
+    return {
+      content:
+        `💬 **${repo}**: ${who} commented on ${firstLine(issue?.title)}\n${asString(comment?.html_url) ?? ''}`.trim(),
+    }
   }
 
   if (event === 'pull_request') {
     const pr = asRecord(body.pull_request)
     // "closed + merged" is the interesting half of the noisiest PR action.
-    const verb = action === 'closed' && pr?.merged ? 'merged' : action ?? 'updated'
+    const verb = action === 'closed' && pr?.merged ? 'merged' : (action ?? 'updated')
     const icon = verb === 'merged' ? '✅' : '🔀'
-    return { content: `${icon} **${repo}**: PR ${verb}: ${firstLine(pr?.title)}\n${asString(pr?.html_url) ?? ''}`.trim() }
+    return {
+      content:
+        `${icon} **${repo}**: PR ${verb}: ${firstLine(pr?.title)}\n${asString(pr?.html_url) ?? ''}`.trim(),
+    }
   }
 
   if (event === 'star' && action === 'created') {
@@ -277,7 +328,10 @@ function formatGitHubEvent(event: string, body: Record<string, unknown>): Format
     const run = asRecord(body.workflow_run)
     const conclusion = asString(run?.conclusion) ?? 'finished'
     const icon = conclusion === 'success' ? '✅' : conclusion === 'failure' ? '❌' : '⚠️'
-    return { content: `${icon} **${repo}**: ${asString(run?.name) ?? 'Workflow'} ${conclusion} on \`${asString(run?.head_branch) ?? '?'}\`\n${asString(run?.html_url) ?? ''}`.trim() }
+    return {
+      content:
+        `${icon} **${repo}**: ${asString(run?.name) ?? 'Workflow'} ${conclusion} on \`${asString(run?.head_branch) ?? '?'}\`\n${asString(run?.html_url) ?? ''}`.trim(),
+    }
   }
 
   return { skip: `unhandled github event: ${event}` }
@@ -372,7 +426,11 @@ async function parseIncomingBody(c: Context): Promise<Record<string, unknown> | 
     const form = await c.req.parseBody().catch(() => null)
     const payload = form && typeof form.payload === 'string' ? form.payload : null
     if (!payload) return null
-    try { return JSON.parse(payload) as Record<string, unknown> } catch { return null }
+    try {
+      return JSON.parse(payload) as Record<string, unknown>
+    } catch {
+      return null
+    }
   }
   const json = await c.req.json().catch(() => null)
   return asRecord(json) ?? null
@@ -382,12 +440,17 @@ async function parseIncomingBody(c: Context): Promise<Record<string, unknown> | 
 webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
   const db = getDb()
   const token = c.req.param('token')!
-  const webhook = db.prepare('SELECT * FROM webhooks WHERE token = ?').get(token) as WebhookRow | undefined
+  const webhook = db.prepare('SELECT * FROM webhooks WHERE token = ?').get(token) as
+    | WebhookRow
+    | undefined
   if (!webhook) return c.json({ error: 'invalid token' }, 401)
 
   if (overIncomingLimit(token)) {
     c.header('Retry-After', '60')
-    return c.json({ error: `rate limited (max ${INCOMING_MAX_PER_MIN} messages/min per webhook)` }, 429)
+    return c.json(
+      { error: `rate limited (max ${INCOMING_MAX_PER_MIN} messages/min per webhook)` },
+      429,
+    )
   }
 
   const body = await parseIncomingBody(c)
@@ -416,10 +479,19 @@ webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
   const messageId = uuidv4()
   const now = Math.floor(Date.now() / 1000)
   try {
-    db.prepare(`INSERT INTO messages (id, channel_id, author_id, content, author_username, author_display_name, author_avatar, webhook_id, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      messageId, webhook.channel_id, '', content,
-      webhook.name, displayName, avatar, webhook.id, now
+    db.prepare(
+      `INSERT INTO messages (id, channel_id, author_id, content, author_username, author_display_name, author_avatar, webhook_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      messageId,
+      webhook.channel_id,
+      '',
+      content,
+      webhook.name,
+      displayName,
+      avatar,
+      webhook.id,
+      now,
     )
     db.prepare('UPDATE webhooks SET last_used_at = ? WHERE id = ?').run(now, webhook.id)
   } catch (err: unknown) {
@@ -437,7 +509,10 @@ webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
     display_name: displayName,
     avatar,
     created_at: now * 1000,
-    edited_at: null, reply_to_message_id: null, reply_to_username: null, reply_to_content: null,
+    edited_at: null,
+    reply_to_message_id: null,
+    reply_to_username: null,
+    reply_to_content: null,
     reactions: [],
   }
 
@@ -447,11 +522,15 @@ webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
   emitToChannel(c, webhook.channel_id, 'message:new', message, '')
   // viaWebhook lets outgoing hooks opt out of re-broadcasting bridged-in
   // messages, which is how two bridged servers avoid echoing at each other.
-  dispatchOutgoing('message.created', {
-    channel: { id: webhook.channel_id },
-    user: { username: displayName },
-    message: { id: messageId, content, webhook_id: webhook.id },
-  }, { channelId: webhook.channel_id, viaWebhook: true })
+  dispatchOutgoing(
+    'message.created',
+    {
+      channel: { id: webhook.channel_id },
+      user: { username: displayName },
+      message: { id: messageId, content, webhook_id: webhook.id },
+    },
+    { channelId: webhook.channel_id, viaWebhook: true },
+  )
 
   return c.json({ ok: true, messageId })
 })
