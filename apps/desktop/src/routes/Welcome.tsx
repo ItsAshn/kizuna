@@ -31,7 +31,7 @@ interface ServerDMs {
 export default function Welcome({ isLanding = false, onOpenSettings }: { isLanding?: boolean; onOpenSettings: () => void }) {
   const navigate = useNavigate()
   const isMobile = useMobile()
-  const { addServer, setActiveSession, servers } = useServerStore()
+  const { addServer, setActiveSession, setActiveServer, logoutServer, servers, sessions } = useServerStore()
   const mentionCounts = useChatStore((s) => s.mentionCounts)
   const { getVersion } = useUpdaterActions()
   const [serverDMs, setServerDMs] = useState<ServerDMs[]>([])
@@ -91,6 +91,18 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
   useEffect(() => {
     getVersion().then((v) => setAppVersion(v ?? ''))
   }, [getVersion])
+
+  // Opening a saved server from the dashboard: resume the session if there is
+  // one, and only fall back to the connect/auth flow when there genuinely is no
+  // session to resume.
+  function handleOpenServer(server: { id: string; url: string }) {
+    if (sessions[server.id]) {
+      setActiveServer(server.id)
+      navigate('/chat')
+      return
+    }
+    handleConnect(server.url)
+  }
 
   async function handleConnect(urlToUse: string) {
     if (!urlToUse.trim()) return
@@ -273,20 +285,37 @@ export default function Welcome({ isLanding = false, onOpenSettings }: { isLandi
             ) : (
               servers.map((server) => {
                 const mentions = mentionCounts[server.id] ?? 0
+                const loggedIn = !!sessions[server.id]
                 return (
-                  <button key={server.id} className="welcome__server-item" onClick={() => handleConnect(server.url)}>
-                    <div className="welcome__server-icon">
-                      {server.icon ? (
-                        <img src={server.icon} alt="" className="welcome__server-icon-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                      ) : server.name.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="welcome__server-info">
-                      <p className="welcome__server-name">{server.name}</p>
-                      <p className="welcome__server-url">{server.url}</p>
-                    </div>
-                    {mentions > 0 && <span className="sidebar__unread-badge">{mentions > 99 ? '99+' : mentions}</span>}
-                    <span className="welcome__server-connect-label">connect</span>
-                  </button>
+                  <div key={server.id} className="welcome__server-row">
+                    <button className="welcome__server-item" onClick={() => handleOpenServer(server)}>
+                      <div className="welcome__server-icon">
+                        {server.icon ? (
+                          <img src={server.icon} alt="" className="welcome__server-icon-img" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                        ) : server.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="welcome__server-info">
+                        <p className="welcome__server-name">
+                          {server.name}
+                          {loggedIn && <span className="welcome__server-session" title={`Signed in as ${sessions[server.id].user.display_name || sessions[server.id].user.username}`} />}
+                        </p>
+                        <p className="welcome__server-url">{server.url}</p>
+                      </div>
+                      {mentions > 0 && <span className="sidebar__unread-badge">{mentions > 99 ? '99+' : mentions}</span>}
+                      <span className="welcome__server-connect-label">{loggedIn ? 'open' : 'connect'}</span>
+                    </button>
+                    {/* The one place a session is actually ended. Leaving a
+                        server anywhere else keeps you signed in. */}
+                    {loggedIn && (
+                      <button
+                        className="welcome__server-logout"
+                        onClick={() => { void logoutServer(server.id) }}
+                        title={`Log out of ${server.name}`}
+                      >
+                        Log out
+                      </button>
+                    )}
+                  </div>
                 )
               })
             )}

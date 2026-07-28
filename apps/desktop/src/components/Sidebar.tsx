@@ -39,7 +39,7 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
   const haptics = useHaptics()
   const session = useServerStore((s) => s.activeSession)
   const servers = useServerStore((s) => s.servers)
-  const setActiveSession = useServerStore((s) => s.setActiveSession)
+  const setActiveServer = useServerStore((s) => s.setActiveServer)
   const channels = useChatStore((s) => s.channels)
   const categories = useChatStore((s) => s.categories)
   const dmChannels = useChatStore((s) => s.dmChannels)
@@ -74,7 +74,6 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
   const [contextMenuChannelId, setContextMenuChannelId] = useState<string | null>(null)
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
   const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null)
-  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false)
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
   const [drag, setDrag] = useState<{ channelId: string; type: 'text' | 'voice' } | null>(null)
   const [dragOver, setDragOver] = useState<{ channelId: string; position: 'above' | 'below' } | null>(null)
@@ -137,12 +136,21 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
     reorderChannels(session.url, order).catch((err) => { console.error('Failed to reorder channels:', err) })
   }
 
-  function handleLogout() {
+  // Leaving a server is navigation, not a logout: the session stays alive so
+  // reopening the server is a back button. Ending the session for real lives in
+  // the main menu (the server's Log Out action).
+  function handleLeaveServer() {
     const channelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId
     if (channelId) {
       socketRef.current?.emit('typing:stop', { channelId })
     }
-    setActiveSession(null)
+    // On mobile the servers list is a level of the nav stack, not a route, so
+    // pop it rather than dropping out of the shell to the web dashboard.
+    if (onBackToServers) {
+      onBackToServers()
+      return
+    }
+    setActiveServer(null)
     navigate('/')
   }
 
@@ -574,17 +582,12 @@ export default function Sidebar({ joinVoice, leaveVoice, socketRef, onOpenMenu, 
       {voicePanel}
 
       <div className="sidebar__footer">
-        {showDisconnectConfirm ? (
-          <div className="sidebar__disconnect-confirm">
-            <span className="sidebar__disconnect-label">Disconnect?</span>
-            <div className="sidebar__disconnect-actions">
-              <button onClick={handleLogout} className="sidebar__disconnect-btn sidebar__disconnect-btn--confirm">Yes</button>
-              <button onClick={() => setShowDisconnectConfirm(false)} className="sidebar__disconnect-btn">No</button>
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => setShowDisconnectConfirm(true)} className="sidebar__logout">Disconnect</button>
-        )}
+        {/* No confirm step: this only closes the server, it doesn't end the
+            session, so there is nothing to lose by tapping it. */}
+        <button onClick={handleLeaveServer} className="sidebar__logout">
+          <ChevronLeft size={14} />
+          Back to servers
+        </button>
       </div>
 
       {contextMenuChannelId && (

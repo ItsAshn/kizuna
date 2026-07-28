@@ -281,6 +281,45 @@
   flex-shrink: 0;
 }
 
+.welcome__server-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.welcome__server-row .welcome__server-item {
+  min-width: 0;
+}
+
+/* Signed-in marker next to the server name — the dot means "tapping this
+   resumes, it will not ask for a password". */
+.welcome__server-session {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--green, #3ba55d);
+  vertical-align: middle;
+}
+
+.welcome__server-logout {
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.welcome__server-logout:hover {
+  background: var(--red-dim);
+  color: var(--red);
+}
+
 .welcome__dashboard-empty {
   text-align: center;
   padding: var(--space-6) 0;
@@ -509,6 +548,12 @@
 
   .welcome__server-name {
     font-size: 15px;
+  }
+
+  .welcome__server-logout {
+    padding: var(--space-2) var(--space-3);
+    min-height: 44px;
+    font-size: 13px;
   }
 
   .welcome__saved-server {

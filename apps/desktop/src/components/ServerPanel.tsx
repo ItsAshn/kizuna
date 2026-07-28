@@ -92,6 +92,7 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
     activeServerId,
     setActiveServer,
     removeServer,
+    logoutServer,
     reorderServers,
   } = useServerStore()
   const serverMentionCounts = useChatStore((s) => s.serverMentionCounts)
@@ -135,6 +136,18 @@ export default function ServerPanel({ onLoginRequired, onOpenSettings, onOpenExp
   const contextMenuSections: ContextMenuSection[] = contextMenu
     ? [{
         items: [
+          // Log Out ends the session but keeps the server saved; Remove Server
+          // also forgets it. Neither is what the sidebar's back button does —
+          // that just closes the server and leaves the session alone.
+          ...(sessions[contextMenu.serverId]
+            ? [{
+                label: 'Log Out',
+                onClick: () => {
+                  void logoutServer(contextMenu.serverId)
+                  setContextMenu(null)
+                },
+              }]
+            : []),
           {
             label: 'Remove Server',
             onClick: () => {
