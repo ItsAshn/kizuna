@@ -10,6 +10,7 @@ import { checkMessageContent } from '../moderation'
 import type Database from 'better-sqlite3'
 import { getAuth } from '../utils/auth'
 import { getIo, emitToChannel } from '../utils/io'
+import { dispatchOutgoing } from '../services/outgoingWebhooks'
 
 interface ReactionRow {
   message_id: string
@@ -207,6 +208,11 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   message.reactions = []
 
   emitToChannel(c, channelId, 'message:new', message, user.userId)
+  dispatchOutgoing('message.created', {
+    channel: { id: channelId },
+    user: { id: user.userId, username: user.username },
+    message: { id, content: content.trim() },
+  }, { channelId })
 
   const mentions = parseMentions(content.trim())
   try {
@@ -252,6 +258,11 @@ messageRoutes.delete('/:messageId', authMiddleware, async (c) => {
   db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
 
   emitToChannel(c, message.channel_id as string, 'message:delete', { id: messageId, channel_id: message.channel_id as string }, user.userId)
+  dispatchOutgoing('message.deleted', {
+    channel: { id: message.channel_id as string },
+    user: { id: user.userId, username: user.username },
+    message: { id: messageId! },
+  }, { channelId: message.channel_id as string })
 
   return c.json({ ok: true })
 })
@@ -292,6 +303,11 @@ messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
   result.reactions = fetchReactionsForMessages(db, [messageId])[messageId] || []
 
   emitToChannel(c, message.channel_id as string, 'message:edit', result, user.userId)
+  dispatchOutgoing('message.updated', {
+    channel: { id: message.channel_id as string },
+    user: { id: user.userId, username: user.username },
+    message: { id: messageId, content: content.trim() },
+  }, { channelId: message.channel_id as string })
 
   return c.json({ message: result })
 })

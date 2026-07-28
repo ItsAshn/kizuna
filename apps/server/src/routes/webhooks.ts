@@ -6,6 +6,7 @@ import crypto from 'crypto'
 import type { Context } from 'hono'
 import { getAuth } from '../utils/auth'
 import { emitToChannel } from '../utils/io'
+import { dispatchOutgoing } from '../services/outgoingWebhooks'
 import { logAuditEvent } from './audit'
 
 const MAX_CONTENT = 4000
@@ -38,14 +39,20 @@ const SELECT_WEBHOOK = `
 
 /**
  * Webhooks post as the server itself, so managing them is a channel-scoped
- * moderation action: admins always, plus anyone holding manage_channels
+ * moderation action: admins always, plus anyone holding manage_webhooks
  * (honouring per-channel role overrides). Previously *any* authenticated user
  * could create one — and read every token — in any channel.
+ *
+ * This used to key off manage_channels; it moved to its own permission once
+ * outgoing webhooks arrived, since piping channel content to a third party is a
+ * meaningfully different grant from renaming a channel. Existing roles holding
+ * manage_channels were back-filled by the roles_backfill_manage_webhooks
+ * migration, so nobody silently lost access.
  */
 function canManageWebhooks(userId: string, channelId: string): boolean {
   if (isUserAdmin(userId)) return true
   if (!canViewChannel(userId, channelId)) return false
-  return getUserChannelPermission(userId, channelId, 'manage_channels')
+  return getUserChannelPermission(userId, channelId, 'manage_webhooks')
 }
 
 function normalizeName(value: unknown): string | null {
@@ -438,6 +445,13 @@ webhooksRouter.post('/webhooks/incoming/:token', async (c) => {
   // member's personal room, so people who aren't looking at the channel still
   // get an unread badge and a notification. The empty actor id excludes nobody.
   emitToChannel(c, webhook.channel_id, 'message:new', message, '')
+  // viaWebhook lets outgoing hooks opt out of re-broadcasting bridged-in
+  // messages, which is how two bridged servers avoid echoing at each other.
+  dispatchOutgoing('message.created', {
+    channel: { id: webhook.channel_id },
+    user: { username: displayName },
+    message: { id: messageId, content, webhook_id: webhook.id },
+  }, { channelId: webhook.channel_id, viaWebhook: true })
 
   return c.json({ ok: true, messageId })
 })

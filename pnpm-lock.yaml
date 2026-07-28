@@ -123,6 +123,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.12.0
         version: 1.19.14(hono@4.12.27)
+      '@kizuna/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@xenova/transformers':
         specifier: ^2.17.2
         version: 2.17.2

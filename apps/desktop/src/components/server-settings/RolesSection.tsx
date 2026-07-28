@@ -12,6 +12,7 @@ const ALL_PERMISSIONS: { key: Permission; label: string; desc: string }[] = [
   { key: 'upload_attachments', label: 'attach', desc: 'Upload files, images, and attachments' },
   { key: 'delete_messages', label: 'delete', desc: 'Remove messages from any user' },
   { key: 'manage_channels', label: 'channels', desc: 'Create, edit, and delete channels' },
+  { key: 'manage_webhooks', label: 'webhooks', desc: 'Manage incoming and outgoing webhooks' },
   { key: 'manage_roles', label: 'roles', desc: 'Create, edit, delete, and assign roles' },
   { key: 'kick_members', label: 'kick', desc: 'Remove members from the server' },
   { key: 'ban_members', label: 'ban', desc: 'Permanently ban members from the server' },

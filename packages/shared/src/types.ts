@@ -199,6 +199,7 @@ export type Permission =
   | 'upload_attachments'
   | 'delete_messages'
   | 'manage_channels'
+  | 'manage_webhooks'
   | 'manage_roles'
   | 'kick_members'
   | 'ban_members'
@@ -267,6 +268,80 @@ export interface Webhook {
   created_at: number;
   /** Epoch seconds of the last delivery (`null` = never used). */
   last_used_at: number | null;
+}
+
+/** Server events an outgoing webhook can subscribe to. */
+export type OutgoingWebhookEvent =
+  | 'message.created'
+  | 'message.updated'
+  | 'message.deleted'
+  | 'channel.created'
+  | 'channel.updated'
+  | 'channel.deleted'
+  | 'member.joined'
+  | 'member.left'
+  | 'member.removed';
+
+/**
+ * Shape of the request body an outgoing webhook sends.
+ * - `kizuna` — structured JSON, signed with `X-Kizuna-Signature`.
+ * - `discord` — `{ content, username, avatar_url }`, so the target URL can be a
+ *   Discord channel webhook directly.
+ * - `slack` — `{ text }`.
+ */
+export type OutgoingWebhookFormat = 'kizuna' | 'discord' | 'slack';
+
+/** An outgoing webhook — this server POSTing events to an external URL. */
+export interface OutgoingWebhook {
+  id: string;
+  name: string;
+  /** Destination URL. */
+  url: string;
+  /** HMAC-SHA256 signing secret. Only visible to webhook managers. */
+  secret: string;
+  /** `null` = server-wide (all channels, plus member/channel events). */
+  channel_id: string | null;
+  /** Channel name at fetch time (`null` if server-wide or the channel is gone). */
+  channel_name?: string | null;
+  events: OutgoingWebhookEvent[];
+  format: OutgoingWebhookFormat;
+  enabled: boolean;
+  /** Skip messages that themselves arrived via an incoming webhook. */
+  skip_webhook_messages: boolean;
+  created_by: string | null;
+  created_by_username?: string | null;
+  /** Epoch seconds. */
+  created_at: number;
+  /** Epoch seconds of the last delivery attempt (`null` = never). */
+  last_delivery_at: number | null;
+  /** HTTP status of the last attempt (`null` = network error or never sent). */
+  last_status: number | null;
+  last_error: string | null;
+  consecutive_failures: number;
+  /** Set when the server auto-disabled the hook after repeated failures. */
+  disabled_reason: string | null;
+}
+
+/** One delivery attempt against an outgoing webhook. */
+export interface OutgoingWebhookDelivery {
+  id: string;
+  webhook_id: string;
+  event: OutgoingWebhookEvent | 'ping';
+  /** HTTP status (`null` = network error or timeout). */
+  status: number | null;
+  error: string | null;
+  duration_ms: number | null;
+  /** 1-based attempt number within a retry sequence. */
+  attempt: number;
+  /** Epoch seconds. */
+  created_at: number;
+}
+
+/** Result of a manual "send test" delivery. */
+export interface OutgoingWebhookTestResult {
+  status: number | null;
+  duration_ms: number;
+  error: string | null;
 }
 
 /** Authenticated session on a server. */

@@ -1,0 +1,143 @@
+/*
+ * Outgoing webhook management. Deliberately reuses the .webhook-mgr__* classes
+ * from WebhookManager.css for shared structure (list rows, details panel,
+ * confirm strip) — this file only adds what outgoing webhooks need on top.
+ */
+
+.owh__status {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.owh__status--ok {
+  background: var(--brand);
+  box-shadow: 0 0 6px var(--brand-glow);
+}
+
+.owh__status--fail {
+  background: var(--error);
+}
+
+.owh__banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--error);
+  background: var(--error-bg);
+  border-top: 1px solid var(--red-dim-border);
+}
+
+.owh__banner svg {
+  flex-shrink: 0;
+}
+
+.owh__events {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.owh__event-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-2);
+}
+
+.owh__hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.owh__skip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  justify-content: flex-start;
+}
+
+.owh__test {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+}
+
+.owh__test--ok {
+  color: var(--brand);
+  background: var(--brand-dim);
+  border-color: var(--brand-dim-border);
+}
+
+.owh__test--fail {
+  color: var(--error);
+  background: var(--error-bg);
+  border-color: var(--red-dim-border);
+}
+
+.owh__deliveries {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.owh__delivery-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.owh__delivery {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  background: var(--bg-primary);
+  border-radius: var(--radius-xs);
+  border-left: 2px solid var(--text-muted);
+  /* Rows can be wide on narrow screens; scroll the row, never the page. */
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.owh__delivery--ok {
+  border-left-color: var(--brand);
+}
+
+.owh__delivery--fail {
+  border-left-color: var(--error);
+}
+
+.owh__delivery-event {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
+.owh__delivery-attempt,
+.owh__delivery-time {
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .owh__event-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

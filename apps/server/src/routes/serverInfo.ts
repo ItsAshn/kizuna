@@ -9,6 +9,7 @@ import { requirePermission, adminMiddleware, authMiddleware, getUserPermissions,
 import { getAllPeers } from '../socket/voiceHandler'
 import { getAuth } from '../utils/auth'
 import { getIo, emitIo, disconnectUserSockets } from '../utils/io'
+import { dispatchOutgoing } from '../services/outgoingWebhooks'
 import { logAuditEvent } from './audit'
 
 // Atomically claims one use of an invite. Returns false when the code is
@@ -421,6 +422,10 @@ serverInfoRoutes.post('/join/:code', async (c) => {
     clearMemberRemoval(userId)
     assignDefaultRoles(userId)
     emitIo(c, 'member:added', getMemberById(userId))
+    const joined = getUserInfo(userId)
+    dispatchOutgoing('member.joined', {
+      user: { id: userId, username: joined?.username, display_name: joined?.displayName },
+    })
     return c.json({ ok: true, alreadyMember: false })
   }
 
@@ -512,6 +517,11 @@ serverInfoRoutes.delete('/members/:userId', authMiddleware, requirePermission('k
 
   logAuditEvent(db, 'member_kick', user.userId, targetUserId, null)
   emitIo(c, 'member:removed', { userId: targetUserId })
+  dispatchOutgoing('member.removed', {
+    user: { id: targetUserId, username: targetInfo?.username, display_name: targetInfo?.displayName },
+    actor: { id: user.userId, username: user.username },
+    reason: 'kicked',
+  })
   return c.json({ ok: true })
 })
 

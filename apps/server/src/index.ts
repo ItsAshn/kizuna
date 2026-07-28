@@ -7,6 +7,7 @@ import { createWorker, closeWorker } from './media'
 import { loadConfig, validateJwtSecret } from './config'
 import { setTaggingEnabled } from './media/tagGenerator'
 import { applyConfig } from './services/spamFilter'
+import { configureOutgoingWebhooks, startOutgoingWebhooks } from './services/outgoingWebhooks'
 import { openPorts, upnpClient, getMappedPorts } from './services/upnp'
 import { resolvePublicAddress, startIpWatcher } from './services/publicAddress'
 import { startHeartbeat } from './heartbeat'
@@ -59,6 +60,15 @@ async function start(): Promise<void> {
     autoMuteDurationMs: config.SPAM_AUTO_MUTE_DURATION_MS,
     maxViolations: config.SPAM_MAX_VIOLATIONS,
   })
+  configureOutgoingWebhooks({
+    timeoutMs: config.OUTGOING_WEBHOOK_TIMEOUT_MS,
+    maxAttempts: config.OUTGOING_WEBHOOK_MAX_ATTEMPTS,
+    concurrency: config.OUTGOING_WEBHOOK_CONCURRENCY,
+    ratePerMin: config.OUTGOING_WEBHOOK_RATE_PER_MIN,
+    allowPrivateTargets: config.ALLOW_PRIVATE_WEBHOOK_TARGETS,
+    serverName: config.SERVER_NAME,
+    serverUrl: config.SERVER_URL,
+  })
   setTaggingEnabled(config.AUTO_TAGGING_ENABLED)
   if (config.AUTO_TAGGING_ENABLED) {
     console.log('[i] Auto-tagging is enabled. Call POST /api/gifs/load-tagger or use the Server Settings UI to load the CLIP model when ready.')
@@ -77,6 +87,7 @@ async function start(): Promise<void> {
   startAuditLogCleanup()
   startIdentityLinkCleanup()
   startOrphanCleanup()
+  startOutgoingWebhooks()
   console.log('[i] Scheduled cleanup jobs started')
 
   console.log(`[i] Configuring network (UPnP: ${process.env.UPNP_ENABLED !== 'false' ? 'enabled' : 'disabled'})...`)

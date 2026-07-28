@@ -4,6 +4,7 @@ import { getDb } from '../db'
 import { authMiddleware, requirePermission, getUserChannelPermissions, getResolvedChannelPermissions, canViewChannel } from '../middleware/auth'
 import type { HonoEnv } from '../types'
 import { emitIo } from '../utils/io'
+import { dispatchOutgoing } from '../services/outgoingWebhooks'
 
 const channelRoutes = new Hono<HonoEnv>()
 
@@ -59,6 +60,7 @@ channelRoutes.post('/', authMiddleware, requirePermission('manage_channels'), as
   const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(id) as Record<string, unknown>
 
   emitIo(c, 'channel:created', mapChannel(channel))
+  dispatchOutgoing('channel.created', { channel: { id, name: slug } })
 
   return c.json({ channel: mapChannel(channel) }, 201)
 })
@@ -124,6 +126,11 @@ channelRoutes.patch('/:id', authMiddleware, requirePermission('manage_channels')
   const updated = db.prepare('SELECT * FROM channels WHERE id = ?').get(c.req.param('id')) as Record<string, unknown>
 
   emitIo(c, 'channel:updated', mapChannel(updated))
+  dispatchOutgoing(
+    'channel.updated',
+    { channel: { id: c.req.param('id')!, name: updated.name as string } },
+    { channelId: c.req.param('id')! },
+  )
 
   return c.json({ channel: mapChannel(updated) })
 })
@@ -132,14 +139,19 @@ channelRoutes.patch('/:id', authMiddleware, requirePermission('manage_channels')
 channelRoutes.delete('/:id', authMiddleware, requirePermission('manage_channels'), (c) => {
   const id = c.req.param('id')
   const db = getDb()
-  const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(id)
+  const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(id) as { name: string } | undefined
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
+  const channelName = channel.name
   db.prepare('DELETE FROM messages WHERE channel_id = ?').run(id)
   db.prepare('DELETE FROM mentions WHERE channel_id = ?').run(id)
   db.prepare('DELETE FROM channel_reads WHERE channel_id = ?').run(id)
   db.prepare('DELETE FROM channels WHERE id = ?').run(id)
 
   emitIo(c, 'channel:deleted', { id })
+  // Only server-wide hooks see this: an outgoing webhook scoped to this channel
+  // was cascade-deleted along with it a moment ago. The name is captured above
+  // because the row is gone by now.
+  dispatchOutgoing('channel.deleted', { channel: { id: id!, name: channelName } })
 
   return c.json({ ok: true })
 })
@@ -151,7 +163,7 @@ channelRoutes.get('/:id/permissions', authMiddleware, (c) => {
   const perms = getUserChannelPermissions(user.userId, channelId)
   const allPermissions = [
     'send_messages', 'send_dm_messages', 'add_reactions', 'upload_attachments',
-    'delete_messages', 'manage_channels', 'manage_roles', 'kick_members',
+    'delete_messages', 'manage_channels', 'manage_webhooks', 'manage_roles', 'kick_members',
     'manage_invites', 'use_voice', 'initiate_dm_calls',
   ]
   const resolved = getResolvedChannelPermissions(user.userId, channelId, allPermissions)

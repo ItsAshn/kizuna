@@ -11,6 +11,7 @@ import { getMemberById, consumeInviteCode } from '../routes/serverInfo'
 import jwt from 'jsonwebtoken'
 import { getAuth } from '../utils/auth'
 import { getIo, emitIo } from '../utils/io'
+import { dispatchOutgoing } from '../services/outgoingWebhooks'
 
 const authRoutes = new Hono()
 
@@ -99,6 +100,7 @@ authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
     `kizuna_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
   )
   emitIo(c, 'member:added', getMemberById(id))
+  dispatchOutgoing('member.joined', { user: { id, username: user.username, display_name: user.display_name } })
 
   return c.json(
       {
@@ -177,6 +179,7 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
       member = { role: 'member', is_host: 0 }
     }
     emitIo(c, 'member:added', getMemberById(user.id))
+    dispatchOutgoing('member.joined', { user: { id: user.id, username: user.username, display_name: user.display_name } })
   }
 
   const tokenId = uuidv4()
@@ -603,6 +606,7 @@ authRoutes.delete('/me', authMiddleware, async (c) => {
 
   c.header('Set-Cookie', 'kizuna_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0')
   emitIo(c, 'member:removed', { userId: auth.userId })
+  dispatchOutgoing('member.left', { user: { id: auth.userId, username: auth.username } })
   return c.json({ ok: true })
 })
 

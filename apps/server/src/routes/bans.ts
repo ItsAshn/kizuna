@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { logAuditEvent } from '../routes/audit'
 import { getAuth } from '../utils/auth'
 import { emitIo, disconnectUserSockets } from '../utils/io'
+import { dispatchOutgoing } from '../services/outgoingWebhooks'
 
 const banRoutes = new Hono()
 
@@ -75,6 +76,11 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
   clearPermissionCache(targetUserId)
   disconnectUserSockets(c, targetUserId, 'banned')
   emitIo(c, 'member:removed', { userId: targetUserId })
+  dispatchOutgoing('member.removed', {
+    user: { id: targetUserId, username: targetInfo?.username, display_name: targetInfo?.displayName },
+    actor: { id: user.userId, username: user.username },
+    reason: typeof reason === 'string' ? `banned: ${reason}` : 'banned',
+  })
 
   logAuditEvent(db, 'member_ban', user.userId, targetUserId, JSON.stringify({ reason }))
 

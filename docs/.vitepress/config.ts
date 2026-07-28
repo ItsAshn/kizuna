@@ -64,6 +64,7 @@ export default defineConfig({
           text: 'Reference',
           items: [
             { text: 'System Requirements', link: '/reference/requirements' },
+            { text: 'Webhooks', link: '/reference/webhooks' },
             { text: 'Security', link: '/reference/security' },
           ],
         },

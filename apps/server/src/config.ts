@@ -40,6 +40,15 @@ const envSchema = z.object({
   SPAM_MENTION_WINDOW_MS: z.coerce.number().int().positive().default(10000).describe('Mention rate limit window in ms'),
   SPAM_AUTO_MUTE_DURATION_MS: z.coerce.number().int().positive().default(300000).describe('Auto-mute duration in ms after exceeding violations'),
   SPAM_MAX_VIOLATIONS: z.coerce.number().int().positive().default(5).describe('Violations before auto-mute'),
+  OUTGOING_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(10000).describe('Per-request timeout for outgoing webhook deliveries'),
+  OUTGOING_WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().positive().default(4).describe('Delivery attempts before an outgoing webhook event is dropped'),
+  OUTGOING_WEBHOOK_CONCURRENCY: z.coerce.number().int().positive().default(4).describe('Outgoing webhook deliveries in flight at once'),
+  OUTGOING_WEBHOOK_RATE_PER_MIN: z.coerce.number().int().positive().default(60).describe('Max events queued per outgoing webhook per minute; excess is dropped'),
+  ALLOW_PRIVATE_WEBHOOK_TARGETS: z.coerce.boolean().default(false).describe(
+    'Allow outgoing webhooks to target private, loopback, and link-local addresses. ' +
+    'Off by default so a webhook cannot be pointed at services on the host network. ' +
+    'Set to "true" if you are bridging to something on your LAN (e.g. Home Assistant).',
+  ),
   AUTO_TAGGING_ENABLED: z.coerce.boolean().default(false).describe(
     'Enable AI-powered auto-tagging for uploaded GIFs. When enabled, a CLIP ViT-B/32 vision model ' +
     'is loaded on first use (~600MB disk download, cached). The model consumes ~1.2-1.5GB of ' +

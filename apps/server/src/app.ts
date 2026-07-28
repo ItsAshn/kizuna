@@ -33,6 +33,7 @@ import registryRoutes from './routes/registry';
 import identityLinkRoutes from './routes/identityLinks';
 import pollsRoutes from './routes/polls';
 import webhooksRoutes from './routes/webhooks';
+import outgoingWebhookRoutes from './routes/outgoingWebhooks';
 import { authLimiter, messageLimiter, uploadLimiter, apiLimiter, verifyLimiter, mediaLimiter } from './middleware/rateLimiter';
 
 const log = createLogger('app');
@@ -178,6 +179,7 @@ export function createApp(httpPort: number) {
   app.route('/api/registry', registryRoutes);
 
   app.use('/api/*', apiLimiter);
+  app.route('/api/outgoing-webhooks', outgoingWebhookRoutes);
   app.route('/api', pollsRoutes);
   app.route('/api', webhooksRoutes);
 
