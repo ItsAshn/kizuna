@@ -16,6 +16,7 @@ import { prep, checkSocketRateLimit, type MessageRow } from './infra'
 import { getSocketUserId, getSocketUsername } from './helpers'
 import { parseMentions, processMentions } from './mentions'
 import { dispatchOutgoing } from '../../services/outgoingWebhooks'
+import { deleteMessageRows } from '../../services/messageDeletion'
 
 export function registerChannelMessageHandlers(io: Server, socket: Socket): void {
   const userId = getSocketUserId(socket)
@@ -223,21 +224,16 @@ export function registerChannelMessageHandlers(io: Server, socket: Socket): void
       return
     }
 
-    const attachments = db
-      .prepare('SELECT * FROM attachments WHERE message_id = ?')
-      .all(messageId) as { url: string }[]
-    for (const att of attachments) {
+    const attachmentUrls = deleteMessageRows(messageId)
+    for (const url of attachmentUrls) {
       const filepath = path.join(
         process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads'),
-        path.basename(att.url),
+        path.basename(url),
       )
       try {
         fs.unlinkSync(filepath)
       } catch {}
     }
-    db.prepare('DELETE FROM mentions WHERE message_id = ?').run(messageId)
-    db.prepare('DELETE FROM attachments WHERE message_id = ?').run(messageId)
-    db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
     io.to(message.channel_id).emit('message:delete', {
       id: messageId,
       channel_id: message.channel_id,
