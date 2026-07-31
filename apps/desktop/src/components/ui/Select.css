@@ -1,0 +1,54 @@
+/* Matches .input-field geometry (see styles/global.css) so a Select and an
+   Input sitting in the same form row line up exactly. */
+.select-field {
+  /* min-width:0 matters: a native select's content-based minimum is the widest
+     option, which otherwise blows a grid/flex row wider than its container. */
+  min-width: 0;
+  width: 100%;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  /* Right padding leaves room for the chevron drawn below. */
+  padding: var(--space-2) 32px var(--space-2) var(--space-3);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.875rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+
+  /* The native control is not styleable on every engine — WebKitGTK (what the
+     Linux build runs on) paints it with the GTK theme and ignores our colours
+     entirely. Reset it and draw the chevron ourselves. */
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b6b6b'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+
+  /* Long option labels truncate instead of widening the row. */
+  text-overflow: ellipsis;
+}
+
+.select-field:focus {
+  border-color: var(--brand);
+}
+
+.select-field:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The dropdown popup is drawn by the OS and only honours these two. */
+.select-field option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+@media (max-width: 767px) {
+  .select-field {
+    min-height: 44px;
+    font-size: 1rem;
+    padding: 10px 32px 10px 14px;
+  }
+}

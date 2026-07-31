@@ -30,25 +30,16 @@
   align-items: end;
 }
 
+/* Grid items default to min-width:auto, so a wide child (a select sized by its
+   longest option, a long url) widens the track past the settings pane instead
+   of shrinking. Every field in this row must be allowed to shrink. */
+.webhook-mgr__create-fields > * {
+  min-width: 0;
+}
+
 .webhook-mgr__create-fields:only-child,
 .webhook-mgr__create-fields:has(.ui-field:only-child) {
   grid-template-columns: 1fr;
-}
-
-.webhook-mgr__select {
-  width: 100%;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-  color: var(--text-primary);
-  font-size: 0.875rem;
-  outline: none;
-  transition: border-color 0.15s ease;
-}
-
-.webhook-mgr__select:focus {
-  border-color: var(--brand);
 }
 
 .webhook-mgr__error {
@@ -177,13 +168,17 @@
   min-width: 0;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
+  line-height: 1.5;
   color: var(--text-secondary);
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   padding: var(--space-2);
-  overflow-x: auto;
-  white-space: nowrap;
+  /* Urls and secrets wrap rather than scroll — a scroll container here means a
+     stray scrollbar on every expanded webhook, and the value is unreadable
+     until you drag it anyway. */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .webhook-mgr__hint {
@@ -208,8 +203,10 @@
   font-size: var(--fs-xs);
   line-height: 1.5;
   color: var(--text-secondary);
-  overflow-x: auto;
-  white-space: pre;
+  /* pre-wrap keeps the indentation but folds the one overlong line (the url)
+     instead of turning the block into another scroll container. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .webhook-mgr__edit,

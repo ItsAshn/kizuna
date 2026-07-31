@@ -33,6 +33,7 @@ import Button from '../ui/Button'
 import Checkbox from '../ui/Checkbox'
 import IconButton from '../ui/IconButton'
 import Input from '../ui/Input'
+import Select from '../ui/Select'
 import ToggleSwitch from '../ui/ToggleSwitch'
 import { handleApiErr, useMountedRef } from '../server-settings/common'
 import './OutgoingWebhookManager.css'
@@ -313,42 +314,32 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
 
         <div className="webhook-mgr__create-fields">
           {!channel && (
-            <div className="ui-field">
-              <label className="ui-field__label" htmlFor="owh-channel">
-                scope
-              </label>
-              <select
-                id="owh-channel"
-                className="webhook-mgr__select"
-                value={newChannelId}
-                onChange={(e) => setNewChannelId(e.target.value)}
-              >
-                <option value="">all channels (server-wide)</option>
-                {textChannels.map((ch) => (
-                  <option key={ch.id} value={ch.id}>
-                    #{ch.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div className="ui-field">
-            <label className="ui-field__label" htmlFor="owh-format">
-              payload format
-            </label>
-            <select
-              id="owh-format"
-              className="webhook-mgr__select"
-              value={newFormat}
-              onChange={(e) => setNewFormat(e.target.value as OutgoingWebhookFormat)}
+            <Select
+              id="owh-channel"
+              label="scope"
+              value={newChannelId}
+              onChange={(e) => setNewChannelId(e.target.value)}
             >
-              {(Object.keys(FORMAT_LABELS) as OutgoingWebhookFormat[]).map((f) => (
-                <option key={f} value={f}>
-                  {FORMAT_LABELS[f]}
+              <option value="">all channels (server-wide)</option>
+              {textChannels.map((ch) => (
+                <option key={ch.id} value={ch.id}>
+                  #{ch.name}
                 </option>
               ))}
-            </select>
-          </div>
+            </Select>
+          )}
+          <Select
+            id="owh-format"
+            label="payload format"
+            value={newFormat}
+            onChange={(e) => setNewFormat(e.target.value as OutgoingWebhookFormat)}
+          >
+            {(Object.keys(FORMAT_LABELS) as OutgoingWebhookFormat[]).map((f) => (
+              <option key={f} value={f}>
+                {FORMAT_LABELS[f]}
+              </option>
+            ))}
+          </Select>
         </div>
 
         <div className="owh__events">
@@ -506,25 +497,20 @@ export default function OutgoingWebhookManager({ serverUrl, channel }: Props) {
                   </div>
 
                   <div className="webhook-mgr__create-fields">
-                    <div className="ui-field">
-                      <label className="ui-field__label" htmlFor={`owh-fmt-${webhook.id}`}>
-                        payload format
-                      </label>
-                      <select
-                        id={`owh-fmt-${webhook.id}`}
-                        className="webhook-mgr__select"
-                        value={webhook.format}
-                        onChange={(e) =>
-                          patch(webhook.id, { format: e.target.value as OutgoingWebhookFormat })
-                        }
-                      >
-                        {(Object.keys(FORMAT_LABELS) as OutgoingWebhookFormat[]).map((f) => (
-                          <option key={f} value={f}>
-                            {FORMAT_LABELS[f]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <Select
+                      id={`owh-fmt-${webhook.id}`}
+                      label="payload format"
+                      value={webhook.format}
+                      onChange={(e) =>
+                        patch(webhook.id, { format: e.target.value as OutgoingWebhookFormat })
+                      }
+                    >
+                      {(Object.keys(FORMAT_LABELS) as OutgoingWebhookFormat[]).map((f) => (
+                        <option key={f} value={f}>
+                          {FORMAT_LABELS[f]}
+                        </option>
+                      ))}
+                    </Select>
                     <div className="owh__skip">
                       <Checkbox
                         checked={webhook.skip_webhook_messages}
