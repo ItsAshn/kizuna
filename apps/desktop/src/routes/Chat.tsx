@@ -21,7 +21,6 @@ import {
   fetchCategories,
 } from '@kizuna/shared'
 import { restoreFromSession } from '../store/keyStore'
-import { Loader2 } from 'lucide-react'
 import ServerPanel from '../components/ServerPanel'
 import UpdateBanner from '../components/UpdateBanner'
 import Sidebar from '../components/Sidebar'
@@ -34,6 +33,7 @@ import SettingsModal, { type SettingsScope } from '../components/SettingsModal'
 import SetupWizard from '../components/SetupWizard'
 import LoginDialog from '../components/LoginDialog'
 import NotificationContainer from '../components/NotificationContainer'
+import ConnectionBanner from '../components/ConnectionBanner'
 import QuickSwitcher from '../components/QuickSwitcher'
 import IncomingCallModal from '../components/IncomingCallModal'
 import ExportModal from '../components/ExportModal'
@@ -73,9 +73,6 @@ export default function Chat() {
   const serverMentionCounts = useChatStore((s) => s.serverMentionCounts)
   const serverBackgroundEnabled = useSettingsStore((s) => s.serverBackgroundEnabled)
   const customCssEnabled = useSettingsStore((s) => s.customCssEnabled)
-  const socketConnected = useSettingsStore((s) => s.socketConnected)
-  const socketReconnecting = useSettingsStore((s) => s.socketReconnecting)
-  const socketReconnectAttempts = useSettingsStore((s) => s.socketReconnectAttempts)
   const socketRef = useSocket()
   const {
     joinVoice,
@@ -365,9 +362,6 @@ export default function Chat() {
           unreadCounts={unreadCounts}
           serverMentionCounts={serverMentionCounts}
           socketRef={socketRef}
-          socketConnected={socketConnected}
-          socketReconnecting={socketReconnecting}
-          socketReconnectAttempts={socketReconnectAttempts}
           activeVoiceChannelId={activeVoiceChannelId}
           activeChannelId={activeChannelId}
           showMembers={showMembers}
@@ -440,29 +434,7 @@ export default function Chat() {
         }
         data-voice={activeVoiceChannelId ? 'true' : undefined}
       >
-        {!socketConnected && (
-          <div
-            className={`connection-banner${socketReconnecting ? ' connection-banner--reconnecting' : ''}`}
-          >
-            {socketReconnecting ? (
-              <>
-                <Loader2 size={14} className="connection-banner__spinner" />
-                Reconnecting
-                {socketReconnectAttempts > 0 ? ` (attempt ${socketReconnectAttempts})` : ''}...
-              </>
-            ) : (
-              <>
-                Disconnected from server
-                <button
-                  className="connection-banner__reconnect"
-                  onClick={() => socketRef.current?.connect()}
-                >
-                  Reconnect
-                </button>
-              </>
-            )}
-          </div>
-        )}
+        <ConnectionBanner socketRef={socketRef} />
         <div className="nav-panel">
           {servers.length > 0 && (
             <ServerPanel

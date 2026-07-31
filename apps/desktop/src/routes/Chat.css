@@ -163,19 +163,6 @@
   letter-spacing: 0.5px;
 }
 
-/* ── Connection banner ────────────────────────────────────── */
-
-@keyframes connectionBannerSlideDown {
-  from {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -183,50 +170,6 @@
   to {
     transform: rotate(360deg);
   }
-}
-
-.connection-banner {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
-  background: var(--red);
-  color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 8px 16px;
-  text-align: center;
-  animation: connectionBannerSlideDown 0.2s ease-out;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.connection-banner--reconnecting {
-  background: #d97706;
-}
-
-.connection-banner__spinner {
-  animation: spin 1s linear infinite;
-}
-
-.connection-banner__reconnect {
-  background: rgba(255, 255, 255, 0.15);
-  color: var(--text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: var(--radius-sm);
-  padding: 4px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-left: 12px;
-  transition: background 0.15s;
-}
-
-.connection-banner__reconnect:hover {
-  background: rgba(255, 255, 255, 0.25);
 }
 
 /* ── Mobile: bottom tabs + push navigation ─────────────────── */
@@ -242,13 +185,6 @@
     bottom: var(--keyboard-height, 0px);
     overflow: hidden;
     transition: bottom 0.2s ease-out;
-  }
-
-  /* The layout's own safe-area padding sits below the banner (it's
-     absolutely positioned at the screen top), so the banner must clear
-     the notch/status bar itself. */
-  .connection-banner {
-    padding-top: max(env(safe-area-inset-top, 0px), 8px);
   }
 
   /* Content area — fills space between top safe area and bottom tabs */

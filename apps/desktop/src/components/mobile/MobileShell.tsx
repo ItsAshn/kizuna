@@ -1,7 +1,6 @@
 import { useMemo, useCallback, useEffect, useRef, type MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
 import type { SavedServer, DMChannelData, User } from '@kizuna/shared'
-import { Loader2 } from 'lucide-react'
 import { useChatStore } from '../../store/chatStore'
 import BottomTabBar from '../BottomTabBar'
 import Sidebar from '../Sidebar'
@@ -13,6 +12,7 @@ import CameraPreviewOverlay from '../CameraPreviewOverlay'
 import ThreadPanel from '../ThreadPanel'
 import MemberList from '../MemberList'
 import NotificationContainer from '../NotificationContainer'
+import ConnectionBanner from '../ConnectionBanner'
 import MobileServersTab from './MobileServersTab'
 import MobileMessagesTab from './MobileMessagesTab'
 import MobileYouTab from './MobileYouTab'
@@ -30,9 +30,6 @@ interface MobileShellProps {
   unreadCounts: Record<string, number>
   serverMentionCounts: Record<string, number>
   socketRef: MutableRefObject<Socket | null>
-  socketConnected: boolean
-  socketReconnecting: boolean
-  socketReconnectAttempts: number
   activeVoiceChannelId: string | null
   activeChannelId: string | null
   showMembers: boolean
@@ -72,9 +69,6 @@ export default function MobileShell({
   unreadCounts,
   serverMentionCounts,
   socketRef,
-  socketConnected,
-  socketReconnecting,
-  socketReconnectAttempts,
   activeVoiceChannelId,
   activeChannelId,
   showMembers,
@@ -311,28 +305,7 @@ export default function MobileShell({
         }
         data-voice={activeVoiceChannelId ? 'true' : undefined}
       >
-        {!socketConnected && (
-          <div className="connection-banner">
-            {socketReconnecting ? (
-              <>
-                <Loader2 size={14} className="connection-banner__spinner" />
-                Reconnecting
-                {socketReconnectAttempts > 0 ? ` (attempt ${socketReconnectAttempts})` : ''}
-                ...
-              </>
-            ) : (
-              <>
-                Disconnected from server
-                <button
-                  className="connection-banner__reconnect"
-                  onClick={() => socketRef.current?.connect()}
-                >
-                  Reconnect
-                </button>
-              </>
-            )}
-          </div>
-        )}
+        <ConnectionBanner socketRef={socketRef} />
 
         <div className="mobile-content" ref={contentRef}>
           {/* Keyed so each navigation mounts a fresh view, which is what makes
