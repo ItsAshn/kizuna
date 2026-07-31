@@ -6,7 +6,6 @@ mod env;
 mod voice;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use std::collections::HashMap;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use std::sync::Mutex;
 
@@ -35,8 +34,6 @@ static CAMERA_SESSION: Mutex<Option<capture::camera::CameraSession>> = Mutex::ne
 static SESSION_TYPE: Mutex<Option<SessionType>> = Mutex::new(None);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 static VOICE_CONTROLLER: Mutex<Option<VoiceController>> = Mutex::new(None);
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-static VOICE_DECODERS: Mutex<Option<HashMap<String, opus2::Decoder>>> = Mutex::new(None);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 static AUDIO_OUTPUT: Mutex<Option<AudioOutput>> = Mutex::new(None);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -316,6 +313,18 @@ fn voice_set_suppression_strength(strength: f32) -> Result<(), String> {
     }
 }
 
+/// Toggle native acoustic echo cancellation (AEC3).
+///
+/// Unlike the browser path's `echoCancellation` constraint, this does not reopen
+/// the microphone on the OS communications device, so it never pauses other
+/// applications' audio.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn voice_set_echo_cancellation(enabled: bool) -> Result<(), String> {
+    voice::aec::set_enabled(enabled);
+    Ok(())
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn voice_set_auto_gain(enabled: bool) -> Result<(), String> {
@@ -340,46 +349,55 @@ fn voice_flush_peers() -> Result<(), String> {
     }
 }
 
+/// Hand a received Opus packet to the peer's jitter buffer, which decodes it at
+/// playout time (see voice/jitter.rs).
+///
+/// The packet arrives as a raw IPC body rather than a JSON array: at 50 packets
+/// per second per peer, `Array.from(new Uint8Array(...))` was inflating every
+/// payload roughly fivefold and putting a JSON parse in the audio path.
+///
+/// Framing (`x-framing` header):
+///   2 — `[seq: u16 BE][timestamp: u32 BE][opus...]`
+///   1 — bare Opus payload, from a server that predates sequence forwarding
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn voice_inject_opus(_app: tauri::AppHandle, peer_id: String, opus_data: Vec<u8>) -> Result<(), String> {
-    let mut guard = VOICE_DECODERS.lock().map_err(|e| format!("Lock error: {e}"))?;
-    let decoders = guard.get_or_insert_with(HashMap::new);
-    if !decoders.contains_key(&peer_id) {
-        let d = opus2::Decoder::new(48000, opus2::Channels::Mono)
-            .map_err(|e| format!("Opus decoder: {e}"))?;
-        decoders.insert(peer_id.clone(), d);
-    }
-    let decoder = decoders.get_mut(&peer_id).expect("decoder just inserted");
-
-    // 60ms is Opus's maximum frame size; keep the buffer this large so any frame
-    // duration decodes safely. Actual length is taken from the decoded count below.
-    let frame_size = 48000 * 60 / 1000;
-    let mut pcm = vec![0.0f32; frame_size];
-    let samples = match decoder.decode_float(&opus_data, &mut pcm, false) {
-        Ok(n) => n,
-        Err(e) => {
-            // Packet-loss concealment: synthesize one 20ms frame from decoder
-            // state rather than dropping audio (a hard gap/click). Gap-driven FEC
-            // recovery needs RTP sequence numbers — handled by the Phase 3 jitter
-            // buffer; here we conceal isolated decode failures.
-            eprintln!("[voice_inject_opus] decode failed ({e}); concealing one frame");
-            let conceal = 960.min(pcm.len());
-            decoder.decode_float(&[], &mut pcm[..conceal], false).unwrap_or(0)
-        }
+fn voice_inject_opus(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let header = |name: &str| {
+        request
+            .headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
     };
-    pcm.truncate(samples);
 
-    for s in &mut pcm {
-        *s = s.clamp(-1.0, 1.0);
+    let peer_id = header("x-peer-id").ok_or("missing x-peer-id header")?;
+    let framing: u8 = header("x-framing")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
+
+    let body = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes.as_slice(),
+        _ => return Err("voice_inject_opus expects a raw body".into()),
+    };
+
+    let (seq, ts, opus) = if framing >= 2 {
+        if body.len() < 6 {
+            return Err("framed packet shorter than its header".into());
+        }
+        let seq = u16::from_be_bytes([body[0], body[1]]);
+        let ts = u32::from_be_bytes([body[2], body[3], body[4], body[5]]);
+        (Some(seq), Some(ts), &body[6..])
+    } else {
+        (None, None, body)
+    };
+
+    if opus.is_empty() {
+        return Ok(());
     }
 
-    drop(guard);
-
-    // Push to native audio output (replaces voice:remote_audio event)
     let out_guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
     if let Some(ref output) = *out_guard {
-        output.push_pcm(&peer_id, pcm);
+        output.push_packet(&peer_id, seq, ts, opus.to_vec());
     }
 
     Ok(())
@@ -486,12 +504,8 @@ fn voice_set_output_device(device_id: String) -> Result<(), String> {
 fn voice_remove_peer(peer_id: String) -> Result<(), String> {
     let guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
     if let Some(ref output) = *guard {
+        // Drops the peer's jitter buffer, and its Opus decoder with it.
         output.remove_peer(&peer_id);
-    }
-    if let Ok(mut decoders) = VOICE_DECODERS.lock() {
-        if let Some(map) = decoders.as_mut() {
-            map.remove(&peer_id);
-        }
     }
     Ok(())
 }
@@ -667,6 +681,7 @@ pub fn run() {
                     voice_set_suppression_mode,
                     voice_set_suppression_strength,
                     voice_set_auto_gain,
+                    voice_set_echo_cancellation,
                     voice_set_output_volume,
                     voice_set_output_device,
                     voice_remove_peer,

@@ -492,7 +492,11 @@ export function VoiceSection({
                 checked={echoCancellation}
                 onChange={setEchoCancellation}
                 ariaLabel="enable echo cancellation"
-                hint="removes echo when using speakers instead of headphones. leaving this off prevents other apps' audio from being paused when you join a voice channel"
+                hint={
+                  nativeVoice
+                    ? "removes the echo others hear when you use speakers instead of headphones. safe to leave on — unlike the browser version it won't pause other apps' audio"
+                    : "removes echo when using speakers instead of headphones. leaving this off prevents other apps' audio from being paused when you join a voice channel"
+                }
               />
             </div>
           </>

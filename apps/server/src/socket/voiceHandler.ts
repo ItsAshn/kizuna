@@ -65,7 +65,63 @@ export interface PeerInfo {
 
 const peers = new Map<string, PeerInfo>()
 const channelPeers = new Map<string, Set<string>>()
-const socketRtpEnabled = new Set<string>()
+
+/**
+ * Sockets receiving forwarded Opus, mapped to the wire framing they negotiated.
+ *
+ *   1 — bare Opus payload (clients that predate sequence forwarding)
+ *   2 — `[seq: u16 BE][timestamp: u32 BE][opus...]`
+ *
+ * Framing 2 exists because the receiver cannot do anything about packet loss
+ * without sequence numbers: it cannot reorder, it cannot tell a lost frame from
+ * a deliberate DTX pause, and it cannot use the Opus inband FEC the sender is
+ * already paying bitrate for.
+ */
+const socketRtpFraming = new Map<string, number>()
+
+const RTP_HEADER_BYTES = 12
+
+/** Strip the RTP header, returning the Opus payload with its seq and timestamp. */
+function parseRtp(rtpPacket: Buffer): { seq: number; ts: number; payload: Buffer } | null {
+  if (rtpPacket.length < RTP_HEADER_BYTES) return null
+  const hasExtension = (rtpPacket[0]! & 0x10) !== 0
+  const csrcCount = rtpPacket[0]! & 0x0f
+  let offset = RTP_HEADER_BYTES + csrcCount * 4
+  if (hasExtension && offset + 4 <= rtpPacket.length) {
+    const extLen = rtpPacket.readUInt16BE(offset + 2)
+    offset += 4 + extLen * 4
+  }
+  if (offset >= rtpPacket.length) return null
+  return {
+    seq: rtpPacket.readUInt16BE(2),
+    ts: rtpPacket.readUInt32BE(4),
+    payload: rtpPacket.subarray(offset),
+  }
+}
+
+/** Attach the `rtp` forwarder for one audio consumer, in the negotiated framing. */
+function forwardConsumerRtp(
+  socket: Socket,
+  consumer: mediasoupTypes.Consumer,
+  producerPeerId: string,
+): void {
+  consumer.on('rtp', (rtpPacket: Buffer) => {
+    const parsed = parseRtp(rtpPacket)
+    if (!parsed) return
+    // Read the framing per packet: `voice:enableSocketRtp` may land after the
+    // consumer was created, and the socket may have gone away entirely.
+    const framing = socketRtpFraming.get(socket.id)
+    if (framing === undefined) return
+    if (framing >= 2) {
+      const header = Buffer.allocUnsafe(6)
+      header.writeUInt16BE(parsed.seq, 0)
+      header.writeUInt32BE(parsed.ts, 2)
+      socket.emit('voice:socketRtp', Buffer.concat([header, parsed.payload]), producerPeerId)
+    } else {
+      socket.emit('voice:socketRtp', parsed.payload, producerPeerId)
+    }
+  })
+}
 
 let cachedVoiceBitrate: number | null = null
 let voiceBitrateCacheAt = 0
@@ -579,22 +635,8 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
           socket.emit('voice:consumerClosed', { consumerId: consumer.id })
         })
 
-        if (socketRtpEnabled.has(socket.id) && consumer.kind === 'audio') {
-          const forwardingSocket = socket
-          const forwardingPeerId = peerId
-          consumer.on('rtp', (rtpPacket: Buffer) => {
-            const hasExtension = (rtpPacket[0]! & 0x10) !== 0
-            const csrcCount = rtpPacket[0]! & 0x0f
-            let offset = 12 + csrcCount * 4
-            if (hasExtension && offset + 4 <= rtpPacket.length) {
-              const extLen = rtpPacket.readUInt16BE(offset + 2)
-              offset += 4 + extLen * 4
-            }
-            const opusPayload = rtpPacket.subarray(offset)
-            if (opusPayload.length > 0) {
-              forwardingSocket.emit('voice:socketRtp', opusPayload, forwardingPeerId)
-            }
-          })
+        if (socketRtpFraming.has(socket.id) && consumer.kind === 'audio') {
+          forwardConsumerRtp(socket, consumer, peerId)
         }
 
         if (typeof callback === 'function') {
@@ -740,46 +782,43 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     if (typeof callback === 'function') callback({ channels })
   })
 
-  socket.on('voice:enableSocketRtp', () => {
-    vlog('socketRtp', `enabled | socketId=${socket.id}`)
-    socketRtpEnabled.add(socket.id)
+  socket.on(
+    'voice:enableSocketRtp',
+    (opts?: { framing?: number } | Function, callback?: Function) => {
+      // Older clients call this with no arguments at all.
+      const requested = typeof opts === 'object' && opts !== null ? opts.framing : undefined
+      const ack = typeof opts === 'function' ? opts : callback
+      const framing = requested !== undefined && requested >= 2 ? 2 : 1
+      vlog('socketRtp', `enabled | socketId=${socket.id} | framing=${framing}`)
+      socketRtpFraming.set(socket.id, framing)
 
-    const peer = peers.get(socket.id)
-    if (peer) {
-      let count = 0
-      for (const [, consumer] of peer.consumers) {
-        if (consumer.kind !== 'audio') continue
-        // Find which peer owns this producer to get the correct socket ID
-        let producerPeerId = consumer.producerId
-        for (const [sid, p] of peers) {
-          if (p.producers.has(consumer.producerId)) {
-            producerPeerId = sid
-            break
+      // The ack is how a new client learns this server understands framing 2.
+      // An old server never calls back, and the client falls back to framing 1.
+      if (typeof ack === 'function') ack({ framing })
+
+      const peer = peers.get(socket.id)
+      if (peer) {
+        let count = 0
+        for (const [, consumer] of peer.consumers) {
+          if (consumer.kind !== 'audio') continue
+          // Find which peer owns this producer to get the correct socket ID
+          let producerPeerId = consumer.producerId
+          for (const [sid, p] of peers) {
+            if (p.producers.has(consumer.producerId)) {
+              producerPeerId = sid
+              break
+            }
           }
+          forwardConsumerRtp(socket, consumer, producerPeerId)
+          count++
         }
-        const forwardingSocket = socket
-        const forwardingPeerId = producerPeerId
-        consumer.on('rtp', (rtpPacket: Buffer) => {
-          const hasExtension = (rtpPacket[0]! & 0x10) !== 0
-          const csrcCount = rtpPacket[0]! & 0x0f
-          let offset = 12 + csrcCount * 4
-          if (hasExtension && offset + 4 <= rtpPacket.length) {
-            const extLen = rtpPacket.readUInt16BE(offset + 2)
-            offset += 4 + extLen * 4
-          }
-          const opusPayload = rtpPacket.subarray(offset)
-          if (opusPayload.length > 0) {
-            forwardingSocket.emit('voice:socketRtp', opusPayload, forwardingPeerId)
-          }
-        })
-        count++
+        vlog('socketRtp', `registered ${count} existing consumers | socketId=${socket.id}`)
       }
-      vlog('socketRtp', `registered ${count} existing consumers | socketId=${socket.id}`)
-    }
-  })
+    },
+  )
 
   socket.on('disconnect', async () => {
-    socketRtpEnabled.delete(socket.id)
+    socketRtpFraming.delete(socket.id)
     const peer = peers.get(socket.id)
     if (peer) {
       vlog(

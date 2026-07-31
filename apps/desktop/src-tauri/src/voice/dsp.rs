@@ -411,7 +411,11 @@ impl AutoGain {
         });
 
         if frame_rms > self.gate_threshold || self.current_rms > 0.001 {
-            self.current_rms = self.current_rms * self.rms_coeff + frame_rms * (1.0 - self.rms_coeff);
+            // RMS is measured once per frame, so the EMA has to advance by a
+            // whole frame's worth of time. Applying the per-sample coefficient
+            // once per frame stretched the 50ms window to ~48 seconds.
+            let rms_coeff = self.rms_coeff.powi(frame.len() as i32);
+            self.current_rms = self.current_rms * rms_coeff + frame_rms * (1.0 - rms_coeff);
         }
 
         let desired_gain = if self.current_rms < 1e-10 {
@@ -425,9 +429,13 @@ impl AutoGain {
         } else {
             self.release_coeff
         };
-        self.current_gain = self.current_gain * coeff + desired_gain * (1.0 - coeff);
 
+        // Glide the gain per sample. attack/release_coeff are per-sample time
+        // constants; stepping them once per frame made the real attack ~48s and
+        // the real release ~6.4min, so the leveler never actually levelled.
+        // Per-sample smoothing also removes the gain step at frame boundaries.
         for sample in frame.iter_mut() {
+            self.current_gain = self.current_gain * coeff + desired_gain * (1.0 - coeff);
             *sample *= self.current_gain;
         }
     }
@@ -504,10 +512,16 @@ impl PeakLimiter {
         } else {
             self.release_coeff
         };
-        self.current_gain = self.current_gain * coeff + target_gain * (1.0 - coeff);
 
-        // Process samples through the look-ahead delay line
+        // Process samples through the look-ahead delay line, gliding the gain
+        // per sample. attack/release_coeff are per-sample time constants — used
+        // once per 20ms frame they gave a 480ms attack (too slow to catch any
+        // transient) and a 77s release (one loud peak ducked the whole call for
+        // over a minute). Per sample, the 0.5ms attack settles inside the 1ms
+        // look-ahead, which is exactly what the delay line is there for.
         for sample in frame.iter_mut() {
+            self.current_gain = self.current_gain * coeff + target_gain * (1.0 - coeff);
+
             // Swap: send look-ahead buffer sample to output, store new sample
             let delayed = self.lookahead_buf[self.lookahead_pos];
             self.lookahead_buf[self.lookahead_pos] = *sample;
@@ -613,14 +627,19 @@ impl AudioProcessor {
     }
 
     /// Process a frame through the full DSP chain.
-    /// Order: mute → DC-removal HPF → noise_gate → spectral suppression → auto gain control → peak limiter.
-    /// AGC meters from the pre-gate signal to avoid gain pumping when the gate closes.
+    /// Order: DC-removal HPF → echo cancellation → mute → noise suppression →
+    /// noise gate → auto gain control → peak limiter.
+    ///
+    /// Suppression runs *before* the gate, matching WebRTC's APM ordering. Gating
+    /// first meant the gate's threshold decisions were made against the raw noisy
+    /// signal — it chattered in noisy rooms, and its -18dB closed floor leaked
+    /// attenuated noise into the suppressor anyway. Denoising first gives the gate
+    /// a clean signal to threshold on.
+    ///
+    /// AGC meters from the post-suppression, pre-gate signal: that is the true
+    /// speech level, and taking it before the gate avoids gain pumping as the
+    /// gate opens and closes.
     pub fn process_frame(&mut self, frame: &mut [f32]) {
-        if self.muted {
-            frame.fill(0.0);
-            return;
-        }
-
         if self.dc_removal_enabled {
             // Leaky-integrator DC/rumble blocker: dc_state slowly tracks the DC
             // offset, and we subtract it. The integrator must update *slowly*, so
@@ -636,16 +655,20 @@ impl AudioProcessor {
             }
         }
 
-        // Compute pre-gate RMS for AGC metering so gate closure doesn't cause gain pumping
-        let pre_gate_rms = if self.agc_enabled && (self.gate_enabled || self.suppression_mode != NoiseSuppressionMode::Off) {
-            Some((frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32).sqrt())
-        } else {
-            None
-        };
-
-        if self.gate_enabled {
-            self.noise_gate.process_frame(frame);
+        // Echo cancellation sits directly after the high-pass, ahead of every
+        // other capture stage, so the suppressor and gate never see the far end's
+        // voice. It runs while muted too: AEC3 stays converged on the room that
+        // way, so unmuting doesn't leak a second of echo while it re-adapts.
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if let Some(aec) = super::aec::global() {
+            aec.process_capture(frame);
         }
+
+        if self.muted {
+            frame.fill(0.0);
+            return;
+        }
+
         match self.suppression_mode {
             NoiseSuppressionMode::Spectral => {
                 self.spectral_gate.process_frame(frame);
@@ -654,6 +677,17 @@ impl AudioProcessor {
                 self.rnnoise.process_frame(frame);
             }
             NoiseSuppressionMode::Off => {}
+        }
+
+        // Meter for the AGC here: after suppression, before the gate.
+        let pre_gate_rms = if self.agc_enabled && self.gate_enabled {
+            Some((frame.iter().map(|s| s * s).sum::<f32>() / frame.len() as f32).sqrt())
+        } else {
+            None
+        };
+
+        if self.gate_enabled {
+            self.noise_gate.process_frame(frame);
         }
         if self.agc_enabled {
             self.auto_gain.process_frame(frame, pre_gate_rms);

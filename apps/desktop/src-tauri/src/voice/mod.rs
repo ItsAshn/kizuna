@@ -11,6 +11,10 @@ pub mod video;
 pub mod dsp;
 pub mod rnnoise;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub mod jitter;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub mod aec;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod device;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod output;
