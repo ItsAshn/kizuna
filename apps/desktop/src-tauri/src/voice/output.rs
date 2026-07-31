@@ -2,15 +2,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-const SAMPLE_RATE: u32 = 48000;
-const FRAME_SAMPLES: usize = 960;
-const PRIME_FRAMES: usize = 3;
-const MAX_BUFFER_FRAMES: usize = 30;
+use super::jitter::{PeerJitter, Playout, FRAME_SAMPLES};
 
-struct PeerJitter {
-    frames: Vec<Vec<f32>>,
-    primed: bool,
-}
+const SAMPLE_RATE: u32 = 48000;
 
 struct OutputInner {
     peers: HashMap<String, PeerJitter>,
@@ -64,7 +58,10 @@ impl AudioOutput {
         })
     }
 
-    pub fn push_pcm(&self, peer_id: &str, pcm: Vec<f32>) {
+    /// Hand an encoded Opus packet to a peer's jitter buffer. `seq`/`ts` are the
+    /// RTP sequence number and timestamp, absent when the server predates
+    /// sequence forwarding.
+    pub fn push_packet(&self, peer_id: &str, seq: Option<u16>, ts: Option<u32>, opus: Vec<u8>) {
         let mut guard = match self.inner.lock() {
             Ok(g) => g,
             Err(e) => {
@@ -72,24 +69,21 @@ impl AudioOutput {
                 return;
             }
         };
-        let peer = guard
-            .peers
-            .entry(peer_id.to_string())
-            .or_insert_with(|| PeerJitter {
-                frames: Vec::new(),
-                primed: false,
-            });
 
-        peer.frames.push(pcm);
-
-        while peer.frames.len() > MAX_BUFFER_FRAMES {
-            peer.frames.remove(0);
-            eprintln!("[AudioOutput] dropped late frame for peer={peer_id}");
+        if !guard.peers.contains_key(peer_id) {
+            match PeerJitter::new() {
+                Ok(j) => {
+                    guard.peers.insert(peer_id.to_string(), j);
+                }
+                Err(e) => {
+                    eprintln!("[AudioOutput] cannot create jitter buffer for {peer_id}: {e}");
+                    return;
+                }
+            }
         }
 
-        if !peer.primed && peer.frames.len() >= PRIME_FRAMES {
-            peer.primed = true;
-            eprintln!("[AudioOutput] peer={peer_id} primed ({PRIME_FRAMES} frames)");
+        if let Some(peer) = guard.peers.get_mut(peer_id) {
+            peer.push(seq, ts, opus);
         }
     }
 
@@ -133,36 +127,27 @@ impl Drop for AudioOutput {
     }
 }
 
-fn mix_next_frame(inner: &mut OutputInner, out: &mut [f32]) -> MixResult {
+fn mix_next_frame(inner: &mut OutputInner, out: &mut [f32], scratch: &mut [f32]) -> MixResult {
     if inner.peers.is_empty() {
         return MixResult::NoPeers;
     }
 
-    let mut any_primed = false;
     let mut has_data = false;
     out.fill(0.0);
 
     for peer in inner.peers.values_mut() {
-        if !peer.primed {
-            continue;
-        }
-        any_primed = true;
-
-        if let Some(frame) = peer.frames.first() {
-            let len = frame.len().min(out.len());
-            for i in 0..len {
-                out[i] += frame[i];
+        if let Playout::Data = peer.pop_frame(scratch) {
+            for (o, s) in out.iter_mut().zip(scratch.iter()) {
+                *o += *s;
             }
             has_data = true;
-            peer.frames.remove(0);
         }
-        // Underrun: primed but empty — keep primed, output silence for this peer
     }
 
-    if !any_primed {
-        return MixResult::NoPeers;
-    }
     if !has_data {
+        // Peers are present but none have audio ready (priming, or all silent).
+        // Keep feeding the sink so its stream stays running — letting it drain
+        // makes the next talk spurt start with a device-level underrun.
         return MixResult::Silence;
     }
 
@@ -187,6 +172,9 @@ fn mix_next_frame(inner: &mut OutputInner, out: &mut [f32]) -> MixResult {
 fn output_thread(inner: Arc<Mutex<OutputInner>>, cancel: Arc<AtomicBool>) {
     let period = std::time::Duration::from_millis(20);
     let mut mix_buf = vec![0.0f32; FRAME_SAMPLES];
+    // Each peer decodes into this before being summed into the mix.
+    let mut peer_buf = vec![0.0f32; FRAME_SAMPLES];
+    let silence = vec![0.0f32; FRAME_SAMPLES];
     // Absolute-deadline scheduling. Sleeping a fixed `period` each iteration
     // drifts slow: oversleep plus mix/write time pushes the real cadence above
     // 20ms, so we feed the sink fewer than 48000 samples/s. That starves paplay
@@ -207,13 +195,28 @@ fn output_thread(inner: Arc<Mutex<OutputInner>>, cancel: Arc<AtomicBool>) {
                 Ok(g) => g,
                 Err(_) => break,
             };
-            mix_next_frame(&mut guard, &mut mix_buf)
+            mix_next_frame(&mut guard, &mut mix_buf, &mut peer_buf)
         };
 
+        // Hand the echo canceller the signal we are about to play, before it
+        // goes anywhere. This is its far-end reference. It runs every tick, even
+        // when there is nothing to play: AEC3 lines the render and capture
+        // streams up by cadence, so a silent tick still has to be accounted for.
         match result {
-            MixResult::Data => write_output(&mix_buf),
-            MixResult::Silence => write_silence(),
-            MixResult::NoPeers => { /* nothing to output */ }
+            MixResult::Data => {
+                if let Some(aec) = super::aec::global() {
+                    aec.process_render(&mix_buf);
+                }
+                write_output(&mix_buf);
+            }
+            MixResult::Silence | MixResult::NoPeers => {
+                if let Some(aec) = super::aec::global() {
+                    aec.process_render(&silence);
+                }
+                if matches!(result, MixResult::Silence) {
+                    write_silence();
+                }
+            }
         }
 
         let now = std::time::Instant::now();
@@ -244,6 +247,10 @@ fn start_backend(device_id: Option<&str>) -> Result<(), String> {
 
     let dev = device_id.unwrap_or("@DEFAULT_SINK@");
 
+    // Without --latency-msec, paplay takes the server's default playback buffer
+    // (hundreds of ms, historically up to ~2s), and that sits on top of the
+    // jitter buffer as pure end-to-end call delay. 50ms is low enough to be
+    // imperceptible while leaving ~2 frames of slack for the 20ms-paced writer.
     let mut child = Command::new("paplay")
         .args([
             "--device",
@@ -252,6 +259,7 @@ fn start_backend(device_id: Option<&str>) -> Result<(), String> {
             &format!("--rate={SAMPLE_RATE}"),
             "--channels=1",
             "--format=float32le",
+            "--latency-msec=50",
         ])
         .stdin(Stdio::piped())
         .stderr(Stdio::null())

@@ -881,16 +881,36 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         setActiveVoiceChannel(channelId)
         useVoiceStore.getState().setRouterRtpCapabilities(joinResult.routerRtpCapabilities!)
 
-        // Enable Socket.IO RTP forwarding as fallback for broken recv DTLS
-        socket!.emit('voice:enableSocketRtp')
-        vlog('joinVoiceNative', 'enabled socket RTP forwarding')
-        socket?.on('voice:socketRtp', async (payload: ArrayBuffer, peerId: string) => {
-          const { invoke: inv } = await import('@tauri-apps/api/core')
-          inv('voice_inject_opus', { peerId, opusData: Array.from(new Uint8Array(payload)) }).catch(
-            (err) => {
-              console.error('Failed to inject opus data:', err)
-            },
-          )
+        // Enable Socket.IO RTP forwarding as fallback for broken recv DTLS.
+        // Framing 2 prefixes each payload with the RTP sequence number and
+        // timestamp, which the native jitter buffer needs to reorder packets,
+        // drive Opus inband FEC, and tell a DTX pause from real loss. Servers
+        // that predate it never ack, so fall back to bare payloads.
+        const framing = await new Promise<number>((resolve) => {
+          const timer = setTimeout(() => resolve(1), 2000)
+          socket!.emit('voice:enableSocketRtp', { framing: 2 }, (res?: { framing?: number }) => {
+            clearTimeout(timer)
+            resolve(res?.framing === 2 ? 2 : 1)
+          })
+        })
+        vlog('joinVoiceNative', `enabled socket RTP forwarding (framing=${framing})`)
+        if (framing < 2) {
+          vlog('joinVoiceNative', 'server predates RTP seq forwarding — FEC/reordering disabled')
+        }
+
+        // Hoisted out of the packet handler: this fires ~50x/sec per peer, and
+        // the payload goes over IPC as a raw body rather than a JSON number array.
+        const { invoke: injectInvoke } = await import('@tauri-apps/api/core')
+        const injectHeaders: Record<string, Record<string, string>> = {}
+        socket?.on('voice:socketRtp', (payload: ArrayBuffer, peerId: string) => {
+          let headers = injectHeaders[peerId]
+          if (!headers) {
+            headers = { 'x-peer-id': peerId, 'x-framing': String(framing) }
+            injectHeaders[peerId] = headers
+          }
+          injectInvoke('voice_inject_opus', payload, { headers }).catch((err) => {
+            console.error('Failed to inject opus data:', err)
+          })
         })
 
         const iceServers = joinResult.iceServers || []
@@ -987,6 +1007,11 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         })
         vlog('joinVoiceNative', 'finish_join OK')
 
+        // Native AEC3, applied to the capture stream against the mix we play
+        // out. Unlike the browser path this doesn't reopen the mic on the OS
+        // communications device, so it has no effect on other apps' audio.
+        await invoke('voice_set_echo_cancellation', { enabled: echoCancellation })
+
         // Set initial output volume
         await invoke('voice_set_output_volume', { volume: outputVolume / 100 })
 
@@ -1056,6 +1081,11 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       noiseGateThreshold,
       noiseSuppression,
       noiseSuppressionStrength,
+      // autoGainControl was already read inside this callback but missing here,
+      // so a join used whichever value was current when the callback last got
+      // rebuilt rather than the user's actual setting.
+      autoGainControl,
+      echoCancellation,
     ],
   )
 
