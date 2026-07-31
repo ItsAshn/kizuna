@@ -9,6 +9,12 @@
    ══════════════════════════════════════════════════════════════ */
 
 :root {
+  /* The palette below is dark-only. Telling the engine so keeps OS-drawn UI —
+     native <select> popups, form controls, default scrollbars — from rendering
+     light-on-light. WebKitGTK in particular paints an unstyled control with the
+     GTK theme and ignores our colours entirely without this. */
+  color-scheme: dark;
+
   /* Spacing scale (px values, just named) */
   --space-1: 4px;
   --space-2: 8px;
@@ -191,6 +197,9 @@ body {
 
 *::-webkit-scrollbar {
   width: 6px;
+  /* Without an explicit height, horizontal bars fall back to the engine
+     default (~15px) and read as a chunky stripe next to the 6px vertical ones. */
+  height: 6px;
 }
 
 *::-webkit-scrollbar-track {

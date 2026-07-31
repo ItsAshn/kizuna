@@ -25,6 +25,7 @@ import Avatar from '../ui/Avatar'
 import Button from '../ui/Button'
 import IconButton from '../ui/IconButton'
 import Input from '../ui/Input'
+import Select from '../ui/Select'
 import { handleApiErr, useMountedRef } from '../server-settings/common'
 import './WebhookManager.css'
 
@@ -228,24 +229,19 @@ export default function WebhookManager({ serverUrl, channel }: Props) {
             }}
           />
           {!channel && (
-            <div className="ui-field webhook-mgr__channel-field">
-              <label className="ui-field__label" htmlFor="webhook-channel">
-                channel
-              </label>
-              <select
-                id="webhook-channel"
-                className="webhook-mgr__select"
-                value={newChannelId}
-                onChange={(e) => setNewChannelId(e.target.value)}
-              >
-                {textChannels.length === 0 && <option value="">no text channels</option>}
-                {textChannels.map((ch) => (
-                  <option key={ch.id} value={ch.id}>
-                    #{ch.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Select
+              id="webhook-channel"
+              label="channel"
+              value={newChannelId}
+              onChange={(e) => setNewChannelId(e.target.value)}
+            >
+              {textChannels.length === 0 && <option value="">no text channels</option>}
+              {textChannels.map((ch) => (
+                <option key={ch.id} value={ch.id}>
+                  #{ch.name}
+                </option>
+              ))}
+            </Select>
           )}
         </div>
         <Button onClick={handleCreate} loading={creating} disabled={!canCreate}>
