@@ -421,8 +421,11 @@ jobs:
           fi
 
   publish-release:
+    # No `if: always()` here on purpose. A job with `needs` is skipped when any
+    # of them fails, which is what we want: a half-built release stays a draft
+    # instead of appearing on the releases page missing a platform, and the
+    # updater manifest below is only generated once every bundle exists.
     needs: [build-docker, build-desktop-windows, build-desktop-linux, build-desktop-macos, build-desktop-android]
-    if: always() && !cancelled()
     runs-on: ubuntu-latest
     permissions:
       contents: write
