@@ -23,6 +23,23 @@
   --space-5: 20px;
   --space-6: 24px;
 
+  /* ── Colour primitives ──────────────────────────────────────
+     Every translucent variant below is derived from one of these solid
+     colours with color-mix, so a theme overrides one plain colour and every
+     tint, dim, glow and scrim built on it follows. That is what makes a
+     whole-app retheme a handful of declarations rather than a hunt through
+     79 stylesheets — see docs/guide/theming.md. */
+
+  /* The veil under modals and over media. Dark even in a light theme, since
+     it exists to push contrast under white overlay text. */
+  --scrim: #000000;
+  /* The film used for hover states and for controls floating on top of media
+     (image overlays, video chrome). Invert this for a light theme. */
+  --surface-tint: #ffffff;
+  /* Every shadow is cast in this colour; only the geometry differs per
+     elevation. Set it to a brand hue to turn every shadow into a glow. */
+  --shadow: #000000;
+
   --bg-primary: #0a0a0a;
   --bg-secondary: #111111;
   --bg-tertiary: #1a1a1a;
@@ -32,23 +49,36 @@
   --text-secondary: #a0a0a0;
   --text-muted: #808080;
   --border-color: #2a2a2a;
+  /* Hairline separators over translucent chrome — lighter than
+     --border-color so glass bars keep their edge without a hard line. */
+  --border-hairline: color-mix(in srgb, var(--surface-tint) 6%, transparent);
   --brand: #a1d93f;
   --brand-hover: #8cc22e;
-  --brand-dim: rgba(161, 217, 63, 0.15);
-  --brand-dim-border: rgba(161, 217, 63, 0.25);
-  --brand-glow: rgba(161, 217, 63, 0.2);
+  --brand-dim: color-mix(in srgb, var(--brand) 15%, transparent);
+  --brand-dim-border: color-mix(in srgb, var(--brand) 25%, transparent);
+  --brand-glow: color-mix(in srgb, var(--brand) 20%, transparent);
   --accent-color: #a1d93f;
   --bg-surface: #1a1a1a;
-  --modal-bg: rgba(17, 17, 17, 0.94);
-  --modal-backdrop: rgba(0, 0, 0, 0.6);
+  --modal-bg: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
+  --modal-backdrop: color-mix(in srgb, var(--scrim) 60%, transparent);
+  /* Translucent chrome: bars and sheets that blur what is behind them. */
+  --glass-primary: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+  --glass-secondary: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+  --glass-secondary-weak: color-mix(in srgb, var(--bg-secondary) 65%, transparent);
+  /* Letterbox behind video and screen shares. */
+  --media-bg: #000000;
   --red: #ff4d4d;
   --red-hover: #ff3333;
-  --red-dim: rgba(255, 77, 77, 0.15);
-  --red-dim-border: rgba(255, 77, 77, 0.3);
+  --red-dim: color-mix(in srgb, var(--red) 15%, transparent);
+  --red-dim-border: color-mix(in srgb, var(--red) 30%, transparent);
   --green: #40c057;
-  --green-dim: rgba(64, 192, 87, 0.15);
-  --green-dim-border: rgba(64, 192, 87, 0.2);
+  --green-hover: color-mix(in srgb, var(--green) 85%, #000);
+  --green-dim: color-mix(in srgb, var(--green) 15%, transparent);
+  --green-dim-border: color-mix(in srgb, var(--green) 20%, transparent);
+  --green-glow: color-mix(in srgb, var(--green) 50%, transparent);
   --yellow: #fab005;
+  --yellow-dim: color-mix(in srgb, var(--yellow) 15%, transparent);
+  --yellow-dim-border: color-mix(in srgb, var(--yellow) 30%, transparent);
   --gray: #6b7280;
   --avatar-bg-default: #374151;
   --success: #4ade80;
@@ -56,8 +86,19 @@
   --warning: #fbbf24;
   --success-faded: #86efac;
   --error-faded: #fca5a5;
-  --error-bg: rgba(248, 113, 113, 0.12);
-  --success-bg: rgba(74, 222, 128, 0.12);
+  --error-bg: color-mix(in srgb, var(--error) 12%, transparent);
+  --success-bg: color-mix(in srgb, var(--success) 12%, transparent);
+
+  /* ── "On" colours ───────────────────────────────────────────
+     What text and icons turn when they sit on a filled surface rather than
+     on the page background. Split out because a theme with a pale brand
+     needs dark labels on its buttons while everything else stays light. */
+  --on-brand: #ffffff;
+  --on-danger: #ffffff;
+  --on-success: #ffffff;
+  --on-warning: #000000;
+  --on-media: #ffffff;
+
   --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -68,12 +109,32 @@
   --focus-ring: 0 0 0 2px var(--bg-primary), 0 0 0 3.5px var(--brand);
 
   /* Elevation scale — the single source for surface shadows. Replaces the
-     inline box-shadow literals that were scattered across component CSS. */
+     inline box-shadow literals that were scattered across component CSS.
+     --elev-1..3 rise off the page, --elev-4/-up cast upward for bars and
+     sheets anchored to the bottom edge. */
   --elev-0: none;
-  --elev-1: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --elev-2: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --elev-3: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
-  --elev-4: 0 -8px 32px rgba(0, 0, 0, 0.5);
+  --elev-1: 0 1px 3px color-mix(in srgb, var(--shadow) 30%, transparent);
+  --elev-2: 0 4px 12px color-mix(in srgb, var(--shadow) 40%, transparent);
+  --elev-3:
+    0 8px 32px color-mix(in srgb, var(--shadow) 50%, transparent),
+    0 2px 8px color-mix(in srgb, var(--shadow) 30%, transparent);
+  --elev-4: 0 -8px 32px color-mix(in srgb, var(--shadow) 50%, transparent);
+  --elev-up-1: 0 -1px 4px color-mix(in srgb, var(--shadow) 40%, transparent);
+  --elev-up-2: 0 -4px 24px color-mix(in srgb, var(--shadow) 50%, transparent);
+
+  /* Syntax highlighting — the code-block palette (Material Palenight).
+     Kept as tokens so a theme can restyle code without a stylesheet of
+     .hljs-* overrides; --code-fg is the default for anything unmapped. */
+  --code-fg: #e0e0e0;
+  --code-keyword: #c792ea;
+  --code-type: #82aaff;
+  --code-builtin: #ffcb6b;
+  --code-number: #f78c6c;
+  --code-string: #c3e88d;
+  --code-symbol: #89ddff;
+  --code-comment: #546e7a;
+  --code-attr: #ffcb6b;
+  --code-invalid: #f07178;
 
   /* Z-index scale — named layers so stacking is legible instead of magic
      numbers. Keep component z-index values pinned to these. */
@@ -433,7 +494,7 @@ select:focus:not(:focus-visible) {
   padding: 4px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-color);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--elev-2);
   pointer-events: none;
   opacity: 0;
   transition:

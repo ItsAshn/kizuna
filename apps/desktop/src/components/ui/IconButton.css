@@ -55,12 +55,12 @@
 /* Controls sitting over media (lightbox, screen-share preview): a translucent
    surface on a dark backdrop. No scale-lift — matches the original overlays. */
 .icon-btn--floating {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--surface-tint) 10%, transparent);
   color: var(--text-primary);
 }
 
 .icon-btn--floating:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--surface-tint) 20%, transparent);
   color: var(--text-primary);
   transform: none;
 }

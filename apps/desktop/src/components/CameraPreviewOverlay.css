@@ -7,7 +7,7 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--shadow) 40%, transparent);
   width: 320px;
   resize: both;
   display: flex;
@@ -42,7 +42,7 @@
 
 .camera-overlay__body {
   position: relative;
-  background: #000;
+  background: var(--media-bg);
   aspect-ratio: 4 / 3;
   display: flex;
   align-items: center;

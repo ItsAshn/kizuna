@@ -56,8 +56,8 @@
   position: absolute;
   top: 4px;
   right: 4px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background: color-mix(in srgb, var(--scrim) 60%, transparent);
+  color: var(--on-media);
   border: none;
   border-radius: 4px;
   padding: 4px;
@@ -80,8 +80,8 @@
   position: absolute;
   top: 4px;
   right: 26px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background: color-mix(in srgb, var(--scrim) 60%, transparent);
+  color: var(--on-media);
   border: none;
   border-radius: 4px;
   padding: 4px;
@@ -97,15 +97,15 @@
 }
 
 .server-menu__gif-edit:hover {
-  background: var(--accent, #5b7cfa);
+  background: var(--accent-color);
 }
 
 .server-menu__gif-ai {
   position: absolute;
   top: 4px;
   right: 48px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background: color-mix(in srgb, var(--scrim) 60%, transparent);
+  color: var(--on-media);
   border: none;
   border-radius: 4px;
   padding: 4px;
@@ -124,7 +124,7 @@
 }
 
 .server-menu__gif-ai:hover {
-  background: var(--accent, #5b7cfa);
+  background: var(--accent-color);
 }
 
 .server-menu__gif-popover {
@@ -140,7 +140,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--shadow) 30%, transparent);
 }
 
 .server-menu__gif-popover input {
@@ -156,7 +156,7 @@
 }
 
 .server-menu__gif-popover input:focus {
-  border-color: var(--accent, #5b7cfa);
+  border-color: var(--accent-color);
 }
 
 .server-menu__gif-popover-actions {
@@ -175,8 +175,8 @@
 }
 
 .server-menu__gif-popover-btn--save {
-  background: var(--accent, #5b7cfa);
-  color: #fff;
+  background: var(--accent-color);
+  color: var(--on-brand);
 }
 
 .server-menu__gif-popover-btn--cancel {
@@ -236,15 +236,15 @@
 }
 
 .server-menu__gif-suggested-tag:hover {
-  background: var(--accent, #5b7cfa);
-  color: #fff;
-  border-color: var(--accent, #5b7cfa);
+  background: var(--accent-color);
+  color: var(--on-brand);
+  border-color: var(--accent-color);
 }
 
 .server-menu__gif-suggested-tag--accepted {
-  background: var(--accent, #5b7cfa);
-  color: #fff;
-  border-color: var(--accent, #5b7cfa);
+  background: var(--accent-color);
+  color: var(--on-brand);
+  border-color: var(--accent-color);
   opacity: 0.7;
   cursor: default;
 }

@@ -19,7 +19,7 @@
   border-radius: 50%;
   border: none;
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   cursor: pointer;
   flex-shrink: 0;
   transition: transform 0.1s;

@@ -69,7 +69,7 @@
   background: var(--modal-bg);
   border-top: 1px solid var(--border-color);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--elev-4);
   animation: bottomSheetIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: transform;
 }

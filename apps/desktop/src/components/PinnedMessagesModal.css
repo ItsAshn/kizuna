@@ -157,7 +157,7 @@
 }
 
 .pins-modal__item-unpin:hover {
-  color: #ef4444;
+  color: var(--red);
 }
 
 @media (max-width: 767px) {

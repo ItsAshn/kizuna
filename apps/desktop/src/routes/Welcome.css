@@ -45,9 +45,7 @@
   border-radius: var(--radius-lg);
   padding: var(--space-6);
   border: 1px solid var(--border-color);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.5),
-    0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--elev-3);
 }
 
 .welcome__card-title {
@@ -185,7 +183,7 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--shadow) 30%, transparent);
 }
 
 .welcome__dashboard-panel-header {
@@ -492,7 +490,7 @@
     color 0.15s,
     border-color 0.15s,
     background 0.15s;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--shadow) 30%, transparent);
 }
 
 .welcome__settings-btn:hover {

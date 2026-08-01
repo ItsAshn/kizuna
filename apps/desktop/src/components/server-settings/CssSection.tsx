@@ -4,6 +4,56 @@ import { updateServerSettings, fetchServerInfo } from '@kizuna/shared'
 import { handleApiErr, useMountedRef } from './common'
 import './CssSection.css'
 
+/**
+ * Shown in the empty editor. Mirrors the real defaults in styles/global.css —
+ * the tokens most people reach for first, with the derived ones (--brand-dim,
+ * the elevation scale) left out since they follow from their primitive.
+ */
+const CSS_PLACEHOLDER = `/* Kizuna custom CSS — override any variable below. */
+:root {
+  /* Backgrounds */
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #111111;
+  --bg-tertiary: #1a1a1a;
+  --bg-hover: #262626;
+  --bg-active: #2d2d2d;
+
+  /* Text */
+  --text-primary: #ffffff;
+  --text-secondary: #a0a0a0;
+  --text-muted: #808080;
+
+  /* Borders */
+  --border-color: #2a2a2a;
+
+  /* Brand — the dim/glow variants derive from these */
+  --brand: #a1d93f;
+  --brand-hover: #8cc22e;
+  --accent-color: #a1d93f;
+
+  /* Semantic */
+  --red: #ff4d4d;
+  --green: #40c057;
+  --yellow: #fab005;
+
+  /* Labels sitting on a filled surface */
+  --on-brand: #ffffff;
+  --on-danger: #ffffff;
+
+  /* Shadows are all cast in this colour — try a brand hue for glows */
+  --shadow: #000000;
+
+  /* Shape */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Font (locally installed families only — url() is not allowed) */
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}`
+
 export function CssSection({
   serverUrl,
   onBackgroundChanged,
@@ -75,7 +125,8 @@ export function CssSection({
   return (
     <section className="server-menu__section--grow">
       <p className="server-menu__css-hint" style={{ marginBottom: '8px' }}>
-        Override CSS variables to theme your server. Changes preview live.
+        Override CSS variables to theme your server. Changes preview live. Full token reference and
+        an example theme: use-kizuna.com/kizuna/guide/theming
       </p>
       <div className="server-menu__css-body">
         <textarea
@@ -83,7 +134,7 @@ export function CssSection({
           value={customCss}
           onChange={(e) => setCustomCss(e.target.value.slice(0, 50000))}
           maxLength={50000}
-          placeholder={`/* Kizuna Custom CSS — override any variable below */\n:root {\n  /* Backgrounds */\n  --bg-primary: #0a0a0a;\n  --bg-secondary: #111111;\n  --bg-tertiary: #1a1a1a;\n  --bg-hover: #262626;\n  --bg-active: #2d2d2d;\n\n  /* Text */\n  --text-primary: #ffffff;\n  --text-secondary: #a0a0a0;\n  --text-muted: #6b6b6b;\n\n  /* Borders */\n  --border-color: #2a2a2a;\n\n  /* Brand / Accent */\n  --brand: #4c6ef5;\n  --brand-hover: #4263eb;\n  --brand-dim: rgba(76, 110, 245, 0.15);\n  --accent-color: #6366f1;\n\n  /* Semantic colors */\n  --red: #ff4d4d;\n  --red-hover: #ff3333;\n  --red-dim: rgba(255, 77, 77, 0.15);\n  --red-dim-border: rgba(255, 77, 77, 0.30);\n  --green: #40c057;\n  --green-dim: rgba(64, 192, 87, 0.15);\n  --green-dim-border: rgba(64, 192, 87, 0.20);\n  --yellow: #fab005;\n\n  /* Border radius */\n  --radius-sm: 8px;\n  --radius-md: 12px;\n  --radius-lg: 16px;\n  --radius-xl: 24px;\n  --radius-full: 9999px;\n\n  /* Font */\n  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;\n}`}
+          placeholder={CSS_PLACEHOLDER}
           spellCheck={false}
         />
         <div className="server-menu__save-row" style={{ marginTop: 0 }}>

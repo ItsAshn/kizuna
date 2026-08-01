@@ -7,7 +7,7 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--shadow) 40%, transparent);
   min-width: 320px;
   max-width: 640px;
   width: 400px;
@@ -49,7 +49,7 @@
 
 .screenshare-overlay__body {
   position: relative;
-  background: #000;
+  background: var(--media-bg);
   aspect-ratio: 16 / 10;
   display: flex;
   align-items: center;
@@ -168,7 +168,7 @@
 }
 
 .voice-header__btn--screenshare:hover {
-  background: rgba(34, 197, 94, 0.15);
+  background: color-mix(in srgb, var(--green) 15%, transparent);
 }
 
 .voice-header__btn--screenshare-active {
