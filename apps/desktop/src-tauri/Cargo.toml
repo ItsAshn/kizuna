@@ -65,10 +65,17 @@ bytes = "1"
 nnnoiseless = "0.4"
 ringbuf = "0.5"
 nokhwa = "0.10"
+
 # Acoustic echo cancellation (AEC3). `bundled` compiles and statically links
 # WebRTC's audio processing module, so users need no extra runtime library and
 # no distro is left without echo cancellation. Costs ~40s on a cold 4-core
 # build and nothing on a warm one.
+#
+# Windows is excluded because webrtc-audio-processing-sys 2.1.0 does not build
+# with MSVC — build.rs passes GCC-only flags (`-Wno-unused-parameter`), expects
+# `.a` archives, and prefixes symbols with rust-objcopy. voice/aec.rs falls back
+# to a stub there. Lifting this means porting the -sys crate, ideally upstream.
+[target.'cfg(not(any(target_os = "android", target_os = "ios", target_os = "windows")))'.dependencies]
 webrtc-audio-processing = { version = "2", features = ["bundled"] }
 
 [features]

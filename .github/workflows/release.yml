@@ -69,14 +69,6 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
-    # The bundled webrtc-audio-processing build nests abseil objects deep enough
-    # that the default target dir under the workspace pushes paths past MAX_PATH,
-    # and cl.exe is not long-path aware — it fails with a bare
-    # "C1083: Cannot open compiler generated file: ''". Building from a short
-    # root keeps the longest object path around 220 characters. D: is the drive
-    # the workspace lives on.
-    env:
-      CARGO_TARGET_DIR: D:\kz
     steps:
       - uses: actions/checkout@v4
 
@@ -92,13 +84,8 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # webrtc-audio-processing (AEC3) is statically linked from source via its
-      # `bundled` feature, and that build is driven by meson + ninja.
-      - name: Setup MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Install meson and ninja
-        run: pip install meson ninja
+      # No meson/ninja here, unlike the Linux and macOS jobs: AEC3 is excluded on
+      # Windows because its -sys crate cannot be built with MSVC (see Cargo.toml).
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -119,13 +106,6 @@ jobs:
         working-directory: apps/desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          # webrtc-audio-processing's meson.build pins cpp_std=c++17, but its
-          # agc2 code uses designated initializers. GCC and Clang accept those
-          # as a C++17 extension; MSVC rejects them (error C7555). build.rs
-          # exposes no way to pass -Dcpp_std, so override through the
-          # environment — meson appends CXXFLAGS after the built-in /std flag
-          # and the last one wins.
-          CXXFLAGS: /std:c++20
         run: pnpm tauri build
 
       - name: Upload to release
@@ -134,16 +114,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           shopt -s nullglob
-          # Bundles land under CARGO_TARGET_DIR, not the workspace (see above).
+          BUNDLE_DIR="apps/desktop/src-tauri/target/release/bundle"
           FILES=(
-            /d/kz/release/bundle/msi/*.msi
-            /d/kz/release/bundle/msi/*.msi.sig
-            /d/kz/release/bundle/nsis/*.exe
-            /d/kz/release/bundle/nsis/*.exe.sig
+            "$BUNDLE_DIR"/msi/*.msi
+            "$BUNDLE_DIR"/msi/*.msi.sig
+            "$BUNDLE_DIR"/nsis/*.exe
+            "$BUNDLE_DIR"/nsis/*.exe.sig
           )
           if [ ${#FILES[@]} -eq 0 ]; then
-            echo "ERROR: no Windows bundles found under /d/kz/release/bundle"
-            ls -R /d/kz/release/bundle 2>/dev/null || echo "  Directory does not exist"
+            echo "ERROR: no Windows bundles found under $BUNDLE_DIR"
+            ls -R "$BUNDLE_DIR" 2>/dev/null || echo "  Directory does not exist"
             exit 1
           fi
           gh release upload "$GITHUB_REF_NAME" "${FILES[@]}" \

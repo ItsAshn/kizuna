@@ -13,23 +13,36 @@
 // The two streams are fed from different threads (output thread and the audio
 // send task). That is the access pattern WebRTC's AudioProcessing is built for:
 // it locks the render and capture paths separately.
+//
+// Windows is the exception. webrtc-audio-processing-sys 2.1.0 cannot be built
+// with MSVC: its build script passes GCC-only compiler flags, looks for `.a`
+// archives, and prefixes symbols with rust-objcopy. The dependency is therefore
+// excluded on Windows (see Cargo.toml) and the stub at the bottom of this file
+// takes over. Every call site already treats a `None` from `global()` as "no
+// echo cancellation available", which is what Windows had before AEC3 landed.
 
+#[cfg(not(windows))]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(not(windows))]
 use std::sync::OnceLock;
 
+#[cfg(not(windows))]
 use webrtc_audio_processing::{
     config::{Config, EchoCanceller as EchoCancellerConfig, HighPassFilter},
     Processor,
 };
 
 /// AEC3 works on 10ms frames; the voice pipeline works on 20ms frames.
+#[cfg(not(windows))]
 const AEC_FRAME_SAMPLES: usize = 480;
 
+#[cfg(not(windows))]
 pub struct EchoCanceller {
     processor: Processor,
     enabled: AtomicBool,
 }
 
+#[cfg(not(windows))]
 impl EchoCanceller {
     fn new() -> Result<Self, String> {
         let processor =
@@ -101,6 +114,7 @@ impl EchoCanceller {
     }
 }
 
+#[cfg(not(windows))]
 static AEC: OnceLock<Option<EchoCanceller>> = OnceLock::new();
 
 /// The process-wide echo canceller, or `None` if AEC3 could not be initialised.
@@ -108,6 +122,7 @@ static AEC: OnceLock<Option<EchoCanceller>> = OnceLock::new();
 /// One instance is kept for the life of the process rather than per call: AEC3
 /// takes a moment to converge on the room's impulse response, and rebuilding it
 /// on every join would throw that away.
+#[cfg(not(windows))]
 pub fn global() -> Option<&'static EchoCanceller> {
     AEC.get_or_init(|| match EchoCanceller::new() {
         Ok(a) => {
@@ -122,9 +137,45 @@ pub fn global() -> Option<&'static EchoCanceller> {
     .as_ref()
 }
 
+#[cfg(not(windows))]
 pub fn set_enabled(enabled: bool) {
     if let Some(aec) = global() {
         aec.set_enabled(enabled);
         eprintln!("[AEC] enabled={enabled}");
     }
 }
+
+// ── Windows stub ──────────────────────────────────────────────────────────
+//
+// Mirrors the API above so the call sites need no cfg of their own. `global()`
+// returning `None` is already the "AEC3 unavailable" path they handle, so voice
+// on Windows behaves exactly as it did before AEC3 was introduced. The methods
+// are unreachable while `global()` is `None`, but they have to exist for the
+// call sites to type-check.
+
+#[cfg(windows)]
+pub struct EchoCanceller {
+    _private: (),
+}
+
+#[cfg(windows)]
+#[allow(dead_code)]
+impl EchoCanceller {
+    pub fn set_enabled(&self, _enabled: bool) {}
+
+    pub fn is_enabled(&self) -> bool {
+        false
+    }
+
+    pub fn process_render(&self, _frame: &[f32]) {}
+
+    pub fn process_capture(&self, _frame: &mut [f32]) {}
+}
+
+#[cfg(windows)]
+pub fn global() -> Option<&'static EchoCanceller> {
+    None
+}
+
+#[cfg(windows)]
+pub fn set_enabled(_enabled: bool) {}
