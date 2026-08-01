@@ -84,13 +84,13 @@
 }
 
 .export-modal__status--ok {
-  color: #22c55e;
-  background: #22c55e11;
+  color: var(--green);
+  background: var(--green-dim);
 }
 
 .export-modal__status--err {
-  color: #ef4444;
-  background: #ef444411;
+  color: var(--red);
+  background: var(--red-dim);
 }
 
 /* ── Mobile ────────────────────────────────────────────────── */
@@ -103,7 +103,7 @@
     max-height: calc(100dvh - 32px);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 32px color-mix(in srgb, var(--shadow) 50%, transparent);
     align-self: center;
   }
 

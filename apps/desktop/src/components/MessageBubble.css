@@ -10,7 +10,7 @@
 }
 
 .msg-bubble__row:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: color-mix(in srgb, var(--surface-tint) 2.5%, transparent);
 }
 
 .msg-bubble__row:first-child {
@@ -178,7 +178,7 @@
 .msg-bubble__bubble--other {
   background: var(--bg-tertiary);
   border-top-left-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow) 20%, transparent);
 }
 
 .msg-bubble__bubble--other.msg-bubble__bubble--grouped {
@@ -188,7 +188,7 @@
 .msg-bubble__bubble--own {
   background: var(--bg-tertiary);
   border-top-right-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow) 20%, transparent);
 }
 
 .msg-bubble__bubble--editing {
@@ -302,119 +302,119 @@
 /* ── Syntax highlighting (highlight.js dark theme) ──────────── */
 
 .hljs {
-  color: #e0e0e0;
+  color: var(--code-fg);
 }
 .hljs-keyword {
-  color: #c792ea;
+  color: var(--code-keyword);
 }
 .hljs-type {
-  color: #82aaff;
+  color: var(--code-type);
 }
 .hljs-built_in {
-  color: #ffcb6b;
+  color: var(--code-builtin);
 }
 .hljs-literal {
-  color: #f78c6c;
+  color: var(--code-number);
 }
 .hljs-number {
-  color: #f78c6c;
+  color: var(--code-number);
 }
 .hljs-regexp {
-  color: #89ddff;
+  color: var(--code-symbol);
 }
 .hljs-string {
-  color: #c3e88d;
+  color: var(--code-string);
 }
 .hljs-subst {
-  color: #e0e0e0;
+  color: var(--code-fg);
 }
 .hljs-symbol {
-  color: #82aaff;
+  color: var(--code-type);
 }
 .hljs-title {
-  color: #82aaff;
+  color: var(--code-type);
 }
 .hljs-title.function_ {
-  color: #82aaff;
+  color: var(--code-type);
 }
 .hljs-title.class_ {
-  color: #ffcb6b;
+  color: var(--code-builtin);
 }
 .hljs-title.class_.inherited__ {
-  color: #ffcb6b;
+  color: var(--code-builtin);
 }
 .hljs-params {
-  color: #e0e0e0;
+  color: var(--code-fg);
 }
 .hljs-comment {
-  color: #546e7a;
+  color: var(--code-comment);
   font-style: italic;
 }
 .hljs-doctag {
-  color: #c792ea;
+  color: var(--code-keyword);
 }
 .hljs-meta {
-  color: #89ddff;
+  color: var(--code-symbol);
 }
 .hljs-meta .hljs-keyword {
-  color: #c792ea;
+  color: var(--code-keyword);
 }
 .hljs-meta .hljs-string {
-  color: #c3e88d;
+  color: var(--code-string);
 }
 .hljs-section {
-  color: #82aaff;
+  color: var(--code-type);
 }
 .hljs-tag {
-  color: #89ddff;
+  color: var(--code-symbol);
 }
 .hljs-name {
-  color: #89ddff;
+  color: var(--code-symbol);
 }
 .hljs-attr {
-  color: #c792ea;
+  color: var(--code-keyword);
 }
 .hljs-attribute {
-  color: #c3e88d;
+  color: var(--code-string);
 }
 .hljs-selector-tag {
-  color: #f07178;
+  color: var(--code-invalid);
 }
 .hljs-selector-id {
-  color: #ffcb6b;
+  color: var(--code-builtin);
 }
 .hljs-selector-class {
-  color: #ffcb6b;
+  color: var(--code-builtin);
 }
 .hljs-selector-attr {
-  color: #c792ea;
+  color: var(--code-keyword);
 }
 .hljs-selector-pseudo {
-  color: #c792ea;
+  color: var(--code-keyword);
 }
 .hljs-addition {
-  color: #c3e88d;
+  color: var(--code-string);
 }
 .hljs-deletion {
-  color: #f07178;
+  color: var(--code-invalid);
 }
 .hljs-variable {
-  color: #e0e0e0;
+  color: var(--code-fg);
 }
 .hljs-operator {
-  color: #89ddff;
+  color: var(--code-symbol);
 }
 .hljs-punctuation {
-  color: #89ddff;
+  color: var(--code-symbol);
 }
 .hljs-property {
-  color: #82aaff;
+  color: var(--code-type);
 }
 .hljs-template-variable {
-  color: #e0e0e0;
+  color: var(--code-fg);
 }
 .hljs-template-tag {
-  color: #89ddff;
+  color: var(--code-symbol);
 }
 
 /* ── Markdown: blockquote ─────────────────────────────────── */
@@ -692,7 +692,7 @@
 }
 
 .msg-bubble__mention--group {
-  background: rgba(250, 176, 5, 0.15);
+  background: color-mix(in srgb, var(--yellow) 15%, transparent);
   color: var(--yellow);
   border-radius: var(--radius-sm);
   padding: 0 2px;
@@ -762,7 +762,7 @@
 .msg-bubble__attachment-expand-hint {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.3);
+  background: color-mix(in srgb, var(--scrim) 30%, transparent);
   opacity: 0;
   transition: opacity 0.15s ease;
   display: flex;
@@ -840,7 +840,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
+  background: linear-gradient(transparent, color-mix(in srgb, var(--scrim) 60%, transparent));
   padding: 16px 8px 4px;
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
 }
@@ -851,32 +851,32 @@
 }
 
 .msg-bubble__bubble--media-only .msg-bubble__time {
-  color: rgba(255, 255, 255, 0.8);
+  color: color-mix(in srgb, var(--surface-tint) 80%, transparent);
 }
 
 .msg-bubble__bubble--media-only .msg-bubble__edited {
-  color: rgba(255, 255, 255, 0.6);
+  color: color-mix(in srgb, var(--surface-tint) 60%, transparent);
 }
 
 .msg-bubble__bubble--media-only .msg-bubble__delete-btn,
 .msg-bubble__bubble--media-only .msg-bubble__edit-btn {
-  color: rgba(255, 255, 255, 0.7);
+  color: color-mix(in srgb, var(--surface-tint) 70%, transparent);
 }
 
 .msg-bubble__bubble--media-only .msg-bubble__delete-btn:hover,
 .msg-bubble__bubble--media-only .msg-bubble__edit-btn:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--surface-tint) 15%, transparent);
 }
 
 .msg-bubble__bubble--media-only .msg-bubble__delete-confirm-btn--yes {
-  background: rgba(255, 77, 77, 0.4);
+  background: color-mix(in srgb, var(--red) 40%, transparent);
   color: var(--text-primary);
 }
 
 .msg-bubble__bubble--media-only .msg-bubble__delete-confirm-btn--no {
-  background: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.7);
+  background: color-mix(in srgb, var(--surface-tint) 15%, transparent);
+  color: color-mix(in srgb, var(--surface-tint) 70%, transparent);
 }
 
 /* ── Sticker-only: meta below image, no overlay ─────────── */
@@ -1030,7 +1030,7 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg, 16px);
   padding: 3px 4px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--shadow) 40%, transparent);
 }
 
 .msg-bubble__react-quick {
@@ -1085,7 +1085,7 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md, 12px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--shadow) 40%, transparent);
   width: 312px;
   max-height: 340px;
   display: flex;
@@ -1508,7 +1508,7 @@
   padding: 1px 4px;
   border-radius: 3px;
   background: var(--accent-color);
-  color: #fff;
+  color: var(--on-brand);
   vertical-align: middle;
   margin-left: 4px;
   text-transform: uppercase;

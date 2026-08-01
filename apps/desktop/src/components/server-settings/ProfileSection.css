@@ -37,7 +37,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: color-mix(in srgb, var(--scrim) 45%, transparent);
   opacity: 0;
   transition: opacity 0.2s ease;
 }
@@ -52,11 +52,11 @@
   gap: 6px;
   font-size: 10px;
   font-weight: 500;
-  color: #fff;
+  color: var(--on-media);
   font-family: var(--font-mono);
   letter-spacing: 0.03em;
   padding: 4px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid color-mix(in srgb, var(--surface-tint) 30%, transparent);
   border-radius: var(--radius-sm);
   backdrop-filter: blur(4px);
 }
@@ -90,7 +90,7 @@
   overflow: hidden;
   cursor: pointer;
   transition: border-color 0.15s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--shadow) 30%, transparent);
 }
 
 .server-menu__profile-avatar:hover {
@@ -116,7 +116,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.4);
+  background: color-mix(in srgb, var(--scrim) 40%, transparent);
   opacity: 0;
   transition: opacity 0.2s ease;
   border-radius: var(--radius-full);
@@ -127,7 +127,7 @@
 }
 
 .server-menu__profile-avatar-overlay {
-  color: #fff;
+  color: var(--on-media);
 }
 
 /* Identity block — sits to the right of the avatar's overhang */

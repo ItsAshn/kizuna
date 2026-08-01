@@ -17,7 +17,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--shadow) 40%, transparent);
 }
 
 .gif-picker__header {
@@ -178,7 +178,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: color-mix(in srgb, var(--scrim) 70%, transparent);
   color: var(--text-primary);
   font-size: 10px;
   padding: 3px 6px;

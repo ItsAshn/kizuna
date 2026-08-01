@@ -93,7 +93,7 @@
   height: 6px;
   border-radius: 50%;
   background: var(--green);
-  box-shadow: 0 0 4px rgba(64, 192, 87, 0.5);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--green) 50%, transparent);
   transition:
     background 0.2s ease,
     box-shadow 0.2s ease;
@@ -152,7 +152,7 @@
   border-color: var(--brand-dim-border);
   background: var(--bg-tertiary);
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--shadow) 40%, transparent);
 }
 
 .server-browser__card:active {
@@ -213,7 +213,7 @@
 
 .server-browser__badge--lock {
   background: var(--yellow);
-  color: #000;
+  color: var(--on-warning);
 }
 
 .server-browser__card-name {

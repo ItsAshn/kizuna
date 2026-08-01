@@ -325,7 +325,7 @@
   border-radius: var(--radius-sm);
   border: none;
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   cursor: pointer;
   display: flex;
   align-items: center;

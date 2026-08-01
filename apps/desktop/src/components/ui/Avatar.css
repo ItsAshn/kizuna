@@ -40,7 +40,11 @@
   line-height: 1;
   text-transform: uppercase;
   /* Subtle depth on the fallback so plain initials read as intentional. */
-  background-image: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.12));
+  background-image: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--surface-tint) 16%, transparent),
+    color-mix(in srgb, var(--scrim) 12%, transparent)
+  );
 }
 
 /* Presence ring — colors mirror the legacy member-list rings. */

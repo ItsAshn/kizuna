@@ -9,6 +9,7 @@
 - Voice channels via WebRTC with mediasoup SFU
 - Screen sharing support
 - Custom roles and permissions system
+- Per-server theming via custom CSS, with a documented design-token API
 - End-to-end encryption for direct messages
 - File uploads and attachments
 - GIF and sticker support with custom sticker packs

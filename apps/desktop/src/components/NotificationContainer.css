@@ -30,7 +30,7 @@
   padding: 10px 12px;
   min-width: 300px;
   max-width: 400px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--shadow) 40%, transparent);
   animation: notificationSlideIn 0.25s ease-out;
   pointer-events: auto;
 }

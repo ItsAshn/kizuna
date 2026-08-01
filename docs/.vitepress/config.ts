@@ -73,6 +73,7 @@ export default defineConfig({
             { text: 'Getting Started', link: '/guide/getting-started' },
             { text: 'Self-Hosting', link: '/guide/deploy' },
             { text: 'Configuration', link: '/guide/configuration' },
+            { text: 'Theming', link: '/guide/theming' },
             { text: 'Updating', link: '/guide/updating' },
             { text: 'Development', link: '/guide/development' },
           ],

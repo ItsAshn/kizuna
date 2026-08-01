@@ -28,7 +28,7 @@
   align-items: center;
   gap: var(--space-3);
   min-width: 280px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 16px 48px color-mix(in srgb, var(--shadow) 40%, transparent);
 }
 
 .incoming-call-avatar {
@@ -99,7 +99,7 @@
 }
 
 .incoming-call-btn--accept:hover {
-  box-shadow: 0 4px 16px rgba(64, 192, 87, 0.4);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--green) 40%, transparent);
 }
 
 .incoming-call-btn--reject {
@@ -108,7 +108,7 @@
 }
 
 .incoming-call-btn--reject:hover {
-  box-shadow: 0 4px 16px rgba(255, 77, 77, 0.4);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--red) 40%, transparent);
 }
 
 @media (max-width: 767px) {

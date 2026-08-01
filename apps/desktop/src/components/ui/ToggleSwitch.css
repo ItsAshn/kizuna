@@ -50,7 +50,7 @@
   background: var(--text-primary);
   border-radius: 50%;
   transition: transform 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--elev-1);
 }
 
 .toggle-switch input:checked + .toggle-switch__track .toggle-switch__thumb {

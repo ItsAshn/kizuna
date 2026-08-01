@@ -188,6 +188,32 @@ export function getMemberById(userId: string) {
   }
 }
 
+/**
+ * Custom CSS is injected into every connected client's document, so anything
+ * that can make the browser fetch a third-party URL would leak each member's
+ * IP and user-agent to whoever the admin points it at. url() and @import are
+ * the only two ways CSS can do that, and both are rejected.
+ *
+ * A plain substring test is not enough: CSS keywords are case-insensitive and
+ * identifiers may be written with backslash escapes ("\75 rl(" is url(), and
+ * "@\69 mport" is @import), so `URL(` or an escaped spelling would sail past
+ * it. Decode the escapes first, then match case-insensitively.
+ */
+export function containsRemoteFetch(css: string): boolean {
+  const decoded = css
+    // strip comments — /*u*/rl( is not a bypass, but /* */ can pad an escape
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    // CSS escape: backslash + 1-6 hex digits + optional single whitespace
+    .replace(/\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?/g, (_, hex) => {
+      const cp = parseInt(hex, 16)
+      return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : ''
+    })
+    // any other backslash escape is a literal character
+    .replace(/\\(.)/g, '$1')
+
+  return /url\(/i.test(decoded) || /@import/i.test(decoded)
+}
+
 const serverInfoRoutes = new Hono()
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
@@ -383,7 +409,7 @@ serverInfoRoutes.patch('/settings', authMiddleware, adminMiddleware, async (c) =
     if (custom_css !== null && custom_css.length > 50000) {
       return c.json({ error: 'custom_css must be under 50000 characters' }, 400)
     }
-    if (custom_css !== null && (custom_css.includes('url(') || custom_css.includes('@import'))) {
+    if (custom_css !== null && containsRemoteFetch(custom_css)) {
       return c.json({ error: 'custom_css may not contain url() or @import directives' }, 400)
     }
     if (custom_css === null) {
