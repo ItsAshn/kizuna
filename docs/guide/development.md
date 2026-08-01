@@ -10,6 +10,8 @@ description: Set up a development environment for Kizuna, the open-source Discor
 - **Node.js** 22+
 - **pnpm** 9.15+
 - **Rust** (for the desktop client)
+- **meson** and **ninja** (the desktop client statically links WebRTC's echo
+  canceller, which is built from source)
 - System dependencies for Tauri on your platform
 
 ## Setup

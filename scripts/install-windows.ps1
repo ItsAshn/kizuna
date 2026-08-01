@@ -76,6 +76,28 @@ if (Get-Command rustc -ErrorAction SilentlyContinue) {
     Log "Rust installed: $(rustc --version)"
 }
 
+# ── Install meson + ninja ──────────────────────────────────────────────
+# webrtc-audio-processing (AEC3) is statically linked from source via its
+# `bundled` feature, and meson drives that build.
+
+if ((Get-Command meson -ErrorAction SilentlyContinue) -and (Get-Command ninja -ErrorAction SilentlyContinue)) {
+    Log "meson: $(meson --version), ninja: $(ninja --version)"
+} elseif (Get-Command pip -ErrorAction SilentlyContinue) {
+    Log "Installing meson and ninja via pip..."
+    pip install meson ninja
+    Log "meson and ninja installed."
+} elseif ($HasWinget) {
+    Log "Installing Python (for meson and ninja) via winget..."
+    winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
+    refreshenv 2>$null
+    pip install meson ninja
+    Log "meson and ninja installed."
+} else {
+    Warn "meson/ninja not found and no pip or winget to install them."
+    Info "Install Python from https://python.org, then run: pip install meson ninja"
+    Info "Without them, the desktop build fails on webrtc-audio-processing-sys."
+}
+
 # ── Check WebView2 Runtime ─────────────────────────────────────────────
 
 $WebView2Ok = $false

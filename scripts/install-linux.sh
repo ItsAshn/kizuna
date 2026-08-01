@@ -64,10 +64,13 @@ log "Distro detected: ${DISTRO}"
 
 # ── Install Tauri system dependencies ─────────────────────────────────
 
+# meson/ninja build webrtc-audio-processing (AEC3), which is statically linked
+# from source via its `bundled` feature — without them cargo fails at link time.
 TAURI_DEPS_ARCH=(
   webkit2gtk-4.1 gtk3 libappindicator-gtk3 librsvg
   alsa-lib pipewire libpulse desktop-file-utils
   patchelf
+  meson ninja
   base-devel git curl
 )
 
@@ -77,6 +80,7 @@ TAURI_DEPS_DEBIAN=(
   libpipewire-0.3-dev libspa-0.2-dev
   libasound2-dev libgbm-dev
   libfuse2
+  meson ninja-build
   build-essential curl git
 )
 
@@ -85,6 +89,7 @@ TAURI_DEPS_FEDORA=(
   librsvg2-devel patchelf
   pipewire-devel alsa-lib-devel mesa-libgbm-devel
   fuse
+  meson ninja-build
   gcc gcc-c++ curl git
 )
 

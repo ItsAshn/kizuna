@@ -5,6 +5,8 @@
 - **Node.js** >= 22.0.0
 - **pnpm** >= 9.0.0
 - **Rust** (for Tauri desktop builds)
+- **meson** and **ninja** (the desktop client statically links WebRTC's echo
+  canceller, which is built from source)
 - **Docker** (for containerized deployment)
 
 ## Development Setup
