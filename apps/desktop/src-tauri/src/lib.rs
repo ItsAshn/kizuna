@@ -637,6 +637,26 @@ fn stop_native_screen_encode() {
     }
 }
 
+/// Bring the main window back after close-to-tray hid it.
+///
+/// On macOS `window.hide()` orders the window out but leaves the app running,
+/// so the app itself has to be unhidden before showing the window again —
+/// otherwise `show()` lands on a window whose application is still hidden and
+/// nothing appears on screen.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn restore_main_window(app: &tauri::AppHandle) {
+    use tauri::Manager;
+
+    #[cfg(target_os = "macos")]
+    let _ = app.show();
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 #[cfg_attr(any(target_os = "android", target_os = "ios"), tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -729,7 +749,6 @@ pub fn run() {
             {
                 use tauri::menu::{Menu, MenuItem};
                 use tauri::tray::TrayIconBuilder;
-                use tauri::Manager;
 
                 let show_item = MenuItem::with_id(_app, "show", "Open Kizuna", true, None::<&str>)?;
                 let quit_item = MenuItem::with_id(_app, "quit", "Quit", true, None::<&str>)?;
@@ -740,12 +759,7 @@ pub fn run() {
                     .menu(&tray_menu)
                     .show_menu_on_left_click(false)
                     .on_menu_event(|app, event| match event.id.as_ref() {
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                        }
+                        "show" => restore_main_window(app),
                         "quit" => app.exit(0),
                         _ => {}
                     })
@@ -756,11 +770,7 @@ pub fn run() {
                             ..
                         } = event
                         {
-                            let app = tray.app_handle();
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                            restore_main_window(tray.app_handle());
                         }
                     })
                     .build(_app)?;
@@ -777,6 +787,15 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app_handle, _event| {
+            // Clicking the Dock icon fires `Reopen`. Close-to-tray hid the
+            // window, so AppKit finds no visible window to raise and does
+            // nothing on its own — we have to restore it here.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                restore_main_window(_app_handle);
+            }
+        });
 }
