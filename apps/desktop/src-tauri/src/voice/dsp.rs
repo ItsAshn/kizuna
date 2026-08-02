@@ -552,6 +552,10 @@ pub struct AudioProcessor {
     agc_enabled: bool,
     dc_removal_enabled: bool,
     muted: bool,
+    /// User-facing input volume as a linear multiplier (0.0-2.0). Applied ahead
+    /// of every other stage, like a preamp trim, so the suppressor and gate
+    /// threshold against the level the user actually chose.
+    input_gain: f32,
     sample_rate: u32,
     dc_state: f32,
 }
@@ -569,9 +573,14 @@ impl AudioProcessor {
             agc_enabled: true,
             dc_removal_enabled: true,
             muted: false,
+            input_gain: 1.0,
             sample_rate,
             dc_state: 0.0,
         }
+    }
+
+    pub fn set_input_gain(&mut self, gain: f32) {
+        self.input_gain = gain.clamp(0.0, 2.0);
     }
 
     pub fn set_gate_enabled(&mut self, enabled: bool) {
@@ -640,6 +649,12 @@ impl AudioProcessor {
     /// speech level, and taking it before the gate avoids gain pumping as the
     /// gate opens and closes.
     pub fn process_frame(&mut self, frame: &mut [f32]) {
+        if self.input_gain != 1.0 {
+            for sample in frame.iter_mut() {
+                *sample *= self.input_gain;
+            }
+        }
+
         if self.dc_removal_enabled {
             // Leaky-integrator DC/rumble blocker: dc_state slowly tracks the DC
             // offset, and we subtract it. The integrator must update *slowly*, so

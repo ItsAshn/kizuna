@@ -142,8 +142,10 @@ export default function VoiceOverlay({
     setVoiceError,
     peerVolumes,
     setPeerVolume,
+    voiceConnectingChannelId,
+    voiceReconnecting,
   } = useVoiceStore()
-  const { isScreenSharing, screenSharePeerId } = useCallStore()
+  const { isScreenSharing, screenSharePeerId, screenShareUsername } = useCallStore()
   const [closing, setClosing] = useState(false)
   const [showMonitorPicker, setShowMonitorPicker] = useState(false)
   const [screenShareError, setScreenShareError] = useState<string | null>(null)
@@ -152,20 +154,11 @@ export default function VoiceOverlay({
     if (activeVoiceChannelId) setClosing(false)
   }, [activeVoiceChannelId])
 
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !showMonitorPicker && activeVoiceChannelId) {
-        setClosing(true)
-        setTimeout(() => {
-          setVoiceError(null)
-          leaveVoice()
-          setClosing(false)
-        }, 220)
-      }
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [showMonitorPicker, activeVoiceChannelId])
+  // Escape deliberately does *not* leave the call. It used to, on a global
+  // window listener, which meant dismissing a mention popup, closing a modal or
+  // shutting the lightbox all hung up on everyone — the composer's Escape
+  // handler only calls preventDefault, and a sibling window listener can't be
+  // stopped by stopPropagation. Leaving is an explicit action on the button.
 
   const handleLeave = useCallback(() => {
     setClosing(true)
@@ -197,12 +190,25 @@ export default function VoiceOverlay({
     }
   }, [overlayShown])
 
-  if (!activeVoiceChannelId && !voiceError && !closing) return null
+  if (!activeVoiceChannelId && !voiceError && !closing && !voiceConnectingChannelId) return null
 
-  const channel = channels.find((c) => c.id === activeVoiceChannelId)
+  const channelId = activeVoiceChannelId ?? voiceConnectingChannelId
+  const channel = channels.find((c) => c.id === channelId)
   const isDMCall = !!dmCallOtherUsername
   const headerName = isDMCall ? dmCallOtherUsername : channel?.name || 'Voice Channel'
   const peerCount = voicePeers.length + 1
+  // Negotiation continues well past the server accepting the join, so the
+  // header must not claim the call is live until audio can actually flow.
+  const connecting = !!voiceConnectingChannelId
+  const canScreenShare = !isMobile && '__TAURI_INTERNALS__' in window
+  const someoneElseSharing = !!screenSharePeerId && !isScreenSharing
+  const statusLabel = voiceReconnecting
+    ? 'Reconnecting…'
+    : connecting
+      ? 'Connecting…'
+      : isDMCall
+        ? 'In Call'
+        : 'Voice Connected'
 
   const handleRetry = () => {
     setVoiceError(null)
@@ -234,12 +240,12 @@ export default function VoiceOverlay({
 
       {!voiceError && (
         <>
-          <div className="voice-header">
+          <div
+            className={`voice-header${connecting || voiceReconnecting ? ' voice-header--pending' : ''}`}
+          >
             <Signal className="voice-header__signal" />
             <div className="voice-header__title">
-              <span className="voice-header__status">
-                {isDMCall ? 'In Call' : 'Voice Connected'}
-              </span>
+              <span className="voice-header__status">{statusLabel}</span>
               <span className="voice-header__channel" title={headerName ?? undefined}>
                 {headerName}
               </span>
@@ -294,14 +300,19 @@ export default function VoiceOverlay({
               {isMuted ? <MicOff className="icon-xs" /> : <Mic className="icon-xs" />}
             </button>
 
-            {!isDMCall && !isMobile && '__TAURI_INTERNALS__' in window && (
+            {/* A DM call is still a call — showing someone your screen is the
+                main reason to start one, so it gets the same control a channel
+                call does. */}
+            {canScreenShare && (
               <button
                 onClick={() => {
                   if (isScreenSharing) {
                     stopScreenshare()
                     setScreenShareError(null)
-                  } else if (screenSharePeerId) {
-                    setScreenShareError('Someone else is already sharing')
+                  } else if (someoneElseSharing) {
+                    setScreenShareError(
+                      `${screenShareUsername || 'Someone else'} is sharing — only one screen at a time`,
+                    )
                   } else {
                     setShowMonitorPicker(true)
                   }
@@ -310,11 +321,14 @@ export default function VoiceOverlay({
                 title={
                   isScreenSharing
                     ? 'Stop sharing'
-                    : screenSharePeerId
-                      ? 'Someone else is sharing'
+                    : someoneElseSharing
+                      ? `${screenShareUsername || 'Someone else'} is sharing`
                       : 'Share screen'
                 }
-                disabled={!!screenSharePeerId && !isScreenSharing}
+                /* Deliberately not `disabled`: a disabled button explains
+                   nothing. It stays clickable so the click can say who has the
+                   floor. */
+                aria-disabled={someoneElseSharing}
               >
                 {isScreenSharing ? (
                   <MonitorOff className="icon-xs" />
@@ -349,10 +363,10 @@ export default function VoiceOverlay({
 
       {showMonitorPicker && (
         <MonitorPicker
-          onSelect={async (monitorIndex) => {
+          onSelect={async (monitorIndex, fps) => {
             setShowMonitorPicker(false)
             if (!activeVoiceChannelId) return
-            const err = await startScreenshare(activeVoiceChannelId, monitorIndex, 15)
+            const err = await startScreenshare(activeVoiceChannelId, monitorIndex, fps)
             if (err) setScreenShareError(err)
           }}
           onCancel={() => setShowMonitorPicker(false)}

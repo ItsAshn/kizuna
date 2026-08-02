@@ -12,6 +12,10 @@ export type VoiceProcessingMode = 'off' | 'standard' | 'custom'
 
 interface VoiceState {
   activeVoiceChannelId: string | null
+  /** Channel a join is in flight for. Set before the transports are usable. */
+  voiceConnectingChannelId: string | null
+  /** True while an established call is being re-established after a socket drop. */
+  voiceReconnecting: boolean
   voicePeers: VoicePeer[]
   isMuted: boolean
   isSpeaking: boolean
@@ -34,6 +38,8 @@ interface VoiceState {
   inputVolume: number
   outputVolume: number
   liveAudioLevel: number
+  /** Capture frame rate for screen sharing, chosen in the share picker. */
+  screenShareFps: number
   voiceChannelUsers: Record<string, { userId: string; username: string }[]>
   peerVolumes: Record<string, number>
   /** Live remote webcam streams, keyed by peerId. Presence implies that peer's camera is on. */
@@ -42,6 +48,8 @@ interface VoiceState {
   iceServers: { urls: string; username?: string; credential?: string }[]
 
   setActiveVoiceChannel: (channelId: string | null) => void
+  setVoiceConnectingChannelId: (channelId: string | null) => void
+  setVoiceReconnecting: (reconnecting: boolean) => void
   setVoicePeers: (peers: VoicePeer[]) => void
   addVoicePeer: (peer: VoicePeer) => void
   removeVoicePeer: (peerId: string) => void
@@ -78,12 +86,15 @@ interface VoiceState {
   setInputVolume: (volume: number) => void
   setOutputVolume: (volume: number) => void
   setLiveAudioLevel: (level: number) => void
+  setScreenShareFps: (fps: number) => void
 }
 
 export const useVoiceStore = create<VoiceState>()(
   persist(
     (set) => ({
       activeVoiceChannelId: null,
+      voiceConnectingChannelId: null,
+      voiceReconnecting: false,
       voicePeers: [],
       isMuted: false,
       isSpeaking: false,
@@ -106,6 +117,7 @@ export const useVoiceStore = create<VoiceState>()(
       inputVolume: 100,
       outputVolume: 100,
       liveAudioLevel: 0,
+      screenShareFps: 30,
       voiceChannelUsers: {},
       peerVolumes: {},
       peerCameraStreams: {},
@@ -113,6 +125,8 @@ export const useVoiceStore = create<VoiceState>()(
       iceServers: [],
 
       setActiveVoiceChannel: (activeVoiceChannelId) => set({ activeVoiceChannelId }),
+      setVoiceConnectingChannelId: (voiceConnectingChannelId) => set({ voiceConnectingChannelId }),
+      setVoiceReconnecting: (voiceReconnecting) => set({ voiceReconnecting }),
       setVoicePeers: (voicePeers) => set({ voicePeers }),
       addVoicePeer: (peer) =>
         set((s) => ({ voicePeers: [...s.voicePeers.filter((p) => p.id !== peer.id), peer] })),
@@ -212,6 +226,7 @@ export const useVoiceStore = create<VoiceState>()(
       setInputVolume: (inputVolume) => set({ inputVolume }),
       setOutputVolume: (outputVolume) => set({ outputVolume }),
       setLiveAudioLevel: (liveAudioLevel) => set({ liveAudioLevel }),
+      setScreenShareFps: (screenShareFps) => set({ screenShareFps }),
     }),
     {
       name: 'kizuna-voice-v1',
@@ -230,6 +245,7 @@ export const useVoiceStore = create<VoiceState>()(
         noiseSuppressionStrength: state.noiseSuppressionStrength,
         inputVolume: state.inputVolume,
         outputVolume: state.outputVolume,
+        screenShareFps: state.screenShareFps,
       }),
     },
   ),

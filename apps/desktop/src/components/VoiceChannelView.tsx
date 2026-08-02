@@ -78,6 +78,8 @@ export default function VoiceChannelView({
   const isSpeaking = useVoiceStore((s) => s.isSpeaking)
   const peerCameraStreams = useVoiceStore((s) => s.peerCameraStreams)
   const voiceChannelUsers = useVoiceStore((s) => s.voiceChannelUsers)
+  const voiceConnectingChannelId = useVoiceStore((s) => s.voiceConnectingChannelId)
+  const voiceReconnecting = useVoiceStore((s) => s.voiceReconnecting)
   const isScreenSharing = useCallStore((s) => s.isScreenSharing)
   const screenSharePeerId = useCallStore((s) => s.screenSharePeerId)
   const screenShareUsername = useCallStore((s) => s.screenShareUsername)
@@ -90,18 +92,29 @@ export default function VoiceChannelView({
   const channel = channels.find((c) => c.id === channelId)
   const channelName = channel?.name || 'Voice Channel'
   const isConnectedHere = activeVoiceChannelId === channelId
+  const connectingHere = voiceConnectingChannelId === channelId
   const isScreenActive = !!(screenSharePeerId || isScreenSharing)
   const canScreenShare = !isMobile && '__TAURI_INTERNALS__' in window
+  const someoneElseSharing = !!screenSharePeerId && !isScreenSharing
 
   // Adopt the single shared screenshare <video> element into this stage while
   // it is the active view for the connected call. ScreenShareOverlay yields the
   // element (it is gated off in Chat.tsx) so it is never double-mounted.
   const screenContainerRef = useRef<HTMLDivElement>(null)
+  const [videoAttached, setVideoAttached] = useState(false)
   useEffect(() => {
     const container = screenContainerRef.current
-    if (!container || !videoElRef.current) return
-    container.innerHTML = ''
-    container.appendChild(videoElRef.current)
+    const el = videoElRef.current
+    if (!container || !el) {
+      setVideoAttached(false)
+      return
+    }
+    container.replaceChildren(el)
+    setVideoAttached(true)
+    return () => {
+      container.replaceChildren()
+      setVideoAttached(false)
+    }
   }, [isConnectedHere, isScreenActive, screenSharePeerId, videoElRef])
 
   // Not connected to this channel: show who's inside + a join affordance.
@@ -121,8 +134,12 @@ export default function VoiceChannelView({
           )}
         </div>
         <div className="vcv__controls">
-          <button className="vcv__join-btn" onClick={() => joinVoice(channelId)}>
-            Join Voice
+          <button
+            className="vcv__join-btn"
+            onClick={() => joinVoice(channelId)}
+            disabled={connectingHere}
+          >
+            {connectingHere ? 'Connecting…' : 'Join Voice'}
           </button>
         </div>
       </div>
@@ -136,7 +153,9 @@ export default function VoiceChannelView({
       <div className="vcv__header">
         <Volume2 className="icon-xs" />
         <span className="vcv__title">{channelName}</span>
-        <span className="vcv__status">connected</span>
+        <span className="vcv__status">
+          {voiceReconnecting ? 'reconnecting…' : connectingHere ? 'connecting…' : 'connected'}
+        </span>
       </div>
 
       {screenShareError && (
@@ -148,10 +167,10 @@ export default function VoiceChannelView({
 
       {isScreenActive && (
         <div className="vcv__screenshare">
-          <div className="vcv__screenshare-body" ref={screenContainerRef}>
-            {!videoElRef.current && (
-              <div className="vcv__screenshare-empty">Waiting for video…</div>
-            )}
+          <div className="vcv__screenshare-body">
+            {/* Kept empty by React — the shared <video> is adopted into it. */}
+            <div className="vcv__screenshare-video" ref={screenContainerRef} />
+            {!videoAttached && <div className="vcv__screenshare-empty">Waiting for video…</div>}
           </div>
           <span className="vcv__screenshare-label">{sharerName}'s screen</span>
         </div>
@@ -198,8 +217,10 @@ export default function VoiceChannelView({
               if (isScreenSharing) {
                 stopScreenshare()
                 setScreenShareError(null)
-              } else if (screenSharePeerId) {
-                setScreenShareError('Someone else is already sharing')
+              } else if (someoneElseSharing) {
+                setScreenShareError(
+                  `${screenShareUsername || 'Someone else'} is sharing — only one screen at a time`,
+                )
               } else {
                 setShowMonitorPicker(true)
               }
@@ -208,11 +229,13 @@ export default function VoiceChannelView({
             title={
               isScreenSharing
                 ? 'Stop sharing'
-                : screenSharePeerId
-                  ? 'Someone else is sharing'
+                : someoneElseSharing
+                  ? `${screenShareUsername || 'Someone else'} is sharing`
                   : 'Share screen'
             }
-            disabled={!!screenSharePeerId && !isScreenSharing}
+            /* Left clickable on purpose — the click is what explains why it
+               won't start. */
+            aria-disabled={someoneElseSharing}
           >
             {isScreenSharing ? <MonitorOff className="icon-sm" /> : <Monitor className="icon-sm" />}
           </button>
@@ -229,9 +252,9 @@ export default function VoiceChannelView({
 
       {showMonitorPicker && (
         <MonitorPicker
-          onSelect={async (monitorIndex) => {
+          onSelect={async (monitorIndex, fps) => {
             setShowMonitorPicker(false)
-            const err = await startScreenshare(channelId, monitorIndex, 15)
+            const err = await startScreenshare(channelId, monitorIndex, fps)
             if (err) setScreenShareError(err)
           }}
           onCancel={() => setShowMonitorPicker(false)}

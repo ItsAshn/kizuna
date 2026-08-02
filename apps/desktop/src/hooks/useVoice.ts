@@ -5,6 +5,7 @@ import type { Transport, Producer, Consumer, RtpCapabilities } from 'mediasoup-c
 import { useServerStore } from '../store/serverStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
+import { useSettingsStore } from '../store/settingsStore'
 import type { ConnectionQuality } from '@kizuna/shared'
 import { isTauri, isMobileTauri } from '../utils/platform'
 
@@ -12,7 +13,13 @@ interface VoiceJoinResult {
   error?: string
   routerRtpCapabilities?: RtpCapabilities
   iceServers?: { urls: string; username?: string; credential?: string }[]
-  peers?: { id: string; userId: string; username: string; hasCamera?: boolean }[]
+  peers?: {
+    id: string
+    userId: string
+    username: string
+    hasCamera?: boolean
+    muted?: boolean
+  }[]
   voiceBitrateKbps?: number
   screenSharePeer?: { peerId: string; username: string }
 }
@@ -110,6 +117,18 @@ function verr(tag: string, msg: string, err?: unknown) {
 }
 
 const setLiveAudioLevel = (level: number) => useVoiceStore.getState().setLiveAudioLevel(level)
+
+/**
+ * Whether a key event is landing in something the user is typing into. The
+ * push-to-talk key is only swallowed when it isn't — otherwise binding a
+ * letter to PTT would stop that letter reaching the composer.
+ */
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el || typeof el.tagName !== 'string') return false
+  const tag = el.tagName.toLowerCase()
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable === true
+}
 
 function computeQualityFromStats(report: RTCStatsReport): ConnectionQuality {
   let rttMs = 0
@@ -302,6 +321,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const producerRef = useRef<Producer | null>(null)
   const consumersRef = useRef<Map<string, Consumer>>(new Map())
   const audioElemsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
+  // Per-peer playback gain on the browser path. HTMLMediaElement.volume is
+  // capped at 1.0 by spec, so the master and per-peer sliders (which go to
+  // 200%) can only be honoured through WebAudio.
+  const peerGainNodesRef = useRef<Map<string, GainNode>>(new Map())
   const videoConsumerRef = useRef<Consumer | null>(null)
   // Everything the native screenshare path needs to produce video on the Rust
   // send transport. Populated by joinVoiceNative; the producer is created lazily
@@ -316,9 +339,12 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const peerQualityIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
   const reconnectAttemptsRef = useRef(0)
   const isReconnectingRef = useRef(false)
+  const rejoiningRef = useRef(false)
+  const socketWasConnectedRef = useRef(true)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const remoteAudioCtxRef = useRef<AudioContext | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
   const pttCleanupRef = useRef<(() => void) | null>(null)
   const pttPressedRef = useRef<boolean>(false)
@@ -326,6 +352,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const iceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const setActiveVoiceChannel = useVoiceStore((s) => s.setActiveVoiceChannel)
+  const setVoiceConnectingChannelId = useVoiceStore((s) => s.setVoiceConnectingChannelId)
+  const setVoiceReconnecting = useVoiceStore((s) => s.setVoiceReconnecting)
   const setVoicePeers = useVoiceStore((s) => s.setVoicePeers)
   const addVoicePeer = useVoiceStore((s) => s.addVoicePeer)
   const removeVoicePeer = useVoiceStore((s) => s.removeVoicePeer)
@@ -333,7 +361,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const setPeerCameraStream = useVoiceStore((s) => s.setPeerCameraStream)
   const removePeerCameraStream = useVoiceStore((s) => s.removePeerCameraStream)
   const clearPeerCameraStreams = useVoiceStore((s) => s.clearPeerCameraStreams)
-  const isMuted = useVoiceStore((s) => s.isMuted)
   const setIsMuted = useVoiceStore((s) => s.setIsMuted)
   const setIsSpeaking = useVoiceStore((s) => s.setIsSpeaking)
   const setLocalConnectionQuality = useVoiceStore((s) => s.setLocalConnectionQuality)
@@ -406,6 +433,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       el.srcObject = null
     })
     audioElemsRef.current.clear()
+    peerGainNodesRef.current.forEach((node) => node.disconnect())
+    peerGainNodesRef.current.clear()
     sendTransportRef.current?.close()
     recvTransportRef.current?.close()
     sendTransportRef.current = null
@@ -416,6 +445,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     useCallStore.getState().setIsScreenSharing(false)
     deviceRef.current = null
     gainNodeRef.current = null
+    workletNodeRef.current = null
     audioCtxRef.current?.close()
     audioCtxRef.current = null
     remoteAudioCtxRef.current?.close()
@@ -435,6 +465,40 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     clearScreenSharePeer,
     clearPeerCameraStreams,
   ])
+
+  /**
+   * Push the master output volume and every per-peer volume out to whichever
+   * backend is playing audio. Both sliders range 0-200%, so the browser path
+   * uses GainNodes and only falls back to element volume (hard-capped at 100%)
+   * when WebAudio routing wasn't available for that peer.
+   */
+  const applyOutputVolumes = useCallback(() => {
+    const { outputVolume: master, peerVolumes } = useVoiceStore.getState()
+    const masterGain = Math.max(0, master / 100)
+    const peerGain = (peerId: string) => Math.max(0, (peerVolumes[peerId] ?? 100) / 100)
+
+    peerGainNodesRef.current.forEach((node, peerId) => {
+      node.gain.value = masterGain * peerGain(peerId)
+    })
+    audioElemsRef.current.forEach((el, peerId) => {
+      if (peerGainNodesRef.current.has(peerId)) return
+      el.volume = Math.min(1, masterGain * peerGain(peerId))
+    })
+
+    if (isTauri() && !isMobileTauri()) {
+      import('@tauri-apps/api/core').then(({ invoke }) => {
+        invoke('voice_set_output_volume', { volume: masterGain }).catch((err) =>
+          verr('volume', 'voice_set_output_volume failed', err),
+        )
+        for (const peer of useVoiceStore.getState().voicePeers) {
+          invoke('voice_set_peer_volume', {
+            peerId: peer.id,
+            volume: peerGain(peer.id),
+          }).catch((err) => verr('volume', 'voice_set_peer_volume failed', err))
+        }
+      })
+    }
+  }, [])
 
   const consumePeer = useCallback(
     async (
@@ -476,9 +540,30 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
       const audioEl = new Audio()
       audioEl.autoplay = true
-      audioEl.srcObject = new MediaStream([consumer.track])
-      audioEl.volume = outputVolume / 100
-      vlog('consume', `audio element created | srcObject set | volume=${audioEl.volume}`)
+      // Route through a per-peer GainNode, then back out to a MediaStream, so
+      // the element still owns output-device routing (setSinkId) while volume
+      // above 100% remains possible. If WebAudio can't take the remote track,
+      // fall back to playing it directly at element volume.
+      let routed = false
+      try {
+        const source = remoteCtx.createMediaStreamSource(new MediaStream([consumer.track]))
+        const peerGain = remoteCtx.createGain()
+        const dest = remoteCtx.createMediaStreamDestination()
+        source.connect(peerGain)
+        peerGain.connect(dest)
+        peerGainNodesRef.current.set(peerId, peerGain)
+        audioEl.srcObject = dest.stream
+        audioEl.volume = 1
+        routed = true
+      } catch (e) {
+        vlog('consume', `WebAudio routing unavailable, using element volume: ${String(e)}`)
+      }
+      if (!routed) {
+        audioEl.srcObject = new MediaStream([consumer.track])
+      }
+      audioElemsRef.current.set(peerId, audioEl)
+      applyOutputVolumes()
+      vlog('consume', `audio element created | routed=${routed} | volume=${audioEl.volume}`)
       if (audioOutputDeviceId) {
         try {
           await (audioEl as HTMLAudioElement & { setSinkId(id: string): Promise<void> }).setSinkId(
@@ -494,7 +579,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         .then(() => 'ok')
         .catch((e) => `error: ${e?.name ?? String(e)}`)
       vlog('consume', `audio.play() -> ${playResult}`)
-      audioElemsRef.current.set(peerId, audioEl)
 
       const cleanupRemote = startRemoteSpeakingDetection(
         consumer.track,
@@ -519,7 +603,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       const peerQInt = setInterval(pollPeerQuality, QUALITY_POLL_MS)
       peerQualityIntervalsRef.current.set(peerId, peerQInt)
     },
-    [audioOutputDeviceId, updateVoicePeer],
+    [audioOutputDeviceId, updateVoicePeer, applyOutputVolumes],
   )
 
   const consumeScreenShare = useCallback(
@@ -658,6 +742,91 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const nativeInitializedRef = useRef(false)
   const nativePeerHandlersRef = useRef<boolean>(false)
 
+  /**
+   * The single source of truth for whether the mic is transmitting. Mute and
+   * push-to-talk both feed into it, so the two can never disagree: muting while
+   * the PTT key is held keeps you silent, and releasing the key afterwards does
+   * not quietly un-mute you. Applies to whichever backend carries the call.
+   */
+  const applyMicTransmit = useCallback(async (): Promise<boolean> => {
+    const { isMuted: muted, voiceInputMode: mode } = useVoiceStore.getState()
+    const transmitting = !muted && (mode !== 'push-to-talk' || pttPressedRef.current)
+    if (isTauri() && !isMobileTauri()) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('voice_set_muted', { muted: !transmitting })
+      } catch (e) {
+        verr('micTransmit', 'voice_set_muted failed', e)
+      }
+    } else if (producerRef.current) {
+      if (transmitting) producerRef.current.resume()
+      else producerRef.current.pause()
+    }
+    return transmitting
+  }, [])
+
+  /**
+   * Push-to-talk key handling, registered for every backend. The native path
+   * gates transmission through `voice_set_muted` rather than by pausing a
+   * mediasoup producer, so this cannot live inside the browser mic setup —
+   * when it did, desktop users who picked push-to-talk got no key handling at
+   * all and (because the mute button also no-ops in that mode) a permanently
+   * open mic.
+   */
+  const setupPushToTalkListeners = useCallback(() => {
+    pttCleanupRef.current?.()
+    pttPressedRef.current = false
+
+    const emitSpeaking = (speaking: boolean) => {
+      setIsSpeaking(speaking)
+      const channelId = channelIdRef.current
+      if (channelId) socketRef.current?.emit('voice:speaking', { channelId, speaking })
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== pushToTalkKey || e.repeat || pttPressedRef.current) return
+      if (!isEditableTarget(e.target)) e.preventDefault()
+      pttPressedRef.current = true
+      applyMicTransmit().then(emitSpeaking)
+    }
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== pushToTalkKey || !pttPressedRef.current) return
+      pttPressedRef.current = false
+      applyMicTransmit().then(() => emitSpeaking(false))
+    }
+    // A window that loses focus mid-press never delivers the keyup, which would
+    // otherwise latch the mic open until the key is pressed and released again.
+    const handleBlur = () => {
+      if (!pttPressedRef.current) return
+      pttPressedRef.current = false
+      applyMicTransmit().then(() => emitSpeaking(false))
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('blur', handleBlur)
+    pttCleanupRef.current = () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('blur', handleBlur)
+    }
+  }, [pushToTalkKey, setIsSpeaking, applyMicTransmit, socketRef])
+
+  /**
+   * Apply the current input mode to a live call. Called once a join completes
+   * and again whenever the mode or key changes mid-call.
+   */
+  const armInputMode = useCallback(async () => {
+    pttCleanupRef.current?.()
+    pttCleanupRef.current = null
+    pttPressedRef.current = false
+    if (useVoiceStore.getState().voiceInputMode === 'push-to-talk') {
+      setupPushToTalkListeners()
+      setIsSpeaking(false)
+    }
+    await applyMicTransmit()
+  }, [setupPushToTalkListeners, applyMicTransmit, setIsSpeaking])
+
   const initNativeVoice = useCallback(async () => {
     if (nativeInitializedRef.current) return
     if (!session) return
@@ -737,14 +906,18 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
           }),
           listen<VoiceSpeakingPayload>('voice:speaking', (event) => {
             const { channelId, speaking, level } = event.payload
+            if (typeof level === 'number') {
+              setLiveAudioLevel(level * 1000)
+            }
+            // In push-to-talk the key owns the speaking state; letting the
+            // native VAD through as well would light the indicator for anyone
+            // who breathed near the mic without holding the key.
+            if (useVoiceStore.getState().voiceInputMode === 'push-to-talk') return
             const socket = socketRef.current
             if (socket && channelId) {
               socket.emit('voice:speaking', { channelId, speaking })
             }
             setIsSpeaking(speaking)
-            if (typeof level === 'number') {
-              setLiveAudioLevel(level * 1000)
-            }
           }).then((unlisten) => {
             nativeSpeakingUnlistenRef.current = unlisten
           }),
@@ -831,6 +1004,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
                   channelId: channelIdRef.current,
                   consumerId: consumeResult.id,
                 })
+                // Push this peer's saved volume to the mixer now they exist in it.
+                applyOutputVolumes()
               }
             } catch (e) {
               verr('nativePeer', `consume ${peer.peerId} error`, e)
@@ -849,6 +1024,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
             updateVoicePeer(peerId, { speaking })
           },
         )
+        socket.on('voice:mute', ({ peerId, muted }: { peerId: string; muted: boolean }) => {
+          updateVoicePeer(peerId, { muted })
+        })
         socket.on(
           'server:voiceBitrateChanged',
           ({ voiceBitrateKbps: newKbps }: { voiceBitrateKbps: number }) => {
@@ -1012,8 +1190,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         // communications device, so it has no effect on other apps' audio.
         await invoke('voice_set_echo_cancellation', { enabled: echoCancellation })
 
-        // Set initial output volume
+        // Set initial volumes. Input gain is a preamp trim in the Rust DSP
+        // chain; it is not part of finish_join's argument list.
         await invoke('voice_set_output_volume', { volume: outputVolume / 100 })
+        await invoke('voice_set_input_volume', { volume: Math.max(0, inputVolume / 100) })
 
         // Step 9: consume existing peers
         if (joinResult.peers) {
@@ -1023,7 +1203,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
               userId: peer.userId,
               username: peer.username,
               speaking: false,
-              muted: false,
+              muted: peer.muted ?? false,
             })
             const consumeResult: ConsumeResult = await new Promise((resolve) =>
               socket!.emit(
@@ -1049,6 +1229,12 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
         await invoke('voice_flush_peers')
         vlog('joinVoiceNative', 'flush_peers done')
+
+        applyOutputVolumes()
+
+        // Push-to-talk and mute apply to the native backend too — without this
+        // the key does nothing here and the mic stays open.
+        await armInputMode()
 
         return null
       } catch (e: unknown) {
@@ -1086,6 +1272,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       // rebuilt rather than the user's actual setting.
       autoGainControl,
       echoCancellation,
+      inputVolume,
+      armInputMode,
+      applyOutputVolumes,
     ],
   )
 
@@ -1105,6 +1294,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       socket.off('voice:newPeer')
       socket.off('voice:peerLeft')
       socket.off('voice:peerSpeaking')
+      socket.off('voice:mute')
       socket.off('voice:socketRtp')
       nativePeerHandlersRef.current = false
     }
@@ -1120,18 +1310,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     clearScreenSharePeer()
   }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, clearScreenSharePeer, socketRef])
 
-  const toggleMuteNative = useCallback(async () => {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const newMuted = !isMuted
-      await invoke('voice_set_muted', { muted: newMuted })
-      setIsMuted(newMuted)
-    } catch (e) {
-      verr('toggleMute', 'Native mute toggle failed', e)
-    }
-  }, [isMuted, setIsMuted])
-
-  const joinVoice = useCallback(
+  const joinVoiceInternal = useCallback(
     async (channelId: string): Promise<string | null> => {
       vlog(
         'joinVoice',
@@ -1353,6 +1532,8 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
           leavingEl.srcObject = null
         }
         audioElemsRef.current.delete(peerId)
+        peerGainNodesRef.current.get(peerId)?.disconnect()
+        peerGainNodesRef.current.delete(peerId)
         remoteSpeakingCleanupsRef.current.get(peerId)?.()
         remoteSpeakingCleanupsRef.current.delete(peerId)
         const peerQInt = peerQualityIntervalsRef.current.get(peerId)
@@ -1368,6 +1549,10 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
           updateVoicePeer(peerId, { speaking })
         },
       )
+
+      socket.on('voice:mute', ({ peerId, muted }: { peerId: string; muted: boolean }) => {
+        updateVoicePeer(peerId, { muted })
+      })
 
       socket.on(
         'screen:peerStarted',
@@ -1541,6 +1726,25 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     ],
   )
 
+  /**
+   * Public join entry point. Publishes a "connecting" channel id for the whole
+   * negotiation — transports, DTLS and the microphone all come up well after
+   * the server accepts the join, and the UI used to claim the call was live for
+   * that entire window, so people started talking into a mic that wasn't
+   * producing yet.
+   */
+  const joinVoice = useCallback(
+    async (channelId: string): Promise<string | null> => {
+      setVoiceConnectingChannelId(channelId)
+      try {
+        return await joinVoiceInternal(channelId)
+      } finally {
+        setVoiceConnectingChannelId(null)
+      }
+    },
+    [joinVoiceInternal, setVoiceConnectingChannelId],
+  )
+
   const setupBrowserMicrophone = useCallback(
     async (socket: Socket, channelId: string, sendTransport: Transport, bitrateKbps: number) => {
       vlog(
@@ -1605,7 +1809,10 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       )
       const source = audioCtx.createMediaStreamSource(stream)
       const gainNode = audioCtx.createGain()
-      gainNode.gain.value = Math.min(1.0, Math.max(0, inputVolume / 100))
+      // The slider goes to 200%; a GainNode handles gain > 1 and the browser's
+      // own limiter plus Opus encoding absorb the headroom. Clamping this to 1.0
+      // is what made every value above 100% do nothing.
+      gainNode.gain.value = Math.max(0, inputVolume / 100)
       gainNodeRef.current = gainNode
       const destination = audioCtx.createMediaStreamDestination()
 
@@ -1626,6 +1833,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
           },
         })
         workletRef.current = workletNode
+        workletNodeRef.current = workletNode
         vlog('browserMic', 'AudioWorklet loaded and node created')
       } catch (e) {
         vlog('browserMic', `AudioWorklet unavailable, DSP disabled: ${String(e)}`)
@@ -1666,7 +1874,11 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       localSpeakingCleanupRef.current = startSpeakingDetection(
         stream,
         (speaking) => {
-          if (voiceInputMode === 'push-to-talk') return
+          // Read the mode live: push-to-talk drives speaking from the key, and
+          // the user can switch modes without rejoining.
+          const { voiceInputMode: mode, isMuted: muted } = useVoiceStore.getState()
+          if (mode === 'push-to-talk') return
+          if (muted && speaking) return
           setIsSpeaking(speaking)
           socket.emit('voice:speaking', { channelId, speaking })
         },
@@ -1675,9 +1887,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         audioCtx,
       )
 
-      if (voiceInputMode === 'push-to-talk') {
-        setupPushToTalk(socket, channelId, producer)
-      }
+      await armInputMode()
     },
     [
       audioInputDeviceId,
@@ -1693,37 +1903,6 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       pushToTalkKey,
       setAudioInputDeviceId,
     ],
-  )
-
-  const setupPushToTalk = useCallback(
-    (socket: Socket, channelId: string, producer: Producer) => {
-      setIsSpeaking(false)
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.code === pushToTalkKey && !e.repeat && producerRef.current) {
-          e.preventDefault()
-          pttPressedRef.current = true
-          producerRef.current.resume()
-          setIsSpeaking(true)
-          socket.emit('voice:speaking', { channelId, speaking: true })
-        }
-      }
-      const handleKeyUp = (e: KeyboardEvent) => {
-        if (e.code === pushToTalkKey && producerRef.current) {
-          pttPressedRef.current = false
-          producerRef.current.pause()
-          setIsSpeaking(false)
-          socket.emit('voice:speaking', { channelId, speaking: false })
-        }
-      }
-      window.addEventListener('keydown', handleKeyDown)
-      window.addEventListener('keyup', handleKeyUp)
-      producer.pause()
-      pttCleanupRef.current = () => {
-        window.removeEventListener('keydown', handleKeyDown)
-        window.removeEventListener('keyup', handleKeyUp)
-      }
-    },
-    [pushToTalkKey, setIsSpeaking],
   )
 
   const handleTransportFailure = useCallback(
@@ -1761,11 +1940,17 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
 
   const leaveVoice = useCallback(async () => {
     const channelId = channelIdRef.current
+    // Leaving is deliberate, so an in-flight reconnect must not resurrect the
+    // call behind the user's back.
+    rejoiningRef.current = true
+    setVoiceReconnecting(false)
+    setVoiceConnectingChannelId(null)
     if (isTauri() && !isMobileTauri()) {
       await leaveVoiceNative()
       setActiveVoiceChannel(null)
       setIsMuted(false)
       setVoiceError(null)
+      rejoiningRef.current = false
       if (channelId?.startsWith('dm:')) {
         socketRef.current?.emit('dm:call:end', { dmChannelId: channelId.slice(3) })
         clearDMCall()
@@ -1778,6 +1963,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       socket.off('voice:newPeer')
       socket.off('voice:peerLeft')
       socket.off('voice:peerSpeaking')
+      socket.off('voice:mute')
       socket.off('screen:peerStarted')
       socket.off('screen:peerStopped')
       socket.off('camera:peerStarted')
@@ -1794,6 +1980,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     setActiveVoiceChannel(null)
     setIsMuted(false)
     setVoiceError(null)
+    rejoiningRef.current = false
   }, [
     socketRef,
     cleanupVoice,
@@ -1802,21 +1989,25 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     setVoiceError,
     leaveVoiceNative,
     clearDMCall,
+    setVoiceReconnecting,
+    setVoiceConnectingChannelId,
   ])
 
-  const toggleMute = useCallback(() => {
-    if (voiceInputMode === 'push-to-talk') return
-    if (isTauri() && !isMobileTauri()) {
-      toggleMuteNative()
-      return
-    }
-    const muted = !isMuted
+  /**
+   * Mute works in every input mode, including push-to-talk, where it acts as an
+   * override that outranks the key. Peers are told so their roster can show it.
+   */
+  const toggleMute = useCallback(async () => {
+    const muted = !useVoiceStore.getState().isMuted
     setIsMuted(muted)
-    if (producerRef.current) {
-      if (muted) producerRef.current.pause()
-      else producerRef.current.resume()
+    const transmitting = await applyMicTransmit()
+    const channelId = channelIdRef.current
+    if (!transmitting) setIsSpeaking(false)
+    if (channelId) {
+      socketRef.current?.emit('voice:mute', { muted })
+      if (!transmitting) socketRef.current?.emit('voice:speaking', { channelId, speaking: false })
     }
-  }, [isMuted, setIsMuted, voiceInputMode])
+  }, [setIsMuted, setIsSpeaking, applyMicTransmit, socketRef])
 
   const startDMCall = useCallback(
     async (dmChannelId: string, otherUserId: string, otherUsername: string) => {
@@ -1914,32 +2105,171 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     [joinVoice, clearDMCall],
   )
 
+  /**
+   * Apply audio-processing settings to a live call. Every one of these has a
+   * backend command that takes effect immediately, so changing them no longer
+   * requires leaving and rejoining the channel. Input device is the exception —
+   * it is bound when capture opens, and there is no command to re-point it.
+   */
+  const applyProcessingSettings = useCallback(async () => {
+    if (!channelIdRef.current) return
+    const s = useVoiceStore.getState()
+
+    if (isTauri() && !isMobileTauri()) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const call = (cmd: string, args: Record<string, unknown>) =>
+        invoke(cmd, args).catch((err) => verr('settings', `${cmd} failed`, err))
+      await Promise.all([
+        call('voice_set_gate_enabled', { enabled: s.noiseGateEnabled }),
+        call('voice_set_gate', { thresholdDb: gateSliderToDb(s.noiseGateThreshold) }),
+        call('voice_set_noise_suppression', { enabled: s.noiseSuppression }),
+        call('voice_set_auto_gain', { enabled: s.autoGainControl }),
+        call('voice_set_echo_cancellation', { enabled: s.echoCancellation }),
+        call('voice_set_input_volume', { volume: Math.max(0, s.inputVolume / 100) }),
+      ])
+      return
+    }
+
+    // Browser path: the noise gate lives in the worklet, and the rest are
+    // getUserMedia constraints that can be re-applied to the live track.
+    workletNodeRef.current?.parameters
+      .get('gateEnabled')
+      ?.setValueAtTime(s.noiseGateEnabled ? 1 : 0, 0)
+    workletNodeRef.current?.parameters
+      .get('gateThresholdDb')
+      ?.setValueAtTime(gateSliderToDb(s.noiseGateThreshold), 0)
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = Math.max(0, s.inputVolume / 100)
+    }
+    const track = micStreamRef.current?.getAudioTracks()[0]
+    if (track) {
+      try {
+        await track.applyConstraints({
+          echoCancellation: { ideal: s.echoCancellation },
+          noiseSuppression: { ideal: s.noiseSuppression },
+          autoGainControl: { ideal: s.autoGainControl },
+        })
+      } catch (err) {
+        vlog('settings', `applyConstraints failed (rejoin to apply): ${String(err)}`)
+      }
+    }
+  }, [])
+
+  /**
+   * Route playback to the selected output device without a rejoin.
+   */
+  const applyOutputDevice = useCallback(async () => {
+    if (!channelIdRef.current) return
+    const deviceId = useVoiceStore.getState().audioOutputDeviceId
+    if (isTauri() && !isMobileTauri()) {
+      if (!deviceId) return
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('voice_set_output_device', { deviceId }).catch((err) =>
+        verr('settings', 'voice_set_output_device failed', err),
+      )
+      return
+    }
+    for (const el of audioElemsRef.current.values()) {
+      try {
+        await (el as HTMLAudioElement & { setSinkId(id: string): Promise<void> }).setSinkId(
+          deviceId ?? '',
+        )
+      } catch (e) {
+        vlog('settings', `setSinkId failed or unsupported: ${String(e)}`)
+      }
+    }
+  }, [])
+
+  /**
+   * The server drops a peer the moment its socket disconnects, so a sleep, a
+   * wifi blip or a server restart silently ends the call: audio stops both ways
+   * while the overlay still reads "Voice Connected" over a frozen roster.
+   * Nothing rejoined on its own. Watch the socket flag the connection banner
+   * already maintains and re-establish the call when it comes back.
+   */
   useEffect(() => {
-    let prevInputVolume = inputVolume
-    let prevOutputVolume = outputVolume
+    return useSettingsStore.subscribe((state) => {
+      const isConnected = state.socketConnected
+      if (isConnected === socketWasConnectedRef.current) return
+      socketWasConnectedRef.current = isConnected
+
+      const channelId = channelIdRef.current
+      if (!channelId) return
+
+      if (!isConnected) {
+        setVoiceReconnecting(true)
+        setIsSpeaking(false)
+        setVoicePeers([])
+        setLocalConnectionQuality(null)
+        return
+      }
+
+      if (rejoiningRef.current) return
+      rejoiningRef.current = true
+      ;(async () => {
+        try {
+          const error = await joinVoice(channelId)
+          if (error) verr('reconnect', `voice rejoin failed: ${error}`)
+        } catch (err) {
+          verr('reconnect', 'voice rejoin threw', err)
+        } finally {
+          rejoiningRef.current = false
+          setVoiceReconnecting(false)
+        }
+      })()
+    })
+  }, [joinVoice, setVoiceReconnecting, setIsSpeaking, setVoicePeers, setLocalConnectionQuality])
+
+  // Keep a live call in sync with the settings panel. Zustand's subscribe fires
+  // on every store write, so each concern is diffed against its own previous
+  // value rather than re-applying everything on unrelated changes.
+  useEffect(() => {
+    let prev = useVoiceStore.getState()
 
     const unsub = useVoiceStore.subscribe((state) => {
-      if (state.inputVolume !== prevInputVolume) {
-        prevInputVolume = state.inputVolume
+      const was = prev
+      prev = state
+
+      if (state.inputVolume !== was.inputVolume) {
         if (gainNodeRef.current) {
-          gainNodeRef.current.gain.value = Math.min(1.0, Math.max(0, state.inputVolume / 100))
+          gainNodeRef.current.gain.value = Math.max(0, state.inputVolume / 100)
+        }
+        if (isTauri() && !isMobileTauri() && channelIdRef.current) {
+          import('@tauri-apps/api/core').then(({ invoke }) =>
+            invoke('voice_set_input_volume', {
+              volume: Math.max(0, state.inputVolume / 100),
+            }).catch((err) => verr('volume', 'voice_set_input_volume failed', err)),
+          )
         }
       }
-      if (state.outputVolume !== prevOutputVolume) {
-        prevOutputVolume = state.outputVolume
-        audioElemsRef.current.forEach((el) => {
-          el.volume = Math.min(1.0, Math.max(0, state.outputVolume / 100))
-        })
-        // Sync native audio output volume
-        import('@tauri-apps/api/core').then(({ invoke }) =>
-          invoke('voice_set_output_volume', { volume: state.outputVolume / 100 }).catch((err) => {
-            console.error('Failed to set output volume:', err)
-          }),
-        )
+
+      if (state.outputVolume !== was.outputVolume || state.peerVolumes !== was.peerVolumes) {
+        applyOutputVolumes()
+      }
+
+      if (
+        state.voiceInputMode !== was.voiceInputMode ||
+        state.pushToTalkKey !== was.pushToTalkKey
+      ) {
+        if (channelIdRef.current) armInputMode()
+      }
+
+      if (
+        state.noiseGateEnabled !== was.noiseGateEnabled ||
+        state.noiseGateThreshold !== was.noiseGateThreshold ||
+        state.noiseSuppression !== was.noiseSuppression ||
+        state.autoGainControl !== was.autoGainControl ||
+        state.echoCancellation !== was.echoCancellation
+      ) {
+        applyProcessingSettings()
+      }
+
+      if (state.audioOutputDeviceId !== was.audioOutputDeviceId) {
+        applyOutputDevice()
       }
     })
     return unsub
-  }, [])
+  }, [applyOutputVolumes, armInputMode, applyProcessingSettings, applyOutputDevice])
 
   return {
     joinVoice,

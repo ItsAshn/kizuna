@@ -65,6 +65,20 @@ impl ActiveCall {
             p.set_agc_enabled(enabled);
         }
     }
+
+    pub async fn set_gate_enabled(&self, enabled: bool) {
+        if let Some(ref proc) = self.processor {
+            let mut p = proc.lock().await;
+            p.set_gate_enabled(enabled);
+        }
+    }
+
+    pub async fn set_input_gain(&self, gain: f32) {
+        if let Some(ref proc) = self.processor {
+            let mut p = proc.lock().await;
+            p.set_input_gain(gain);
+        }
+    }
 }
 
 impl Drop for ActiveCall {
@@ -379,6 +393,18 @@ impl VoiceController {
     pub async fn set_auto_gain(&self, enabled: bool) {
         if let Some(ref call) = self.active_call {
             call.set_auto_gain(enabled).await;
+        }
+    }
+
+    pub async fn set_gate_enabled(&self, enabled: bool) {
+        if let Some(ref call) = self.active_call {
+            call.set_gate_enabled(enabled).await;
+        }
+    }
+
+    pub async fn set_input_gain(&self, gain: f32) {
+        if let Some(ref call) = self.active_call {
+            call.set_input_gain(gain).await;
         }
     }
 

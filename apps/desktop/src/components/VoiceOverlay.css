@@ -76,6 +76,27 @@
   text-overflow: ellipsis;
 }
 
+/* Connecting and reconnecting are not "connected" — the signal and status text
+   both drop to the muted/amber treatment until audio can actually flow. */
+.voice-header--pending .voice-header__signal,
+.voice-header--pending .voice-header__status {
+  color: var(--yellow);
+}
+
+.voice-header--pending .voice-header__signal {
+  animation: voice-header-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes voice-header-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
 .voice-header__channel {
   font-size: 11px;
   color: var(--text-muted);

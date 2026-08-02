@@ -15,6 +15,7 @@
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
     "./webhook-events": "./src/webhookEvents.ts",
+    "./attachments": "./src/attachments.ts",
     "./api": "./src/api.ts",
     "./crypto": "./src/crypto.ts",
     "./pow": "./src/pow.ts"

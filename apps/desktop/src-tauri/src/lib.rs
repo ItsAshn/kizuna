@@ -37,6 +37,8 @@ static VOICE_CONTROLLER: Mutex<Option<VoiceController>> = Mutex::new(None);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 static AUDIO_OUTPUT: Mutex<Option<AudioOutput>> = Mutex::new(None);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+static MIC_TEST: Mutex<Option<voice::mictest::MicTestSession>> = Mutex::new(None);
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 static BACKGROUND_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -158,6 +160,33 @@ fn stop_screen_capture() -> Result<(), String> {
 #[tauri::command]
 fn list_audio_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
     voice::device::list_input_devices()
+}
+
+/// Start the settings-panel microphone level meter. Emits `mic:level` with an
+/// RMS float until `stop_audio_capture` is called.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn start_audio_capture(
+    app: tauri::AppHandle,
+    device_name: Option<String>,
+    sample_rate: Option<u32>,
+) -> Result<(), String> {
+    let mut guard = MIC_TEST.lock().map_err(|e| format!("Lock error: {e}"))?;
+    // Dropping any prior session releases its device first — two captures of the
+    // same microphone is exactly the contention that makes a mic look broken.
+    *guard = None;
+    let session =
+        voice::mictest::MicTestSession::start(app, device_name, sample_rate.unwrap_or(48_000))?;
+    *guard = Some(session);
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn stop_audio_capture() -> Result<(), String> {
+    let mut guard = MIC_TEST.lock().map_err(|e| format!("Lock error: {e}"))?;
+    *guard = None;
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -323,6 +352,44 @@ fn voice_set_suppression_strength(strength: f32) -> Result<(), String> {
 fn voice_set_echo_cancellation(enabled: bool) -> Result<(), String> {
     voice::aec::set_enabled(enabled);
     Ok(())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn voice_set_gate_enabled(enabled: bool) -> Result<(), String> {
+    let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref controller) = *guard {
+        tauri::async_runtime::block_on(controller.set_gate_enabled(enabled));
+        Ok(())
+    } else {
+        Err("Voice not initialized".into())
+    }
+}
+
+/// Microphone input gain, 0.0-2.0. Applied as a preamp trim ahead of the rest of
+/// the capture chain.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn voice_set_input_volume(volume: f32) -> Result<(), String> {
+    let guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref controller) = *guard {
+        tauri::async_runtime::block_on(controller.set_input_gain(volume));
+        Ok(())
+    } else {
+        Err("Voice not initialized".into())
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn voice_set_peer_volume(peer_id: String, volume: f32) -> Result<(), String> {
+    let guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(ref output) = *guard {
+        output.set_peer_volume(&peer_id, volume);
+        Ok(())
+    } else {
+        Err("Audio output not initialized".into())
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -685,6 +752,8 @@ pub fn run() {
                     camera_stop,
                     list_audio_input_devices,
                     list_audio_output_devices,
+                    start_audio_capture,
+                    stop_audio_capture,
                     get_environment,
                     voice_init,
                     voice_begin,
@@ -701,6 +770,9 @@ pub fn run() {
                     voice_set_suppression_mode,
                     voice_set_suppression_strength,
                     voice_set_auto_gain,
+                    voice_set_gate_enabled,
+                    voice_set_input_volume,
+                    voice_set_peer_volume,
                     voice_set_echo_cancellation,
                     voice_set_output_volume,
                     voice_set_output_device,

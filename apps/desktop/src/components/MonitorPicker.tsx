@@ -2,17 +2,31 @@ import { useEffect, useState } from 'react'
 import type { MonitorInfo } from '@kizuna/shared'
 import { Monitor } from 'lucide-react'
 import PickerSurface from './ui/PickerSurface'
+import { useVoiceStore } from '../store/voiceStore'
 import './ScreenShareOverlay.css'
 
 interface MonitorPickerProps {
-  onSelect: (monitorIndex: number) => void
+  onSelect: (monitorIndex: number, fps: number) => void
   onCancel: () => void
 }
+
+/**
+ * Frame rate is a real trade-off between motion and bandwidth, so it belongs in
+ * the picker rather than hardcoded. 15fps used to be the only option, which made
+ * anything but a slide deck look broken.
+ */
+const FPS_OPTIONS: { value: number; label: string; desc: string }[] = [
+  { value: 15, label: '15 fps', desc: 'slides, docs — lowest bandwidth' },
+  { value: 30, label: '30 fps', desc: 'general use' },
+  { value: 60, label: '60 fps', desc: 'video, games — highest bandwidth' },
+]
 
 export default function MonitorPicker({ onSelect, onCancel }: MonitorPickerProps) {
   const [monitors, setMonitors] = useState<MonitorInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const screenShareFps = useVoiceStore((s) => s.screenShareFps)
+  const setScreenShareFps = useVoiceStore((s) => s.setScreenShareFps)
 
   useEffect(() => {
     const w = window as { __TAURI_INTERNALS__?: unknown }
@@ -58,7 +72,7 @@ export default function MonitorPicker({ onSelect, onCancel }: MonitorPickerProps
               <button
                 key={m.index}
                 className="monitor-picker__item"
-                onClick={() => onSelect(m.index)}
+                onClick={() => onSelect(m.index, screenShareFps)}
               >
                 <Monitor className="monitor-picker__item-icon" />
                 <div className="monitor-picker__item-info">
@@ -73,6 +87,31 @@ export default function MonitorPicker({ onSelect, onCancel }: MonitorPickerProps
               <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No monitors detected</p>
             )}
           </div>
+
+          <div className="monitor-picker__fps" role="radiogroup" aria-label="Frame rate">
+            <span className="monitor-picker__fps-label">Frame rate</span>
+            <div className="monitor-picker__fps-options">
+              {FPS_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={screenShareFps === opt.value}
+                  title={opt.desc}
+                  onClick={() => setScreenShareFps(opt.value)}
+                  className={`monitor-picker__fps-btn${
+                    screenShareFps === opt.value ? ' monitor-picker__fps-btn--active' : ''
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <span className="monitor-picker__fps-desc">
+              {FPS_OPTIONS.find((o) => o.value === screenShareFps)?.desc}
+            </span>
+          </div>
+
           <button className="monitor-picker__cancel" onClick={onCancel}>
             Cancel
           </button>

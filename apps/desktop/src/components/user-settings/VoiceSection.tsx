@@ -7,12 +7,6 @@ import {
 import { isTauri, isMobileTauri } from '../../utils/platform'
 import { SettingsToggleRow, SettingsSlider } from './rows'
 
-interface AudioDataPayload {
-  samples_f32: number[]
-  sample_rate: number
-  channels: number
-}
-
 interface AudioDevice {
   name: string
   device_id: string
@@ -103,6 +97,8 @@ export function VoiceSection({
   const [permissionDenied, setPermissionDenied] = useState(false)
   const [devicesLoading, setDevicesLoading] = useState(false)
   const [monitoring, setMonitoring] = useState(false)
+  const [monitorError, setMonitorError] = useState<string | null>(null)
+  const inCall = !!useVoiceStore((s) => s.activeVoiceChannelId)
   const unmountedRef = useRef(false)
   const audioLevelCleanupRef = useRef<(() => void) | null>(null)
 
@@ -227,44 +223,91 @@ export function VoiceSection({
 
   const startAudioMonitoring = useCallback(async () => {
     audioLevelCleanupRef.current?.()
+    setMonitorError(null)
 
-    if (!isTauri()) return
-
-    const { invoke } = await import('@tauri-apps/api/core')
-    const { listen } = await import('@tauri-apps/api/event')
-
-    try {
-      await invoke('stop_audio_capture')
-    } catch (err) {
-      console.error('Failed to stop prior audio capture:', err)
-    }
-
-    try {
-      await invoke('start_audio_capture', {
-        deviceName: audioInputDeviceId ?? null,
-        sampleRate: 48000,
-        channels: 1,
-      })
-    } catch (e) {
-      console.error('settings: start_audio_capture failed', e)
+    // A call already feeds the meter from the live capture. Opening a second
+    // capture of the same microphone would at best duplicate work and at worst
+    // fail on a device that only allows one reader.
+    if (inCall) {
+      audioLevelCleanupRef.current = null
       return
     }
 
-    const unlisten = await listen<AudioDataPayload>('audio:data', (event) => {
-      const samples = event.payload.samples_f32
-      if (!samples || samples.length === 0) return
-      const sumSq = samples.reduce((sum, s) => sum + s * s, 0)
-      const rms = Math.sqrt(sumSq / samples.length)
-      setLiveAudioLevel(rms * 1000)
-    })
+    if (isTauri()) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const { listen } = await import('@tauri-apps/api/event')
 
-    audioLevelCleanupRef.current = () => {
-      unlisten()
-      invoke('stop_audio_capture').catch((err) => {
-        console.error('Failed to stop audio capture on cleanup:', err)
+      const unlisten = await listen<number>('mic:level', (event) => {
+        setLiveAudioLevel(event.payload * 1000)
       })
+
+      try {
+        await invoke('start_audio_capture', {
+          deviceName: audioInputDeviceId ?? null,
+          sampleRate: 48000,
+        })
+      } catch (e) {
+        unlisten()
+        setMonitorError(typeof e === 'string' ? e : 'Could not open the microphone')
+        setMonitoring(false)
+        return
+      }
+
+      audioLevelCleanupRef.current = () => {
+        unlisten()
+        invoke('stop_audio_capture').catch((err) => {
+          console.error('Failed to stop audio capture on cleanup:', err)
+        })
+      }
+      return
     }
-  }, [audioInputDeviceId, setLiveAudioLevel])
+
+    // Web: meter straight off a getUserMedia stream.
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: audioInputDeviceId ? { deviceId: { exact: audioInputDeviceId } } : true,
+      })
+      const ctx = new AudioContext()
+      const source = ctx.createMediaStreamSource(stream)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 512
+      analyser.smoothingTimeConstant = 0.1
+      source.connect(analyser)
+      const buf = new Uint8Array(analyser.fftSize)
+      let raf = 0
+      const poll = () => {
+        analyser.getByteTimeDomainData(buf)
+        let squareSum = 0
+        for (let i = 0; i < buf.length; i++) {
+          const deviation = buf[i] - 128
+          squareSum += deviation * deviation
+        }
+        // Match the native scale so the meter reads the same on both paths:
+        // byte-domain RMS is 0-128, native RMS is 0-1 shown at x1000.
+        setLiveAudioLevel(Math.sqrt(squareSum / buf.length) * (1000 / 128))
+        raf = requestAnimationFrame(poll)
+      }
+      await ctx.resume().catch(() => {})
+      poll()
+
+      audioLevelCleanupRef.current = () => {
+        cancelAnimationFrame(raf)
+        source.disconnect()
+        ctx.close().catch(() => {})
+        stream.getTracks().forEach((t) => t.stop())
+      }
+    } catch (e) {
+      const err = e as Error & { name?: string }
+      setMonitorError(
+        err.name === 'NotAllowedError'
+          ? 'Microphone permission denied'
+          : err.name === 'NotFoundError'
+            ? 'No microphone found'
+            : `Could not open the microphone: ${err.message || err.name}`,
+      )
+      setMonitoring(false)
+    }
+  }, [audioInputDeviceId, setLiveAudioLevel, inCall])
 
   useEffect(() => {
     if (!monitoring) return
@@ -405,8 +448,13 @@ export function VoiceSection({
         </div>
 
         <div className="settings-mic-test">
-          <button onClick={() => setMonitoring((m) => !m)} className="settings-btn">
-            {monitoring ? 'stop mic test' : 'test microphone'}
+          <button
+            onClick={() => setMonitoring((m) => !m)}
+            className="settings-btn"
+            disabled={inCall}
+            title={inCall ? 'the meter is already live while you are in a call' : undefined}
+          >
+            {inCall ? 'mic is live' : monitoring ? 'stop mic test' : 'test microphone'}
           </button>
           <div className="settings-meter-row">
             <div className="settings-meter-bar">
@@ -427,6 +475,7 @@ export function VoiceSection({
                 : 'bar = your live mic level'}
             </div>
           </div>
+          {monitorError && <p className="settings-alert settings-alert--error">{monitorError}</p>}
         </div>
 
         {voiceProcessingMode === 'standard' && (
@@ -502,7 +551,9 @@ export function VoiceSection({
           </>
         )}
 
-        <p className="settings-hint settings-processing-note">applied on next voice channel join</p>
+        <p className="settings-hint settings-processing-note">
+          applied immediately, including mid-call
+        </p>
       </div>
 
       {/* Volume */}

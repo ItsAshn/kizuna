@@ -71,6 +71,16 @@
   justify-content: center;
 }
 
+/* Container React keeps empty; the shared <video> is adopted into it. */
+.vcv__screenshare-video {
+  width: 100%;
+  height: 100%;
+}
+
+.vcv__screenshare-video:empty {
+  display: none;
+}
+
 .vcv__screenshare-body video {
   width: 100%;
   height: 100%;

@@ -9,6 +9,10 @@ const SAMPLE_RATE: u32 = 48000;
 struct OutputInner {
     peers: HashMap<String, PeerJitter>,
     volume: f32,
+    /// Per-peer playback gain, 0.0-2.0, keyed by peer id. Absent means unity.
+    /// Kept separate from `peers` so a volume set before that peer's first
+    /// packet arrives still applies once their jitter buffer is created.
+    peer_volumes: HashMap<String, f32>,
 }
 
 enum MixResult {
@@ -28,6 +32,7 @@ impl AudioOutput {
         let inner = Arc::new(Mutex::new(OutputInner {
             peers: HashMap::new(),
             volume: volume.clamp(0.0, 2.0),
+            peer_volumes: HashMap::new(),
         }));
         let cancel = Arc::new(AtomicBool::new(false));
 
@@ -90,6 +95,7 @@ impl AudioOutput {
     pub fn remove_peer(&self, peer_id: &str) {
         if let Ok(mut guard) = self.inner.lock() {
             guard.peers.remove(peer_id);
+            guard.peer_volumes.remove(peer_id);
             eprintln!("[AudioOutput] removed peer={peer_id}");
         }
     }
@@ -97,6 +103,15 @@ impl AudioOutput {
     pub fn set_volume(&self, volume: f32) {
         if let Ok(mut guard) = self.inner.lock() {
             guard.volume = volume.clamp(0.0, 2.0);
+        }
+    }
+
+    /// Set an individual peer's playback gain, independent of master volume.
+    pub fn set_peer_volume(&self, peer_id: &str, volume: f32) {
+        if let Ok(mut guard) = self.inner.lock() {
+            guard
+                .peer_volumes
+                .insert(peer_id.to_string(), volume.clamp(0.0, 2.0));
         }
     }
 
@@ -135,10 +150,22 @@ fn mix_next_frame(inner: &mut OutputInner, out: &mut [f32], scratch: &mut [f32])
     let mut has_data = false;
     out.fill(0.0);
 
-    for peer in inner.peers.values_mut() {
+    // Peers are summed at their individual gain. Taking the volume by lookup
+    // here (rather than storing it on PeerJitter) keeps the jitter buffer
+    // ignorant of playback concerns and lets a volume be set for a peer whose
+    // buffer does not exist yet.
+    let peer_volumes = &inner.peer_volumes;
+    for (peer_id, peer) in inner.peers.iter_mut() {
         if let Playout::Data = peer.pop_frame(scratch) {
-            for (o, s) in out.iter_mut().zip(scratch.iter()) {
-                *o += *s;
+            let gain = peer_volumes.get(peer_id).copied().unwrap_or(1.0);
+            if gain == 1.0 {
+                for (o, s) in out.iter_mut().zip(scratch.iter()) {
+                    *o += *s;
+                }
+            } else {
+                for (o, s) in out.iter_mut().zip(scratch.iter()) {
+                    *o += *s * gain;
+                }
             }
             has_data = true;
         }

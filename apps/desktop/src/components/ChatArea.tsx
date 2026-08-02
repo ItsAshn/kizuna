@@ -26,6 +26,7 @@ import {
   createDMPoll,
   createGroupDMPoll,
   fetchChannelPolls,
+  ATTACHMENT_ACCEPT,
 } from '@kizuna/shared'
 import { getSecretKey } from '../store/keyStore'
 import {
@@ -236,6 +237,10 @@ export default function ChatArea({
   const sendingRef = useRef(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Which channel we have an outstanding `typing:start` for. A bare timer can't
+  // distinguish "still typing here" from "now typing somewhere else", so
+  // switching channels mid-sentence used to announce in neither.
+  const typingChannelRef = useRef<string | null>(null)
   const [atBottom, setAtBottom] = useState(true)
   const lastCountAtBottom = useRef(0)
   const prevChannelKeyRef = useRef<string | null>(null)
@@ -379,9 +384,27 @@ export default function ChatArea({
     const prevKey = prevChannelKeyRef.current
     if (prevKey !== currentKey) {
       setSendError(null)
+      // Everything below is scoped to the conversation you were in. Carrying it
+      // across meant a reply could be attached to a message from another
+      // channel, and — worse — a selection made in one channel stayed live in
+      // the bulk-delete bar of the next, where confirming deleted the original
+      // channel's messages.
+      setReplyTo(null)
+      setSelectedMessages(new Set())
+      clearPendingFile()
       if (prevKey !== null) {
         const currentInput = inputRef.current?.value ?? ''
         useChatStore.getState().setChannelDraft(prevKey, currentInput)
+        // Stop the typing indicator in the channel being left; otherwise it
+        // hangs there until the server times it out.
+        if (typingTimeout.current) {
+          clearTimeout(typingTimeout.current)
+          typingTimeout.current = null
+        }
+        if (typingChannelRef.current) {
+          socketRef.current?.emit('typing:stop', { channelId: typingChannelRef.current })
+          typingChannelRef.current = null
+        }
       }
       if (currentKey !== null) {
         const draft = useChatStore.getState().channelDrafts[currentKey] || ''
@@ -440,14 +463,15 @@ export default function ChatArea({
 
       const channelId = activeAnyChannelId
       if (channelId && session) {
-        if (typingTimeout.current) {
-          clearTimeout(typingTimeout.current)
-        } else {
+        if (typingTimeout.current) clearTimeout(typingTimeout.current)
+        if (typingChannelRef.current !== channelId) {
           socketRef.current?.emit('typing:start', { channelId })
+          typingChannelRef.current = channelId
         }
         typingTimeout.current = setTimeout(() => {
           socketRef.current?.emit('typing:stop', { channelId })
           typingTimeout.current = null
+          typingChannelRef.current = null
         }, 3000)
       }
     },
@@ -542,6 +566,11 @@ export default function ChatArea({
     const channelId = activeAnyChannelId
     if (!channelId) return
 
+    if (typingTimeout.current) {
+      clearTimeout(typingTimeout.current)
+      typingTimeout.current = null
+    }
+    typingChannelRef.current = null
     socketRef.current?.emit('typing:stop', { channelId })
 
     const rawInput = input
@@ -1518,7 +1547,9 @@ export default function ChatArea({
             type="file"
             style={{ display: 'none' }}
             onChange={handleFileSelect}
-            accept="image/*,video/*,audio/*,.pdf,.txt,.json"
+            /* Mirrors the server allowlist exactly. The old `image/*` wildcards
+               let the picker offer formats the upload route then rejected. */
+            accept={ATTACHMENT_ACCEPT}
           />
           <IconButton
             icon={<Paperclip size={16} />}

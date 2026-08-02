@@ -1,4 +1,5 @@
 export * from './types'
+export * from './attachments'
 export * from './api'
 export * from './webhookEvents'
 export * from './commands'

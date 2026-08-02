@@ -56,7 +56,18 @@
   justify-content: center;
 }
 
+/* Container React keeps empty; the shared <video> is adopted into it. Collapsed
+   while empty so it doesn't offset the "waiting" placeholder beside it. */
 .screenshare-overlay__video {
+  width: 100%;
+  height: 100%;
+}
+
+.screenshare-overlay__video:empty {
+  display: none;
+}
+
+.screenshare-overlay__video video {
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -141,6 +152,55 @@
 }
 
 .monitor-picker__item-res {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Frame-rate selector */
+.monitor-picker__fps {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+}
+
+.monitor-picker__fps-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.monitor-picker__fps-options {
+  display: flex;
+  gap: 6px;
+}
+
+.monitor-picker__fps-btn {
+  flex: 1;
+  padding: 7px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.monitor-picker__fps-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.monitor-picker__fps-btn--active {
+  background: var(--brand-dim);
+  border-color: var(--brand-dim-border);
+  color: var(--text-primary);
+}
+
+.monitor-picker__fps-desc {
+  display: block;
+  margin-top: 7px;
   font-size: 11px;
   color: var(--text-muted);
 }
