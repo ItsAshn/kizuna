@@ -107,12 +107,27 @@ export default function ScreenShareOverlay({
     }
   }, [isActive])
 
+  // The shared <video> is adopted imperatively into a container React keeps
+  // empty — it used to be appended into a node React was also rendering a
+  // placeholder into, so clearing it tore out an element React still believed
+  // it owned. Attachment is tracked in state because a ref read during render
+  // never re-renders when it changes: the placeholder could outlive the video
+  // arriving, or vanish without it.
+  const [videoAttached, setVideoAttached] = useState(false)
   useEffect(() => {
     const videoContainer = videoContainerRef.current
-    if (!videoContainer || !videoElRef.current) return
-    videoContainer.innerHTML = ''
-    videoContainer.appendChild(videoElRef.current)
-  }, [screenSharePeerId, videoElRef])
+    const el = videoElRef.current
+    if (!videoContainer || !el) {
+      setVideoAttached(false)
+      return
+    }
+    videoContainer.replaceChildren(el)
+    setVideoAttached(true)
+    return () => {
+      videoContainer.replaceChildren()
+      setVideoAttached(false)
+    }
+  }, [screenSharePeerId, isScreenSharing, videoElRef])
 
   if (!mounted && !isActive) return null
   if (!activeVoiceChannelId && !isScreenSharing) return null
@@ -155,8 +170,9 @@ export default function ScreenShareOverlay({
           )}
         </div>
       </div>
-      <div className="screenshare-overlay__body" ref={videoContainerRef}>
-        {!videoElRef.current && (
+      <div className="screenshare-overlay__body">
+        <div className="screenshare-overlay__video" ref={videoContainerRef} />
+        {!videoAttached && (
           <div className="screenshare-overlay__empty">
             <Monitor size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
             <div>Waiting for video...</div>

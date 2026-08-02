@@ -18,6 +18,8 @@ pub mod aec;
 pub mod device;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod output;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub mod mictest;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use signaling::VoiceController;

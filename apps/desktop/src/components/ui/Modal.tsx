@@ -52,7 +52,10 @@ export default function Modal({
 
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        e.stopPropagation()
+        // stopPropagation does nothing against other listeners bound to window
+        // itself — only stopImmediatePropagation keeps a nested modal or another
+        // global handler from acting on the same keypress.
+        e.stopImmediatePropagation()
         handleClose()
       }
     }

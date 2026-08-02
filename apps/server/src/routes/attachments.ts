@@ -6,27 +6,16 @@ import { getDb } from '../db'
 import { authMiddleware, getUserPermissions, hasPermission, isUserAdmin } from '../middleware/auth'
 import { processImage, shouldProcessImage } from '../media/imageProcessor'
 import { getAuth } from '../utils/auth'
+import { ALLOWED_ATTACHMENT_EXTENSIONS } from '@kizuna/shared/attachments'
 
 const attachmentRoutes = new Hono()
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '10485760', 10)
 
-const ALLOWED_EXTENSIONS = [
-  '.jpg',
-  '.jpeg',
-  '.png',
-  '.gif',
-  '.webp',
-  '.mp4',
-  '.webm',
-  '.mp3',
-  '.ogg',
-  '.wav',
-  '.pdf',
-  '.txt',
-  '.json',
-]
+// Shared with the client so its file picker offers exactly what this route will
+// accept. Magic-byte validation below is keyed off the same list.
+const ALLOWED_EXTENSIONS: readonly string[] = ALLOWED_ATTACHMENT_EXTENSIONS
 
 const MIME_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',

@@ -61,6 +61,8 @@ export interface PeerInfo {
   producers: Map<string, mediasoupTypes.Producer>
   consumers: Map<string, mediasoupTypes.Consumer>
   announced: boolean
+  /** Self-mute state, mirrored to the channel so rosters can show it. */
+  muted: boolean
 }
 
 const peers = new Map<string, PeerInfo>()
@@ -270,6 +272,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
           producers: new Map(),
           consumers: new Map(),
           announced: false,
+          muted: false,
         }
         peers.set(socket.id, peer)
         if (!channelPeers.has(channelId)) channelPeers.set(channelId, new Set())
@@ -305,7 +308,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
               userId: p.userId,
               username: p.username,
               speaking: false,
-              muted: false,
+              muted: p.muted,
               hasCamera,
             })
           }
@@ -695,10 +698,19 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     },
   )
 
+  // Self-mute. Persisted on the peer so someone joining later sees who is
+  // already muted rather than an all-unmuted roster, and broadcast with the
+  // peer id the client keys its roster by (userId is included for callers that
+  // only track users).
   socket.on('voice:mute', ({ muted }: { muted: boolean }) => {
     const peer = peers.get(socket.id)
     if (!peer) return
-    io.to(peer.channelId).emit('voice:mute', { userId: peer.userId, muted })
+    peer.muted = !!muted
+    io.to(peer.channelId).emit('voice:mute', {
+      peerId: socket.id,
+      userId: peer.userId,
+      muted: peer.muted,
+    })
   })
 
   socket.on('screen:start', async ({ channelId }: { channelId: string }, callback?: Function) => {
