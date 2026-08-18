@@ -1,10 +1,7 @@
 {
-  "buildCommand": "pnpm --filter @kizuna/desktop build",
+  "buildCommand": "pnpm --filter @kizuna/desktop build && pnpm --filter kizuna-docs build && cp -r docs/.vitepress/dist apps/desktop/dist/kizuna",
   "outputDirectory": "apps/desktop/dist",
   "installCommand": "pnpm install",
-  "rewrites": [
-    { "source": "/kizuna", "destination": "https://itsashn.github.io/kizuna/" },
-    { "source": "/kizuna/:path*", "destination": "https://itsashn.github.io/kizuna/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  "cleanUrls": true,
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
