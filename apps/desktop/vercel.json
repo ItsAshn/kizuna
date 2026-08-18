@@ -1,5 +1,6 @@
 {
-  "buildCommand": "pnpm build",
+  "buildCommand": "pnpm build && pnpm --filter kizuna-docs build && cp -r ../../docs/.vitepress/dist dist/kizuna",
   "outputDirectory": "dist",
+  "cleanUrls": true,
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
