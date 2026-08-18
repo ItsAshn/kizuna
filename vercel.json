@@ -2,5 +2,9 @@
   "buildCommand": "pnpm --filter @kizuna/desktop build",
   "outputDirectory": "apps/desktop/dist",
   "installCommand": "pnpm install",
-  "routes": [{ "handle": "filesystem" }, { "src": "/(.*)", "dest": "/index.html" }]
+  "rewrites": [
+    { "source": "/kizuna", "destination": "https://itsashn.github.io/kizuna/" },
+    { "source": "/kizuna/:path*", "destination": "https://itsashn.github.io/kizuna/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

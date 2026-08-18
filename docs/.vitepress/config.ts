@@ -1,7 +1,19 @@
 import { defineConfig } from 'vitepress'
 
-const SITE_URL = 'https://use-kizuna.com'
+const SITE_URL = 'https://www.use-kizuna.com'
+// The docs are served under /kizuna/ on the main host, proxied to GitHub Pages
+// by the rewrite in vercel.json. `base` below has to stay in sync with this.
+const DOCS_URL = `${SITE_URL}/kizuna`
 const OG_IMAGE = `${SITE_URL}/Logo.webp`
+
+/** Absolute URL of a docs page, from its source path. */
+const pageUrl = (relativePath?: string) => {
+  const slug = (relativePath ?? '')
+    .replace(/\.md$/, '')
+    .replace(/(^|\/)index$/, '$1')
+    .replace(/\/$/, '')
+  return slug ? `${DOCS_URL}/${slug}` : `${DOCS_URL}/`
+}
 
 export default defineConfig({
   title: 'Kizuna',
@@ -12,7 +24,7 @@ export default defineConfig({
   lastUpdated: true,
   cleanUrls: true,
   sitemap: {
-    hostname: SITE_URL,
+    hostname: `${DOCS_URL}/`,
   },
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/Logo.svg' }],
@@ -36,27 +48,10 @@ export default defineConfig({
     return [
       ['meta', { property: 'og:title', content: title }],
       ['meta', { property: 'og:description', content: description }],
-      [
-        'meta',
-        {
-          property: 'og:url',
-          content: `${SITE_URL}${ctx.pageData.relativePath ? `/${ctx.pageData.relativePath.replace(/\.md$/, '').replace(/index$/, '')}` : ''}`,
-        },
-      ],
+      ['meta', { property: 'og:url', content: pageUrl(ctx.pageData.relativePath) }],
       ['meta', { name: 'twitter:title', content: title }],
       ['meta', { name: 'twitter:description', content: description }],
-      [
-        'link',
-        {
-          rel: 'canonical',
-          href: `${SITE_URL}/kizuna/${
-            ctx.pageData.relativePath
-              ?.replace(/\.md$/, '')
-              .replace(/index$/, '')
-              .replace(/\/$/, '') || ''
-          }`,
-        },
-      ],
+      ['link', { rel: 'canonical', href: pageUrl(ctx.pageData.relativePath) }],
     ]
   },
   themeConfig: {

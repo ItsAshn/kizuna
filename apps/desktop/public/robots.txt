@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /chat
+Disallow: /login/
+Disallow: /reset-password/
+
+Sitemap: https://www.use-kizuna.com/sitemap.xml
+Sitemap: https://www.use-kizuna.com/kizuna/sitemap.xml
