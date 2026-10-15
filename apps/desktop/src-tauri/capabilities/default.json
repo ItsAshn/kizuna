@@ -9,6 +9,7 @@
     "updater:default",
     "notification:default",
     "process:default",
-    "shell:default"
+    "shell:default",
+    "call-service:default"
   ]
 }

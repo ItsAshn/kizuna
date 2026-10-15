@@ -7,6 +7,7 @@ import { useSettingsStore } from '../store/settingsStore'
 import { useSocket } from '../hooks/useSocket'
 import { useVoice } from '../hooks/useVoice'
 import { useActivityDetector } from '../hooks/useActivityDetector'
+import { useCallForegroundService } from '../hooks/useCallForegroundService'
 import { useScreenshare } from '../hooks/useScreenshare'
 import { useCamera } from '../hooks/useCamera'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
@@ -95,6 +96,7 @@ export default function Chat() {
     nativeVideoRef,
   )
   const { toggleCamera, cameraStreamRef } = useCamera(socketRef, sendTransportRef, nativeVideoRef)
+  useCallForegroundService(leaveVoice)
   const isCameraOn = useCallStore((s) => s.isCameraOn)
   const dmCallStatus = useCallStore((s) => s.dmCallStatus)
   const dmCallChannelId = useCallStore((s) => s.dmCallChannelId)
