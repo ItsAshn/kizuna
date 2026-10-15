@@ -8,6 +8,7 @@ import { updateStatus, fetchGifs, fetchStickerPacks } from '@kizuna/shared'
 import type { UserStatus, GifInfo } from '@kizuna/shared'
 import BottomSheet from './ui/BottomSheet'
 import { useMobile } from '../hooks/useMobile'
+import { useOverlay } from '../lib/overlayStack'
 import './UserStatusPicker.css'
 
 interface Props {
@@ -103,19 +104,14 @@ export default function UserStatusPicker({ socketRef, children }: Props) {
         setShowStickerPicker(false)
       }
     }
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setOpen(false)
-        setShowStickerPicker(false)
-      }
-    }
     document.addEventListener('click', handleClick)
-    window.addEventListener('keydown', handleKey)
-    return () => {
-      document.removeEventListener('click', handleClick)
-      window.removeEventListener('keydown', handleKey)
-    }
+    return () => document.removeEventListener('click', handleClick)
   }, [isMobile])
+
+  useOverlay(open && !isMobile, () => {
+    setOpen(false)
+    setShowStickerPicker(false)
+  })
 
   const loadStickerPacks = useCallback(async () => {
     if (!session) return

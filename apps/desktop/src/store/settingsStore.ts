@@ -8,7 +8,7 @@ interface NotificationSettings {
   suppressEveryone: boolean
 }
 
-interface RecentChannel {
+export interface RecentChannel {
   id: string
   type: 'text' | 'voice' | 'dm' | 'group-dm'
 }

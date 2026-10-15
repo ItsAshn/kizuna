@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ActionSheet from './ui/ActionSheet'
 import { useMobile } from '../hooks/useMobile'
+import { useOverlay } from '../lib/overlayStack'
 import './ContextMenu.css'
 
 export interface ContextMenuItem {
@@ -28,6 +29,9 @@ export default function ContextMenu({ x, y, sections, onClose, title }: ContextM
   const isMobile = useMobile()
   const ref = useRef<HTMLDivElement>(null)
   const [adjustedPos, setAdjustedPos] = useState<{ left: number; top: number } | null>(null)
+  // Escape / Android back go through the overlay stack; the mobile ActionSheet
+  // registers itself.
+  useOverlay(!isMobile, onClose)
 
   useEffect(() => {
     const el = ref.current
@@ -55,10 +59,6 @@ export default function ContextMenu({ x, y, sections, onClose, title }: ContextM
       }
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        onClose()
-        return
-      }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()
         const items = Array.from(

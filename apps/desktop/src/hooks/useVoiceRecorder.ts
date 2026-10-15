@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useVoiceStore } from '../store/voiceStore'
+import { useNotificationStore } from '../store/notificationStore'
 
 /**
  * Records audio from the microphone and delivers the finished recording as a
@@ -55,6 +56,17 @@ export function useVoiceRecorder(onComplete: (file: File) => void) {
       }, 1000)
     } catch (err) {
       console.error('Failed to start recording:', err)
+      const name = err instanceof DOMException ? err.name : ''
+      useNotificationStore.getState().addNotification({
+        type: 'message',
+        title: 'Microphone unavailable',
+        body:
+          name === 'NotAllowedError' || name === 'SecurityError'
+            ? 'Microphone access was denied. Allow it in your system or browser settings to record voice messages.'
+            : name === 'NotFoundError' || name === 'OverconstrainedError'
+              ? 'No microphone was found. Connect one, or pick another input in Settings → Voice.'
+              : 'Could not start recording. Please try again.',
+      })
     }
   }, [])
 

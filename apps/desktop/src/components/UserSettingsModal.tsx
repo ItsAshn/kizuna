@@ -32,9 +32,9 @@ const SECTION_LABELS: Record<string, string> = {
  * thin UserSettingsModal wrapper below for any standalone use.
  */
 export function UserSettingsBody({
-  onClose,
   navHeader,
 }: {
+  /** Kept for callers; Escape-to-close is handled by the enclosing ui/Modal. */
   onClose: () => void
   navHeader?: ReactNode
 }) {
@@ -79,20 +79,15 @@ export function UserSettingsBody({
     [setPushToTalkKey],
   )
 
-  // Push-to-talk key capture and Escape-close share one capture-phase listener:
-  // capture must win over ui/Modal's own bubble-phase Escape handling while a
-  // key is being recorded, so these can't be split into separate effects.
+  // Push-to-talk key capture runs in the capture phase so it wins over the
+  // overlay stack's bubble-phase Escape handling while a key is being recorded
+  // (Escape is a bindable key here, not "close"). Closing on Escape otherwise
+  // is ui/Modal's job.
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (listeningForKey) {
-        handleKeyCapture(e)
-        return
-      }
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKey, true)
-    return () => window.removeEventListener('keydown', handleKey, true)
-  }, [onClose, listeningForKey, handleKeyCapture])
+    if (!listeningForKey) return
+    window.addEventListener('keydown', handleKeyCapture, true)
+    return () => window.removeEventListener('keydown', handleKeyCapture, true)
+  }, [listeningForKey, handleKeyCapture])
 
   const handleResetAudio = useCallback(() => {
     setAudioInputDeviceId(null)

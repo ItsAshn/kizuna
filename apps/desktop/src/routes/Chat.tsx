@@ -21,6 +21,7 @@ import {
   fetchCategories,
 } from '@kizuna/shared'
 import { restoreFromSession } from '../store/keyStore'
+import { showErrorToast } from '../utils/showNotification'
 import ServerPanel from '../components/ServerPanel'
 import UpdateBanner from '../components/UpdateBanner'
 import Sidebar from '../components/Sidebar'
@@ -117,7 +118,7 @@ export default function Chat() {
     backgroundBlur: number
     customCss: string | null
   } | null>(null)
-  const [, setInitialLoading] = useState(true)
+  const [initialLoading, setInitialLoading] = useState(true)
 
   const chatOpen = !!(activeChannelId || activeDMChannelId || activeGroupDMChannelId)
   const stageOwnsScreenshare =
@@ -210,6 +211,7 @@ export default function Chat() {
     // slowest response overwrite the channel list of the server now shown.
     let stale = false
     const serverId = session.serverId
+    setInitialLoading(true)
 
     async function load() {
       try {
@@ -292,10 +294,17 @@ export default function Chat() {
           console.error('[Chat] Failed to fetch categories:', categoriesResult.reason)
         }
 
+        // Each failure above only logged; say so once instead of leaving the
+        // user looking at an empty (or partly empty) server.
+        if (results.some((r) => r.status === 'rejected')) {
+          showErrorToast('load some of this server’s data')
+        }
+
         setInitialLoading(false)
       } catch (err) {
         if (stale) return
         console.error('[Chat] Failed to load server data:', err)
+        showErrorToast('load this server')
         setChannels([])
         setCategories([])
         setMembers([])
@@ -371,6 +380,7 @@ export default function Chat() {
       <>
         <MobileShell
           session={session}
+          initialLoading={initialLoading}
           servers={servers}
           sessions={sessions}
           dmChannels={dmChannels}
@@ -464,6 +474,7 @@ export default function Chat() {
               joinVoice={joinVoice}
               leaveVoice={leaveVoice}
               socketRef={socketRef}
+              loading={initialLoading}
               onOpenMenu={() => setSettingsScope('server')}
               voicePanel={
                 <VoiceOverlay
@@ -521,10 +532,16 @@ export default function Chat() {
                     )}
                   </div>
                   <h1 className="chat-placeholder__title">Welcome to {serverName}</h1>
-                  <p className="chat-placeholder__subtitle">
-                    Select a channel or direct message to start chatting
+                  <p className="chat-placeholder__subtitle" role="status" aria-live="polite">
+                    {initialLoading
+                      ? 'Loading channels and members…'
+                      : 'Select a channel or direct message to start chatting'}
                   </p>
-                  <div className="chat-placeholder__stats">
+                  <div
+                    className="chat-placeholder__stats"
+                    hidden={initialLoading}
+                    aria-hidden={initialLoading || undefined}
+                  >
                     <button
                       className="chat-placeholder__stat"
                       onClick={() => setShowMembers((v) => !v)}

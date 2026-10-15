@@ -160,3 +160,7 @@
     max-height: 45vh;
   }
 }
+
+.search-bar__empty--error {
+  color: var(--error);
+}

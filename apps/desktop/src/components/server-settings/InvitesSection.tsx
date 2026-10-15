@@ -5,6 +5,17 @@ import type { InviteCode } from '@kizuna/shared'
 import { handleApiErr, useMountedRef } from './common'
 import './InvitesSection.css'
 
+/* The QR code is deliberately exempt from theming. Many scanners (including
+ * older Android camera apps) only decode dark modules on a light background;
+ * the previous light-on-dark code, matched to the dark palette, failed on
+ * them. `margin: 4` is the quiet zone the QR spec requires, rendered light
+ * as part of the image. */
+const QR_OPTIONS = {
+  width: 200,
+  margin: 4,
+  color: { dark: '#000000', light: '#ffffff' },
+}
+
 const EXPIRY_OPTIONS = [
   { label: 'never', value: '0' },
   { label: '1 hour', value: '1' },
@@ -47,11 +58,7 @@ export function InvitesSection({ serverUrl }: { serverUrl: string | null | undef
       const invite = await createInvite(serverUrl, maxUses, expiresInHours)
       setInvites((prev) => [invite, ...prev])
       const deepLink = `kizuna://join?server=${encodeURIComponent(serverUrl)}&code=${invite.code}`
-      const qrDataUrl = await QRCode.toDataURL(deepLink, {
-        width: 200,
-        margin: 2,
-        color: { dark: '#f2f3f5', light: '#1e1f22' },
-      })
+      const qrDataUrl = await QRCode.toDataURL(deepLink, QR_OPTIONS)
       setActiveQr({ code: invite.code, dataUrl: qrDataUrl })
       setNewMaxUses('')
       setNewExpiry('0')
@@ -69,11 +76,7 @@ export function InvitesSection({ serverUrl }: { serverUrl: string | null | undef
       return
     }
     const deepLink = `kizuna://join?server=${encodeURIComponent(serverUrl!)}&code=${invite.code}`
-    const qrDataUrl = await QRCode.toDataURL(deepLink, {
-      width: 200,
-      margin: 2,
-      color: { dark: '#f2f3f5', light: '#1e1f22' },
-    })
+    const qrDataUrl = await QRCode.toDataURL(deepLink, QR_OPTIONS)
     setActiveQr({ code: invite.code, dataUrl: qrDataUrl })
   }
 

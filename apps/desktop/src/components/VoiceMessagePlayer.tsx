@@ -1,6 +1,22 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Play, Pause } from 'lucide-react'
+import { resolveTokenColor, useThemeVersion } from '../utils/themeTokens'
 import './VoiceMessagePlayer.css'
+
+/* One AudioContext for every voice message, created on first use. Browsers
+ * cap how many can exist at once (Chrome warns past ~6), and a channel full of
+ * voice notes made one each just to decode a waveform. Decoding works on a
+ * suspended context; resume() covers engines that want it running. */
+let sharedAudioContext: AudioContext | null = null
+function getAudioContext(): AudioContext {
+  if (!sharedAudioContext || sharedAudioContext.state === 'closed') {
+    sharedAudioContext = new AudioContext()
+  }
+  if (sharedAudioContext.state === 'suspended') {
+    sharedAudioContext.resume().catch(() => {})
+  }
+  return sharedAudioContext
+}
 
 interface Props {
   url: string
@@ -27,10 +43,17 @@ export default function VoiceMessagePlayer({ url }: Props) {
     audio.preload = 'auto'
     audio.src = url
 
+    // MediaRecorder writes WebM without a duration header, so the element
+    // reports Infinity until the whole file has been read. Keep only finite
+    // values here; the decoded AudioBuffer below supplies the real length.
+    const syncDuration = () => {
+      if (Number.isFinite(audio.duration)) setDuration(audio.duration)
+    }
     audio.addEventListener('loadedmetadata', () => {
-      setDuration(audio.duration)
+      syncDuration()
       setLoaded(true)
     })
+    audio.addEventListener('durationchange', syncDuration)
 
     audio.addEventListener('timeupdate', () => {
       setCurrentTime(audio.currentTime)
@@ -54,11 +77,11 @@ export default function VoiceMessagePlayer({ url }: Props) {
     if (!loaded) return
     fetch(url)
       .then((res) => res.arrayBuffer())
-      .then((buffer) => {
-        const ctx = new AudioContext()
-        return ctx.decodeAudioData(buffer)
-      })
+      .then((buffer) => getAudioContext().decodeAudioData(buffer))
       .then((audioBuffer) => {
+        if (Number.isFinite(audioBuffer.duration) && audioBuffer.duration > 0) {
+          setDuration((d) => (d > 0 ? d : audioBuffer.duration))
+        }
         const data = audioBuffer.getChannelData(0)
         const samples = 80
         const blockSize = Math.floor(data.length / samples)
@@ -78,6 +101,8 @@ export default function VoiceMessagePlayer({ url }: Props) {
       })
   }, [url, loaded])
 
+  const themeVersion = useThemeVersion()
+
   useEffect(() => {
     if (!canvasRef.current || waveform.length === 0) return
     const canvas = canvasRef.current
@@ -96,6 +121,10 @@ export default function VoiceMessagePlayer({ url }: Props) {
     ctx.clearRect(0, 0, w, h)
 
     const progress = duration > 0 ? currentTime / duration : 0
+    // Canvas can't read CSS custom properties, so resolve the tokens to real
+    // colours (re-run on theme changes via themeVersion).
+    const playedColor = resolveTokenColor(canvas, '--brand')
+    const unplayedColor = resolveTokenColor(canvas, '--text-muted')
 
     waveform.forEach((v, i) => {
       const x = i * (barW + gap)
@@ -103,12 +132,12 @@ export default function VoiceMessagePlayer({ url }: Props) {
       const y = (h - barH) / 2
       const isPlayed = i / waveform.length <= progress
 
-      ctx.fillStyle = isPlayed ? 'var(--brand)' : 'var(--text-muted)'
+      ctx.fillStyle = isPlayed ? playedColor : unplayedColor
       ctx.beginPath()
       ctx.roundRect(x, y, barW, barH, 2)
       ctx.fill()
     })
-  }, [waveform, currentTime, duration])
+  }, [waveform, currentTime, duration, themeVersion])
 
   const togglePlay = useCallback(() => {
     if (!audioRef.current) return
