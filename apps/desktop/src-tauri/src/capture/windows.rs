@@ -3,87 +3,112 @@ mod imp {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use image::codecs::jpeg::JpegEncoder;
     use image::imageops::FilterType;
     use image::{DynamicImage, EncodableLayout, ExtendedColorType, ImageEncoder};
     use tauri::Emitter;
     use windows::core::Interface;
+    use windows::Win32::Foundation::HMODULE;
+    use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_UNKNOWN;
     use windows::Win32::Graphics::Direct3D11::{
         D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
-        D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE,
+        D3D11_CPU_ACCESS_READ, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAPPED_SUBRESOURCE,
+        D3D11_MAP_READ, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
     };
     use windows::Win32::Graphics::Dxgi::{
-        IDXGIAdapter1, IDXGIFactory1, IDXGIOutput1, IDXGIOutputDuplication,
-        IDXGIResource, DXGI_OUTDUPL_FRAME_INFO,
-        DXGI_ERROR_WAIT_TIMEOUT,
+        CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory1, IDXGIOutput1, IDXGIOutputDuplication,
+        IDXGIResource, DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_NOT_FOUND, DXGI_ERROR_WAIT_TIMEOUT,
+        DXGI_OUTDUPL_FRAME_INFO,
     };
-    use windows::Win32::Graphics::Gdi::{EnumDisplayDevicesW, DISPLAY_DEVICEW};
-    use windows::Win32::Foundation::HMODULE;
 
-    const EDD_GET_DEVICE_INTERFACE_NAME: u32 = 0x00000001;
-
-    use super::super::{CaptureSession, MonitorInfo, ScreenFramePayload};
+    use super::super::{CaptureSession, MonitorInfo, PixelFormat, RawFrame, ScreenFramePayload};
 
     const MAX_DIMENSION: u32 = 1920;
     const JPEG_QUALITY: u8 = 75;
     const MAX_CONSECUTIVE_ERRORS: u32 = 10;
 
-    pub fn list_monitors() -> Result<Vec<MonitorInfo>, String> {
-        let mut monitors = Vec::new();
-        let mut index = 0u32;
+    /// One desktop output and the adapter that drives it. Monitor indices
+    /// shown to the user and used for capture both come from this one
+    /// enumeration, across every adapter. (The list used to come from
+    /// EnumDisplayDevices while capture only looked at adapter 0, so on a
+    /// multi-GPU machine the picked monitor and the captured one differed.)
+    struct DesktopOutput {
+        adapter: IDXGIAdapter1,
+        output: IDXGIOutput1,
+        name: String,
+        width: u32,
+        height: u32,
+    }
 
+    fn enumerate_outputs() -> Result<Vec<DesktopOutput>, String> {
+        let factory: IDXGIFactory1 =
+            unsafe { CreateDXGIFactory1() }.map_err(|e| format!("CreateDXGIFactory1 failed: {e}"))?;
+        let mut outputs = Vec::new();
+        let mut adapter_index = 0u32;
         loop {
-            let mut display_device = DISPLAY_DEVICEW {
-                cb: std::mem::size_of::<DISPLAY_DEVICEW>() as u32,
-                ..Default::default()
+            let adapter = match unsafe { factory.EnumAdapters1(adapter_index) } {
+                Ok(adapter) => adapter,
+                Err(e) if e.code() == DXGI_ERROR_NOT_FOUND => break,
+                Err(e) => return Err(format!("EnumAdapters1 failed: {e}")),
             };
+            adapter_index += 1;
 
-            unsafe {
-                let result = EnumDisplayDevicesW(
-                    None,
-                    index,
-                    &mut display_device,
-                    EDD_GET_DEVICE_INTERFACE_NAME,
-                );
+            let mut output_index = 0u32;
+            loop {
+                let output = match unsafe { adapter.EnumOutputs(output_index) } {
+                    Ok(output) => output,
+                    // DXGI_ERROR_NOT_FOUND ends this adapter's outputs; any
+                    // other failure skips the adapter rather than the list.
+                    Err(_) => break,
+                };
+                output_index += 1;
 
-                if result.as_bool() {
-                    let name = String::from_utf16_lossy(&display_device.DeviceString)
-                        .trim_end_matches('\0')
-                        .to_string();
-
-                    let width = 0u32;
-                    let height = 0u32;
-
-                    monitors.push(MonitorInfo {
-                        index: index as usize,
-                        name: if name.is_empty() {
-                            format!("Display {}", index + 1)
-                        } else {
-                            name
-                        },
-                        width,
-                        height,
-                    });
-
-                    index += 1;
-                } else {
-                    break;
+                let Ok(desc) = (unsafe { output.GetDesc() }) else {
+                    continue;
+                };
+                if !desc.AttachedToDesktop.as_bool() {
+                    continue;
                 }
+                let Ok(output1) = output.cast::<IDXGIOutput1>() else {
+                    continue;
+                };
+                let device_name = String::from_utf16_lossy(&desc.DeviceName)
+                    .trim_end_matches('\0')
+                    .to_string();
+                let r = desc.DesktopCoordinates;
+                outputs.push(DesktopOutput {
+                    adapter: adapter.clone(),
+                    output: output1,
+                    name: device_name,
+                    width: (r.right - r.left).max(0) as u32,
+                    height: (r.bottom - r.top).max(0) as u32,
+                });
             }
         }
+        Ok(outputs)
+    }
 
-        if monitors.is_empty() {
-            monitors.push(MonitorInfo {
-                index: 0,
-                name: "Primary Display".into(),
-                width: 0,
-                height: 0,
-            });
+    pub fn list_monitors() -> Result<Vec<MonitorInfo>, String> {
+        let outputs = enumerate_outputs()?;
+        if outputs.is_empty() {
+            return Err("No displays found to capture".into());
         }
-
-        Ok(monitors)
+        Ok(outputs
+            .iter()
+            .enumerate()
+            .map(|(index, o)| MonitorInfo {
+                index,
+                name: if o.name.is_empty() {
+                    format!("Display {}", index + 1)
+                } else {
+                    format!("Display {} ({})", index + 1, o.name.trim_start_matches(r"\\.\"))
+                },
+                width: o.width,
+                height: o.height,
+            })
+            .collect())
     }
 
     pub fn start_capture(
@@ -91,47 +116,70 @@ mod imp {
         monitor_index: usize,
         fps: u32,
     ) -> Result<CaptureSession, String> {
-        let interval_ms: u32 = if fps > 0 { 1000 / fps } else { 33 };
+        let fps = if fps > 0 { fps } else { 30 };
+        let period = Duration::from_secs_f64(1.0 / fps as f64);
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_clone = cancel.clone();
 
-        let (device, context) = create_d3d11_device()?;
-        let duplication =
-            create_desktop_duplication(&device, monitor_index)?;
+        let target = enumerate_outputs()?
+            .into_iter()
+            .nth(monitor_index)
+            .ok_or_else(|| format!("Monitor index {monitor_index} not found"))?;
+        let mut duplicator = Duplicator::new(target)?;
 
         let handle = thread::spawn(move || {
-            let period = Duration::from_millis(interval_ms as u64);
             let mut consecutive_errors: u32 = 0;
+            let timeout_ms = (period.as_millis() as u32).clamp(1, 100);
 
             loop {
                 if cancel_clone.load(Ordering::Relaxed) {
                     break;
                 }
+                let start = Instant::now();
 
-                let start = std::time::Instant::now();
-
-                match capture_frame(
-                    &device,
-                    &context,
-                    &duplication,
-                ) {
-                    Ok(payload) => {
+                match duplicator.next_frame(timeout_ms) {
+                    Ok(Some(frame)) => {
                         consecutive_errors = 0;
-                        let _ = app.emit("screen:frame", payload);
-                    }
-                    Err(e) => {
-                        consecutive_errors += 1;
-                        eprintln!(
-                            "[ScreenCapture] DXGI frame error ({} consecutive): {e}",
-                            consecutive_errors
-                        );
-                        if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
-                            eprintln!(
-                                "[ScreenCapture] DXGI: too many consecutive errors, stopping"
-                            );
-                            break;
+                        // A native encoder, when attached, takes raw pixels;
+                        // otherwise the webview gets JPEG.
+                        if super::super::video_sink_active() {
+                            super::super::publish_raw_frame(frame);
+                        } else {
+                            match encode_jpeg(frame) {
+                                Ok(payload) => {
+                                    let _ = app.emit("screen:frame", payload);
+                                }
+                                Err(e) => eprintln!("[ScreenCapture] JPEG encode failed: {e}"),
+                            }
                         }
                     }
+                    // Nothing changed on screen since the last frame: not an
+                    // error. (It used to count as one, so a still desktop
+                    // stopped the capture after a second.)
+                    Ok(None) => {
+                        consecutive_errors = 0;
+                    }
+                    Err(CaptureError::AccessLost) => {
+                        // Mode change, lock screen, UAC prompt, full-screen
+                        // app: the duplication has to be recreated.
+                        eprintln!("[ScreenCapture] DXGI access lost, recreating duplication");
+                        if let Err(e) = duplicator.recreate() {
+                            consecutive_errors += 1;
+                            eprintln!("[ScreenCapture] recreate failed ({consecutive_errors}): {e}");
+                            thread::sleep(Duration::from_millis(250));
+                        }
+                    }
+                    Err(CaptureError::Other(e)) => {
+                        consecutive_errors += 1;
+                        eprintln!(
+                            "[ScreenCapture] DXGI frame error ({consecutive_errors} consecutive): {e}"
+                        );
+                    }
+                }
+
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                    eprintln!("[ScreenCapture] DXGI: too many consecutive errors, stopping");
+                    break;
                 }
 
                 let elapsed = start.elapsed();
@@ -147,181 +195,216 @@ mod imp {
         })
     }
 
-    fn create_d3d11_device() -> Result<(ID3D11Device, ID3D11DeviceContext), String> {
+    enum CaptureError {
+        AccessLost,
+        Other(String),
+    }
+
+    /// Releases the acquired frame however the capture of it ends.
+    struct AcquiredFrame<'a> {
+        duplication: &'a IDXGIOutputDuplication,
+    }
+
+    impl Drop for AcquiredFrame<'_> {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = self.duplication.ReleaseFrame();
+            }
+        }
+    }
+
+    /// Unmaps the staging texture however the copy out of it ends.
+    struct MappedTexture<'a> {
+        context: &'a ID3D11DeviceContext,
+        texture: &'a ID3D11Texture2D,
+    }
+
+    impl Drop for MappedTexture<'_> {
+        fn drop(&mut self) {
+            unsafe {
+                self.context.Unmap(self.texture, 0);
+            }
+        }
+    }
+
+    struct Duplicator {
+        target: DesktopOutput,
+        device: ID3D11Device,
+        context: ID3D11DeviceContext,
+        duplication: IDXGIOutputDuplication,
+        staging: Option<(ID3D11Texture2D, u32, u32)>,
+        have_frame: bool,
+    }
+
+    impl Duplicator {
+        fn new(target: DesktopOutput) -> Result<Self, String> {
+            let (device, context) = create_device(&target.adapter)?;
+            let duplication = unsafe { target.output.DuplicateOutput(&device) }
+                .map_err(|e| format!("DuplicateOutput failed: {e}"))?;
+            Ok(Self {
+                target,
+                device,
+                context,
+                duplication,
+                staging: None,
+                have_frame: false,
+            })
+        }
+
+        fn recreate(&mut self) -> Result<(), String> {
+            let duplication = unsafe { self.target.output.DuplicateOutput(&self.device) }
+                .map_err(|e| format!("DuplicateOutput failed: {e}"))?;
+            self.duplication = duplication;
+            self.staging = None;
+            self.have_frame = false;
+            Ok(())
+        }
+
+        /// The next desktop image, or `None` when nothing new was presented
+        /// within `timeout_ms`.
+        fn next_frame(&mut self, timeout_ms: u32) -> Result<Option<RawFrame>, CaptureError> {
+            let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
+            let mut resource: Option<IDXGIResource> = None;
+            match unsafe {
+                self.duplication
+                    .AcquireNextFrame(timeout_ms, &mut frame_info, &mut resource)
+            } {
+                Ok(()) => {}
+                Err(e) if e.code() == DXGI_ERROR_WAIT_TIMEOUT => return Ok(None),
+                Err(e) if e.code() == DXGI_ERROR_ACCESS_LOST => {
+                    return Err(CaptureError::AccessLost)
+                }
+                Err(e) => return Err(CaptureError::Other(format!("AcquireNextFrame failed: {e}"))),
+            }
+            let duplication = self.duplication.clone();
+            let _release = AcquiredFrame {
+                duplication: &duplication,
+            };
+
+            // Only the pointer moved: the image is unchanged.
+            if frame_info.LastPresentTime == 0 && self.have_frame {
+                return Ok(None);
+            }
+
+            let resource = resource
+                .ok_or_else(|| CaptureError::Other("No desktop resource acquired".into()))?;
+            let texture: ID3D11Texture2D = resource
+                .cast()
+                .map_err(|e| CaptureError::Other(format!("Cast to ID3D11Texture2D failed: {e}")))?;
+
+            let mut desc = D3D11_TEXTURE2D_DESC::default();
+            unsafe { texture.GetDesc(&mut desc) };
+            let (width, height) = (desc.Width, desc.Height);
+
+            let staging = self.staging_texture(desc)?;
+            unsafe { self.context.CopyResource(&staging, &texture) };
+
+            let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+            unsafe {
+                self.context
+                    .Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
+                    .map_err(|e| CaptureError::Other(format!("Map failed: {e}")))?;
+            }
+            let _unmap = MappedTexture {
+                context: &self.context,
+                texture: &staging,
+            };
+
+            let row_pitch = mapped.RowPitch as usize;
+            let data = unsafe {
+                std::slice::from_raw_parts(mapped.pData as *const u8, row_pitch * height as usize)
+            };
+            let frame = pack_bgra(data, row_pitch, width, height)
+                .ok_or_else(|| CaptureError::Other("Invalid frame dimensions".into()))?;
+            self.have_frame = true;
+            Ok(Some(frame))
+        }
+
+        /// A CPU-readable copy target matching the desktop texture, reused
+        /// until the desktop size changes.
+        fn staging_texture(
+            &mut self,
+            desc: D3D11_TEXTURE2D_DESC,
+        ) -> Result<ID3D11Texture2D, CaptureError> {
+            if let Some((tex, w, h)) = &self.staging {
+                if *w == desc.Width && *h == desc.Height {
+                    return Ok(tex.clone());
+                }
+            }
+            let mut staging_desc = desc;
+            staging_desc.BindFlags = 0;
+            staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+            staging_desc.Usage = D3D11_USAGE_STAGING;
+            staging_desc.MiscFlags = 0;
+            staging_desc.MipLevels = 1;
+            staging_desc.ArraySize = 1;
+
+            let mut texture: Option<ID3D11Texture2D> = None;
+            unsafe {
+                self.device
+                    .CreateTexture2D(&staging_desc, None, Some(&mut texture))
+                    .map_err(|e| CaptureError::Other(format!("CreateTexture2D failed: {e}")))?;
+            }
+            let texture =
+                texture.ok_or_else(|| CaptureError::Other("CreateTexture2D returned null".into()))?;
+            self.staging = Some((texture.clone(), desc.Width, desc.Height));
+            Ok(texture)
+        }
+    }
+
+    /// A device on the adapter that drives the output: DuplicateOutput fails
+    /// for a device created on any other adapter.
+    fn create_device(adapter: &IDXGIAdapter1) -> Result<(ID3D11Device, ID3D11DeviceContext), String> {
         let mut device: Option<ID3D11Device> = None;
         let mut context: Option<ID3D11DeviceContext> = None;
-
         unsafe {
             D3D11CreateDevice(
-                None,
-                windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE,
+                adapter,
+                // An explicit adapter requires the UNKNOWN driver type.
+                D3D_DRIVER_TYPE_UNKNOWN,
                 HMODULE::default(),
-                windows::Win32::Graphics::Direct3D11::D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
                 None,
-                0,
+                D3D11_SDK_VERSION,
                 Some(&mut device),
                 None,
                 Some(&mut context),
             )
             .map_err(|e| format!("D3D11CreateDevice failed: {e}"))?;
         }
-
         let device = device.ok_or("Failed to create D3D11 device")?;
         let context = context.ok_or("Failed to create D3D11 context")?;
-
         Ok((device, context))
     }
 
-    fn create_desktop_duplication(
-        device: &ID3D11Device,
-        monitor_index: usize,
-    ) -> Result<IDXGIOutputDuplication, String> {
-        let dxgi_device: windows::Win32::Graphics::Dxgi::IDXGIDevice =
-            device.cast().map_err(|e| format!("Cast to IDXGIDevice failed: {e}"))?;
-
-        let adapter: IDXGIAdapter1 = unsafe {
-            dxgi_device
-                .GetAdapter()
-                .map_err(|e| format!("GetAdapter failed: {e}"))?
-                .cast()
-                .map_err(|e| format!("Cast to IDXGIAdapter1 failed: {e}"))?
-        };
-
-        let factory: IDXGIFactory1 = unsafe {
-            adapter
-                .GetParent::<IDXGIFactory1>()
-                .map_err(|e| format!("GetParent factory failed: {e}"))?
-        };
-
-        let mut output_index = 0u32;
-        loop {
-            let output_result = unsafe { factory.EnumAdapters1(0) }
-                .ok()
-                .and_then(|adapter| {
-                    let output = unsafe { adapter.EnumOutputs(output_index) }.ok()?;
-                    Some(output)
-                });
-
-            let output = match output_result {
-                Some(o) => o,
-                None => break,
-            };
-
-            let output1: IDXGIOutput1 = output
-                .cast()
-                .map_err(|e| format!("Cast to IDXGIOutput1 failed: {e}"))?;
-
-            if output_index as usize == monitor_index {
-                let duplication = unsafe {
-                    output1.DuplicateOutput(device)
-                }
-                .map_err(|e| format!("DuplicateOutput failed: {e}"))?;
-
-                return Ok(duplication);
-            }
-
-            output_index += 1;
+    /// Tightly packed BGRA with even dimensions (VP8 chroma subsampling).
+    fn pack_bgra(data: &[u8], row_pitch: usize, width: u32, height: u32) -> Option<RawFrame> {
+        let w = (width & !1) as usize;
+        let h = (height & !1) as usize;
+        let tight = w * 4;
+        if w == 0 || h == 0 || row_pitch < tight || data.len() < row_pitch * (h - 1) + tight {
+            return None;
         }
-
-        Err(format!("Monitor index {} not found", monitor_index))
+        let mut out = vec![0u8; tight * h];
+        for y in 0..h {
+            out[y * tight..(y + 1) * tight]
+                .copy_from_slice(&data[y * row_pitch..y * row_pitch + tight]);
+        }
+        Some(RawFrame {
+            width: w as u32,
+            height: h as u32,
+            format: PixelFormat::Bgra,
+            data: out,
+        })
     }
 
-    fn capture_frame(
-        device: &ID3D11Device,
-        context: &ID3D11DeviceContext,
-        duplication: &IDXGIOutputDuplication,
-    ) -> Result<ScreenFramePayload, String> {
-        unsafe {
-            let (_frame_info, desktop_resource) = loop {
-                let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
-                let mut desktop_resource: Option<IDXGIResource> = None;
-                match duplication.AcquireNextFrame(100, &mut frame_info, &mut desktop_resource) {
-                    Ok(()) => break (frame_info, desktop_resource),
-                    Err(e) if e.code() == DXGI_ERROR_WAIT_TIMEOUT => {
-                        return Err("Timeout acquiring frame".into());
-                    }
-                    Err(e) => {
-                        return Err(format!("AcquireNextFrame failed: {e}"));
-                    }
-                }
-            };
-
-            let desktop_resource = desktop_resource
-                .ok_or("No desktop resource acquired")?;
-
-            let texture: ID3D11Texture2D = desktop_resource
-                .cast()
-                .map_err(|e| format!("Cast to ID3D11Texture2D failed: {e}"))?;
-
-            let mut desc = std::mem::zeroed();
-            texture.GetDesc(&mut desc);
-
-            let width = desc.Width;
-            let height = desc.Height;
-
-            let mut staging_desc = desc;
-            staging_desc.BindFlags = 0;
-            staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
-            staging_desc.Usage = windows::Win32::Graphics::Direct3D11::D3D11_USAGE_STAGING;
-            staging_desc.MiscFlags = 0;
-
-            let mut staging_texture: Option<ID3D11Texture2D> = None;
-            device
-                .CreateTexture2D(&staging_desc, None, Some(&mut staging_texture))
-                .map_err(|e| format!("CreateTexture2D failed: {e}"))?;
-            let staging_texture = staging_texture
-                .ok_or("CreateTexture2D returned null")?;
-
-            context.CopyResource(&staging_texture, &texture);
-
-            let mut mapped: D3D11_MAPPED_SUBRESOURCE = std::mem::zeroed();
-            context
-                .Map(
-                    &staging_texture,
-                    0,
-                    D3D11_MAP_READ,
-                    0,
-                    Some(&mut mapped),
-                )
-                .map_err(|e| format!("Map failed: {e}"))?;
-
-            let data = std::slice::from_raw_parts(
-                mapped.pData as *const u8,
-                mapped.RowPitch as usize * height as usize,
-            );
-
-            let encoded = encode_frame(data, mapped.RowPitch as u32, width, height)?;
-
-            context.Unmap(&staging_texture, 0);
-
-            duplication.ReleaseFrame().ok();
-
-            Ok(encoded)
+    fn encode_jpeg(frame: RawFrame) -> Result<ScreenFramePayload, String> {
+        let (width, height) = (frame.width, frame.height);
+        let mut rgba = frame.data;
+        for px in rgba.chunks_exact_mut(4) {
+            px.swap(0, 2);
+            px[3] = 255;
         }
-    }
-
-    fn encode_frame(
-        data: &[u8],
-        row_pitch: u32,
-        width: u32,
-        height: u32,
-    ) -> Result<ScreenFramePayload, String> {
-        let mut rgba = vec![0u8; (width * height * 4) as usize];
-        for y in 0..height {
-            let src_row = y as usize * row_pitch as usize;
-            let dst_row = y as usize * (width as usize * 4);
-            for x in 0..width {
-                let src = src_row + x as usize * 4;
-                let dst = dst_row + x as usize * 4;
-                if src + 3 < data.len() && dst + 3 < rgba.len() {
-                    rgba[dst] = data[src + 2];
-                    rgba[dst + 1] = data[src + 1];
-                    rgba[dst + 2] = data[src];
-                    rgba[dst + 3] = data[src + 3];
-                }
-            }
-        }
-
         let mut img = DynamicImage::ImageRgba8(
             image::RgbaImage::from_raw(width, height, rgba)
                 .ok_or("Failed to create image from raw data")?,
@@ -332,7 +415,7 @@ mod imp {
             let ratio = MAX_DIMENSION as f64 / w.max(h) as f64;
             let new_w = (w as f64 * ratio) as u32;
             let new_h = (h as f64 * ratio) as u32;
-            img = img.resize(new_w, new_h, FilterType::Lanczos3);
+            img = img.resize(new_w, new_h, FilterType::Triangle);
         }
 
         let rgb = img.to_rgb8();
