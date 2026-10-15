@@ -381,6 +381,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   // Camera consumes in flight, so a camera:peerStarted racing the join's own
   // hasCamera pass doesn't consume the same camera twice.
   const pendingCamerasRef = useRef<Set<string>>(new Set())
+  // Same for the screen: the sharer whose consume is in flight.
+  const pendingScreenRef = useRef<string | null>(null)
   // The shared screenshare element: a <video> for a MediaStream, or a canvas
   // natively decoded frames are painted on.
   const videoElRef = useRef<HTMLVideoElement | HTMLCanvasElement | null>(null)
@@ -498,6 +500,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     cameraVideosRef.current.forEach(({ consumerId, receiver }) => receiver.detach(consumerId))
     cameraVideosRef.current.clear()
     pendingCamerasRef.current.clear()
+    pendingScreenRef.current = null
     videoReceiverRef.current?.close()
     videoReceiverRef.current = null
     closeWebviewVideoSend()
@@ -829,6 +832,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       username: string,
     ) => {
       if (screenVideoRef.current?.peerId === sharerPeerId) return
+      if (pendingScreenRef.current === sharerPeerId) return
+      pendingScreenRef.current = sharerPeerId
       try {
         const got = await consumeVideo(socket, receiver, sharerPeerId, channelId, 'screen')
         if (!got) return
@@ -844,6 +849,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         setScreenSharePeer(sharerPeerId, username)
       } catch (err) {
         console.error('Failed to consume screen share:', err)
+      } finally {
+        if (pendingScreenRef.current === sharerPeerId) pendingScreenRef.current = null
       }
     },
     [
