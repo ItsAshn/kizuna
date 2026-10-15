@@ -13,8 +13,35 @@ import { canViewChannel, getUserChannelPermission } from '../middleware/auth'
 import { isId, isRecord } from './validate'
 import { chooseSocketRtpFraming } from './socketRtpFraming'
 import { resolveAccessibleRoom } from './chat/helpers'
+import {
+  closeVideoProducers,
+  defaultPurpose,
+  findScreenSharer,
+  findVideoProducer,
+  isTransportPurpose,
+  maxIncomingBitrateBps,
+  pickRecvTransport,
+  producerSource,
+  planTransportSlot,
+  type TransportDirection,
+  type TransportPurpose,
+  type TransportSlot,
+} from './voiceMedia'
 
-type TransportWithDirection = mediasoupTypes.Transport & { _direction?: string }
+type TransportWithDirection = mediasoupTypes.Transport & {
+  _direction?: TransportDirection
+  _purpose?: TransportPurpose
+}
+
+/** The bookkeeping view of a peer's transports that the voiceMedia helpers work on. */
+function transportSlots(peer: PeerInfo): TransportSlot[] {
+  return [...peer.transports.values()].map((t) => ({
+    id: t.id,
+    direction: t._direction ?? 'send',
+    purpose: t._purpose ?? 'av',
+    closed: t.closed,
+  }))
+}
 
 function vts(): string {
   return new Date().toISOString().split('T')[1]?.slice(0, 12) ?? ''
@@ -75,9 +102,6 @@ type VoiceRoomKind = 'channel' | 'dm' | 'group-dm'
 /** Channel types that carry voice. `screen` channels are voice rooms with a stage. */
 const VOICE_CHANNEL_TYPES = new Set(['voice', 'screen'])
 
-/** send (audio) + recv + one extra send for camera/screen video. */
-const MAX_TRANSPORTS_PER_PEER = 3
-const MAX_SEND_TRANSPORTS_PER_PEER = 2
 const TRANSPORT_RATE_WINDOW_MS = 10_000
 const TRANSPORT_RATE_MAX = 10
 
@@ -217,19 +241,8 @@ export function getPeersInChannel(channelId: string): PeerInfo[] {
 
 function getScreenSharer(
   channelId: string,
-): { peerId: string; userId: string; username: string } | null {
-  const socketIds = channelPeers.get(channelId)
-  if (!socketIds) return null
-  for (const sid of socketIds) {
-    const peer = peers.get(sid)
-    if (!peer) continue
-    for (const [, producer] of peer.producers) {
-      if (producer.kind === 'video' && producer.appData?.source !== 'camera') {
-        return { peerId: peer.socketId, userId: peer.userId, username: peer.username }
-      }
-    }
-  }
-  return null
+): { peerId: string; userId: string; username: string; producerId: string } | null {
+  return findScreenSharer(getPeersInChannel(channelId))
 }
 
 type Ack = (res?: unknown) => void
@@ -329,38 +342,41 @@ function pruneClosedTransports(peer: PeerInfo): void {
 }
 
 /**
- * Make room for one more transport in `direction`, closing whatever it
- * replaces. A legit client holds at most one recv transport and two send
- * transports (audio, plus one for camera or screen video); a new recv replaces
- * the old one and a new extra send replaces the previous extra send, which the
- * client abandons when it stops camera/screen without telling the server.
- * Returns an error string when no slot can be made.
+ * Make room for one more transport in `(direction, purpose)`, closing the one
+ * it replaces: a client re-creates a transport after a failure, or when it
+ * restarts camera/screen without telling the server. Returns an error string
+ * when the peer is already at its transport cap.
  */
-function makeRoomForTransport(peer: PeerInfo, direction: 'send' | 'recv'): string | null {
+function makeRoomForTransport(
+  peer: PeerInfo,
+  direction: TransportDirection,
+  purpose: TransportPurpose,
+): string | null {
   pruneClosedTransports(peer)
-  const same = [...peer.transports.values()].filter((t) => t._direction === direction)
-  const replace: TransportWithDirection[] =
-    direction === 'recv'
-      ? same
-      : same.length >= MAX_SEND_TRANSPORTS_PER_PEER
-        ? same.slice(1) // keep the first (audio) send transport
-        : []
-  for (const t of replace) {
-    vlog('createTransport', `replacing ${direction} transport | transportId=${t.id}`)
+  const plan = planTransportSlot(transportSlots(peer), direction, purpose)
+  if (plan.error) return plan.error
+  for (const id of plan.replace) {
+    const t = peer.transports.get(id)
+    vlog('createTransport', `replacing ${direction}/${purpose} transport | transportId=${id}`)
     try {
-      t.close()
+      t?.close()
     } catch {
       /* already closed */
     }
-    peer.transports.delete(t.id)
+    peer.transports.delete(id)
   }
-  if (peer.transports.size >= MAX_TRANSPORTS_PER_PEER) return 'Too many transports'
   return null
 }
 
 /** Register a freshly created transport on the peer and keep the map in sync. */
-function trackTransport(peer: PeerInfo, transport: TransportWithDirection, direction: string) {
+function trackTransport(
+  peer: PeerInfo,
+  transport: TransportWithDirection,
+  direction: TransportDirection,
+  purpose: TransportPurpose,
+) {
   transport._direction = direction
+  transport._purpose = purpose
   peer.transports.set(transport.id, transport)
   transport.observer.once('close', () => {
     if (peer.transports.get(transport.id) === transport) peer.transports.delete(transport.id)
@@ -457,23 +473,19 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         speaking: boolean
         muted: boolean
         hasCamera: boolean
+        cameraProducerId?: string
       }[] = []
       for (const p of getPeersInChannel(channelId)) {
         if (p.socketId !== socket.id && p.announced) {
-          let hasCamera = false
-          for (const [, producer] of p.producers) {
-            if (producer.kind === 'video' && producer.appData?.source === 'camera') {
-              hasCamera = true
-              break
-            }
-          }
+          const camera = findVideoProducer(p.producers.values(), 'camera')
           existingPeers.push({
             id: p.socketId,
             userId: p.userId,
             username: p.username,
             speaking: false,
             muted: p.muted,
-            hasCamera,
+            hasCamera: !!camera,
+            ...(camera ? { cameraProducerId: camera.id } : {}),
           })
         }
       }
@@ -507,6 +519,11 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       callback?.({ error: 'Invalid direction' })
       return
     }
+    const requestedPurpose = isRecord(payload) ? payload.purpose : undefined
+    if (requestedPurpose !== undefined && !isTransportPurpose(requestedPurpose)) {
+      callback?.({ error: 'Invalid purpose' })
+      return
+    }
     try {
       const peer = peers.get(socket.id)
       if (!peer) {
@@ -523,9 +540,11 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
 
       // Checked after the await so concurrent requests can't both slip under
       // the cap, and a peer that left/rejoined meanwhile doesn't adopt it.
+      const purpose: TransportPurpose =
+        requestedPurpose ?? defaultPurpose(direction, transportSlots(peer))
       const slotError =
         peers.get(socket.id) === peer
-          ? makeRoomForTransport(peer, direction)
+          ? makeRoomForTransport(peer, direction, purpose)
           : 'Not in a voice channel'
       if (slotError) {
         transport.close()
@@ -533,19 +552,22 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         return
       }
 
-      const bitrateKbps = getServerVoiceBitrateKbps()
+      // Per purpose: an audio-only transport is held to the voice bitrate,
+      // but one that carries video needs megabits — capping every send
+      // transport at the voice bitrate is what held screenshare to 64 kbps.
+      const maxIncomingBps = maxIncomingBitrateBps(purpose, getServerVoiceBitrateKbps())
       if (direction === 'send') {
         ;(transport as mediasoupTypes.WebRtcTransport)
-          .setMaxIncomingBitrate(bitrateKbps * 1000)
+          .setMaxIncomingBitrate(maxIncomingBps)
           .catch((e) => {
             verr('createTransport', `setMaxIncomingBitrate failed`, e)
           })
       }
-      trackTransport(peer, transport, direction)
+      trackTransport(peer, transport, direction, purpose)
 
       vlog(
         'createTransport',
-        `created | socketId=${socket.id} | dir=${direction} | transportId=${transport.id} | bitrate=${bitrateKbps}kbps | ms=${Date.now() - t0}`,
+        `created | socketId=${socket.id} | dir=${direction} | purpose=${purpose} | transportId=${transport.id} | maxIncoming=${maxIncomingBps} | ms=${Date.now() - t0}`,
       )
 
       const webrtc = transport as mediasoupTypes.WebRtcTransport
@@ -595,16 +617,18 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       direct.on('rtcp', () => {})
       const transport = direct as TransportWithDirection
 
+      // A DirectTransport only ever carries the forwarded Opus of native
+      // clients, so it is the audio recv slot.
       const slotError =
         peers.get(socket.id) === peer
-          ? makeRoomForTransport(peer, 'recv')
+          ? makeRoomForTransport(peer, 'recv', 'audio')
           : 'Not in a voice channel'
       if (slotError) {
         transport.close()
         callback?.({ error: slotError })
         return
       }
-      trackTransport(peer, transport, 'recv')
+      trackTransport(peer, transport, 'recv', 'audio')
 
       vlog('createDirectTransport', `created | socketId=${socket.id} | transportId=${transport.id}`)
 
@@ -721,7 +745,10 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       !isId(payload.peerId) ||
       !isRecord(payload.rtpCapabilities) ||
       (payload.kind !== undefined && payload.kind !== null && !isMediaKind(payload.kind)) ||
-      (payload.source !== undefined && payload.source !== null && !isMediaSource(payload.source))
+      (payload.source !== undefined && payload.source !== null && !isMediaSource(payload.source)) ||
+      (payload.transportId !== undefined &&
+        payload.transportId !== null &&
+        !isId(payload.transportId))
     ) {
       callback?.({ error: 'Invalid payload' })
       return
@@ -730,6 +757,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     const rtpCapabilities = payload.rtpCapabilities as unknown as mediasoupTypes.RtpCapabilities
     const kind = isMediaKind(payload.kind) ? payload.kind : undefined
     const source = isMediaSource(payload.source) ? payload.source : undefined
+    const transportId = isId(payload.transportId) ? payload.transportId : undefined
     try {
       const requestingPeer = peers.get(socket.id)
       if (!requestingPeer) {
@@ -737,13 +765,12 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         return
       }
 
-      let recvTransport: TransportWithDirection | null = null
-      for (const [, t] of requestingPeer.transports) {
-        if (t._direction === 'recv' && !t.closed) {
-          recvTransport = t
-          break
-        }
-      }
+      const slot = pickRecvTransport(
+        transportSlots(requestingPeer),
+        kind ?? 'audio',
+        transportId,
+      )
+      const recvTransport = slot ? (requestingPeer.transports.get(slot.id) ?? null) : null
       if (!recvTransport) {
         vlog('consume', `rejected: no recv transport | socketId=${socket.id} | peerId=${peerId}`)
         callback?.({ error: 'Recv transport not found' })
@@ -762,7 +789,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       for (const [id, producer] of targetPeer.producers) {
         if (producer.closed || producer.kind !== targetKind) continue
         // For video, disambiguate camera vs screenshare by source when requested.
-        if (targetKind === 'video' && source && producer.appData?.source !== source) continue
+        if (targetKind === 'video' && source && producerSource(producer) !== source) continue
         producerId = id
         break
       }
@@ -801,7 +828,12 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       consumer.on('transportclose', () => consumer.close())
       consumer.on('producerclose', () => {
         consumer.close()
-        socket.emit('voice:consumerClosed', { consumerId: consumer.id })
+        socket.emit('voice:consumerClosed', {
+          consumerId: consumer.id,
+          producerId,
+          peerId,
+          kind: consumer.kind,
+        })
       })
 
       if (socketRtpFraming.has(socket.id) && consumer.kind === 'audio') {
@@ -814,6 +846,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         kind: consumer.kind,
         rtpParameters: consumer.rtpParameters,
         paused: consumer.producerPaused,
+        transportId: recvTransport.id,
       })
     } catch (err: unknown) {
       verr('consume', `failed | peerId=${peerId}`, err)
@@ -841,6 +874,42 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     } catch (err: unknown) {
       verr('resumeConsumer', `failed | consumerId=${consumerId}`, err)
       callback?.()
+    }
+  })
+
+  // A viewer that stops watching (closes the tile, or drops a video it can no
+  // longer decode) releases its consumer instead of leaving the SFU forwarding
+  // megabits nobody looks at until the call ends.
+  socket.on('voice:closeConsumer', (payload: unknown, cb?: unknown) => {
+    const callback = asAck(cb)
+    if (!isRecord(payload) || !isId(payload.consumerId)) {
+      callback?.({ error: 'Invalid payload' })
+      return
+    }
+    const consumer = peers.get(socket.id)?.consumers.get(payload.consumerId)
+    if (consumer && !consumer.closed) consumer.close()
+    callback?.({ ok: true })
+  })
+
+  // Native receivers send their PLIs here rather than over RTCP: the server
+  // asks the producer for a keyframe directly, which also works on transports
+  // whose RTCP feedback the client cannot drive.
+  socket.on('voice:requestKeyFrame', async (payload: unknown, cb?: unknown) => {
+    const callback = asAck(cb)
+    if (!isRecord(payload) || !isId(payload.consumerId)) {
+      callback?.({ error: 'Invalid payload' })
+      return
+    }
+    const consumer = peers.get(socket.id)?.consumers.get(payload.consumerId)
+    if (!consumer || consumer.closed || consumer.kind !== 'video') {
+      callback?.({ error: 'Consumer not found' })
+      return
+    }
+    try {
+      await consumer.requestKeyFrame()
+      callback?.({ ok: true })
+    } catch (err: unknown) {
+      callback?.({ error: err instanceof Error ? err.message : String(err) })
     }
   })
 
@@ -885,14 +954,9 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       callback?.({ error: 'Someone else is already sharing' })
       return
     }
-    let hasVideo = false // a screen-source video producer must already exist
-    for (const [, producer] of peer.producers) {
-      if (producer.kind === 'video' && producer.appData?.source !== 'camera') {
-        hasVideo = true
-        break
-      }
-    }
-    if (!hasVideo) {
+    // A screen-source video producer must already exist.
+    const screenProducer = findVideoProducer(peer.producers.values(), 'screen')
+    if (!screenProducer) {
       callback?.({ error: 'No video producer found' })
       return
     }
@@ -901,33 +965,65 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       peerId: socket.id,
       userId: peer.userId,
       username: peer.username,
+      producerId: screenProducer.id,
     })
+    callback?.({ ok: true, producerId: screenProducer.id })
+  })
+
+  // Stopping closes the producer here rather than trusting the client to: a
+  // producer left open kept getScreenSharer answering "already sharing" for
+  // everyone else until the sharer left the call.
+  socket.on('screen:stop', (_payload: unknown, cb?: unknown) => {
+    const callback = asAck(cb)
+    const peer = peers.get(socket.id)
+    if (!peer) {
+      callback?.({ ok: true })
+      return
+    }
+    const closed = closeVideoProducers(peer.producers, 'screen')
+    console.log(
+      `[Screen] STOP | channel=${peer.channelId} | user=${peer.username} | closed=${closed.length}`,
+    )
+    io.to(peer.channelId).emit('screen:peerStopped', { peerId: socket.id })
     callback?.({ ok: true })
   })
 
-  socket.on('screen:stop', () => {
+  socket.on('camera:started', (payload: unknown) => {
     const peer = peers.get(socket.id)
     if (!peer) return
-    console.log(`[Screen] STOP | channel=${peer.channelId} | user=${peer.username}`)
-    io.to(peer.channelId).emit('screen:peerStopped', { peerId: socket.id })
-  })
-
-  socket.on('camera:started', () => {
-    const peer = peers.get(socket.id)
-    if (!peer) return
+    // Prefer the producer the client names, but only if it is really this
+    // peer's camera; otherwise fall back to whatever camera it has.
+    const named =
+      isRecord(payload) && isId(payload.producerId)
+        ? peer.producers.get(payload.producerId)
+        : undefined
+    const camera =
+      named && !named.closed && producerSource(named) === 'camera'
+        ? named
+        : findVideoProducer(peer.producers.values(), 'camera')
+    if (!camera) return
     console.log(`[Camera] START | channel=${peer.channelId} | user=${peer.username}`)
     socket.to(peer.channelId).emit('camera:peerStarted', {
       peerId: socket.id,
       userId: peer.userId,
       username: peer.username,
+      producerId: camera.id,
     })
   })
 
-  socket.on('camera:stopped', () => {
+  socket.on('camera:stopped', (_payload: unknown, cb?: unknown) => {
+    const callback = asAck(cb)
     const peer = peers.get(socket.id)
-    if (!peer) return
-    console.log(`[Camera] STOP | channel=${peer.channelId} | user=${peer.username}`)
+    if (!peer) {
+      callback?.({ ok: true })
+      return
+    }
+    const closed = closeVideoProducers(peer.producers, 'camera')
+    console.log(
+      `[Camera] STOP | channel=${peer.channelId} | user=${peer.username} | closed=${closed.length}`,
+    )
     io.to(peer.channelId).emit('camera:peerStopped', { peerId: socket.id })
+    callback?.({ ok: true })
   })
 
   socket.on('voice:leave', () => {

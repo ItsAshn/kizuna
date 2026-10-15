@@ -37,10 +37,13 @@ export function useScreenshare(
   }
 
   const cleanupLocal = useCallback(() => {
-    // Native path: the encoder and capture session both live in Rust, and the
-    // video producer is kept alive for reuse on the next share.
+    // Native path: the encoder and capture session both live in Rust. The
+    // video track stays on the send transport for the whole call, but the
+    // server closes its producer on `screen:stop`, so the next share has to
+    // produce it again.
     if (nativeActiveRef.current) {
       nativeActiveRef.current = false
+      if (nativeVideoRef.current) nativeVideoRef.current.producerId = null
       import('@tauri-apps/api/core').then(({ invoke }) =>
         invoke('voice_screen_share_stop').catch(() => {}),
       )
@@ -72,7 +75,7 @@ export function useScreenshare(
 
     callStore.getState().setIsScreenSharing(false)
     callStore.getState().setScreenShareVideoProducerId(null)
-  }, [])
+  }, [nativeVideoRef])
 
   /**
    * Linux path: the WebKitGTK webview has no WebRTC stack, so Rust captures,
