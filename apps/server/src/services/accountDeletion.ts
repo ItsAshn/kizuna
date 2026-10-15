@@ -1,5 +1,10 @@
 import { getDb } from '../db'
-import { deleteGroupDmRows, deleteMessagesWhere, unlinkAttachmentFiles } from './messageDeletion'
+import {
+  adjustThreadAfterDelete,
+  deleteGroupDmRows,
+  deleteMessagesWhere,
+  unlinkAttachmentFiles,
+} from './messageDeletion'
 
 /**
  * Placeholder account that inherits references a deleted user leaves behind in
@@ -60,21 +65,17 @@ export function deleteUserAccount(userId: string, deleteData: boolean): void {
 
     // ── Content ────────────────────────────────────────────────────────────
     if (deleteData) {
-      const threadIds = (
-        db
-          .prepare(
-            'SELECT DISTINCT thread_id FROM messages WHERE author_id = ? AND thread_id IS NOT NULL',
-          )
-          .all(userId) as { thread_id: string }[]
-      ).map((r) => r.thread_id)
+      const threadCounts = db
+        .prepare(
+          `SELECT thread_id, COUNT(*) AS n FROM messages
+           WHERE author_id = ? AND thread_id IS NOT NULL GROUP BY thread_id`,
+        )
+        .all(userId) as { thread_id: string; n: number }[]
 
       urls.push(...deleteMessagesWhere('messages', 'author_id = ?', [userId]))
 
-      // Keep thread reply counts honest after removing the user's replies.
-      const recount = db.prepare(
-        'UPDATE threads SET message_count = (SELECT COUNT(*) FROM messages WHERE thread_id = threads.id) WHERE id = ?',
-      )
-      for (const id of threadIds) recount.run(id)
+      // Keep thread counters honest after removing the user's replies.
+      for (const { thread_id, n } of threadCounts) adjustThreadAfterDelete(thread_id, n)
 
       urls.push(
         ...deleteMessagesWhere(

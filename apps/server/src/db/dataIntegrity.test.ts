@@ -287,6 +287,56 @@ describe('HTTP queries', () => {
     expect(new Set(all)).toEqual(new Set(ids))
   })
 
+  it('deleting a thread reply updates the thread counters', async () => {
+    const { default: messageRoutes } = await import('../routes/messages')
+    const user = addUser()
+    const chan = addChannel()
+    const threadId = uid('thread')
+    db.prepare(
+      'INSERT INTO threads (id, channel_id, name, creator_id, created_at, message_count, last_message_at) VALUES (?, ?, ?, ?, 100, 3, 300)',
+    ).run(threadId, chan, 't', user)
+    addMessage(chan, user, 'first reply', 200, threadId)
+    const latest = addMessage(chan, user, 'second reply', 300, threadId)
+
+    const res = await messageRoutes.request(`/${latest}`, {
+      method: 'DELETE',
+      headers: await authHeader(user),
+    })
+    expect(res.status).toBe(200)
+    const thread = db
+      .prepare('SELECT message_count, last_message_at FROM threads WHERE id = ?')
+      .get(threadId) as { message_count: number; last_message_at: number }
+    expect(thread).toEqual({ message_count: 2, last_message_at: 200 })
+  })
+
+  it('message delete honours a channel override denying delete_messages', async () => {
+    const { default: messageRoutes } = await import('../routes/messages')
+    const { clearPermissionCache } = await import('../middleware/auth')
+    const author = addUser()
+    const mod = addUser()
+    const roleId = uid('role')
+    db.prepare(
+      "INSERT INTO roles (id, name, permissions) VALUES (?, 'mod', '{\"delete_messages\":true}')",
+    ).run(roleId)
+    db.prepare('INSERT INTO member_roles (user_id, role_id) VALUES (?, ?)').run(mod, roleId)
+    const chan = addChannel()
+    const other = addChannel()
+    db.prepare(
+      'INSERT INTO channel_role_overrides (channel_id, role_id, deny_permissions) VALUES (?, ?, \'{"delete_messages":true}\')',
+    ).run(chan, roleId)
+    clearPermissionCache()
+
+    const headers = await authHeader(mod)
+    const denied = addMessage(chan, author)
+    expect((await messageRoutes.request(`/${denied}`, { method: 'DELETE', headers })).status).toBe(
+      403,
+    )
+    const allowed = addMessage(other, author)
+    expect((await messageRoutes.request(`/${allowed}`, { method: 'DELETE', headers })).status).toBe(
+      200,
+    )
+  })
+
   it('search hides channels the user cannot view', async () => {
     const { default: searchRoutes } = await import('../routes/search')
     const user = addUser()

@@ -55,7 +55,34 @@ export function deleteMessagesWhere(
  * unlink the files on disk.
  */
 export function deleteMessageRows(messageId: string): string[] {
-  return deleteMessagesWhere('messages', 'id = ?', [messageId])
+  const db = getDb()
+  return db.transaction(() => {
+    const row = db.prepare('SELECT thread_id FROM messages WHERE id = ?').get(messageId) as
+      | { thread_id: string | null }
+      | undefined
+    const urls = deleteMessagesWhere('messages', 'id = ?', [messageId])
+    if (row?.thread_id) adjustThreadAfterDelete(row.thread_id, 1)
+    return urls
+  })()
+}
+
+/**
+ * Keeps a thread's counters in step after `removed` of its messages were
+ * deleted: message_count goes down, and last_message_at falls back to the
+ * newest remaining message (or the thread's creation time).
+ */
+export function adjustThreadAfterDelete(threadId: string, removed: number): void {
+  getDb()
+    .prepare(
+      `UPDATE threads SET
+         message_count = MAX(COALESCE(message_count, 0) - ?, 0),
+         last_message_at = COALESCE(
+           (SELECT MAX(created_at) FROM messages WHERE thread_id = threads.id),
+           created_at
+         )
+       WHERE id = ?`,
+    )
+    .run(removed, threadId)
 }
 
 export function uploadsDir(): string {
