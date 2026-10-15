@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useDragToDismiss } from '../../hooks/useDragToDismiss'
+import { useOverlay } from '../../lib/overlayStack'
 import './BottomSheet.css'
 
 interface BottomSheetProps {
@@ -47,17 +48,8 @@ export default function BottomSheet({
     setClosing(false)
   }, [open])
 
-  useEffect(() => {
-    if (!open) return
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        handleClose()
-      }
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [open, handleClose])
+  // Escape and the Android back button close only the topmost overlay.
+  useOverlay(open, handleClose)
 
   if (!open) return null
 

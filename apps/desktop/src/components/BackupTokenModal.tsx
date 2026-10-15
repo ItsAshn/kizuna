@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Check, Copy, CheckCheck } from 'lucide-react'
 import Button from './ui/Button'
+import { useOverlay } from '../lib/overlayStack'
 import './BackupTokenModal.css'
 
 interface Props {
@@ -22,15 +23,8 @@ export default function BackupTokenModal({ backuptoken, onComplete }: Props) {
     setTimeout(() => setCopied(false), 3000)
   }
 
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && step === 'display') {
-        onComplete()
-      }
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [step, onComplete])
+  // Dismissable (Escape / Android back) only once the token is on screen.
+  useOverlay(step === 'display', onComplete)
 
   return (
     <div className="backuptoken-overlay">

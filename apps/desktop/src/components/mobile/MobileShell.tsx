@@ -20,6 +20,7 @@ import { useMobileNavigation } from '../../hooks/useMobileNavigation'
 import { useMobileNavStore } from '../../store/mobileNavStore'
 import { useSwipeBack } from '../../hooks/useSwipeBack'
 import { useKeyboard } from '../../hooks/useKeyboard'
+import { closeTopOverlay } from '../../lib/overlayStack'
 import './MobileShell.css'
 
 interface MobileShellProps {
@@ -175,7 +176,10 @@ export default function MobileShell({
    * through refs instead.
    *
    * Falling through without re-pushing is deliberate: at a tab root there is
-   * nothing left to pop, so the next back should exit the app. */
+   * nothing left to pop, so the next back should exit the app.
+   *
+   * An open overlay (modal, sheet, picker, lightbox, context menu) is in front
+   * of the navigation, so back dismisses the topmost one before popping. */
   const goBackRef = useRef(goBack)
   goBackRef.current = goBack
   const showMembersRef = useRef(showMembers)
@@ -183,6 +187,10 @@ export default function MobileShell({
 
   useEffect(() => {
     const onPopState = () => {
+      if (closeTopOverlay()) {
+        window.history.pushState(null, '', window.location.href)
+        return
+      }
       const canGoBack =
         useChatStore.getState().threadPanelVisible ||
         showMembersRef.current ||

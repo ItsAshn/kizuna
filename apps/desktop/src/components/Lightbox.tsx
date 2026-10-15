@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight, Download } from 'lucide-react'
 import IconButton from './ui/IconButton'
+import { useOverlay } from '../lib/overlayStack'
+import { showErrorToast } from '../utils/showNotification'
 import './Lightbox.css'
 
 interface LightboxImage {
@@ -25,8 +27,10 @@ export default function Lightbox({ images, initialIndex, onClose }: LightboxProp
   const pinchStartDist = useRef(0)
   const pinchStartScale = useRef(1)
 
-  const current = images[index]
-  if (!current) return null
+  const current = images[index] as LightboxImage | undefined
+  // Escape and the Android back button close the lightbox before anything
+  // underneath it.
+  useOverlay(true, onClose)
 
   const handlePrev = useCallback(
     (e: React.MouseEvent) => {
@@ -121,16 +125,37 @@ export default function Lightbox({ images, initialIndex, onClose }: LightboxProp
     pinchStartDist.current = 0
   }, [])
 
-  const handleDownload = useCallback(() => {
-    const a = document.createElement('a')
-    a.href = current.url
-    a.download = current.filename
-    a.click()
-  }, [current])
+  const [downloading, setDownloading] = useState(false)
+  const handleDownload = useCallback(async () => {
+    if (!current || downloading) return
+    // `download` is ignored on cross-origin hrefs (the server is another
+    // origin from the app shell), so the browser just navigated to the image.
+    // A same-origin blob: URL makes it a real save on web, Tauri and Android.
+    setDownloading(true)
+    try {
+      const res = await fetch(current.url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = current.filename || 'image'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      // Revoke on the next tick: some engines start reading the blob only
+      // after click() returns.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    } catch (err) {
+      console.error('Image download failed:', err)
+      showErrorToast('download the image')
+    } finally {
+      setDownloading(false)
+    }
+  }, [current, downloading])
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
       if (e.key === 'ArrowLeft') {
         setScale(1)
         setTranslate({ x: 0, y: 0 })
@@ -144,7 +169,9 @@ export default function Lightbox({ images, initialIndex, onClose }: LightboxProp
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [images.length, onClose])
+  }, [images.length])
+
+  if (!current) return null
 
   return createPortal(
     <div className="lightbox" onClick={onClose}>
@@ -158,7 +185,11 @@ export default function Lightbox({ images, initialIndex, onClose }: LightboxProp
             icon={<Download size={18} />}
             label="Download"
             title="Download"
-            onClick={handleDownload}
+            disabled={downloading}
+            onClick={(e) => {
+              e.stopPropagation()
+              void handleDownload()
+            }}
           />
           <IconButton
             variant="floating"

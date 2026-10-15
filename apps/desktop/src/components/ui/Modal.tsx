@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import IconButton from './IconButton'
 import { useMobile } from '../../hooks/useMobile'
 import { useDragToDismiss } from '../../hooks/useDragToDismiss'
+import { useOverlay } from '../../lib/overlayStack'
 import './Modal.css'
 
 type ModalFooter = ReactNode | ((handleClose: () => void) => ReactNode)
@@ -28,7 +29,9 @@ export default function Modal({
   const [blurred, setBlurred] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
-  const titleId = `modal-title-${title.replace(/\s+/g, '-').toLowerCase()}`
+  // Titles are styled like code comments ("// settings"); screen readers
+  // should hear just the name.
+  const accessibleTitle = title.replace(/^\/\/\s*/, '')
   const isMobile = useMobile()
 
   const handleClose = useCallback(() => {
@@ -45,24 +48,13 @@ export default function Modal({
     enabled: isMobile,
   })
 
+  // Escape and the Android back button go through the shared overlay stack,
+  // so with modals nested only the topmost one closes.
+  const isTop = useOverlay(open, handleClose)
+
   useEffect(() => {
-    if (!open) return
-
-    previousFocus.current = document.activeElement as HTMLElement
-
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        // stopPropagation does nothing against other listeners bound to window
-        // itself — only stopImmediatePropagation keeps a nested modal or another
-        // global handler from acting on the same keypress.
-        e.stopImmediatePropagation()
-        handleClose()
-      }
-    }
-
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [open, handleClose])
+    if (open) previousFocus.current = document.activeElement as HTMLElement
+  }, [open])
 
   useEffect(() => {
     if (!open || !modalRef.current) return
@@ -74,7 +66,9 @@ export default function Modal({
     const last = focusable[focusable.length - 1]
 
     function trap(e: KeyboardEvent) {
-      if (e.key !== 'Tab') return
+      // A nested modal's DOM can sit inside this one, so its Tab presses bubble
+      // here too; only the topmost modal owns the focus cycle.
+      if (e.key !== 'Tab' || !isTop()) return
       if (focusable.length === 0) {
         e.preventDefault()
         return
@@ -96,7 +90,7 @@ export default function Modal({
     first?.focus()
 
     return () => modalRef.current?.removeEventListener('keydown', trap)
-  }, [open])
+  }, [open, isTop])
 
   useEffect(() => {
     setClosing(false)
@@ -120,7 +114,7 @@ export default function Modal({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={titleId}
+        aria-label={accessibleTitle}
       >
         {isMobile && (
           <div
@@ -139,7 +133,7 @@ export default function Modal({
           onTouchMove={isMobile ? dragHandlers.onTouchMove : undefined}
           onTouchEnd={isMobile ? dragHandlers.onTouchEnd : undefined}
         >
-          <span className="modal__header-title" id={titleId}>
+          <span className="modal__header-title" aria-hidden="true">
             {title}
           </span>
           <IconButton onClick={handleClose} label="Close" size="sm" icon={<X size={14} />} />
