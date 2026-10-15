@@ -221,98 +221,127 @@ export function VoiceSection({
     }
   }, [loadDevices])
 
-  const startAudioMonitoring = useCallback(async () => {
-    audioLevelCleanupRef.current?.()
-    setMonitorError(null)
+  /* `isCancelled` flips when the effect that started this is torn down
+   * (unmount, toggling the test off, switching device). Every await below can
+   * resolve after that, so each step re-checks it and releases whatever it
+   * already acquired instead of leaking an open microphone. */
+  const startAudioMonitoring = useCallback(
+    async (isCancelled: () => boolean) => {
+      audioLevelCleanupRef.current?.()
+      setMonitorError(null)
 
-    // A call already feeds the meter from the live capture. Opening a second
-    // capture of the same microphone would at best duplicate work and at worst
-    // fail on a device that only allows one reader.
-    if (inCall) {
-      audioLevelCleanupRef.current = null
-      return
-    }
-
-    if (isTauri()) {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const { listen } = await import('@tauri-apps/api/event')
-
-      const unlisten = await listen<number>('mic:level', (event) => {
-        setLiveAudioLevel(event.payload * 1000)
-      })
-
-      try {
-        await invoke('start_audio_capture', {
-          deviceName: audioInputDeviceId ?? null,
-          sampleRate: 48000,
-        })
-      } catch (e) {
-        unlisten()
-        setMonitorError(typeof e === 'string' ? e : 'Could not open the microphone')
-        setMonitoring(false)
+      // A call already feeds the meter from the live capture. Opening a second
+      // capture of the same microphone would at best duplicate work and at worst
+      // fail on a device that only allows one reader.
+      if (inCall) {
+        audioLevelCleanupRef.current = null
         return
       }
 
-      audioLevelCleanupRef.current = () => {
-        unlisten()
-        invoke('stop_audio_capture').catch((err) => {
-          console.error('Failed to stop audio capture on cleanup:', err)
+      if (isTauri()) {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const { listen } = await import('@tauri-apps/api/event')
+        if (isCancelled()) return
+
+        const unlisten = await listen<number>('mic:level', (event) => {
+          setLiveAudioLevel(event.payload * 1000)
         })
-      }
-      return
-    }
-
-    // Web: meter straight off a getUserMedia stream.
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: audioInputDeviceId ? { deviceId: { exact: audioInputDeviceId } } : true,
-      })
-      const ctx = new AudioContext()
-      const source = ctx.createMediaStreamSource(stream)
-      const analyser = ctx.createAnalyser()
-      analyser.fftSize = 512
-      analyser.smoothingTimeConstant = 0.1
-      source.connect(analyser)
-      const buf = new Uint8Array(analyser.fftSize)
-      let raf = 0
-      const poll = () => {
-        analyser.getByteTimeDomainData(buf)
-        let squareSum = 0
-        for (let i = 0; i < buf.length; i++) {
-          const deviation = buf[i] - 128
-          squareSum += deviation * deviation
+        if (isCancelled()) {
+          unlisten()
+          return
         }
-        // Match the native scale so the meter reads the same on both paths:
-        // byte-domain RMS is 0-128, native RMS is 0-1 shown at x1000.
-        setLiveAudioLevel(Math.sqrt(squareSum / buf.length) * (1000 / 128))
-        raf = requestAnimationFrame(poll)
-      }
-      await ctx.resume().catch(() => {})
-      poll()
 
-      audioLevelCleanupRef.current = () => {
-        cancelAnimationFrame(raf)
-        source.disconnect()
-        ctx.close().catch(() => {})
-        stream.getTracks().forEach((t) => t.stop())
+        try {
+          await invoke('start_audio_capture', {
+            deviceName: audioInputDeviceId ?? null,
+            sampleRate: 48000,
+          })
+        } catch (e) {
+          unlisten()
+          if (isCancelled()) return
+          setMonitorError(typeof e === 'string' ? e : 'Could not open the microphone')
+          setMonitoring(false)
+          return
+        }
+
+        const cleanup = () => {
+          unlisten()
+          invoke('stop_audio_capture').catch((err) => {
+            console.error('Failed to stop audio capture on cleanup:', err)
+          })
+        }
+        if (isCancelled()) {
+          cleanup()
+          return
+        }
+        audioLevelCleanupRef.current = cleanup
+        return
       }
-    } catch (e) {
-      const err = e as Error & { name?: string }
-      setMonitorError(
-        err.name === 'NotAllowedError'
-          ? 'Microphone permission denied'
-          : err.name === 'NotFoundError'
-            ? 'No microphone found'
-            : `Could not open the microphone: ${err.message || err.name}`,
-      )
-      setMonitoring(false)
-    }
-  }, [audioInputDeviceId, setLiveAudioLevel, inCall])
+
+      // Web: meter straight off a getUserMedia stream.
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: audioInputDeviceId ? { deviceId: { exact: audioInputDeviceId } } : true,
+        })
+        if (isCancelled()) {
+          stream.getTracks().forEach((t) => t.stop())
+          return
+        }
+        const ctx = new AudioContext()
+        const source = ctx.createMediaStreamSource(stream)
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 512
+        analyser.smoothingTimeConstant = 0.1
+        source.connect(analyser)
+        const buf = new Uint8Array(analyser.fftSize)
+        let raf = 0
+        const poll = () => {
+          analyser.getByteTimeDomainData(buf)
+          let squareSum = 0
+          for (let i = 0; i < buf.length; i++) {
+            const deviation = buf[i] - 128
+            squareSum += deviation * deviation
+          }
+          // Match the native scale so the meter reads the same on both paths:
+          // byte-domain RMS is 0-128, native RMS is 0-1 shown at x1000.
+          setLiveAudioLevel(Math.sqrt(squareSum / buf.length) * (1000 / 128))
+          raf = requestAnimationFrame(poll)
+        }
+        const cleanup = () => {
+          cancelAnimationFrame(raf)
+          source.disconnect()
+          ctx.close().catch(() => {})
+          stream.getTracks().forEach((t) => t.stop())
+        }
+        await ctx.resume().catch(() => {})
+        if (isCancelled()) {
+          cleanup()
+          return
+        }
+        poll()
+        audioLevelCleanupRef.current = cleanup
+      } catch (e) {
+        if (isCancelled()) return
+        const err = e as Error & { name?: string }
+        setMonitorError(
+          err.name === 'NotAllowedError'
+            ? 'Microphone permission denied'
+            : err.name === 'NotFoundError'
+              ? 'No microphone found'
+              : `Could not open the microphone: ${err.message || err.name}`,
+        )
+        setMonitoring(false)
+      }
+    },
+    [audioInputDeviceId, setLiveAudioLevel, inCall],
+  )
 
   useEffect(() => {
     if (!monitoring) return
-    startAudioMonitoring()
+    let cancelled = false
+    startAudioMonitoring(() => cancelled)
     return () => {
+      cancelled = true
       audioLevelCleanupRef.current?.()
       audioLevelCleanupRef.current = null
       setLiveAudioLevel(0)
