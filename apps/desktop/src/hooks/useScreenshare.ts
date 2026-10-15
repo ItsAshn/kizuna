@@ -4,7 +4,12 @@ import type { Transport, Producer } from 'mediasoup-client/types'
 import { useCallStore } from '../store/callStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useNotificationStore } from '../store/notificationStore'
-import { isTauri, isLinuxDesktop } from '../utils/platform'
+import {
+  isTauri,
+  isMobileTauri,
+  isLinuxDesktop,
+  MOBILE_SCREENSHARE_UNSUPPORTED,
+} from '../utils/platform'
 import type { NativeVideoProducer } from './useVoice'
 import { getWebviewVideoSend } from './webviewVideoSend'
 
@@ -83,7 +88,8 @@ export function useScreenshare(
       canvasRef.current = null
     }
 
-    if (isTauri()) {
+    // The capture commands only exist on desktop.
+    if (isTauri() && !isMobileTauri()) {
       import('@tauri-apps/api/core').then(({ invoke }) =>
         invoke('stop_screen_capture').catch(() => {}),
       )
@@ -182,6 +188,7 @@ export function useScreenshare(
 
       if (!socket) return 'No socket connection'
       if (!isTauri()) return 'Screensharing only works in the Tauri desktop app'
+      if (isMobileTauri()) return MOBILE_SCREENSHARE_UNSUPPORTED
 
       if (isLinuxDesktop()) {
         return startNativeScreenshare(channelId, monitorIndex, fps)

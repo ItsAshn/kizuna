@@ -19,6 +19,7 @@ import {
 import MonitorPicker from './MonitorPicker'
 import Slider from './ui/Slider'
 import { useMobile } from '../hooks/useMobile'
+import { isTauri, isMobileTauri, MOBILE_SCREENSHARE_UNSUPPORTED } from '../utils/platform'
 import { getVoiceLogLines } from '../hooks/useVoice'
 import './VoiceOverlay.css'
 
@@ -240,7 +241,10 @@ export default function VoiceOverlay({
   // Negotiation continues well past the server accepting the join, so the
   // header must not claim the call is live until audio can actually flow.
   const connecting = !!voiceConnectingChannelId
-  const canScreenShare = !isMobile && '__TAURI_INTERNALS__' in window
+  // Shown on Android at any width so it can say why it does nothing there,
+  // rather than vanishing or failing with a missing-command error.
+  const screenShareUnsupported = isMobileTauri()
+  const canScreenShare = screenShareUnsupported || (!isMobile && isTauri())
   const someoneElseSharing = !!screenSharePeerId && !isScreenSharing
   const statusLabel = voiceReconnecting
     ? 'Reconnecting…'
@@ -359,7 +363,9 @@ export default function VoiceOverlay({
             {canScreenShare && (
               <button
                 onClick={() => {
-                  if (isScreenSharing) {
+                  if (screenShareUnsupported) {
+                    setScreenShareError(MOBILE_SCREENSHARE_UNSUPPORTED)
+                  } else if (isScreenSharing) {
                     stopScreenshare()
                     setScreenShareError(null)
                   } else if (someoneElseSharing) {
@@ -372,22 +378,26 @@ export default function VoiceOverlay({
                 }}
                 className={`voice-ctrl ${isScreenSharing ? 'voice-ctrl--brand-active' : ''}`}
                 title={
-                  isScreenSharing
-                    ? 'Stop sharing'
-                    : someoneElseSharing
-                      ? `${screenShareUsername || 'Someone else'} is sharing`
-                      : 'Share screen'
+                  screenShareUnsupported
+                    ? 'Screen sharing is not available on mobile'
+                    : isScreenSharing
+                      ? 'Stop sharing'
+                      : someoneElseSharing
+                        ? `${screenShareUsername || 'Someone else'} is sharing`
+                        : 'Share screen'
                 }
                 /* Deliberately not `disabled`: a disabled button explains
                    nothing. It stays clickable so the click can say who has the
                    floor. */
-                aria-disabled={someoneElseSharing}
+                aria-disabled={someoneElseSharing || screenShareUnsupported}
                 aria-label={
-                  isScreenSharing
-                    ? 'Stop sharing your screen'
-                    : someoneElseSharing
-                      ? `${screenShareUsername || 'Someone else'} is sharing their screen`
-                      : 'Share your screen'
+                  screenShareUnsupported
+                    ? 'Screen sharing is not available on mobile'
+                    : isScreenSharing
+                      ? 'Stop sharing your screen'
+                      : someoneElseSharing
+                        ? `${screenShareUsername || 'Someone else'} is sharing their screen`
+                        : 'Share your screen'
                 }
               >
                 {isScreenSharing ? (
