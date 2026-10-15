@@ -9,7 +9,9 @@ import {
 } from '../media/router'
 import type { types as mediasoupTypes } from 'mediasoup'
 import { getDb } from '../db'
-import { getUserPermissions, hasPermission } from '../middleware/auth'
+import { canViewChannel, getUserChannelPermission } from '../middleware/auth'
+import { isId, isRecord } from './validate'
+import { resolveAccessibleRoom } from './chat/helpers'
 
 type TransportWithDirection = mediasoupTypes.Transport & { _direction?: string }
 
@@ -63,7 +65,20 @@ export interface PeerInfo {
   announced: boolean
   /** Self-mute state, mirrored to the channel so rosters can show it. */
   muted: boolean
+  /** Server channel, 1:1 DM call (`dm:<id>`) or group-DM call (`group-dm:<id>`). */
+  kind: VoiceRoomKind
 }
+
+type VoiceRoomKind = 'channel' | 'dm' | 'group-dm'
+
+/** Channel types that carry voice. `screen` channels are voice rooms with a stage. */
+const VOICE_CHANNEL_TYPES = new Set(['voice', 'screen'])
+
+/** send (audio) + recv + one extra send for camera/screen video. */
+const MAX_TRANSPORTS_PER_PEER = 3
+const MAX_SEND_TRANSPORTS_PER_PEER = 2
+const TRANSPORT_RATE_WINDOW_MS = 10_000
+const TRANSPORT_RATE_MAX = 10
 
 const peers = new Map<string, PeerInfo>()
 const channelPeers = new Map<string, Set<string>>()
@@ -83,23 +98,42 @@ const socketRtpFraming = new Map<string, number>()
 
 const RTP_HEADER_BYTES = 12
 
-/** Strip the RTP header, returning the Opus payload with its seq and timestamp. */
+/**
+ * Strip the RTP header (CSRCs, header extension) and trailing padding,
+ * returning the Opus payload with its seq and timestamp.
+ */
 function parseRtp(rtpPacket: Buffer): { seq: number; ts: number; payload: Buffer } | null {
   if (rtpPacket.length < RTP_HEADER_BYTES) return null
-  const hasExtension = (rtpPacket[0]! & 0x10) !== 0
-  const csrcCount = rtpPacket[0]! & 0x0f
+  const b0 = rtpPacket[0]!
+  if (b0 >> 6 !== 2) return null // RTP version 2 only
+  const hasPadding = (b0 & 0x20) !== 0
+  const hasExtension = (b0 & 0x10) !== 0
+  const csrcCount = b0 & 0x0f
+
+  let end = rtpPacket.length
+  if (hasPadding) {
+    // The last byte holds the number of padding bytes, itself included.
+    const padLen = rtpPacket[end - 1]!
+    if (padLen === 0) return null
+    end -= padLen
+  }
+
   let offset = RTP_HEADER_BYTES + csrcCount * 4
-  if (hasExtension && offset + 4 <= rtpPacket.length) {
+  if (hasExtension) {
+    if (offset + 4 > end) return null
     const extLen = rtpPacket.readUInt16BE(offset + 2)
     offset += 4 + extLen * 4
   }
-  if (offset >= rtpPacket.length) return null
+  if (offset >= end) return null
   return {
     seq: rtpPacket.readUInt16BE(2),
     ts: rtpPacket.readUInt32BE(4),
-    payload: rtpPacket.subarray(offset),
+    payload: rtpPacket.subarray(offset, end),
   }
 }
+
+/** Consumers that already have a forwarder, so a repeated enableSocketRtp can't double it. */
+const forwardedConsumers = new WeakSet<mediasoupTypes.Consumer>()
 
 /** Attach the `rtp` forwarder for one audio consumer, in the negotiated framing. */
 function forwardConsumerRtp(
@@ -107,6 +141,8 @@ function forwardConsumerRtp(
   consumer: mediasoupTypes.Consumer,
   producerPeerId: string,
 ): void {
+  if (forwardedConsumers.has(consumer)) return
+  forwardedConsumers.add(consumer)
   consumer.on('rtp', (rtpPacket: Buffer) => {
     const parsed = parseRtp(rtpPacket)
     if (!parsed) return
@@ -114,13 +150,19 @@ function forwardConsumerRtp(
     // consumer was created, and the socket may have gone away entirely.
     const framing = socketRtpFraming.get(socket.id)
     if (framing === undefined) return
+    // Volatile: a receiver that can't keep up drops packets (the jitter buffer
+    // conceals them) instead of engine.io buffering audio for it without bound.
     if (framing >= 2) {
       const header = Buffer.allocUnsafe(6)
       header.writeUInt16BE(parsed.seq, 0)
       header.writeUInt32BE(parsed.ts, 2)
-      socket.emit('voice:socketRtp', Buffer.concat([header, parsed.payload]), producerPeerId)
+      socket.volatile.emit(
+        'voice:socketRtp',
+        Buffer.concat([header, parsed.payload]),
+        producerPeerId,
+      )
     } else {
-      socket.emit('voice:socketRtp', parsed.payload, producerPeerId)
+      socket.volatile.emit('voice:socketRtp', parsed.payload, producerPeerId)
     }
   })
 }
@@ -189,523 +231,639 @@ function getScreenSharer(
   return null
 }
 
+type Ack = (res?: unknown) => void
+
+function asAck(cb: unknown): Ack | undefined {
+  return typeof cb === 'function' ? (cb as Ack) : undefined
+}
+
+function isMediaKind(v: unknown): v is 'audio' | 'video' {
+  return v === 'audio' || v === 'video'
+}
+
+function isMediaSource(v: unknown): v is 'camera' | 'screen' {
+  return v === 'camera' || v === 'screen'
+}
+
+/**
+ * Authorise a voice room id exactly as the client sends it:
+ *   `dm:<dmChannelId>`        — 1:1 DM call, caller must be a party to the DM
+ *   `group-dm:<groupId>`      — group call, caller must be a group member
+ *   `<channelId>`             — server voice channel the caller can view and
+ *                               has `use_voice` on (channel overrides applied)
+ */
+function authorizeVoiceRoom(
+  userId: string,
+  channelId: string,
+): { kind: VoiceRoomKind } | { error: string } {
+  if (channelId.startsWith('dm:')) {
+    const room = resolveAccessibleRoom(userId, channelId.slice(3))
+    return room?.kind === 'dm' ? { kind: 'dm' } : { error: 'Not a participant in this DM' }
+  }
+  if (channelId.startsWith('group-dm:')) {
+    const room = resolveAccessibleRoom(userId, channelId.slice(9))
+    return room?.kind === 'group-dm'
+      ? { kind: 'group-dm' }
+      : { error: 'Not a member of this group DM' }
+  }
+  const room = resolveAccessibleRoom(userId, channelId)
+  if (!room || room.kind !== 'channel') return { error: 'Voice channel not found' }
+  if (!VOICE_CHANNEL_TYPES.has(room.type ?? '')) return { error: 'Not a voice channel' }
+  const member = getDb().prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
+  if (!member) return { error: 'Not a server member' }
+  if (!getUserChannelPermission(userId, channelId, 'use_voice')) {
+    return { error: 'You do not have permission to join voice channels' }
+  }
+  return { kind: 'channel' }
+}
+
+/** Whether `userId` may see who is in voice room `channelId`. */
+function canSeeVoiceRoom(userId: string, channelId: string): boolean {
+  if (channelId.startsWith('dm:')) {
+    return resolveAccessibleRoom(userId, channelId.slice(3))?.kind === 'dm'
+  }
+  if (channelId.startsWith('group-dm:')) {
+    return resolveAccessibleRoom(userId, channelId.slice(9))?.kind === 'group-dm'
+  }
+  return canViewChannel(userId, channelId)
+}
+
+/** Memoise canSeeVoiceRoom per (user, room) for the duration of one fan-out. */
+function visibilityChecker(): (userId: string, channelId: string) => boolean {
+  const cache = new Map<string, boolean>()
+  return (userId, channelId) => {
+    const key = `${userId}\u0000${channelId}`
+    let ok = cache.get(key)
+    if (ok === undefined) {
+      ok = canSeeVoiceRoom(userId, channelId)
+      cache.set(key, ok)
+    }
+    return ok
+  }
+}
+
+/**
+ * Roster broadcasts (who is in which voice room) go only to sockets whose user
+ * can see that room: hidden channels stay hidden and DM/group calls are only
+ * visible to their own participants.
+ */
+function emitToVoiceRoomViewers(
+  io: Server,
+  channelId: string,
+  event: string,
+  payload: Record<string, unknown>,
+): void {
+  const canSee = visibilityChecker()
+  for (const [, s] of io.sockets.sockets) {
+    const uid = s.data.userId as string | undefined
+    if (uid && canSee(uid, channelId)) s.emit(event, payload)
+  }
+}
+
+/** Drop transports that already closed (DTLS failure, router close) from the peer. */
+function pruneClosedTransports(peer: PeerInfo): void {
+  for (const [id, t] of peer.transports) {
+    if (t.closed) peer.transports.delete(id)
+  }
+}
+
+/**
+ * Make room for one more transport in `direction`, closing whatever it
+ * replaces. A legit client holds at most one recv transport and two send
+ * transports (audio, plus one for camera or screen video); a new recv replaces
+ * the old one and a new extra send replaces the previous extra send, which the
+ * client abandons when it stops camera/screen without telling the server.
+ * Returns an error string when no slot can be made.
+ */
+function makeRoomForTransport(peer: PeerInfo, direction: 'send' | 'recv'): string | null {
+  pruneClosedTransports(peer)
+  const same = [...peer.transports.values()].filter((t) => t._direction === direction)
+  const replace: TransportWithDirection[] =
+    direction === 'recv'
+      ? same
+      : same.length >= MAX_SEND_TRANSPORTS_PER_PEER
+        ? same.slice(1) // keep the first (audio) send transport
+        : []
+  for (const t of replace) {
+    vlog('createTransport', `replacing ${direction} transport | transportId=${t.id}`)
+    try {
+      t.close()
+    } catch {
+      /* already closed */
+    }
+    peer.transports.delete(t.id)
+  }
+  if (peer.transports.size >= MAX_TRANSPORTS_PER_PEER) return 'Too many transports'
+  return null
+}
+
+/** Register a freshly created transport on the peer and keep the map in sync. */
+function trackTransport(peer: PeerInfo, transport: TransportWithDirection, direction: string) {
+  transport._direction = direction
+  peer.transports.set(transport.id, transport)
+  transport.observer.once('close', () => {
+    if (peer.transports.get(transport.id) === transport) peer.transports.delete(transport.id)
+  })
+}
+
 export function registerVoiceHandlers(io: Server, socket: Socket): void {
-  socket.on(
-    'voice:join',
-    async (
-      {
+  // Sliding-window limit on transport creation for this socket. Each one
+  // allocates ports and worker state, so it is the expensive call to spam.
+  const transportCreations: number[] = []
+  function allowTransportCreation(): boolean {
+    const now = Date.now()
+    while (transportCreations.length && now - transportCreations[0]! > TRANSPORT_RATE_WINDOW_MS) {
+      transportCreations.shift()
+    }
+    if (transportCreations.length >= TRANSPORT_RATE_MAX) return false
+    transportCreations.push(now)
+    return true
+  }
+
+  socket.on('voice:join', async (payload: unknown, cb?: unknown) => {
+    const callback = asAck(cb)
+    const joinTs = Date.now()
+    const userId = socket.data.userId as string | undefined
+    const username = socket.data.username as string
+    if (!userId) {
+      vlog('join', 'rejected: not authenticated')
+      callback?.({ error: 'Authentication required' })
+      return
+    }
+    if (!isRecord(payload) || !isId(payload.channelId, 160)) {
+      callback?.({ error: 'Invalid channel' })
+      return
+    }
+    const channelId = payload.channelId
+    vlog(
+      'join',
+      `request | socketId=${socket.id} | channelId=${channelId} | userId=${userId} | username=${username} | peers=${peers.size}`,
+    )
+    try {
+      const auth = authorizeVoiceRoom(userId, channelId)
+      if ('error' in auth) {
+        vlog('join', `rejected: ${auth.error} | userId=${userId} | channelId=${channelId}`)
+        callback?.({ error: auth.error })
+        return
+      }
+
+      // Re-joining (switching channels, or a retry) must tear the previous
+      // session down first, or its transports/producers leak and the old
+      // channel keeps a ghost peer that stops its router from ever closing.
+      cleanupPeer(io, socket)
+
+      const router = await ensureRouter(channelId)
+      vlog('join', `router ready | channelId=${channelId}`)
+
+      // The socket may have gone, or a concurrent join may have won, while the
+      // router was being created.
+      if (!socket.connected) return
+      cleanupPeer(io, socket)
+
+      socket.join(channelId)
+
+      const peer: PeerInfo = {
+        socketId: socket.id,
+        userId,
+        username,
         channelId,
-      }: {
-        channelId: string
-      },
-      callback?: Function,
-    ) => {
-      const joinTs = Date.now()
-      const userId = socket.data.userId
-      const username = socket.data.username
-      if (!userId) {
-        vlog('join', 'rejected: not authenticated')
-        if (typeof callback === 'function') callback({ error: 'Authentication required' })
+        router,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map(),
+        announced: false,
+        muted: false,
+        kind: auth.kind,
+      }
+      peers.set(socket.id, peer)
+      if (!channelPeers.has(channelId)) channelPeers.set(channelId, new Set())
+      channelPeers.get(channelId)!.add(socket.id)
+
+      if (auth.kind === 'group-dm') {
+        const groupChannelId = channelId.slice(9)
+        const vpId = uuidv4()
+        getDb()
+          .prepare(
+            'INSERT INTO group_dm_voice_participants (id, channel_id, user_id, joined_at) VALUES (?, ?, ?, ?)',
+          )
+          .run(vpId, groupChannelId, userId, Math.floor(Date.now() / 1000))
+      }
+
+      const existingPeers: {
+        id: string
+        userId: string
+        username: string
+        speaking: boolean
+        muted: boolean
+        hasCamera: boolean
+      }[] = []
+      for (const p of getPeersInChannel(channelId)) {
+        if (p.socketId !== socket.id && p.announced) {
+          let hasCamera = false
+          for (const [, producer] of p.producers) {
+            if (producer.kind === 'video' && producer.appData?.source === 'camera') {
+              hasCamera = true
+              break
+            }
+          }
+          existingPeers.push({
+            id: p.socketId,
+            userId: p.userId,
+            username: p.username,
+            speaking: false,
+            muted: p.muted,
+            hasCamera,
+          })
+        }
+      }
+
+      const iceServers = getIceServers()
+      const screenSharePeer = getScreenSharer(channelId)
+      const voiceBitrateKbps = getServerVoiceBitrateKbps()
+      vlog(
+        'join',
+        `success | socketId=${socket.id} | username=${username} | channelPeers=${existingPeers.length} | iceServers=${iceServers.length} | screenShare=${!!screenSharePeer} | voiceBitrate=${voiceBitrateKbps}kbps | ms=${Date.now() - joinTs}`,
+      )
+
+      callback?.({
+        routerRtpCapabilities: router.rtpCapabilities,
+        peers: existingPeers,
+        iceServers,
+        screenSharePeer,
+        voiceBitrateKbps,
+      })
+    } catch (err: unknown) {
+      verr('join', 'error', err)
+      callback?.({ error: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  socket.on('voice:createTransport', async (payload: unknown, cb?: unknown) => {
+    const callback = asAck(cb)
+    const t0 = Date.now()
+    const direction = isRecord(payload) ? payload.direction : undefined
+    if (direction !== 'send' && direction !== 'recv') {
+      callback?.({ error: 'Invalid direction' })
+      return
+    }
+    try {
+      const peer = peers.get(socket.id)
+      if (!peer) {
+        vlog('createTransport', `rejected: not in voice channel | socketId=${socket.id}`)
+        callback?.({ error: 'Not in a voice channel' })
+        return
+      }
+      if (!allowTransportCreation()) {
+        callback?.({ error: 'Too many transport requests, slow down' })
+        return
+      }
+
+      const transport = (await createTransport(peer.router)) as TransportWithDirection
+
+      // Checked after the await so concurrent requests can't both slip under
+      // the cap, and a peer that left/rejoined meanwhile doesn't adopt it.
+      const slotError =
+        peers.get(socket.id) === peer
+          ? makeRoomForTransport(peer, direction)
+          : 'Not in a voice channel'
+      if (slotError) {
+        transport.close()
+        callback?.({ error: slotError })
+        return
+      }
+
+      const bitrateKbps = getServerVoiceBitrateKbps()
+      if (direction === 'send') {
+        ;(transport as mediasoupTypes.WebRtcTransport)
+          .setMaxIncomingBitrate(bitrateKbps * 1000)
+          .catch((e) => {
+            verr('createTransport', `setMaxIncomingBitrate failed`, e)
+          })
+      }
+      trackTransport(peer, transport, direction)
+
+      vlog(
+        'createTransport',
+        `created | socketId=${socket.id} | dir=${direction} | transportId=${transport.id} | bitrate=${bitrateKbps}kbps | ms=${Date.now() - t0}`,
+      )
+
+      const webrtc = transport as mediasoupTypes.WebRtcTransport
+      webrtc.on('dtlsstatechange', (state: string) => {
+        vlog(
+          'dtls',
+          `${direction} dtlsstatechange -> ${state} | socketId=${socket.id} | transportId=${transport.id}`,
+        )
+        if (state === 'failed' || state === 'closed') {
+          verr('dtls', `${direction} dtls ${state} | socketId=${socket.id}`)
+          try {
+            transport.close()
+          } catch {
+            /* already closed */
+          }
+        }
+      })
+
+      callback?.({
+        id: webrtc.id,
+        iceParameters: webrtc.iceParameters,
+        iceCandidates: webrtc.iceCandidates,
+        dtlsParameters: webrtc.dtlsParameters,
+      })
+    } catch (err: unknown) {
+      verr('createTransport', `failed | socketId=${socket.id} | dir=${direction}`, err)
+      callback?.({ error: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  socket.on('voice:createDirectTransport', async (_payload: unknown, cb?: unknown) => {
+    const callback = asAck(cb)
+    try {
+      const peer = peers.get(socket.id)
+      if (!peer) {
+        callback?.({ error: 'Not in a voice channel' })
+        return
+      }
+      if (!allowTransportCreation()) {
+        callback?.({ error: 'Too many transport requests, slow down' })
+        return
+      }
+
+      const direct = await peer.router.createDirectTransport({
+        maxSendMessageSize: 262144,
+      })
+      direct.on('rtcp', () => {})
+      const transport = direct as TransportWithDirection
+
+      const slotError =
+        peers.get(socket.id) === peer
+          ? makeRoomForTransport(peer, 'recv')
+          : 'Not in a voice channel'
+      if (slotError) {
+        transport.close()
+        callback?.({ error: slotError })
+        return
+      }
+      trackTransport(peer, transport, 'recv')
+
+      vlog('createDirectTransport', `created | socketId=${socket.id} | transportId=${transport.id}`)
+
+      callback?.({ id: transport.id })
+    } catch (err: unknown) {
+      verr('createDirectTransport', `failed | socketId=${socket.id}`, err)
+      callback?.({ error: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  socket.on('voice:connectTransport', async (payload: unknown, cb?: unknown) => {
+    const callback = asAck(cb)
+    if (!isRecord(payload) || !isId(payload.transportId) || !isRecord(payload.dtlsParameters)) {
+      callback?.({ error: 'Invalid payload' })
+      return
+    }
+    const transportId = payload.transportId
+    try {
+      const peer = peers.get(socket.id)
+      const transport = peer?.transports.get(transportId)
+      if (!transport || transport.closed) {
+        vlog('connectTransport', `rejected: transport not found | transportId=${transportId}`)
+        callback?.({ error: 'Transport not found' })
+        return
+      }
+      const dir = transport._direction || '?'
+      await connectTransport(
+        transport as mediasoupTypes.WebRtcTransport,
+        payload.dtlsParameters as unknown as mediasoupTypes.DtlsParameters,
+      )
+      vlog(
+        'connectTransport',
+        `ok | socketId=${socket.id} | dir=${dir} | transportId=${transportId}`,
+      )
+      callback?.({ ok: true })
+    } catch (err: unknown) {
+      verr('connectTransport', `failed | transportId=${transportId}`, err)
+      callback?.({ error: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  socket.on('voice:produce', async (payload: unknown, cb?: unknown) => {
+    const callback = asAck(cb)
+    if (
+      !isRecord(payload) ||
+      !isId(payload.transportId) ||
+      !isMediaKind(payload.kind) ||
+      !isRecord(payload.rtpParameters) ||
+      (payload.source !== undefined && payload.source !== null && !isMediaSource(payload.source))
+    ) {
+      callback?.({ error: 'Invalid payload' })
+      return
+    }
+    const { transportId, kind } = payload
+    const source = isMediaSource(payload.source) ? payload.source : undefined
+    try {
+      const peer = peers.get(socket.id)
+      const transport = peer?.transports.get(transportId)
+      if (!peer || !transport || transport.closed) {
+        vlog('produce', `rejected: transport not found | transportId=${transportId}`)
+        callback?.({ error: 'Transport not found' })
+        return
+      }
+
+      const producer = await produceOnTransport(transport as mediasoupTypes.WebRtcTransport, {
+        kind,
+        rtpParameters: payload.rtpParameters as unknown as mediasoupTypes.RtpParameters,
+        source,
+      })
+      if (peers.get(socket.id) !== peer) {
+        // Left or switched channel while producing.
+        producer.close()
+        callback?.({ error: 'Not in a voice channel' })
+        return
+      }
+      peer.producers.set(producer.id, producer)
+      producer.observer.once('close', () => peer.producers.delete(producer.id))
+      vlog(
+        'produce',
+        `created | socketId=${socket.id} | user=${peer.username} | kind=${kind} | producerId=${producer.id} | announced=${peer.announced}`,
+      )
+
+      producer.on('transportclose', () => producer.close())
+
+      if (!peer.announced) {
+        peer.announced = true
+        vlog(
+          'produce',
+          `announcing new peer | socketId=${socket.id} | user=${peer.username} | channelPeers=${peers.size}`,
+        )
+        socket.to(peer.channelId).emit('voice:newPeer', {
+          peerId: socket.id,
+          userId: peer.userId,
+          username: peer.username,
+        })
+        emitToVoiceRoomViewers(io, peer.channelId, 'voice:userJoinedChannel', {
+          channelId: peer.channelId,
+          userId: peer.userId,
+          username: peer.username,
+        })
+      }
+
+      callback?.({ id: producer.id })
+    } catch (err: unknown) {
+      verr('produce', `failed | socketId=${socket.id}`, err)
+      callback?.({ error: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  socket.on('voice:consume', async (payload: unknown, cb?: unknown) => {
+    const callback = asAck(cb)
+    if (
+      !isRecord(payload) ||
+      !isId(payload.peerId) ||
+      !isRecord(payload.rtpCapabilities) ||
+      (payload.kind !== undefined && payload.kind !== null && !isMediaKind(payload.kind)) ||
+      (payload.source !== undefined && payload.source !== null && !isMediaSource(payload.source))
+    ) {
+      callback?.({ error: 'Invalid payload' })
+      return
+    }
+    const peerId = payload.peerId
+    const rtpCapabilities = payload.rtpCapabilities as unknown as mediasoupTypes.RtpCapabilities
+    const kind = isMediaKind(payload.kind) ? payload.kind : undefined
+    const source = isMediaSource(payload.source) ? payload.source : undefined
+    try {
+      const requestingPeer = peers.get(socket.id)
+      if (!requestingPeer) {
+        callback?.({ error: 'Requesting peer not found' })
+        return
+      }
+
+      let recvTransport: TransportWithDirection | null = null
+      for (const [, t] of requestingPeer.transports) {
+        if (t._direction === 'recv' && !t.closed) {
+          recvTransport = t
+          break
+        }
+      }
+      if (!recvTransport) {
+        vlog('consume', `rejected: no recv transport | socketId=${socket.id} | peerId=${peerId}`)
+        callback?.({ error: 'Recv transport not found' })
+        return
+      }
+
+      const targetPeer = peers.get(peerId)
+      if (!targetPeer || targetPeer.channelId !== requestingPeer.channelId) {
+        vlog('consume', `rejected: target peer not found | peerId=${peerId}`)
+        callback?.({ error: 'Target peer not found' })
+        return
+      }
+
+      const targetKind = kind || 'audio'
+      let producerId: string | null = null
+      for (const [id, producer] of targetPeer.producers) {
+        if (producer.closed || producer.kind !== targetKind) continue
+        // For video, disambiguate camera vs screenshare by source when requested.
+        if (targetKind === 'video' && source && producer.appData?.source !== source) continue
+        producerId = id
+        break
+      }
+      if (!producerId) {
+        vlog(
+          'consume',
+          `rejected: no ${targetKind}${source ? `/${source}` : ''} producer | peerId=${peerId}`,
+        )
+        callback?.({ error: `Target peer has no ${targetKind} producer` })
+        return
+      }
+
+      if (!requestingPeer.router.canConsume({ producerId, rtpCapabilities })) {
+        vlog('consume', `rejected: router cannot consume | producerId=${producerId}`)
+        callback?.({ error: 'Router cannot consume this producer' })
+        return
+      }
+
+      const consumer = await recvTransport.consume({
+        producerId,
+        rtpCapabilities,
+        paused: true,
+      })
+      if (peers.get(socket.id) !== requestingPeer) {
+        consumer.close()
+        callback?.({ error: 'Not in a voice channel' })
         return
       }
       vlog(
-        'join',
-        `request | socketId=${socket.id} | channelId=${channelId} | userId=${userId} | username=${username} | peers=${peers.size}`,
+        'consume',
+        `created | socketId=${socket.id} -> producerId=${producerId} | consumerId=${consumer.id} | kind=${consumer.kind} | paused=${consumer.producerPaused}`,
       )
-      try {
-        const db = getDb()
 
-        if (channelId.startsWith('dm:')) {
-          const dmChannelId = channelId.slice(3)
-          const dmChannel = db
-            .prepare('SELECT * FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)')
-            .get(dmChannelId, userId, userId)
-          if (!dmChannel) {
-            vlog(
-              'join',
-              `rejected: not a dm channel participant | userId=${userId} | dmChannelId=${dmChannelId}`,
-            )
-            if (typeof callback === 'function') callback({ error: 'Not a participant in this DM' })
-            return
-          }
-        } else if (channelId.startsWith('group-dm:')) {
-          const groupChannelId = channelId.slice(9)
-          const member = db
-            .prepare('SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?')
-            .get(groupChannelId, userId)
-          if (!member) {
-            vlog(
-              'join',
-              `rejected: not a group dm member | userId=${userId} | groupChannelId=${groupChannelId}`,
-            )
-            if (typeof callback === 'function') callback({ error: 'Not a member of this group DM' })
-            return
-          }
-        } else {
-          const member = db.prepare('SELECT 1 FROM server_members WHERE user_id = ?').get(userId)
-          if (!member) {
-            vlog('join', `rejected: not a server member | userId=${userId}`)
-            if (typeof callback === 'function') callback({ error: 'Not a server member' })
-            return
-          }
-          const userInfo = getUserPermissions(userId)
-          if (!userInfo || !hasPermission(userInfo, 'use_voice')) {
-            vlog('join', `rejected: no use_voice permission | userId=${userId}`)
-            if (typeof callback === 'function')
-              callback({ error: 'You do not have permission to join voice channels' })
-            return
-          }
-        }
-
-        const router = await ensureRouter(channelId)
-        vlog('join', `router ready | channelId=${channelId}`)
-
-        socket.join(channelId)
-
-        const peer: PeerInfo = {
-          socketId: socket.id,
-          userId,
-          username,
-          channelId,
-          router,
-          transports: new Map(),
-          producers: new Map(),
-          consumers: new Map(),
-          announced: false,
-          muted: false,
-        }
-        peers.set(socket.id, peer)
-        if (!channelPeers.has(channelId)) channelPeers.set(channelId, new Set())
-        channelPeers.get(channelId)!.add(socket.id)
-
-        if (channelId.startsWith('group-dm:')) {
-          const groupChannelId = channelId.slice(9)
-          const vpId = uuidv4()
-          db.prepare(
-            'INSERT INTO group_dm_voice_participants (id, channel_id, user_id, joined_at) VALUES (?, ?, ?, ?)',
-          ).run(vpId, groupChannelId, userId, Math.floor(Date.now() / 1000))
-        }
-
-        const existingPeers: {
-          id: string
-          userId: string
-          username: string
-          speaking: boolean
-          muted: boolean
-          hasCamera: boolean
-        }[] = []
-        for (const p of getPeersInChannel(channelId)) {
-          if (p.socketId !== socket.id && p.announced) {
-            let hasCamera = false
-            for (const [, producer] of p.producers) {
-              if (producer.kind === 'video' && producer.appData?.source === 'camera') {
-                hasCamera = true
-                break
-              }
-            }
-            existingPeers.push({
-              id: p.socketId,
-              userId: p.userId,
-              username: p.username,
-              speaking: false,
-              muted: p.muted,
-              hasCamera,
-            })
-          }
-        }
-
-        const iceServers = getIceServers()
-        const screenSharePeer = getScreenSharer(channelId)
-        const voiceBitrateKbps = getServerVoiceBitrateKbps()
-        vlog(
-          'join',
-          `success | socketId=${socket.id} | username=${username} | channelPeers=${existingPeers.length} | iceServers=${iceServers.length} | screenShare=${!!screenSharePeer} | voiceBitrate=${voiceBitrateKbps}kbps | ms=${Date.now() - joinTs}`,
-        )
-
-        if (typeof callback === 'function') {
-          callback({
-            routerRtpCapabilities: router.rtpCapabilities,
-            peers: existingPeers,
-            iceServers,
-            screenSharePeer,
-            voiceBitrateKbps,
-          })
-        }
-      } catch (err: unknown) {
-        verr('join', 'error', err)
-        if (typeof callback === 'function')
-          callback({ error: err instanceof Error ? err.message : String(err) })
-      }
-    },
-  )
-
-  socket.on(
-    'voice:createTransport',
-    async (
-      {
-        channelId: _channelId,
-        direction,
-      }: {
-        channelId: string
-        direction: string
-      },
-      callback?: Function,
-    ) => {
-      const t0 = Date.now()
-      try {
-        const peer = peers.get(socket.id)
-        if (!peer) {
-          vlog('createTransport', `rejected: not in voice channel | socketId=${socket.id}`)
-          if (typeof callback === 'function') callback({ error: 'Not in a voice channel' })
-          return
-        }
-
-        const transport = await createTransport(peer.router)
-
-        const bitrateKbps = getServerVoiceBitrateKbps()
-        if (direction === 'send') {
-          transport.setMaxIncomingBitrate(bitrateKbps * 1000).catch((e) => {
-            verr('createTransport', `setMaxIncomingBitrate failed`, e)
-          })
-        }
-        peer.transports.set(transport.id, transport as TransportWithDirection)
-        ;(transport as TransportWithDirection)._direction = direction
-
-        vlog(
-          'createTransport',
-          `created | socketId=${socket.id} | dir=${direction} | transportId=${transport.id} | bitrate=${bitrateKbps}kbps | ms=${Date.now() - t0}`,
-        )
-
-        transport.on('dtlsstatechange', (state: string) => {
-          vlog(
-            'dtls',
-            `${direction} dtlsstatechange -> ${state} | socketId=${socket.id} | transportId=${transport.id}`,
-          )
-          if (state === 'failed' || state === 'closed') {
-            verr('dtls', `${direction} dtls ${state} | socketId=${socket.id}`)
-            try {
-              transport.close()
-            } catch {}
-          }
-        })
-
-        if (typeof callback === 'function') {
-          callback({
-            id: transport.id,
-            iceParameters: transport.iceParameters,
-            iceCandidates: transport.iceCandidates,
-            dtlsParameters: transport.dtlsParameters,
-          })
-        }
-      } catch (err: unknown) {
-        verr('createTransport', `failed | socketId=${socket.id} | dir=${direction}`, err)
-        if (typeof callback === 'function')
-          callback({ error: err instanceof Error ? err.message : String(err) })
-      }
-    },
-  )
-
-  socket.on(
-    'voice:createDirectTransport',
-    async (
-      {
-        channelId: _channelId,
-      }: {
-        channelId: string
-      },
-      callback?: Function,
-    ) => {
-      try {
-        const peer = peers.get(socket.id)
-        if (!peer) {
-          if (typeof callback === 'function') callback({ error: 'Not in a voice channel' })
-          return
-        }
-
-        const transport = await peer.router.createDirectTransport({
-          maxSendMessageSize: 262144,
-        })
-        peer.transports.set(transport.id, transport as TransportWithDirection)
-        ;(transport as TransportWithDirection)._direction = 'recv'
-
-        transport.on('rtcp', () => {})
-
-        vlog(
-          'createDirectTransport',
-          `created | socketId=${socket.id} | transportId=${transport.id}`,
-        )
-
-        if (typeof callback === 'function') {
-          callback({ id: transport.id })
-        }
-      } catch (err: unknown) {
-        verr('createDirectTransport', `failed | socketId=${socket.id}`, err)
-        if (typeof callback === 'function')
-          callback({ error: err instanceof Error ? err.message : String(err) })
-      }
-    },
-  )
-
-  socket.on(
-    'voice:connectTransport',
-    async (
-      {
-        channelId: _channelId,
-        transportId,
-        dtlsParameters,
-      }: {
-        channelId: string
-        transportId: string
-        dtlsParameters: mediasoupTypes.DtlsParameters
-      },
-      callback?: Function,
-    ) => {
-      try {
-        const peer = peers.get(socket.id)
-        const transport = peer?.transports.get(transportId)
-        if (!transport) {
-          vlog('connectTransport', `rejected: transport not found | transportId=${transportId}`)
-          if (typeof callback === 'function') callback({ error: 'Transport not found' })
-          return
-        }
-        const dir = (transport as TransportWithDirection)._direction || '?'
-        await connectTransport(transport as mediasoupTypes.WebRtcTransport, dtlsParameters)
-        vlog(
-          'connectTransport',
-          `ok | socketId=${socket.id} | dir=${dir} | transportId=${transportId}`,
-        )
-        if (typeof callback === 'function') callback({ ok: true })
-      } catch (err: unknown) {
-        verr('connectTransport', `failed | transportId=${transportId}`, err)
-        if (typeof callback === 'function')
-          callback({ error: err instanceof Error ? err.message : String(err) })
-      }
-    },
-  )
-
-  socket.on(
-    'voice:produce',
-    async (
-      {
-        channelId,
-        transportId,
-        kind,
-        rtpParameters,
-        source,
-      }: {
-        channelId: string
-        transportId: string
-        kind: 'audio' | 'video'
-        rtpParameters: mediasoupTypes.RtpParameters
-        source?: 'camera' | 'screen'
-      },
-      callback?: Function,
-    ) => {
-      try {
-        const peer = peers.get(socket.id)
-        const transport = peer?.transports.get(transportId)
-        if (!peer || !transport) {
-          vlog('produce', `rejected: transport not found | transportId=${transportId}`)
-          if (typeof callback === 'function') callback({ error: 'Transport not found' })
-          return
-        }
-
-        const producer = await produceOnTransport(transport as mediasoupTypes.WebRtcTransport, {
-          kind,
-          rtpParameters,
-          source,
-        })
-        peer.producers.set(producer.id, producer)
-        vlog(
-          'produce',
-          `created | socketId=${socket.id} | user=${peer.username} | kind=${kind} | producerId=${producer.id} | announced=${peer.announced}`,
-        )
-
-        producer.on('transportclose', () => producer.close())
-
-        if (!peer.announced) {
-          peer.announced = true
-          vlog(
-            'produce',
-            `announcing new peer | socketId=${socket.id} | user=${peer.username} | channelPeers=${peers.size}`,
-          )
-          socket.to(channelId).emit('voice:newPeer', {
-            peerId: socket.id,
-            userId: peer.userId,
-            username: peer.username,
-          })
-          io.emit('voice:userJoinedChannel', {
-            channelId,
-            userId: peer.userId,
-            username: peer.username,
-          })
-        }
-
-        if (typeof callback === 'function') callback({ id: producer.id })
-      } catch (err: unknown) {
-        verr('produce', `failed | socketId=${socket.id}`, err)
-        if (typeof callback === 'function')
-          callback({ error: err instanceof Error ? err.message : String(err) })
-      }
-    },
-  )
-
-  socket.on(
-    'voice:consume',
-    async (
-      {
-        channelId: _channelId,
-        peerId,
-        rtpCapabilities,
-        kind,
-        source,
-      }: {
-        channelId: string
-        peerId: string
-        rtpCapabilities: mediasoupTypes.RtpCapabilities
-        kind?: 'audio' | 'video'
-        source?: 'camera' | 'screen'
-      },
-      callback?: Function,
-    ) => {
-      try {
-        const requestingPeer = peers.get(socket.id)
-        if (!requestingPeer) {
-          if (typeof callback === 'function') callback({ error: 'Requesting peer not found' })
-          return
-        }
-
-        let recvTransport = null
-        for (const [, t] of requestingPeer.transports) {
-          if ((t as TransportWithDirection)._direction === 'recv') {
-            recvTransport = t
-            break
-          }
-        }
-        if (!recvTransport) {
-          vlog('consume', `rejected: no recv transport | socketId=${socket.id} | peerId=${peerId}`)
-          if (typeof callback === 'function') callback({ error: 'Recv transport not found' })
-          return
-        }
-
-        const targetPeer = peers.get(peerId)
-        if (!targetPeer) {
-          vlog('consume', `rejected: target peer not found | peerId=${peerId}`)
-          if (typeof callback === 'function') callback({ error: 'Target peer not found' })
-          return
-        }
-
-        const targetKind = kind || 'audio'
-        let producerId = null
-        for (const [id, producer] of targetPeer.producers) {
-          if (producer.kind !== targetKind) continue
-          // For video, disambiguate camera vs screenshare by source when requested.
-          if (targetKind === 'video' && source && producer.appData?.source !== source) continue
-          producerId = id
-          break
-        }
-        if (!producerId) {
-          vlog(
-            'consume',
-            `rejected: no ${targetKind}${source ? `/${source}` : ''} producer | peerId=${peerId}`,
-          )
-          if (typeof callback === 'function')
-            callback({ error: `Target peer has no ${targetKind} producer` })
-          return
-        }
-
-        if (!requestingPeer.router.canConsume({ producerId, rtpCapabilities })) {
-          vlog('consume', `rejected: router cannot consume | producerId=${producerId}`)
-          if (typeof callback === 'function')
-            callback({ error: 'Router cannot consume this producer' })
-          return
-        }
-
-        const consumer = await recvTransport.consume({
-          producerId,
-          rtpCapabilities,
-          paused: true,
-        })
-        vlog(
-          'consume',
-          `created | socketId=${socket.id} -> producerId=${producerId} | consumerId=${consumer.id} | kind=${consumer.kind} | paused=${consumer.producerPaused}`,
-        )
-
-        requestingPeer.consumers.set(consumer.id, consumer)
-        consumer.on('transportclose', () => consumer.close())
-        consumer.on('producerclose', () => {
-          consumer.close()
-          socket.emit('voice:consumerClosed', { consumerId: consumer.id })
-        })
-
-        if (socketRtpFraming.has(socket.id) && consumer.kind === 'audio') {
-          forwardConsumerRtp(socket, consumer, peerId)
-        }
-
-        if (typeof callback === 'function') {
-          callback({
-            id: consumer.id,
-            producerId,
-            kind: consumer.kind,
-            rtpParameters: consumer.rtpParameters,
-            paused: consumer.producerPaused,
-          })
-        }
-      } catch (err: unknown) {
-        verr('consume', `failed | peerId=${peerId}`, err)
-        if (typeof callback === 'function')
-          callback({ error: err instanceof Error ? err.message : String(err) })
-      }
-    },
-  )
-
-  socket.on(
-    'voice:resumeConsumer',
-    async (
-      {
-        channelId: _channelId,
-        consumerId,
-      }: {
-        channelId: string
-        consumerId: string
-      },
-      callback?: Function,
-    ) => {
-      try {
-        const peer = peers.get(socket.id)
-        const consumer = peer?.consumers.get(consumerId)
-        if (consumer) {
-          await consumer.resume()
-          vlog('resumeConsumer', `ok | socketId=${socket.id} | consumerId=${consumerId}`)
-        } else {
-          vlog('resumeConsumer', `not found | socketId=${socket.id} | consumerId=${consumerId}`)
-        }
-        if (typeof callback === 'function') callback()
-      } catch (err: unknown) {
-        verr('resumeConsumer', `failed | consumerId=${consumerId}`, err)
-        if (typeof callback === 'function') callback()
-      }
-    },
-  )
-
-  socket.on(
-    'voice:speaking',
-    ({ channelId, speaking }: { channelId: string; speaking: boolean }) => {
-      socket.to(channelId).emit('voice:peerSpeaking', {
-        peerId: socket.id,
-        speaking,
+      requestingPeer.consumers.set(consumer.id, consumer)
+      consumer.observer.once('close', () => requestingPeer.consumers.delete(consumer.id))
+      consumer.on('transportclose', () => consumer.close())
+      consumer.on('producerclose', () => {
+        consumer.close()
+        socket.emit('voice:consumerClosed', { consumerId: consumer.id })
       })
-    },
-  )
+
+      if (socketRtpFraming.has(socket.id) && consumer.kind === 'audio') {
+        forwardConsumerRtp(socket, consumer, peerId)
+      }
+
+      callback?.({
+        id: consumer.id,
+        producerId,
+        kind: consumer.kind,
+        rtpParameters: consumer.rtpParameters,
+        paused: consumer.producerPaused,
+      })
+    } catch (err: unknown) {
+      verr('consume', `failed | peerId=${peerId}`, err)
+      callback?.({ error: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  socket.on('voice:resumeConsumer', async (payload: unknown, cb?: unknown) => {
+    const callback = asAck(cb)
+    if (!isRecord(payload) || !isId(payload.consumerId)) {
+      callback?.()
+      return
+    }
+    const consumerId = payload.consumerId
+    try {
+      const peer = peers.get(socket.id)
+      const consumer = peer?.consumers.get(consumerId)
+      if (consumer && !consumer.closed) {
+        await consumer.resume()
+        vlog('resumeConsumer', `ok | socketId=${socket.id} | consumerId=${consumerId}`)
+      } else {
+        vlog('resumeConsumer', `not found | socketId=${socket.id} | consumerId=${consumerId}`)
+      }
+      callback?.()
+    } catch (err: unknown) {
+      verr('resumeConsumer', `failed | consumerId=${consumerId}`, err)
+      callback?.()
+    }
+  })
+
+  // The client still sends its channelId on these; it is ignored in favour of
+  // the channel the server actually placed the peer in.
+  socket.on('voice:speaking', (payload: unknown) => {
+    if (!isRecord(payload)) return
+    const peer = peers.get(socket.id)
+    if (!peer) return
+    socket.to(peer.channelId).emit('voice:peerSpeaking', {
+      peerId: socket.id,
+      speaking: payload.speaking === true,
+    })
+  })
 
   // Self-mute. Persisted on the peer so someone joining later sees who is
   // already muted rather than an all-unmuted roster, and broadcast with the
   // peer id the client keys its roster by (userId is included for callers that
   // only track users).
-  socket.on('voice:mute', ({ muted }: { muted: boolean }) => {
+  socket.on('voice:mute', (payload: unknown) => {
+    if (!isRecord(payload)) return
     const peer = peers.get(socket.id)
     if (!peer) return
-    peer.muted = !!muted
+    peer.muted = !!payload.muted
     io.to(peer.channelId).emit('voice:mute', {
       peerId: socket.id,
       userId: peer.userId,
@@ -713,15 +871,17 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
     })
   })
 
-  socket.on('screen:start', async ({ channelId }: { channelId: string }, callback?: Function) => {
+  socket.on('screen:start', async (_payload: unknown, cb?: unknown) => {
+    const callback = asAck(cb)
     const peer = peers.get(socket.id)
     if (!peer) {
-      if (typeof callback === 'function') callback({ error: 'Not in a voice channel' })
+      callback?.({ error: 'Not in a voice channel' })
       return
     }
+    const channelId = peer.channelId
     const existing = getScreenSharer(channelId)
     if (existing && existing.peerId !== socket.id) {
-      if (typeof callback === 'function') callback({ error: 'Someone else is already sharing' })
+      callback?.({ error: 'Someone else is already sharing' })
       return
     }
     let hasVideo = false // a screen-source video producer must already exist
@@ -732,7 +892,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       }
     }
     if (!hasVideo) {
-      if (typeof callback === 'function') callback({ error: 'No video producer found' })
+      callback?.({ error: 'No video producer found' })
       return
     }
     console.log(`[Screen] START | channel=${channelId} | user=${peer.username}`)
@@ -741,119 +901,115 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
       userId: peer.userId,
       username: peer.username,
     })
-    if (typeof callback === 'function') callback({ ok: true })
+    callback?.({ ok: true })
   })
 
-  socket.on('screen:stop', ({ channelId }: { channelId: string }) => {
+  socket.on('screen:stop', () => {
     const peer = peers.get(socket.id)
     if (!peer) return
-    console.log(`[Screen] STOP | channel=${channelId} | user=${peer.username}`)
-    io.to(channelId).emit('screen:peerStopped', { peerId: socket.id })
+    console.log(`[Screen] STOP | channel=${peer.channelId} | user=${peer.username}`)
+    io.to(peer.channelId).emit('screen:peerStopped', { peerId: socket.id })
   })
 
-  socket.on('camera:started', ({ channelId }: { channelId: string }) => {
+  socket.on('camera:started', () => {
     const peer = peers.get(socket.id)
     if (!peer) return
-    console.log(`[Camera] START | channel=${channelId} | user=${peer.username}`)
-    socket.to(channelId).emit('camera:peerStarted', {
+    console.log(`[Camera] START | channel=${peer.channelId} | user=${peer.username}`)
+    socket.to(peer.channelId).emit('camera:peerStarted', {
       peerId: socket.id,
       userId: peer.userId,
       username: peer.username,
     })
   })
 
-  socket.on('camera:stopped', ({ channelId }: { channelId: string }) => {
+  socket.on('camera:stopped', () => {
     const peer = peers.get(socket.id)
     if (!peer) return
-    console.log(`[Camera] STOP | channel=${channelId} | user=${peer.username}`)
-    io.to(channelId).emit('camera:peerStopped', { peerId: socket.id })
+    console.log(`[Camera] STOP | channel=${peer.channelId} | user=${peer.username}`)
+    io.to(peer.channelId).emit('camera:peerStopped', { peerId: socket.id })
   })
 
-  socket.on('voice:leave', async (payload?: { channelId?: string }) => {
-    const channelId = payload?.channelId
-    let peerChannelId: string | undefined
-    if (channelId) {
-      peerChannelId = channelId
-    } else {
-      const peer = peers.get(socket.id)
-      if (peer) peerChannelId = peer.channelId
-    }
-    if (peerChannelId) {
-      socket.leave(peerChannelId)
-      cleanupPeer(socket.id, peerChannelId, io)
-    }
+  socket.on('voice:leave', () => {
+    cleanupPeer(io, socket)
   })
 
-  socket.on('voice:getOccupancy', (_, callback?: Function) => {
+  socket.on('voice:getOccupancy', (...args: unknown[]) => {
+    // Clients call this with only an ack, so it is the last argument rather
+    // than a fixed position.
+    const callback = asAck(args[args.length - 1])
+    if (!callback) return
+    const userId = socket.data.userId as string | undefined
     const channels: Record<string, { userId: string; username: string }[]> = {}
-    for (const [, peer] of peers) {
-      if (!peer.announced) continue
-      if (!channels[peer.channelId]) channels[peer.channelId] = []
-      channels[peer.channelId]!.push({ userId: peer.userId, username: peer.username })
+    if (userId) {
+      const canSee = visibilityChecker()
+      for (const [, peer] of peers) {
+        if (!peer.announced) continue
+        if (!canSee(userId, peer.channelId)) continue
+        if (!channels[peer.channelId]) channels[peer.channelId] = []
+        channels[peer.channelId]!.push({ userId: peer.userId, username: peer.username })
+      }
     }
-    if (typeof callback === 'function') callback({ channels })
+    callback({ channels })
   })
 
-  socket.on(
-    'voice:enableSocketRtp',
-    (opts?: { framing?: number } | Function, callback?: Function) => {
-      // Older clients call this with no arguments at all.
-      const requested = typeof opts === 'object' && opts !== null ? opts.framing : undefined
-      const ack = typeof opts === 'function' ? opts : callback
-      const framing = requested !== undefined && requested >= 2 ? 2 : 1
-      vlog('socketRtp', `enabled | socketId=${socket.id} | framing=${framing}`)
-      socketRtpFraming.set(socket.id, framing)
+  socket.on('voice:enableSocketRtp', (opts?: unknown, cb?: unknown) => {
+    // Older clients call this with no arguments at all.
+    const requested = isRecord(opts) ? opts.framing : undefined
+    const ack = typeof opts === 'function' ? asAck(opts) : asAck(cb)
+    const framing = typeof requested === 'number' && requested >= 2 ? 2 : 1
+    vlog('socketRtp', `enabled | socketId=${socket.id} | framing=${framing}`)
+    socketRtpFraming.set(socket.id, framing)
 
-      // The ack is how a new client learns this server understands framing 2.
-      // An old server never calls back, and the client falls back to framing 1.
-      if (typeof ack === 'function') ack({ framing })
+    // The ack is how a new client learns this server understands framing 2.
+    // An old server never calls back, and the client falls back to framing 1.
+    ack?.({ framing })
 
-      const peer = peers.get(socket.id)
-      if (peer) {
-        let count = 0
-        for (const [, consumer] of peer.consumers) {
-          if (consumer.kind !== 'audio') continue
-          // Find which peer owns this producer to get the correct socket ID
-          let producerPeerId = consumer.producerId
-          for (const [sid, p] of peers) {
-            if (p.producers.has(consumer.producerId)) {
-              producerPeerId = sid
-              break
-            }
-          }
-          forwardConsumerRtp(socket, consumer, producerPeerId)
-          count++
-        }
-        vlog('socketRtp', `registered ${count} existing consumers | socketId=${socket.id}`)
-      }
-    },
-  )
-
-  socket.on('disconnect', async () => {
-    socketRtpFraming.delete(socket.id)
     const peer = peers.get(socket.id)
     if (peer) {
-      vlog(
-        'disconnect',
-        `socket disconnected | socketId=${socket.id} | user=${peer.username} | channelId=${peer.channelId}`,
-      )
-      socket.leave(peer.channelId)
-      cleanupPeer(socket.id, peer.channelId, io)
+      let count = 0
+      for (const [, consumer] of peer.consumers) {
+        if (consumer.kind !== 'audio') continue
+        // Find which peer owns this producer to get the correct socket ID
+        let producerPeerId = consumer.producerId
+        for (const [sid, p] of peers) {
+          if (p.producers.has(consumer.producerId)) {
+            producerPeerId = sid
+            break
+          }
+        }
+        forwardConsumerRtp(socket, consumer, producerPeerId)
+        count++
+      }
+      vlog('socketRtp', `registered ${count} existing consumers | socketId=${socket.id}`)
     }
+  })
+
+  socket.on('disconnect', () => {
+    socketRtpFraming.delete(socket.id)
+    cleanupPeer(io, socket)
   })
 }
 
-function cleanupPeer(socketId: string, channelId: string, io: Server): void {
+/**
+ * Tear down this socket's voice session, if it has one: close its media,
+ * remove it from the channel roster, tell the room and the roster viewers,
+ * and schedule the router for closing once the channel is empty. Safe to call
+ * when the socket is not in voice.
+ */
+function cleanupPeer(io: Server, socket: Socket): void {
+  const socketId = socket.id
   const peer = peers.get(socketId)
   if (!peer) return
+  const channelId = peer.channelId
 
   let wasSharing = false
+  let hadCamera = false
   let producerCount = 0
   for (const [, p] of peer.producers) {
     producerCount++
-    if (p.kind === 'video') {
-      wasSharing = true
-    }
+    if (p.kind !== 'video') continue
+    if (p.appData?.source === 'camera') hadCamera = true
+    else wasSharing = true
   }
 
   vlog(
@@ -861,35 +1017,54 @@ function cleanupPeer(socketId: string, channelId: string, io: Server): void {
     `peer leaving | socketId=${socketId} | user=${peer.username} | channelId=${channelId} | producers=${producerCount} | consumers=${peer.consumers.size} | transports=${peer.transports.size} | wasSharing=${wasSharing} | remainingPeers=${peers.size - 1}`,
   )
 
-  peer.producers.forEach((p) => {
+  // Remove the peer first so the close observers below see it is gone.
+  peers.delete(socketId)
+  const roster = channelPeers.get(channelId)
+  roster?.delete(socketId)
+  if (roster && roster.size === 0) channelPeers.delete(channelId)
+
+  for (const p of [...peer.producers.values()]) {
     try {
       p.close()
-    } catch {}
-  })
-  peer.consumers.forEach((c) => {
+    } catch {
+      /* already closed */
+    }
+  }
+  for (const c of [...peer.consumers.values()]) {
     try {
       c.close()
-    } catch {}
-  })
-  peer.transports.forEach((t) => {
+    } catch {
+      /* already closed */
+    }
+  }
+  for (const t of [...peer.transports.values()]) {
     try {
       t.close()
-    } catch {}
-  })
+    } catch {
+      /* already closed */
+    }
+  }
+  peer.producers.clear()
+  peer.consumers.clear()
+  peer.transports.clear()
 
-  peers.delete(socketId)
-  channelPeers.get(channelId)?.delete(socketId)
-
-  const sock = io.sockets.sockets.get(socketId)
-  if (sock) sock.leave(channelId)
+  socket.leave(channelId)
 
   io.to(channelId).emit('voice:peerLeft', { peerId: socketId })
-  io.emit('voice:userLeftChannel', { channelId, userId: peer.userId })
+  if (peer.announced) {
+    emitToVoiceRoomViewers(io, channelId, 'voice:userLeftChannel', {
+      channelId,
+      userId: peer.userId,
+    })
+  }
   if (wasSharing) {
     io.to(channelId).emit('screen:peerStopped', { peerId: socketId })
   }
+  if (hadCamera) {
+    io.to(channelId).emit('camera:peerStopped', { peerId: socketId })
+  }
 
-  if (channelId.startsWith('group-dm:')) {
+  if (peer.kind === 'group-dm') {
     const groupChannelId = channelId.slice(9)
     try {
       const db = getDb()
@@ -904,7 +1079,7 @@ function cleanupPeer(socketId: string, channelId: string, io: Server): void {
     }
   }
 
-  if ((channelPeers.get(channelId)?.size ?? 0) === 0) {
+  if (!channelPeers.has(channelId)) {
     setTimeout(() => {
       if ((channelPeers.get(channelId)?.size ?? 0) === 0) {
         vlog('cleanup', `closing router for empty channel ${channelId}`)

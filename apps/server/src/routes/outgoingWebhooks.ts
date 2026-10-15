@@ -7,7 +7,7 @@ import {
   type OutgoingWebhookEvent,
 } from '@kizuna/shared/webhook-events'
 import { getDb } from '../db'
-import { authMiddleware, requirePermission } from '../middleware/auth'
+import { authMiddleware, canViewChannel, requirePermission } from '../middleware/auth'
 import { getAuth } from '../utils/auth'
 import { logAuditEvent } from './audit'
 import {
@@ -101,18 +101,30 @@ function normalizeEvents(
   return { events }
 }
 
-function normalizeChannelId(value: unknown): { channelId: string | null } | { error: string } {
+/**
+ * Scoping a hook to a channel the caller cannot see would let manage_webhooks
+ * exfiltrate a hidden channel — report it exactly like a missing channel.
+ */
+function normalizeChannelId(
+  value: unknown,
+  userId: string,
+): { channelId: string | null } | { error: string } {
   if (value === undefined || value === null || value === '') return { channelId: null }
   if (typeof value !== 'string') return { error: 'channel_id must be a string or null' }
   const channel = getDb().prepare('SELECT id, type FROM channels WHERE id = ?').get(value) as
     | { id: string; type: string }
     | undefined
-  if (!channel) return { error: 'channel not found' }
+  if (!channel || !canViewChannel(userId, channel.id)) return { error: 'channel not found' }
   if (channel.type !== 'text')
     return { error: 'outgoing webhooks can only be scoped to text channels' }
   return { channelId: channel.id }
 }
 
+/**
+ * Creation-time vetting (scheme, credentials, local names, literal private
+ * IPs — see isSafeWebhookTarget). The DNS-resolving check in safeFetch at send
+ * time is authoritative, so a name that later rebinds is still refused.
+ */
 function normalizeUrl(value: unknown): { url: string } | { error: string } {
   if (typeof value !== 'string' || !value.trim()) return { error: 'url required' }
   const url = value.trim()
@@ -152,7 +164,7 @@ outgoingWebhookRoutes.post('/', authMiddleware, requirePermission('manage_webhoo
   const urlResult = normalizeUrl(body.url)
   if ('error' in urlResult) return c.json({ error: urlResult.error }, 400)
 
-  const channelResult = normalizeChannelId(body.channel_id)
+  const channelResult = normalizeChannelId(body.channel_id, userId)
   if ('error' in channelResult) return c.json({ error: channelResult.error }, 400)
 
   const eventsResult = normalizeEvents(body.events, channelResult.channelId)
@@ -223,7 +235,7 @@ outgoingWebhookRoutes.patch(
     // whichever scope the request ends up with.
     let scope: string | null = existing.channel_id
     if (body.channel_id !== undefined) {
-      const channelResult = normalizeChannelId(body.channel_id)
+      const channelResult = normalizeChannelId(body.channel_id, userId)
       if ('error' in channelResult) return c.json({ error: channelResult.error }, 400)
       scope = channelResult.channelId
       updates.push('channel_id = ?')

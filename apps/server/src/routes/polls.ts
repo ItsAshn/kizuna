@@ -6,6 +6,8 @@ import {
   getUserPermissions,
   isUserAdmin,
   canViewChannel,
+  canWriteToChannel,
+  getUserChannelPermission,
 } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 import { getAuth } from '../utils/auth'
@@ -53,6 +55,32 @@ function parsePollBody(body: unknown): PollCreateInput | string {
   const allowMultiple = b.allowMultiple === true
 
   return { question, options, durationSeconds, allowMultiple }
+}
+
+/**
+ * Whether a user may see/vote on a poll: polls live in a guild channel (must
+ * exist and be visible), a DM (participant) or a group DM (member).
+ */
+function canAccessPollContainer(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+  poll: { channel_id: string; channel_type: string },
+): boolean {
+  if (poll.channel_type === 'dm') {
+    return !!db
+      .prepare('SELECT 1 FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)')
+      .get(poll.channel_id, userId, userId)
+  }
+  if (poll.channel_type === 'group-dm') {
+    return !!db
+      .prepare('SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?')
+      .get(poll.channel_id, userId)
+  }
+  if (poll.channel_type === 'channel') {
+    const exists = db.prepare('SELECT 1 FROM channels WHERE id = ?').get(poll.channel_id)
+    return !!exists && canViewChannel(userId, poll.channel_id)
+  }
+  return false
 }
 
 /** Insert a poll + its options and return the socket-ready payload. */
@@ -132,39 +160,74 @@ function listChannelPolls(
     allow_multiple: number
   }[]
 
-  return rows.map((poll) => {
-    const options = db
-      .prepare(
-        `
-      SELECT po.id, po.label, po.position, COUNT(pv.id) as vote_count
+  if (rows.length === 0) return []
+
+  // Load options, authors and the requester's votes in three batched queries
+  // instead of three per poll.
+  const pollIds = rows.map((r) => r.id)
+  const pollPh = pollIds.map(() => '?').join(',')
+  const optionRows = db
+    .prepare(
+      `
+      SELECT po.poll_id, po.id, po.label, po.position, COUNT(pv.id) as vote_count
       FROM poll_options po
       LEFT JOIN poll_votes pv ON pv.option_id = po.id
-      WHERE po.poll_id = ?
-      GROUP BY po.id ORDER BY po.position
+      WHERE po.poll_id IN (${pollPh})
+      GROUP BY po.id ORDER BY po.poll_id, po.position
     `,
-      )
-      .all(poll.id) as { id: string; label: string; position: number; vote_count: number }[]
+    )
+    .all(...pollIds) as {
+    poll_id: string
+    id: string
+    label: string
+    position: number
+    vote_count: number
+  }[]
+  const optionsByPoll = new Map<
+    string,
+    { id: string; label: string; position: number; vote_count: number }[]
+  >()
+  for (const { poll_id, ...opt } of optionRows) {
+    const list = optionsByPoll.get(poll_id) ?? []
+    list.push(opt)
+    optionsByPoll.set(poll_id, list)
+  }
 
-    const author = db
-      .prepare('SELECT display_name, avatar FROM users WHERE id = ?')
-      .get(poll.created_by) as { display_name: string; avatar: string | null } | undefined
-    const userVotes = db
-      .prepare('SELECT option_id FROM poll_votes WHERE poll_id = ? AND user_id = ?')
-      .all(poll.id, userId) as { option_id: string }[]
+  const authorIds = [...new Set(rows.map((r) => r.created_by))]
+  const authorRows = db
+    .prepare(
+      `SELECT id, display_name, avatar FROM users WHERE id IN (${authorIds.map(() => '?').join(',')})`,
+    )
+    .all(...authorIds) as { id: string; display_name: string; avatar: string | null }[]
+  const authors = new Map(authorRows.map((a) => [a.id, a]))
 
+  const voteRows = db
+    .prepare(
+      `SELECT poll_id, option_id FROM poll_votes WHERE user_id = ? AND poll_id IN (${pollPh})`,
+    )
+    .all(userId, ...pollIds) as { poll_id: string; option_id: string }[]
+  const votesByPoll = new Map<string, string[]>()
+  for (const v of voteRows) {
+    const list = votesByPoll.get(v.poll_id) ?? []
+    list.push(v.option_id)
+    votesByPoll.set(v.poll_id, list)
+  }
+
+  return rows.map((poll) => {
+    const author = authors.get(poll.created_by)
     return {
       pollId: poll.id,
       channelId,
       channelType,
       question: poll.question,
-      options,
+      options: optionsByPoll.get(poll.id) ?? [],
       createdBy: poll.created_by,
       createdByDisplayName: author?.display_name ?? 'Unknown',
       createdByAvatar: author?.avatar ?? null,
       createdAt: poll.created_at * 1000,
       closesAt: poll.closes_at ? poll.closes_at * 1000 : null,
       allowMultiple: !!poll.allow_multiple,
-      userVoteIds: userVotes.map((v) => v.option_id),
+      userVoteIds: votesByPoll.get(poll.id) ?? [],
     }
   })
 }
@@ -180,9 +243,13 @@ pollsRouter.post('/channels/:channelId/polls', authMiddleware, async (c) => {
   const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(channelId) as
     | Record<string, unknown>
     | undefined
-  if (!channel) return c.json({ error: 'Channel not found' }, 404)
-  const userPerms = getUserPermissions(userId)
-  if (!userPerms || !hasPermission(userPerms, 'send_messages')) {
+  if (!channel || !canViewChannel(userId, channelId)) {
+    return c.json({ error: 'Channel not found' }, 404)
+  }
+  if (!canWriteToChannel(userId, channelId)) {
+    return c.json({ error: 'This channel is locked' }, 403)
+  }
+  if (!getUserChannelPermission(userId, channelId, 'send_messages')) {
     return c.json({ error: 'Forbidden' }, 403)
   }
 
@@ -342,7 +409,9 @@ pollsRouter.get('/polls/:pollId', authMiddleware, async (c) => {
         allow_multiple: number
       }
     | undefined
-  if (!poll) return c.json({ error: 'not found' }, 404)
+  if (!poll || !canAccessPollContainer(db, userId, poll)) {
+    return c.json({ error: 'not found' }, 404)
+  }
 
   const options = db
     .prepare(
@@ -371,7 +440,9 @@ pollsRouter.post('/polls/:pollId/vote', authMiddleware, async (c) => {
   const { pollId } = c.req.param()
   const { userId } = getAuth(c)
   const body = await c.req.json().catch(() => null)
-  if (!body?.optionId) return c.json({ error: 'optionId required' }, 400)
+  if (typeof body?.optionId !== 'string' || !body.optionId) {
+    return c.json({ error: 'optionId required' }, 400)
+  }
 
   const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId) as
     | {
@@ -386,7 +457,9 @@ pollsRouter.post('/polls/:pollId/vote', authMiddleware, async (c) => {
         allow_multiple: number
       }
     | undefined
-  if (!poll) return c.json({ error: 'not found' }, 404)
+  if (!poll || !canAccessPollContainer(db, userId, poll)) {
+    return c.json({ error: 'not found' }, 404)
+  }
   if (poll.closes_at && poll.closes_at < Math.floor(Date.now() / 1000)) {
     return c.json({ error: 'poll is closed' }, 400)
   }

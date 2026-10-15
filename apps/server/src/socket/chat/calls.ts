@@ -2,13 +2,27 @@ import type { Server, Socket } from 'socket.io'
 import { getDb } from '../../db'
 import { getUserPermissions, hasPermission } from '../../middleware/auth'
 import { dmCalls, groupDMCalls } from './infra'
-import { getSocketUserId, getSocketUsername } from './helpers'
+import { getSocketUserId, getSocketUsername, isDmParticipant, isGroupDmMember } from './helpers'
+import { isRecord, isId } from '../validate'
+
+// Every call event carries a single channel id; anything else is dropped
+// (with an ack when the client asked for one).
+function readId(payload: unknown, key: string): string | null {
+  if (!isRecord(payload)) return null
+  const v = payload[key]
+  return isId(v) ? v : null
+}
 
 export function registerCallHandlers(io: Server, socket: Socket): void {
   const userId = getSocketUserId(socket)
   const username = getSocketUsername(socket)
 
-  socket.on('dm:call:start', ({ dmChannelId }: { dmChannelId: string }, callback?: Function) => {
+  socket.on('dm:call:start', (payload: unknown, callback?: unknown) => {
+    const dmChannelId = readId(payload, 'dmChannelId')
+    if (!dmChannelId) {
+      if (typeof callback === 'function') callback({ error: 'Invalid request' })
+      return
+    }
     if (!userId || !username) {
       if (typeof callback === 'function') callback({ error: 'Not authenticated' })
       return
@@ -70,7 +84,12 @@ export function registerCallHandlers(io: Server, socket: Socket): void {
     if (typeof callback === 'function') callback({ ok: true })
   })
 
-  socket.on('dm:call:accept', ({ dmChannelId }: { dmChannelId: string }, callback?: Function) => {
+  socket.on('dm:call:accept', (payload: unknown, callback?: unknown) => {
+    const dmChannelId = readId(payload, 'dmChannelId')
+    if (!dmChannelId) {
+      if (typeof callback === 'function') callback({ error: 'Invalid request' })
+      return
+    }
     if (!userId) {
       if (typeof callback === 'function') callback({ error: 'Not authenticated' })
       return
@@ -96,13 +115,18 @@ export function registerCallHandlers(io: Server, socket: Socket): void {
     if (typeof callback === 'function') callback({ ok: true })
   })
 
-  socket.on('dm:call:reject', ({ dmChannelId }: { dmChannelId: string }, callback?: Function) => {
+  socket.on('dm:call:reject', (payload: unknown, callback?: unknown) => {
+    const dmChannelId = readId(payload, 'dmChannelId')
+    if (!dmChannelId) {
+      if (typeof callback === 'function') callback({ error: 'Invalid request' })
+      return
+    }
     if (!userId) {
       if (typeof callback === 'function') callback({ error: 'Not authenticated' })
       return
     }
     const call = dmCalls.get(dmChannelId)
-    if (!call) {
+    if (!call || !isDmParticipant(userId, dmChannelId)) {
       if (typeof callback === 'function') callback({ error: 'No pending call' })
       return
     }
@@ -119,13 +143,18 @@ export function registerCallHandlers(io: Server, socket: Socket): void {
     if (typeof callback === 'function') callback({ ok: true })
   })
 
-  socket.on('dm:call:end', ({ dmChannelId }: { dmChannelId: string }, callback?: Function) => {
+  socket.on('dm:call:end', (payload: unknown, callback?: unknown) => {
+    const dmChannelId = readId(payload, 'dmChannelId')
+    if (!dmChannelId) {
+      if (typeof callback === 'function') callback({ error: 'Invalid request' })
+      return
+    }
     if (!userId) {
       if (typeof callback === 'function') callback({ error: 'Not authenticated' })
       return
     }
     const call = dmCalls.get(dmChannelId)
-    if (!call) {
+    if (!call || !isDmParticipant(userId, dmChannelId)) {
       if (typeof callback === 'function') callback({ ok: true })
       return
     }
@@ -144,7 +173,12 @@ export function registerCallHandlers(io: Server, socket: Socket): void {
 
   // ─── Group DM Voice Calls ──────────────────────────
 
-  socket.on('group-dm:call:start', ({ channelId }: { channelId: string }, callback?: Function) => {
+  socket.on('group-dm:call:start', (payload: unknown, callback?: unknown) => {
+    const channelId = readId(payload, 'channelId')
+    if (!channelId) {
+      if (typeof callback === 'function') callback({ error: 'Invalid request' })
+      return
+    }
     if (!userId || !username) {
       if (typeof callback === 'function') callback({ error: 'Not authenticated' })
       return
@@ -156,10 +190,7 @@ export function registerCallHandlers(io: Server, socket: Socket): void {
       return
     }
     const db = getDb()
-    const isMember = db
-      .prepare('SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?')
-      .get(channelId, userId)
-    if (!isMember) {
+    if (!isGroupDmMember(userId, channelId)) {
       if (typeof callback === 'function') callback({ error: 'Not a member of this group' })
       return
     }
@@ -188,6 +219,7 @@ export function registerCallHandlers(io: Server, socket: Socket): void {
       callerUsername: username,
       status: 'ringing',
       startedAt: Date.now(),
+      participants: new Set([userId]),
     })
 
     for (const m of otherMembers) {
@@ -201,7 +233,12 @@ export function registerCallHandlers(io: Server, socket: Socket): void {
     if (typeof callback === 'function') callback({ ok: true })
   })
 
-  socket.on('group-dm:call:accept', ({ channelId }: { channelId: string }, callback?: Function) => {
+  socket.on('group-dm:call:accept', (payload: unknown, callback?: unknown) => {
+    const channelId = readId(payload, 'channelId')
+    if (!channelId) {
+      if (typeof callback === 'function') callback({ error: 'Invalid request' })
+      return
+    }
     if (!userId) {
       if (typeof callback === 'function') callback({ error: 'Not authenticated' })
       return
@@ -218,15 +255,14 @@ export function registerCallHandlers(io: Server, socket: Socket): void {
       return
     }
 
-    const db = getDb()
-    const isMember = db
-      .prepare('SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?')
-      .get(channelId, userId)
-    if (!isMember) {
+    if (!isGroupDmMember(userId, channelId)) {
       if (typeof callback === 'function') callback({ error: 'Not a member of this group' })
       return
     }
+    call.status = 'active'
+    call.participants.add(userId)
 
+    const db = getDb()
     const members = db
       .prepare('SELECT user_id FROM group_dm_members WHERE channel_id = ?')
       .all(channelId) as { user_id: string }[]
@@ -242,13 +278,24 @@ export function registerCallHandlers(io: Server, socket: Socket): void {
     if (typeof callback === 'function') callback({ ok: true })
   })
 
-  socket.on('group-dm:call:reject', ({ channelId }: { channelId: string }, callback?: Function) => {
+  socket.on('group-dm:call:reject', (payload: unknown, callback?: unknown) => {
+    const channelId = readId(payload, 'channelId')
+    if (!channelId) {
+      if (typeof callback === 'function') callback({ error: 'Invalid request' })
+      return
+    }
     if (!userId) {
       if (typeof callback === 'function') callback({ error: 'Not authenticated' })
       return
     }
+    if (!isGroupDmMember(userId, channelId)) {
+      if (typeof callback === 'function') callback({ error: 'Not a member of this group' })
+      return
+    }
     const call = groupDMCalls.get(channelId)
-    if (!call) {
+    // Declining only cancels a call that is still ringing; once somebody has
+    // picked up, one member saying no must not tear it down for the others.
+    if (!call || call.status !== 'ringing') {
       if (typeof callback === 'function') callback({ ok: true })
       return
     }
@@ -266,13 +313,23 @@ export function registerCallHandlers(io: Server, socket: Socket): void {
     if (typeof callback === 'function') callback({ ok: true })
   })
 
-  socket.on('group-dm:call:end', ({ channelId }: { channelId: string }, callback?: Function) => {
+  socket.on('group-dm:call:end', (payload: unknown, callback?: unknown) => {
+    const channelId = readId(payload, 'channelId')
+    if (!channelId) {
+      if (typeof callback === 'function') callback({ error: 'Invalid request' })
+      return
+    }
     if (!userId) {
       if (typeof callback === 'function') callback({ error: 'Not authenticated' })
       return
     }
+    if (!isGroupDmMember(userId, channelId)) {
+      if (typeof callback === 'function') callback({ error: 'Not a member of this group' })
+      return
+    }
     const call = groupDMCalls.get(channelId)
-    if (!call) {
+    // Only someone actually in the call can end it.
+    if (!call || !call.participants.has(userId)) {
       if (typeof callback === 'function') callback({ ok: true })
       return
     }

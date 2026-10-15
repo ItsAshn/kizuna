@@ -178,7 +178,7 @@ export async function fetchPublicServers(registryUrl: string): Promise<PublicSer
 export async function resolveInviteCode(
   code: string,
 ): Promise<{ serverUrl: string; name: string; description: string }> {
-  const parts = code.toUpperCase().split('.')
+  const parts = code.trim().split('.')
   if (parts.length !== 2) throw new Error('Invalid invite code format')
   const encodedUrl = parts[0]!
   let serverUrl: string
@@ -188,7 +188,7 @@ export async function resolveInviteCode(
     throw new Error('Invalid invite code format')
   }
   const res = await axios.get(
-    `${normalizeUrl(serverUrl)}/api/server/resolve/${code.toUpperCase()}`,
+    `${normalizeUrl(serverUrl)}/api/server/resolve/${encodeURIComponent(code.trim())}`,
     { timeout: 8000 },
   )
   return res.data

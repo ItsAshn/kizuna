@@ -1,5 +1,7 @@
 import type { Server, Socket } from 'socket.io'
 import { getDb } from '../../db'
+import { canViewChannel } from '../../middleware/auth'
+import { isId, isReservedRoom } from '../validate'
 
 export function getSocketUserId(socket: Socket): string {
   return socket.data.userId || ''
@@ -83,4 +85,61 @@ export function broadcastReaction(
   } else {
     io.to(msgInfo.channel_id).emit(event, payload)
   }
+}
+
+export type RoomKind = 'channel' | 'dm' | 'group-dm'
+
+// Resolves a client-supplied room id to something the user may actually be
+// in: a server channel they can view, a DM they are a party to, or a group DM
+// they belong to. Anything else (unknown ids, personal user:/dm:/group-dm:
+// rooms, other people's conversations) yields null.
+export function resolveAccessibleRoom(
+  userId: string,
+  roomId: unknown,
+): { kind: RoomKind; type?: string } | null {
+  if (!userId || !isId(roomId) || isReservedRoom(roomId)) return null
+  const db = getDb()
+  const channel = db.prepare('SELECT type FROM channels WHERE id = ?').get(roomId) as
+    | { type: string }
+    | undefined
+  if (channel) {
+    return canViewChannel(userId, roomId) ? { kind: 'channel', type: channel.type } : null
+  }
+  const dm = db
+    .prepare('SELECT 1 FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)')
+    .get(roomId, userId, userId)
+  if (dm) return { kind: 'dm' }
+  const gdm = db
+    .prepare('SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?')
+    .get(roomId, userId)
+  if (gdm) return { kind: 'group-dm' }
+  return null
+}
+
+type MessageInfo = NonNullable<ReturnType<typeof getMessageInfo>>
+
+// Whether the user may see (and therefore react to) a message resolved by
+// getMessageInfo: a server channel they can view, a DM they are a party to,
+// or a group DM they belong to.
+export function canAccessMessage(userId: string, info: MessageInfo): boolean {
+  if (info.isDM) {
+    return (
+      !!info.participants &&
+      (info.participants.user1_id === userId || info.participants.user2_id === userId)
+    )
+  }
+  if (info.isGroupDM) return !!info.groupMembers?.includes(userId)
+  return canViewChannel(userId, info.channel_id)
+}
+
+export function isDmParticipant(userId: string, dmChannelId: string): boolean {
+  return !!getDb()
+    .prepare('SELECT 1 FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)')
+    .get(dmChannelId, userId, userId)
+}
+
+export function isGroupDmMember(userId: string, channelId: string): boolean {
+  return !!getDb()
+    .prepare('SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?')
+    .get(channelId, userId)
 }

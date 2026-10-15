@@ -241,7 +241,8 @@ groupDmRoutes.patch('/:channelId', authMiddleware, async (c) => {
 groupDmRoutes.get('/:channelId/messages', authMiddleware, (c) => {
   const user = getAuth(c)
   const channelId = c.req.param('channelId')!
-  const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 100)
+  // Clamp to 1..100: SQLite treats a negative LIMIT as unlimited.
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10) || 50, 1), 100)
   const before = c.req.query('before')
   const db = getDb()
 

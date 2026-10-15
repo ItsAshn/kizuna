@@ -1,7 +1,5 @@
 import { Hono } from 'hono'
-import { v4 as uuidv4 } from 'uuid'
 import { randomBytes } from 'node:crypto'
-import jwt from 'jsonwebtoken'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb, getDbPath } from '../db'
@@ -19,12 +17,14 @@ import {
   markMemberRemoved,
   clearMemberRemoval,
   revokeUserSessions,
+  verifySession,
 } from '../middleware/auth'
 import { getAllPeers } from '../socket/voiceHandler'
 import { getAuth } from '../utils/auth'
 import { getIo, emitIo, disconnectUserSockets } from '../utils/io'
 import { dispatchOutgoing } from '../services/outgoingWebhooks'
 import { logAuditEvent } from './audit'
+import { verifyLimiter } from '../middleware/rateLimiter'
 
 // Atomically claims one use of an invite. Returns false when the code is
 // missing, expired, or exhausted.
@@ -32,9 +32,9 @@ export function consumeInviteCode(code: string): boolean {
   const db = getDb()
   const result = db
     .prepare(
-      'UPDATE invite_codes SET uses = uses + 1 WHERE code = ? AND (max_uses IS NULL OR uses < max_uses) AND (expires_at IS NULL OR expires_at > unixepoch())',
+      'UPDATE invite_codes SET uses = uses + 1 WHERE code = ? COLLATE NOCASE AND (max_uses IS NULL OR uses < max_uses) AND (expires_at IS NULL OR expires_at > unixepoch())',
     )
-    .run(code.toUpperCase())
+    .run(code)
   return result.changes > 0
 }
 
@@ -321,8 +321,15 @@ function generateInviteCode(serverUrl: string): string {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/, '')
-  const randomPart = uuidv4().replace(/-/g, '').substring(0, 6)
-  return `${encodedUrl}.${randomPart}`.toUpperCase()
+  // 80 random bits (20 hex chars). The code doubles as the join credential,
+  // so it must not be enumerable; the URL prefix and the `<url>.<hex>` shape
+  // that clients split on are unchanged.
+  const randomPart = randomBytes(10).toString('hex')
+  // Case must be preserved: the URL half is base64url, and uppercasing it (as
+  // this used to) made every server URL with lowercase letters undecodable.
+  // Lookups compare case-insensitively, which is safe because the random
+  // half is hex.
+  return `${encodedUrl}.${randomPart}`
 }
 
 function decodeServerUrl(code: string): string {
@@ -506,7 +513,9 @@ serverInfoRoutes.post(
       'INSERT INTO invite_codes (code, created_by, max_uses, uses, expires_at) VALUES (?, ?, ?, 0, ?)',
     ).run(code, user.userId, max, expiresAt)
 
-    const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as {
+    const invite = db
+      .prepare('SELECT * FROM invite_codes WHERE code = ? COLLATE NOCASE')
+      .get(code) as {
       code: string
       created_by: string
       max_uses: number | null
@@ -562,20 +571,22 @@ serverInfoRoutes.delete(
   authMiddleware,
   requirePermission('manage_invites'),
   (c) => {
-    const code = (c.req.param('code') || '').toUpperCase()
+    const code = (c.req.param('code') || '').trim()
     const db = getDb()
-    const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code)
+    const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ? COLLATE NOCASE').get(code)
     if (!invite) return c.json({ error: 'Invite not found' }, 404)
-    db.prepare('DELETE FROM invite_codes WHERE code = ?').run(code)
+    db.prepare('DELETE FROM invite_codes WHERE code = ? COLLATE NOCASE').run(code)
     return c.json({ ok: true })
   },
 )
 
 serverInfoRoutes.post('/join/:code', async (c) => {
-  const code = (c.req.param('code') || '').toUpperCase()
+  const code = (c.req.param('code') || '').trim()
   const db = getDb()
 
-  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as
+  const invite = db
+    .prepare('SELECT * FROM invite_codes WHERE code = ? COLLATE NOCASE')
+    .get(code) as
     | {
         code: string
         created_by: string
@@ -594,13 +605,12 @@ serverInfoRoutes.post('/join/:code', async (c) => {
   const authHeader = c.req.header('Authorization')
   let userId: string | null = null
   if (authHeader?.startsWith('Bearer ')) {
-    try {
-      const token = authHeader.slice(7)
-      const payload = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string }
-      userId = payload.userId
-    } catch {
-      // Invalid token — user must register
-    }
+    const session = verifySession(authHeader.slice(7))
+    if (session.ok) userId = session.payload.userId
+  }
+
+  if (userId && db.prepare('SELECT 1 FROM bans WHERE user_id = ?').get(userId)) {
+    return c.json({ error: 'You are banned from this server' }, 403)
   }
 
   if (userId) {
@@ -628,12 +638,13 @@ serverInfoRoutes.post('/join/:code', async (c) => {
   return c.json({ ok: true, alreadyMember: false, needsRegistration: true })
 })
 
-serverInfoRoutes.get('/resolve/:code', (c) => {
-  const code = (c.req.param('code') || '').toUpperCase()
+// Unauthenticated invite lookup: throttled per IP so codes can't be brute-forced.
+serverInfoRoutes.get('/resolve/:code', verifyLimiter, (c) => {
+  const code = (c.req.param('code') || '').trim()
   const db = getDb()
-  const invite = db.prepare('SELECT * FROM invite_codes WHERE code = ?').get(code) as
-    | { code: string }
-    | undefined
+  const invite = db
+    .prepare('SELECT * FROM invite_codes WHERE code = ? COLLATE NOCASE')
+    .get(code) as { code: string } | undefined
   if (!invite) return c.json({ error: 'Invalid invite code' }, 404)
 
   try {
@@ -849,6 +860,17 @@ serverInfoRoutes.post(
       | { id: string; username: string }
       | undefined
     if (!target) return c.json({ error: 'User not found' }, 404)
+
+    // A reset token is a full account takeover, so it must respect the same
+    // hierarchy as demotion: nobody resets the host, and only the host resets
+    // another admin.
+    const caller = getAuth(c)
+    if (isUserHost(targetUserId) && targetUserId !== caller.userId) {
+      return c.json({ error: 'Cannot generate a reset token for the server host' }, 403)
+    }
+    if (isUserAdmin(targetUserId) && !caller.isHost && targetUserId !== caller.userId) {
+      return c.json({ error: 'Only the host can reset another admin' }, 403)
+    }
 
     const token = randomBytes(32).toString('hex')
     const expiresAt = Math.floor(Date.now() / 1000) + 86400

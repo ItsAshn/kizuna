@@ -74,6 +74,9 @@ export const groupDMCalls = new Map<
     callerUsername: string
     status: 'ringing' | 'active'
     startedAt: number
+    // Users who actually joined the call (caller + everyone who accepted).
+    // Group membership alone does not make someone part of the call.
+    participants: Set<string>
   }
 >()
 
@@ -131,3 +134,8 @@ export interface UserActivity {
 export const userConnections = new Map<string, Set<string>>()
 export const userStatuses = new Map<string, UserStatus>()
 export const userActivities = new Map<string, UserActivity>()
+
+// Every live socket per user, tracked from connection time (userConnections
+// only fills in once the client emits user:joined). Used to tell whether a
+// disconnect was the user's last connection.
+export const userSockets = new Map<string, Set<string>>()

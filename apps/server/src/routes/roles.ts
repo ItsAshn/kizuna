@@ -1,7 +1,44 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../db'
-import { requirePermission, authMiddleware } from '../middleware/auth'
+import {
+  requirePermission,
+  authMiddleware,
+  isUserAdmin,
+  getUserPermissions,
+} from '../middleware/auth'
+import { getAuth } from '../utils/auth'
+
+// Non-admin role managers must not be able to escalate: they cannot touch the
+// admin role, roles they themselves hold, or grant a permission they lack.
+function roleEditError(
+  userId: string,
+  roleId: string | null,
+  permissions?: Record<string, boolean>,
+): string | null {
+  if (isUserAdmin(userId)) return null
+  const db = getDb()
+  if (roleId) {
+    const role = db.prepare('SELECT is_admin FROM roles WHERE id = ?').get(roleId) as
+      | { is_admin: number }
+      | undefined
+    if (role?.is_admin === 1) return 'Only admins can modify the admin role'
+    const held = db
+      .prepare(
+        `SELECT 1 FROM member_roles WHERE user_id = ? AND role_id = ?
+         UNION ALL SELECT 1 FROM server_members WHERE user_id = ? AND custom_role_id = ?`,
+      )
+      .get(userId, roleId, userId, roleId)
+    if (held) return 'You cannot modify a role you hold'
+  }
+  if (permissions) {
+    const own = getUserPermissions(userId)?.permissions ?? {}
+    for (const [key, value] of Object.entries(permissions)) {
+      if (value === true && own[key] !== true) return `You cannot grant ${key}`
+    }
+  }
+  return null
+}
 
 const roleRoutes = new Hono()
 
@@ -45,6 +82,8 @@ roleRoutes.post('/', authMiddleware, requirePermission('manage_roles'), async (c
   }
   const { name, color, permissions, position, hoist, mentionable, default_on_join } = body
   if (!name?.trim()) return c.json({ error: 'Name is required' }, 400)
+  const denied = roleEditError(getAuth(c).userId, null, permissions)
+  if (denied) return c.json({ error: denied }, 403)
 
   const db = getDb()
   const id = uuidv4()
@@ -98,6 +137,23 @@ roleRoutes.post('/', authMiddleware, requirePermission('manage_roles'), async (c
   )
 })
 
+// PATCH /roles/reorder — reorder roles by position
+roleRoutes.patch('/reorder', authMiddleware, requirePermission('manage_roles'), async (c) => {
+  const body = (await c.req.json()) as { order: { id: string; position: number }[] }
+  const { order } = body
+  if (!Array.isArray(order)) return c.json({ error: 'Invalid order' }, 400)
+
+  const db = getDb()
+  const stmt = db.prepare('UPDATE roles SET position = ? WHERE id = ? AND is_admin = 0')
+  const tx = db.transaction(() => {
+    for (const item of order) {
+      stmt.run(item.position, item.id)
+    }
+  })
+  tx()
+  return c.json({ ok: true })
+})
+
 // PATCH /roles/:id — update role
 roleRoutes.patch('/:id', authMiddleware, requirePermission('manage_roles'), async (c) => {
   const id = c.req.param('id')
@@ -115,6 +171,8 @@ roleRoutes.patch('/:id', authMiddleware, requirePermission('manage_roles'), asyn
     default_on_join?: boolean
   }
   const { name, color, permissions, position, hoist, mentionable, default_on_join } = body
+  const denied = roleEditError(getAuth(c).userId, id ?? null, permissions)
+  if (denied) return c.json({ error: denied }, 403)
 
   const existingRow = existing as {
     name: string
@@ -180,26 +238,11 @@ roleRoutes.delete('/:id', authMiddleware, requirePermission('manage_roles'), (c)
     | undefined
   if (!existing) return c.json({ error: 'Role not found' }, 404)
   if (existing.is_admin === 1) return c.json({ error: 'Cannot delete the admin role' }, 403)
+  const denied = roleEditError(getAuth(c).userId, id ?? null)
+  if (denied) return c.json({ error: denied }, 403)
   db.prepare('UPDATE server_members SET custom_role_id = NULL WHERE custom_role_id = ?').run(id)
   db.prepare('DELETE FROM member_roles WHERE role_id = ?').run(id)
   db.prepare('DELETE FROM roles WHERE id = ?').run(id)
-  return c.json({ ok: true })
-})
-
-// PATCH /roles/reorder — reorder roles by position
-roleRoutes.patch('/reorder', authMiddleware, requirePermission('manage_roles'), async (c) => {
-  const body = (await c.req.json()) as { order: { id: string; position: number }[] }
-  const { order } = body
-  if (!Array.isArray(order)) return c.json({ error: 'Invalid order' }, 400)
-
-  const db = getDb()
-  const stmt = db.prepare('UPDATE roles SET position = ? WHERE id = ? AND is_admin = 0')
-  const tx = db.transaction(() => {
-    for (const item of order) {
-      stmt.run(item.position, item.id)
-    }
-  })
-  tx()
   return c.json({ ok: true })
 })
 

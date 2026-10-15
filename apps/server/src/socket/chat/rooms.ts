@@ -1,6 +1,8 @@
 import type { Server, Socket } from 'socket.io'
 import { getDb } from '../../db'
-import { getSocketUserId } from './helpers'
+import { getSocketUserId, resolveAccessibleRoom } from './helpers'
+import { canViewChannel } from '../../middleware/auth'
+import { isId, isReservedRoom } from '../validate'
 
 export function registerRoomHandlers(_io: Server, socket: Socket): void {
   const userId = getSocketUserId(socket)
@@ -43,20 +45,28 @@ export function registerRoomHandlers(_io: Server, socket: Socket): void {
     }
   })
 
-  socket.on('channel:join', (channelId: string) => {
-    socket.join(channelId)
+  socket.on('channel:join', (channelId: unknown) => {
+    if (!resolveAccessibleRoom(userId, channelId)) return
+    socket.join(channelId as string)
     socket.data.currentChannel = channelId
   })
 
-  socket.on('channel:leave', (channelId: string) => {
+  socket.on('channel:leave', (channelId: unknown) => {
+    if (!isId(channelId) || isReservedRoom(channelId)) return
     socket.leave(channelId)
   })
 
-  socket.on('thread:join', (threadId: string) => {
+  socket.on('thread:join', (threadId: unknown) => {
+    if (!isId(threadId)) return
+    const thread = getDb().prepare('SELECT channel_id FROM threads WHERE id = ?').get(threadId) as
+      | { channel_id: string }
+      | undefined
+    if (!thread || !canViewChannel(userId, thread.channel_id)) return
     socket.join(threadId)
   })
 
-  socket.on('thread:leave', (threadId: string) => {
+  socket.on('thread:leave', (threadId: unknown) => {
+    if (!isId(threadId) || isReservedRoom(threadId)) return
     socket.leave(threadId)
   })
 }

@@ -1,3 +1,4 @@
+import { getConnInfo } from '@hono/node-server/conninfo'
 import type { Context, Next } from 'hono'
 
 interface RateLimitEntry {
@@ -15,13 +16,35 @@ setInterval(() => {
   }
 }, 60_000).unref()
 
-function getClientIp(c: Context): string {
-  const xff = c.req.header('x-forwarded-for')
-  if (xff) {
-    const firstIp = xff.split(',')[0]?.trim()
-    if (firstIp) return firstIp
+const TRUST_PROXY = ['true', '1', 'yes', 'on'].includes(
+  (process.env.TRUST_PROXY || '').trim().toLowerCase(),
+)
+
+// Forwarded headers are client-controlled unless a proxy we trust rewrites
+// them, so they are only honoured behind one. The proxy appends the address
+// it saw, which makes the LAST entry the trustworthy one; the first entry is
+// whatever the client claimed.
+export function getClientIp(c: Context): string {
+  if (TRUST_PROXY) {
+    const xff = c.req.header('x-forwarded-for')
+    if (xff) {
+      const parts = xff
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean)
+      const last = parts[parts.length - 1]
+      if (last) return last
+    }
+    const real = c.req.header('x-real-ip')
+    if (real) return real
   }
-  return c.req.header('x-real-ip') || '127.0.0.1'
+  try {
+    const addr = getConnInfo(c).remote.address
+    if (addr) return addr
+  } catch {
+    /* not running under @hono/node-server (tests) */
+  }
+  return 'unknown'
 }
 
 function rateLimiter(name: string, maxRequests: number, windowMs: number) {

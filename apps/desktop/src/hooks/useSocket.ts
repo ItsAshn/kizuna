@@ -333,8 +333,16 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('channel:updated', (channel: Channel) => {
+      // Permission-override changes only carry the id; there is nothing to merge.
+      if (!channel?.name) return
       const store = useChatStore.getState()
-      store.setChannels(store.channels.map((c) => (c.id === channel.id ? channel : c)))
+      // Upsert: a channel that just became visible to us is new to this client.
+      const exists = store.channels.some((c) => c.id === channel.id)
+      store.setChannels(
+        exists
+          ? store.channels.map((c) => (c.id === channel.id ? channel : c))
+          : [...store.channels, channel],
+      )
     })
 
     socket.on('channel:deleted', ({ id }: { id: string }) => {
