@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="call_service_channel_name">Ongoing calls</string>
+    <string name="call_service_channel_description">Shown while you are in a voice call, so the call keeps running with the screen off or the app in the background.</string>
+    <string name="call_service_default_title">In a voice call</string>
+    <string name="call_service_default_text">Tap to return to the call</string>
+    <string name="call_service_leave">Leave call</string>
+</resources>
