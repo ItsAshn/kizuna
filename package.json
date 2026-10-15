@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "Kizuna — self-hosted Discord alternative with chat, voice, and screen sharing",
+  "description": "Kizuna \u2014 self-hosted Discord alternative with chat, voice, and screen sharing",
   "scripts": {
     "dev": "pnpm --filter @kizuna/server dev",
     "dev:server": "pnpm --filter @kizuna/server dev",
@@ -44,7 +44,12 @@
   },
   "pnpm": {
     "overrides": {
-      "form-data@<2.5.6": ">=2.5.6"
+      "form-data@<2.5.6": ">=2.5.6",
+      "socket.io-parser@<4.2.7": ">=4.2.7",
+      "engine.io@<6.6.10": ">=6.6.10",
+      "tar@<7.5.21": ">=7.5.21",
+      "sharp@<0.35.5": "^0.35.5",
+      "axios@<1.20.0": ">=1.20.0"
     },
     "auditConfig": {
       "ignoreGhsas": [
