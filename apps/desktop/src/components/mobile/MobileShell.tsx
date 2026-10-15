@@ -51,7 +51,7 @@ interface MobileShellProps {
   stopScreenshare: () => void
   isCameraOn: boolean
   cameraStreamRef: MutableRefObject<MediaStream | null>
-  videoElRef: MutableRefObject<HTMLVideoElement | null>
+  videoElRef: MutableRefObject<HTMLVideoElement | HTMLCanvasElement | null>
   startDMCall: (dmChannelId: string, otherUserId: string, otherUsername: string) => void
   endDMCall: () => void
   onOpenSettings: () => void

@@ -94,7 +94,7 @@ export default function Chat() {
     sendTransportRef,
     nativeVideoRef,
   )
-  const { toggleCamera, cameraStreamRef } = useCamera(socketRef, sendTransportRef)
+  const { toggleCamera, cameraStreamRef } = useCamera(socketRef, sendTransportRef, nativeVideoRef)
   const isCameraOn = useCallStore((s) => s.isCameraOn)
   const dmCallStatus = useCallStore((s) => s.dmCallStatus)
   const dmCallChannelId = useCallStore((s) => s.dmCallChannelId)
