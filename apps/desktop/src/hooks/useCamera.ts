@@ -1,11 +1,11 @@
 import { useRef, useCallback, useEffect } from 'react'
 import type { Socket } from 'socket.io-client'
-import { Device } from 'mediasoup-client'
 import type { Transport, Producer } from 'mediasoup-client/types'
 import { useCallStore } from '../store/callStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useNotificationStore } from '../store/notificationStore'
-import { isTauri } from '../utils/platform'
+import { isTauri, isMobileTauri } from '../utils/platform'
+import { getWebviewVideoSend } from './webviewVideoSend'
 
 const CAMERA_WIDTH = 640
 const CAMERA_HEIGHT = 480
@@ -32,20 +32,15 @@ export function useCamera(
   sendTransportRef: React.MutableRefObject<Transport | null>,
 ) {
   const cameraProducerRef = useRef<Producer | null>(null)
-  const cameraTransportRef = useRef<Transport | null>(null)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const unlistenRef = useRef<(() => void) | null>(null)
-  const deviceRef = useRef<Device | null>(null)
 
   const callStore = useCallStore
-  const voiceStore = useVoiceStore
 
   const cleanupLocal = useCallback(async () => {
     cameraProducerRef.current?.close()
     cameraProducerRef.current = null
-    cameraTransportRef.current?.close()
-    cameraTransportRef.current = null
     cameraStreamRef.current?.getTracks().forEach((t) => t.stop())
     cameraStreamRef.current = null
 
@@ -59,7 +54,7 @@ export function useCamera(
       canvasRef.current = null
     }
 
-    if (isTauri()) {
+    if (isTauri() && !isMobileTauri()) {
       try {
         const { invoke } = await import('@tauri-apps/api/core')
         await invoke('camera_stop')
@@ -68,7 +63,6 @@ export function useCamera(
       }
     }
 
-    deviceRef.current = null
     callStore.getState().setIsCameraOn(false)
     callStore.getState().setLocalCameraVideoProducerId(null)
   }, [])
@@ -79,54 +73,11 @@ export function useCamera(
         const socket = socketRef.current
         if (!socket) throw new Error('No socket connection')
 
-        if (isTauri()) {
-          const rtpCapabilities = voiceStore.getState().routerRtpCapabilities
-          if (!rtpCapabilities) throw new Error('Voice not joined — join a voice channel first')
-
-          const device = new Device()
-          await device.load({ routerRtpCapabilities: rtpCapabilities })
-          deviceRef.current = device
-
-          const sendParams: Record<string, unknown> = await new Promise((resolve) =>
-            socket.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
-          )
-          if (sendParams?.error) throw new Error(`Create transport failed: ${sendParams.error}`)
-
-          const sendTransport = device.createSendTransport({
-            ...(sendParams as Record<string, unknown>),
-            iceServers:
-              voiceStore.getState().iceServers.length > 0
-                ? voiceStore.getState().iceServers
-                : undefined,
-          } as Parameters<typeof device.createSendTransport>[0])
-          cameraTransportRef.current = sendTransport
-
-          sendTransport.on('connect', ({ dtlsParameters }, cb) => {
-            socket.emit(
-              'voice:connectTransport',
-              {
-                channelId,
-                transportId: sendTransport.id,
-                dtlsParameters,
-              },
-              cb,
-            )
-          })
-
-          sendTransport.on('produce', ({ kind, rtpParameters, appData }, cb) => {
-            socket.emit(
-              'voice:produce',
-              {
-                channelId,
-                transportId: sendTransport.id,
-                kind,
-                rtpParameters,
-                source: (appData as { source?: 'camera' | 'screen' })?.source,
-              },
-              cb,
-            )
-          })
-
+        if (isTauri() && !isMobileTauri()) {
+          // Windows/macOS: Rust captures and JPEG-encodes the camera, the
+          // webview paints it on a canvas and sends the canvas stream on the
+          // shared webview video transport (purpose `video`).
+          const sendTransport = await getWebviewVideoSend(socket, channelId)
           const canvas = document.createElement('canvas')
           canvas.width = CAMERA_WIDTH
           canvas.height = CAMERA_HEIGHT
