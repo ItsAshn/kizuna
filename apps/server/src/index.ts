@@ -177,6 +177,16 @@ async function start(): Promise<void> {
   process.on('SIGTERM', () => shutdown('SIGTERM'))
 }
 
+// Last-resort guard. Handlers are already wrapped (socket/validate.ts), so
+// anything reaching here is a bug worth logging, not a reason to drop every
+// connected user's call.
+process.on('unhandledRejection', (reason) => {
+  console.error('[!] Unhandled promise rejection:', reason)
+})
+process.on('uncaughtException', (err) => {
+  console.error('[!] Uncaught exception:', err)
+})
+
 start().catch((err: Error) => {
   console.error('\n[!] Server failed to start:', err.message)
   process.exit(1)

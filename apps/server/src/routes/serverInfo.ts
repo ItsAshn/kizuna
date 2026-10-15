@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { randomBytes } from 'node:crypto'
-import jwt from 'jsonwebtoken'
 import path from 'node:path'
 import fs from 'node:fs'
 import { getDb, getDbPath } from '../db'
@@ -19,6 +18,7 @@ import {
   markMemberRemoved,
   clearMemberRemoval,
   revokeUserSessions,
+  verifySession,
 } from '../middleware/auth'
 import { getAllPeers } from '../socket/voiceHandler'
 import { getAuth } from '../utils/auth'
@@ -594,13 +594,12 @@ serverInfoRoutes.post('/join/:code', async (c) => {
   const authHeader = c.req.header('Authorization')
   let userId: string | null = null
   if (authHeader?.startsWith('Bearer ')) {
-    try {
-      const token = authHeader.slice(7)
-      const payload = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string }
-      userId = payload.userId
-    } catch {
-      // Invalid token — user must register
-    }
+    const session = verifySession(authHeader.slice(7))
+    if (session.ok) userId = session.payload.userId
+  }
+
+  if (userId && db.prepare('SELECT 1 FROM bans WHERE user_id = ?').get(userId)) {
+    return c.json({ error: 'You are banned from this server' }, 403)
   }
 
   if (userId) {
@@ -849,6 +848,17 @@ serverInfoRoutes.post(
       | { id: string; username: string }
       | undefined
     if (!target) return c.json({ error: 'User not found' }, 404)
+
+    // A reset token is a full account takeover, so it must respect the same
+    // hierarchy as demotion: nobody resets the host, and only the host resets
+    // another admin.
+    const caller = getAuth(c)
+    if (isUserHost(targetUserId) && targetUserId !== caller.userId) {
+      return c.json({ error: 'Cannot generate a reset token for the server host' }, 403)
+    }
+    if (isUserAdmin(targetUserId) && !caller.isHost && targetUserId !== caller.userId) {
+      return c.json({ error: 'Only the host can reset another admin' }, 403)
+    }
 
     const token = randomBytes(32).toString('hex')
     const expiresAt = Math.floor(Date.now() / 1000) + 86400

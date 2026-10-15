@@ -1,5 +1,15 @@
 import { z } from 'zod'
 
+// z.coerce.boolean() is Boolean(value), so the string "false" became true.
+// Env flags are strings; only explicit truthy spellings count as on.
+export function envBool(defaultValue: boolean) {
+  return z.preprocess((v) => {
+    if (v === undefined || v === '') return defaultValue
+    if (typeof v === 'boolean') return v
+    return ['true', '1', 'yes', 'on'].includes(String(v).trim().toLowerCase())
+  }, z.boolean())
+}
+
 const envSchema = z.object({
   SERVER_PORT: z.coerce.number().int().positive().default(5000),
   SERVER_NAME: z.string().default('Kizuna Server'),
@@ -15,15 +25,19 @@ const envSchema = z.object({
   MEDIASOUP_LOG_LEVEL: z.enum(['debug', 'warn', 'error', 'none']).default('warn'),
   AUDIO_BITRATE_KBPS: z.coerce.number().int().positive().default(64),
   STUN_SERVERS: z.string().default('stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302'),
-  TURN_ENABLED: z.coerce.boolean().default(false),
+  TURN_ENABLED: envBool(false),
   TURN_URL: z.string().optional().default(''),
   TURN_USERNAME: z.string().optional().default(''),
   TURN_PASSWORD: z.string().optional().default(''),
-  UPNP_ENABLED: z.coerce.boolean().default(true),
+  UPNP_ENABLED: envBool(true),
   IP_CHECK_INTERVAL: z.coerce.number().int().positive().default(300),
-  IS_PUBLIC: z.coerce.boolean().default(false),
+  IS_PUBLIC: envBool(false),
   ANNOUNCE_URL: z.string().optional().default(''),
-  IS_REGISTRY: z.coerce.boolean().default(false),
+  IS_REGISTRY: envBool(false),
+  TRUST_PROXY: envBool(false).describe(
+    'Trust X-Forwarded-For for client IPs (rate limiting). Only enable behind a reverse proxy ' +
+      'that overwrites the header, such as the bundled Caddy.',
+  ),
   UPLOADS_DIR: z.string().optional().default(''),
   GIFS_DIR: z.string().optional().default(''),
   MAX_FILE_SIZE: z.coerce.number().int().positive().default(10485760),
@@ -109,17 +123,13 @@ const envSchema = z.object({
     .positive()
     .default(60)
     .describe('Max events queued per outgoing webhook per minute; excess is dropped'),
-  ALLOW_PRIVATE_WEBHOOK_TARGETS: z.coerce
-    .boolean()
-    .default(false)
+  ALLOW_PRIVATE_WEBHOOK_TARGETS: envBool(false)
     .describe(
       'Allow outgoing webhooks to target private, loopback, and link-local addresses. ' +
         'Off by default so a webhook cannot be pointed at services on the host network. ' +
         'Set to "true" if you are bridging to something on your LAN (e.g. Home Assistant).',
     ),
-  AUTO_TAGGING_ENABLED: z.coerce
-    .boolean()
-    .default(false)
+  AUTO_TAGGING_ENABLED: envBool(false)
     .describe(
       'Enable AI-powered auto-tagging for uploaded GIFs. When enabled, a CLIP ViT-B/32 vision model ' +
         'is loaded on first use (~600MB disk download, cached). The model consumes ~1.2-1.5GB of ' +

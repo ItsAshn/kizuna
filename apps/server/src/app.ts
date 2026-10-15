@@ -3,11 +3,11 @@ import { cors } from 'hono/cors'
 import { compress } from 'hono/compress'
 import { serve } from '@hono/node-server'
 import { Server as IoServer } from 'socket.io'
-import jwt from 'jsonwebtoken'
 import type { HonoEnv } from './types'
 import { registerChatHandlers } from './socket/chatHandler'
 import { registerVoiceHandlers } from './socket/voiceHandler'
-import { getUserInfo, isRemovedMember } from './middleware/auth'
+import { hardenSocket } from './socket/validate'
+import { getUserInfo, isRemovedMember, verifySession } from './middleware/auth'
 import { COOKIE_REGEX } from './constants'
 import { createLogger } from './utils/logger'
 
@@ -236,11 +236,11 @@ export function createApp(httpPort: number) {
       return next(new Error('Authentication required'))
     }
     try {
-      const secret = process.env.JWT_SECRET
-      if (!secret) {
-        return next(new Error('Server configuration error'))
+      const session = verifySession(token)
+      if (!session.ok) {
+        return next(new Error(session.error))
       }
-      const payload = jwt.verify(token, secret) as { userId: string; username: string }
+      const { payload } = session
       const userInfo = getUserInfo(payload.userId)
       if (!userInfo) {
         return next(new Error('User not found'))
@@ -258,6 +258,7 @@ export function createApp(httpPort: number) {
   })
 
   io.on('connection', (socket) => {
+    hardenSocket(socket)
     registerChatHandlers(io, socket)
     registerVoiceHandlers(io, socket)
   })

@@ -481,6 +481,47 @@ export function getResolvedChannelPermissions(
   return resolved
 }
 
+export type SessionCheck =
+  | {
+      ok: true
+      payload: JwtPayload
+      userRow: { id: string; username: string; display_name: string }
+    }
+  | { ok: false; error: string }
+
+// Single source of truth for "is this token still good": signature + expiry,
+// the user still existing, the per-user kill switch (token_invalidated_at) and
+// the per-device session row. Every entry point that accepts a token (REST,
+// the socket handshake, /refresh, /join) must go through this so a logout or
+// password reset actually ends access everywhere.
+export function verifySession(token: string, opts: { ignoreExpiration?: boolean } = {}): SessionCheck {
+  let payload: JwtPayload
+  try {
+    payload = jwt.verify(token, getJwtSecret(), {
+      ignoreExpiration: opts.ignoreExpiration ?? false,
+    }) as JwtPayload
+  } catch {
+    return { ok: false, error: 'Invalid or expired token' }
+  }
+  const db = getDb()
+  const userRow = db
+    .prepare('SELECT id, username, display_name, token_invalidated_at FROM users WHERE id = ?')
+    .get(payload.userId) as
+    | { id: string; username: string; display_name: string; token_invalidated_at: number | null }
+    | undefined
+  if (!userRow) return { ok: false, error: 'User not found' }
+  if (userRow.token_invalidated_at && payload.iat && userRow.token_invalidated_at > payload.iat) {
+    return { ok: false, error: 'Token has been revoked' }
+  }
+  if (payload.tokenId) {
+    const session = db
+      .prepare('SELECT revoked_at FROM sessions WHERE token_id = ?')
+      .get(payload.tokenId) as { revoked_at: number | null } | undefined
+    if (session?.revoked_at) return { ok: false, error: 'Token has been revoked' }
+  }
+  return { ok: true, payload, userRow }
+}
+
 export async function authMiddleware(c: Context, next: Next): Promise<Response | void> {
   let token: string | undefined
 
@@ -501,33 +542,13 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
     return c.json({ error: 'Missing or invalid authorization header' }, 401)
   }
 
+  const session = verifySession(token)
+  if (!session.ok) {
+    return c.json({ error: session.error }, 401)
+  }
+  const { payload, userRow } = session
+
   try {
-    const payload = verifyToken(token)
-    const db = getDb()
-
-    const userRow = db
-      .prepare('SELECT id, username, display_name, token_invalidated_at FROM users WHERE id = ?')
-      .get(payload.userId) as
-      | { id: string; username: string; display_name: string; token_invalidated_at: number | null }
-      | undefined
-
-    if (!userRow) {
-      return c.json({ error: 'User not found' }, 401)
-    }
-
-    if (userRow.token_invalidated_at && payload.iat && userRow.token_invalidated_at > payload.iat) {
-      return c.json({ error: 'Token has been revoked' }, 401)
-    }
-
-    if (payload.tokenId) {
-      const session = db
-        .prepare('SELECT revoked_at FROM sessions WHERE token_id = ?')
-        .get(payload.tokenId) as { revoked_at: number | null } | undefined
-      if (session?.revoked_at) {
-        return c.json({ error: 'Token has been revoked' }, 401)
-      }
-    }
-
     const userInfo: AuthUser = {
       userId: userRow.id,
       username: userRow.username,
@@ -537,10 +558,10 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
     }
 
     c.set('auth' as never, userInfo as never)
-    await next()
   } catch {
     return c.json({ error: 'Invalid or expired token' }, 401)
   }
+  await next()
 }
 
 export function requirePermission(permission: string, message = 'Forbidden') {
@@ -579,14 +600,12 @@ export function authOptional(c: Context, next: Next): Promise<void> {
   }
 
   if (token) {
-    try {
-      const payload = verifyToken(token)
-      const userInfo = getUserInfo(payload.userId)
+    const session = verifySession(token)
+    if (session.ok) {
+      const userInfo = getUserInfo(session.payload.userId)
       if (userInfo) {
         c.set('auth' as never, userInfo as never)
       }
-    } catch {
-      // Token invalid — continue without auth
     }
   }
   return next()

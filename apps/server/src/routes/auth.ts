@@ -10,10 +10,10 @@ import {
   isUserHost,
   getUserInfo,
   getUserPermissions,
-  getJwtSecret,
   assignDefaultRoles,
   isRemovedMember,
   clearMemberRemoval,
+  verifySession,
 } from '../middleware/auth'
 import type { JwtPayload } from '../middleware/auth'
 import { generateChallenge, verifyPoW } from '../middleware/pow'
@@ -21,6 +21,7 @@ import { sensitiveAuthLimiter } from '../middleware/rateLimiter'
 import { getMemberById, consumeInviteCode } from '../routes/serverInfo'
 import jwt from 'jsonwebtoken'
 import { getAuth } from '../utils/auth'
+import { sessionCookie } from '../utils/cookie'
 import { getIo, emitIo } from '../utils/io'
 import { dispatchOutgoing } from '../services/outgoingWebhooks'
 
@@ -145,7 +146,7 @@ authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
     ).run(tokenId, user.id)
     c.header(
       'Set-Cookie',
-      `kizuna_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
+      sessionCookie(c, token),
     )
     emitIo(c, 'member:added', getMemberById(id))
     dispatchOutgoing('member.joined', {
@@ -267,7 +268,7 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
   ).run(tokenId, user.id)
   c.header(
     'Set-Cookie',
-    `kizuna_token=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
+    sessionCookie(c, token),
   )
   return c.json({
     token,
@@ -735,6 +736,8 @@ authRoutes.post('/reset-with-backuptoken', sensitiveAuthLimiter, async (c) => {
   return c.json({ ok: true, backuptoken: newBackuptoken })
 })
 
+const REFRESH_GRACE_SECONDS = 7 * 24 * 3600
+
 authRoutes.post('/refresh', async (c) => {
   let token: string | undefined
   const cookieHeader = c.req.header('Cookie')
@@ -750,19 +753,32 @@ authRoutes.post('/refresh', async (c) => {
     return c.json({ error: 'No token provided' }, 401)
   }
 
+  // Expired tokens may still be swapped for a fresh one, but only within a
+  // short grace window and only if the session was never revoked; otherwise
+  // logout and password resets could be undone by calling /refresh.
+  const session = verifySession(token, { ignoreExpiration: true })
+  if (!session.ok) return c.json({ error: session.error }, 401)
+  const { payload } = session
+  const exp = (payload as JwtPayload & { exp?: number }).exp
+  if (exp && exp + REFRESH_GRACE_SECONDS < Math.floor(Date.now() / 1000)) {
+    return c.json({ error: 'Session expired, please log in again' }, 401)
+  }
+
   try {
-    const payload = jwt.verify(token, getJwtSecret(), { ignoreExpiration: true }) as JwtPayload
     const userInfo = getUserInfo(payload.userId)
     if (!userInfo) {
       return c.json({ error: 'User not found' }, 401)
     }
+    if (isRemovedMember(payload.userId)) {
+      return c.json({ error: 'You are no longer a member of this server' }, 401)
+    }
 
     const db = getDb()
-    const row = db
-      .prepare('SELECT token_invalidated_at FROM users WHERE id = ?')
-      .get(payload.userId) as { token_invalidated_at: number | null } | undefined
-    if (row?.token_invalidated_at && payload.iat && row.token_invalidated_at > payload.iat) {
-      return c.json({ error: 'Token has been revoked' }, 401)
+    // One-shot rotation: the old session row is retired with the new one issued.
+    if (payload.tokenId) {
+      db.prepare(
+        'UPDATE sessions SET revoked_at = unixepoch() WHERE token_id = ? AND revoked_at IS NULL',
+      ).run(payload.tokenId)
     }
 
     const tokenId = uuidv4()
@@ -772,7 +788,7 @@ authRoutes.post('/refresh', async (c) => {
     ).run(tokenId, userInfo.userId)
     c.header(
       'Set-Cookie',
-      `kizuna_token=${newToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`,
+      sessionCookie(c, newToken),
     )
     return c.json({ ok: true, token: newToken })
   } catch {
