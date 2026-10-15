@@ -1,0 +1,11 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Lets the app start, update and stop the ongoing-call service and hear its Leave action."
+permissions = [
+  "allow-start",
+  "allow-update",
+  "allow-stop",
+  "allow-register-listener",
+  "allow-remove-listener",
+]

@@ -1,0 +1,15 @@
+[package]
+name = "tauri-plugin-call-service"
+version = "0.1.0"
+description = "Keeps a Kizuna voice call alive while the Android app is in the background."
+authors = ["ItsAshn"]
+edition = "2021"
+# tauri-plugin's build script requires `links` to match the crate name; the
+# app's build finds the plugin's Android library through it.
+links = "tauri-plugin-call-service"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+tauri = "2"
