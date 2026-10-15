@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "Kizuna \u2014 self-hosted Discord alternative with chat, voice, and screen sharing",
+  "description": "Kizuna — self-hosted Discord alternative with chat, voice, and screen sharing",
   "scripts": {
     "dev": "pnpm --filter @kizuna/server dev",
     "dev:server": "pnpm --filter @kizuna/server dev",
