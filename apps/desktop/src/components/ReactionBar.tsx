@@ -55,6 +55,7 @@ export default function ReactionBar({ serverUrl, onReact, onAddClick, visible }:
               handleQuickReact(s.id, 'sticker')
             }}
             title="sticker"
+            aria-label="React with sticker"
           >
             <img src={serverUrl + s.url} alt="" className="msg-bubble__react-quick-sticker" />
           </button>
@@ -66,6 +67,7 @@ export default function ReactionBar({ serverUrl, onReact, onAddClick, visible }:
             onAddClick()
           }}
           title="Add reaction"
+          aria-label="Add reaction"
         >
           <Plus size={14} />
         </button>

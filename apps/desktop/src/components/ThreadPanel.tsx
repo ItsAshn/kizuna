@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
-import { Hash, ArrowLeft, MessageSquare, Inbox, Send, Trash2 } from 'lucide-react'
+import { Hash, ArrowLeft, MessageSquare, Inbox, Send, Trash2, X } from 'lucide-react'
 import { useChatStore } from '../store/chatStore'
 import { useServerStore } from '../store/serverStore'
 import { useSettingsStore } from '../store/settingsStore'
@@ -15,6 +15,7 @@ import {
 } from '@kizuna/shared'
 import { showErrorToast } from '../utils/showNotification'
 import MessageBubble from './MessageBubble'
+import IconButton from './ui/IconButton'
 import './ThreadPanel.css'
 
 interface Props {
@@ -67,13 +68,13 @@ function ThreadListView({
           <MessageSquare className="icon-xs thread-panel__header-icon" />
           <span className="thread-panel__header-title">Threads</span>
         </div>
-        <button
-          className="thread-panel__close"
+        <IconButton
+          size="sm"
+          variant="danger"
           onClick={() => setThreadPanelVisible(false)}
-          aria-label="Close thread panel"
-        >
-          X
-        </button>
+          label="Close thread panel"
+          icon={<X size={14} />}
+        />
       </div>
 
       {threads.length === 0 ? (
@@ -248,23 +249,22 @@ function ThreadDetailView({
     <div className="thread-panel__detail">
       <div className="thread-panel__header">
         <div className="thread-panel__header-left">
-          <button
-            className="thread-panel__back"
+          <IconButton
+            size="sm"
             onClick={() => setActiveThreadId(null)}
-            aria-label="Back to threads"
-          >
-            <ArrowLeft className="icon-sm" />
-          </button>
+            label="Back to threads"
+            icon={<ArrowLeft className="icon-sm" />}
+          />
           <Hash className="icon-xs thread-panel__header-icon" />
           <span className="thread-panel__header-title">{activeThread?.name || 'Thread'}</span>
         </div>
-        <button
-          className="thread-panel__close"
+        <IconButton
+          size="sm"
+          variant="danger"
           onClick={() => setThreadPanelVisible(false)}
-          aria-label="Close thread"
-        >
-          X
-        </button>
+          label="Close thread"
+          icon={<X size={14} />}
+        />
       </div>
 
       {activeThread && (

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useChatStore } from '../store/chatStore'
-import { useSettingsStore } from '../store/settingsStore'
+import { useSettingsStore, type RecentChannel } from '../store/settingsStore'
 import { Hash, Volume2, AtSign, Clock, Users } from 'lucide-react'
 import './QuickSwitcher.css'
 
@@ -38,6 +38,10 @@ function fuzzyMatch(query: string, target: string): number {
   return score
 }
 
+// Stable fallback: `?? []` inside the selector returned a new array on every
+// store update, so any settings change rerendered the switcher.
+const NO_RECENTS: RecentChannel[] = []
+
 export default function QuickSwitcher({ onClose }: QuickSwitcherProps) {
   const channels = useChatStore((s) => s.channels)
   const dmChannels = useChatStore((s) => s.dmChannels)
@@ -46,7 +50,7 @@ export default function QuickSwitcher({ onClose }: QuickSwitcherProps) {
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
   const setActiveGroupDMChannel = useChatStore((s) => s.setActiveGroupDMChannel)
   const setViewedVoiceChannel = useChatStore((s) => s.setViewedVoiceChannel)
-  const recentChannels = useSettingsStore((s) => s.recentChannels ?? [])
+  const recentChannels = useSettingsStore((s) => s.recentChannels) ?? NO_RECENTS
   const pushRecent = useSettingsStore((s) => s.pushRecentChannel)
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)

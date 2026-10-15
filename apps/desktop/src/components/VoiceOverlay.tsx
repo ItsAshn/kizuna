@@ -3,6 +3,7 @@ import type { Socket } from 'socket.io-client'
 import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { ConnectionQuality } from '@kizuna/shared'
 import {
   Mic,
@@ -74,7 +75,20 @@ function PeerRow({
       <div
         className={`voice-row__main${interactive ? ' voice-row__main--interactive' : ''}`}
         onClick={interactive ? () => setExpanded((v) => !v) : undefined}
+        onKeyDown={
+          interactive
+            ? (e) => {
+                // role=button has to honour the keys a real button does.
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setExpanded((v) => !v)
+                }
+              }
+            : undefined
+        }
         role={interactive ? 'button' : undefined}
+        aria-expanded={interactive ? expanded : undefined}
+        aria-label={interactive ? `${name}, adjust volume` : undefined}
         tabIndex={interactive ? 0 : undefined}
         title={interactive ? `${name} — click to adjust volume` : name}
       >
@@ -134,7 +148,7 @@ export default function VoiceOverlay({
   toggleCamera,
   isCameraOn,
 }: VoiceOverlayProps) {
-  const { channels } = useChatStore()
+  const channels = useChatStore((s) => s.channels)
   const {
     activeVoiceChannelId,
     voicePeers,
@@ -147,8 +161,30 @@ export default function VoiceOverlay({
     setPeerVolume,
     voiceConnectingChannelId,
     voiceReconnecting,
-  } = useVoiceStore()
-  const { isScreenSharing, screenSharePeerId, screenShareUsername } = useCallStore()
+  } = useVoiceStore(
+    // Only what the panel renders — not the rest of the voice store (other
+    // channels' rosters, activities, device settings, stats).
+    useShallow((s) => ({
+      activeVoiceChannelId: s.activeVoiceChannelId,
+      voicePeers: s.voicePeers,
+      isMuted: s.isMuted,
+      isSpeaking: s.isSpeaking,
+      localConnectionQuality: s.localConnectionQuality,
+      voiceError: s.voiceError,
+      setVoiceError: s.setVoiceError,
+      peerVolumes: s.peerVolumes,
+      setPeerVolume: s.setPeerVolume,
+      voiceConnectingChannelId: s.voiceConnectingChannelId,
+      voiceReconnecting: s.voiceReconnecting,
+    })),
+  )
+  const { isScreenSharing, screenSharePeerId, screenShareUsername } = useCallStore(
+    useShallow((s) => ({
+      isScreenSharing: s.isScreenSharing,
+      screenSharePeerId: s.screenSharePeerId,
+      screenShareUsername: s.screenShareUsername,
+    })),
+  )
   const [closing, setClosing] = useState(false)
   const [retrying, setRetrying] = useState(false)
   const [showMonitorPicker, setShowMonitorPicker] = useState(false)
@@ -346,6 +382,13 @@ export default function VoiceOverlay({
                    nothing. It stays clickable so the click can say who has the
                    floor. */
                 aria-disabled={someoneElseSharing}
+                aria-label={
+                  isScreenSharing
+                    ? 'Stop sharing your screen'
+                    : someoneElseSharing
+                      ? `${screenShareUsername || 'Someone else'} is sharing their screen`
+                      : 'Share your screen'
+                }
               >
                 {isScreenSharing ? (
                   <MonitorOff className="icon-xs" />

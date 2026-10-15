@@ -161,6 +161,7 @@ export default function GroupDMSettingsModal({ groupDM, onClose }: Props) {
                   className="gdms__avatar-remove"
                   onClick={handleRemoveAvatar}
                   title="Remove avatar"
+                  aria-label="Remove avatar"
                 >
                   <X size={10} />
                 </button>
