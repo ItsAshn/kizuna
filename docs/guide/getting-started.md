@@ -25,7 +25,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The server will be available at `https://your-domain.com`. For voice and screen sharing to work, ensure UDP ports `40000-40099` are reachable.
+The server will be available at `https://your-domain.com`. For voice and screen sharing to work, ensure ports `40000-40099` are reachable over UDP (and TCP, the fallback for networks that block UDP).
 
 ## Features
 

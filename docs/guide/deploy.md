@@ -12,7 +12,7 @@ Deploy your own Kizuna server with Docker. Pre-built multi-arch images are pulle
 - A server running Linux (amd64 or arm64)
 - A domain name with an A record pointing to your server's IP
 - Docker and Docker Compose v2 installed
-- Ports 80, 443 (TCP) and 40000-40099 (UDP) reachable
+- Ports 80, 443 (TCP) and 40000-40099 (UDP and TCP) reachable
 
 ## Setup
 
@@ -57,6 +57,7 @@ The container runs as UID 1000. `data/` holds the SQLite database, `uploads/` ho
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw allow 40000:40099/udp
+sudo ufw allow 40000:40099/tcp
 sudo ufw enable
 ```
 
@@ -65,10 +66,11 @@ sudo ufw enable
 sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --permanent --add-port=40000-40099/udp
+sudo firewall-cmd --permanent --add-port=40000-40099/tcp
 sudo firewall-cmd --reload
 ```
 
-Ports 80/443 are for HTTPS via Caddy. UDP 40000-40099 are for WebRTC voice — Caddy can't proxy UDP, so these are exposed directly from the Kizuna container.
+Ports 80/443 are for HTTPS via Caddy. 40000-40099 are for WebRTC voice and video — Caddy can't proxy media, so these are exposed directly from the Kizuna container. UDP is the normal path; TCP on the same range is the fallback for clients whose network blocks UDP.
 
 If your VPS has an external firewall (DigitalOcean, AWS, etc.), open these ports there too.
 
@@ -95,16 +97,16 @@ Visit `https://your-domain.com` and create an account.
 ```
 Internet
     ├── :443 (HTTPS) → Caddy → kizuna:5000 (HTTP + WebSocket)
-    └── :40000-40099 (UDP) → Kizuna (mediasoup WebRTC SFU)
+    └── :40000-40099 (UDP, TCP fallback) → Kizuna (mediasoup WebRTC SFU)
 ```
 
-Caddy handles TLS termination and reverse-proxies to the Kizuna server on port 5000. WebRTC voice traffic bypasses Caddy entirely on UDP.
+Caddy handles TLS termination and reverse-proxies to the Kizuna server on port 5000. WebRTC media bypasses Caddy entirely. Because Caddy is the only way in for HTTP, the compose file sets `TRUST_PROXY=true` so the server reads the client IP from Caddy's `X-Forwarded-For`.
 
 ## Updating
 
 ### Automatic (default)
 
-The compose file includes [Watchtower](https://github.com/containrrr/watchtower), which polls for new images every hour and automatically updates the Kizuna container when a new release is available. No action needed — updates happen in the background.
+The compose file includes [Watchtower](https://github.com/containrrr/watchtower), which polls for new images every hour and automatically updates the Kizuna container when a new release is available. No action needed — updates happen in the background. It follows the `latest` tag, which only moves for stable releases, never for release candidates.
 
 To disable automatic updates, remove the `watchtower` service from `docker-compose.yml`.
 
@@ -118,18 +120,19 @@ docker compose pull && docker compose up -d
 For safe updates with health-check verification and automatic rollback:
 
 ```bash
-./scripts/update.sh                 # latest version
+./scripts/update.sh                 # update the tag you are on (latest by default)
 ./scripts/update.sh --pin v0.2.0   # pin to a specific release
+./scripts/update.sh --pin latest   # unpin
 ./scripts/update.sh --no-verify     # skip health check
 ```
 
-The update script pulls the image, recreates the container, waits for `/health` to respond, and rolls back to the previous image on failure.
+The update script records the running image, pulls the new one, recreates the container, waits for `/health` to respond, and rolls back to the recorded image on failure.
 
 ### Pinning to a release
 
 ```bash
-# Edit docker-compose.yml and change the image tag:
-#   image: ghcr.io/itsashn/kizuna:v0.2.0
+# Set the tag in .env (or run ./scripts/update.sh --pin v0.2.0):
+#   KIZUNA_TAG=v0.2.0
 # Then:
 docker compose pull && docker compose up -d
 ```
