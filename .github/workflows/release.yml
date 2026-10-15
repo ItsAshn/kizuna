@@ -6,7 +6,63 @@ on:
       - "v*"
 
 jobs:
+  # Nothing is built or published until the tagged commit passes the same
+  # checks a PR has to. Every publishing job depends on this one, directly or
+  # through create-release.
+  gate:
+    name: Release gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      # "true" only for plain vX.Y.Z tags. Anything with a suffix (-rc.1,
+      # -beta, ...) is a prerelease: it gets its own Docker tag but never
+      # :latest, and its GitHub release is marked prerelease so neither
+      # Watchtower nor the desktop updater picks it up.
+      stable: ${{ steps.channel.outputs.stable }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Classify tag
+        id: channel
+        run: |
+          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "stable=true" >> "$GITHUB_OUTPUT"
+            echo "Stable release: $GITHUB_REF_NAME"
+          else
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+            echo "Prerelease: $GITHUB_REF_NAME (no :latest, no updater manifest)"
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Test (shared)
+        run: pnpm test
+
+      - name: Test (server)
+        run: pnpm --filter @kizuna/server test
+
   create-release:
+    needs: gate
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -14,15 +70,21 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STABLE: ${{ needs.gate.outputs.stable }}
         run: |
+          EXTRA=()
+          if [ "$STABLE" != "true" ]; then
+            EXTRA+=(--prerelease)
+          fi
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
-            --draft
+            --draft \
+            "${EXTRA[@]}"
 
   build-docker:
-    needs: create-release
+    needs: [gate, create-release]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -42,8 +104,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/kizuna
+          # :latest is what Watchtower follows on every default install, so
+          # only stable tags may move it. Prereleases push their own tag only.
+          flavor: |
+            latest=false
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ needs.gate.outputs.stable == 'true' }}
             type=raw,value=${{ github.ref_name }}
 
       - name: Set up QEMU
@@ -51,6 +117,41 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      # Boot the image before pushing it. The gate's checks run against the
+      # workspace, where @kizuna/shared resolves to source outside
+      # node_modules; only the deployed image shows whether the server really
+      # starts (v0.50.0 shipped a :latest that crash-looped on boot).
+      - name: Build image for smoke test
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: kizuna-smoke:ci
+          cache-from: type=gha
+
+      - name: Smoke test image
+        run: |
+          docker run -d --name kizuna-smoke \
+            -e JWT_SECRET=smoke-test-secret \
+            -e SERVER_DB_PATH=/data/server.db \
+            -e UPNP_ENABLED=false \
+            -e PUBLIC_ADDRESS=127.0.0.1 \
+            kizuna-smoke:ci
+          for _ in $(seq 1 30); do
+            if docker exec kizuna-smoke node -e "fetch('http://localhost:5000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"; then
+              echo "Image is healthy."
+              docker rm -f kizuna-smoke > /dev/null
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Image did not become healthy within 60s"
+          docker logs kizuna-smoke || true
+          exit 1
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -405,7 +506,7 @@ jobs:
     # of them fails, which is what we want: a half-built release stays a draft
     # instead of appearing on the releases page missing a platform, and the
     # updater manifest below is only generated once every bundle exists.
-    needs: [build-docker, build-desktop-windows, build-desktop-linux, build-desktop-macos, build-desktop-android]
+    needs: [gate, build-docker, build-desktop-windows, build-desktop-linux, build-desktop-macos, build-desktop-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -413,12 +514,27 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STABLE: ${{ needs.gate.outputs.stable }}
         run: |
-          gh release edit "$GITHUB_REF_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --draft=false
+          if [ "$STABLE" = "true" ]; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft=false \
+              --latest
+          else
+            gh release edit "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft=false \
+              --prerelease \
+              --latest=false
+          fi
 
+      # The desktop updater reads releases/latest/download/latest.json, and
+      # GitHub's "latest" release never points at a prerelease. Prereleases
+      # still skip the manifest entirely so there is no way for one to end up
+      # in front of stable users.
       - name: Generate and upload updater manifest
+        if: needs.gate.outputs.stable == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

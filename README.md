@@ -46,7 +46,7 @@ docker compose up -d
 
 The server will be available at `https://your-domain.com`. Pre-built images are pulled from `ghcr.io/itsashn/kizuna` — no compilation or build tools needed on the server. Multi-arch images support amd64 and arm64 (Raspberry Pi, AWS Graviton).
 
-For voice and screen sharing, ensure UDP ports `40000-40099` are reachable on your firewall.
+For voice and screen sharing, ensure ports `40000-40099` are reachable on your firewall over UDP (and TCP, the fallback for networks that block UDP).
 
 ### Updating
 
@@ -54,13 +54,13 @@ For voice and screen sharing, ensure UDP ports `40000-40099` are reachable on yo
 docker compose pull && docker compose up -d
 ```
 
-The compose file includes [Watchtower](https://github.com/containrrr/watchtower) which automatically pulls and applies updates within an hour of a new release. Remove the `watchtower` service from `docker-compose.yml` if you prefer manual updates.
+The compose file includes [Watchtower](https://github.com/containrrr/watchtower) which automatically pulls and applies updates within an hour of a new stable release (release candidates are never auto-applied). Remove the `watchtower` service from `docker-compose.yml` if you prefer manual updates.
 
 For safe manual updates with health-check verification and automatic rollback:
 
 ```bash
-./scripts/update.sh                 # latest version
-./scripts/update.sh --pin v0.2.0   # specific version
+./scripts/update.sh                 # update the tag you are on (latest by default)
+./scripts/update.sh --pin v0.2.0   # pin a specific version (sets KIZUNA_TAG in .env)
 ```
 
 ### Local development builds

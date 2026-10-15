@@ -22,12 +22,36 @@
 
 services:
   kizuna:
-    image: ghcr.io/itsashn/kizuna:latest
+    # KIZUNA_TAG (in .env) pins a release, e.g. KIZUNA_TAG=v0.2.0.
+    # scripts/update.sh --pin <tag> writes it for you. Unset means :latest,
+    # which only ever points at a stable release.
+    image: ghcr.io/itsashn/kizuna:${KIZUNA_TAG:-latest}
     restart: unless-stopped
     user: "1000:1000"
     ports:
+      # Media ports. UDP is the normal path; TCP is the fallback that mediasoup
+      # advertises for clients whose network blocks UDP (there is no TURN
+      # server), so the same range is published for both.
       - "${RTC_MIN_PORT:-40000}-${RTC_MAX_PORT:-40099}:${RTC_MIN_PORT:-40000}-${RTC_MAX_PORT:-40099}/udp"
+      - "${RTC_MIN_PORT:-40000}-${RTC_MAX_PORT:-40099}:${RTC_MIN_PORT:-40000}-${RTC_MAX_PORT:-40099}/tcp"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:'+(process.env.SERVER_PORT||5000)+'/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     environment:
+      NODE_ENV: production
+      # Caddy sits in front and overwrites X-Forwarded-For, so the server can
+      # use it to rate-limit per client. Set to false if you remove Caddy and
+      # expose the server directly, or clients can spoof their IP.
+      TRUST_PROXY: ${TRUST_PROXY:-true}
       SERVER_PORT: ${SERVER_PORT:-5000}
       SERVER_NAME: ${SERVER_NAME:-Kizuna Server}
       SERVER_DESCRIPTION: ${SERVER_DESCRIPTION:-A self-hosted Kizuna community}
@@ -71,7 +95,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --interval 3600 --cleanup --label-enable
     # Remove this service if you prefer to update manually.
-    # Watchtower polls ghcr.io hourly and restarts kizuna when a new image is available.
+    # Watchtower polls ghcr.io hourly and restarts kizuna when the tag it runs
+    # gets a new image. With the default KIZUNA_TAG that is :latest, which the
+    # release pipeline only moves for stable vX.Y.Z releases after CI passes,
+    # never for -rc/-beta prereleases. A pinned version tag never changes, so
+    # pinning effectively turns Watchtower off for kizuna.
 
 volumes:
   caddy_data:

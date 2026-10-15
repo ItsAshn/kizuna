@@ -41,5 +41,10 @@
     "tsx": "^4.7.0",
     "typescript": "^5.5.0",
     "vitest": "^2.1.9"
+  },
+  "tsup": {
+    "noExternal": [
+      "@kizuna/shared"
+    ]
   }
 }
