@@ -2,7 +2,8 @@ import { Hono } from 'hono'
 import { v4 as uuidv4 } from 'uuid'
 import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
-import { getDb, deleteUserAccount } from '../db'
+import { getDb } from '../db'
+import { deleteUserAccount } from '../services/accountDeletion'
 import {
   signToken,
   authMiddleware,

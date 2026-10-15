@@ -19,15 +19,16 @@ categoryRoutes.get('/', authMiddleware, (c) => {
   return c.json({ categories })
 })
 
-categoryRoutes.post('/', authMiddleware, adminMiddleware, (c) => {
+categoryRoutes.post('/', authMiddleware, adminMiddleware, async (c) => {
   const db = getDb()
   let body: Record<string, unknown>
   try {
-    body = c.req.json() as unknown as Record<string, unknown>
+    body = (await c.req.json()) as Record<string, unknown>
   } catch {
     return c.json({ error: 'Invalid body' }, 400)
   }
-  const name = (body?.name as string | undefined)?.trim()
+  if (!body || typeof body !== 'object') return c.json({ error: 'Invalid body' }, 400)
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
   if (!name) return c.json({ error: 'Name required' }, 400)
 
   const id = uuidv4()
@@ -43,26 +44,26 @@ categoryRoutes.post('/', authMiddleware, adminMiddleware, (c) => {
   return c.json({ id, name, position: maxPos.pos + 1 })
 })
 
-categoryRoutes.patch('/:id', authMiddleware, adminMiddleware, (c) => {
+categoryRoutes.patch('/:id', authMiddleware, adminMiddleware, async (c) => {
   const categoryId = c.req.param('id')
   const db = getDb()
   let body: Record<string, unknown>
   try {
-    body = c.req.json() as unknown as Record<string, unknown>
+    body = (await c.req.json()) as Record<string, unknown>
   } catch {
     return c.json({ error: 'Invalid body' }, 400)
   }
+  if (!body || typeof body !== 'object') return c.json({ error: 'Invalid body' }, 400)
 
-  if (body.name) {
-    db.prepare('UPDATE channel_categories SET name = ? WHERE id = ?').run(
-      (body.name as string).trim(),
-      categoryId,
-    )
+  if (body.name !== undefined) {
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+    if (!name) return c.json({ error: 'Name required' }, 400)
+    db.prepare('UPDATE channel_categories SET name = ? WHERE id = ?').run(name, categoryId)
   }
-  const row = db.prepare('SELECT * FROM channel_categories WHERE id = ?').get(categoryId) as Record<
-    string,
-    unknown
-  >
+  const row = db.prepare('SELECT * FROM channel_categories WHERE id = ?').get(categoryId) as
+    | Record<string, unknown>
+    | undefined
+  if (!row) return c.json({ error: 'Category not found' }, 404)
   return c.json({ id: row.id, name: row.name, position: row.position })
 })
 

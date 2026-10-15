@@ -147,18 +147,26 @@ messageRoutes.get('/:channelId', authMiddleware, (c) => {
 
   let rows: Record<string, unknown>[]
   if (before) {
-    const anchor = db.prepare('SELECT created_at FROM messages WHERE id = ?').get(before) as
-      | { created_at: number }
-      | undefined
+    // Keyset on (created_at, rowid): created_at has one-second resolution, so
+    // comparing it alone skipped every message sharing the anchor's second.
+    const anchor = db
+      .prepare('SELECT created_at, rowid FROM messages WHERE id = ? AND channel_id = ?')
+      .get(before, channelId) as { created_at: number; rowid: number } | undefined
     rows = anchor
       ? (db
-          .prepare(`${SELECT} AND m.created_at < ? ORDER BY m.created_at DESC LIMIT ?`)
-          .all(channelId, anchor.created_at, limit) as Record<string, unknown>[])
+          .prepare(
+            `${SELECT} AND (m.created_at < ? OR (m.created_at = ? AND m.rowid < ?))
+             ORDER BY m.created_at DESC, m.rowid DESC LIMIT ?`,
+          )
+          .all(channelId, anchor.created_at, anchor.created_at, anchor.rowid, limit) as Record<
+          string,
+          unknown
+        >[])
       : []
     rows = rows.reverse()
   } else {
     rows = db
-      .prepare(`${SELECT} ORDER BY m.created_at DESC LIMIT ?`)
+      .prepare(`${SELECT} ORDER BY m.created_at DESC, m.rowid DESC LIMIT ?`)
       .all(channelId, limit) as Record<string, unknown>[]
     rows = rows.reverse()
   }
