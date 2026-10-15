@@ -10,7 +10,7 @@ interface NotificationSettings {
 
 interface RecentChannel {
   id: string
-  type: 'text' | 'voice' | 'dm'
+  type: 'text' | 'voice' | 'dm' | 'group-dm'
 }
 
 export interface PostUpdateNote {
@@ -59,6 +59,9 @@ interface SettingsState {
   socketConnected: boolean
   socketReconnecting: boolean
   socketReconnectAttempts: number
+  /** Bumped on every successful *re*connect (not the first connect), so views
+   * that hold socket rooms or cached pages can rejoin and refetch. */
+  socketReconnectNonce: number
 
   setServerBackgroundEnabled: (enabled: boolean) => void
   setCustomCssEnabled: (enabled: boolean) => void
@@ -84,6 +87,7 @@ interface SettingsState {
   setSocketConnected: (connected: boolean) => void
   setSocketReconnecting: (reconnecting: boolean) => void
   setSocketReconnectAttempts: (attempts: number) => void
+  bumpSocketReconnectNonce: () => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -111,6 +115,7 @@ export const useSettingsStore = create<SettingsState>()(
       socketConnected: true,
       socketReconnecting: false,
       socketReconnectAttempts: 0,
+      socketReconnectNonce: 0,
 
       setServerBackgroundEnabled: (serverBackgroundEnabled) => set({ serverBackgroundEnabled }),
       setCustomCssEnabled: (customCssEnabled) => set({ customCssEnabled }),
@@ -170,11 +175,21 @@ export const useSettingsStore = create<SettingsState>()(
       setUpdateError: (updateError) => set({ updateError }),
       setUpdateNotes: (updateNotes) => set({ updateNotes }),
       setPostUpdateNote: (postUpdateNote) => set({ postUpdateNote }),
+      // Only a successful connect clears the retry state. A failed attempt
+      // (connect_error) or a drop must leave `reconnecting` and the attempt
+      // count alone, or the banner flickers back to "disconnected" and the
+      // count restarts between every retry.
       setSocketConnected: (socketConnected) =>
-        set({ socketConnected, socketReconnecting: false, socketReconnectAttempts: 0 }),
+        set(
+          socketConnected
+            ? { socketConnected, socketReconnecting: false, socketReconnectAttempts: 0 }
+            : { socketConnected },
+        ),
       setSocketReconnecting: (socketReconnecting) =>
         set({ socketReconnecting, socketConnected: false }),
       setSocketReconnectAttempts: (socketReconnectAttempts) => set({ socketReconnectAttempts }),
+      bumpSocketReconnectNonce: () =>
+        set((s) => ({ socketReconnectNonce: s.socketReconnectNonce + 1 })),
     }),
     {
       name: 'kizuna-settings-v2',

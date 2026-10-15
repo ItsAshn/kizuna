@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useChatStore } from '../store/chatStore'
 import { useSettingsStore } from '../store/settingsStore'
-import { Hash, Volume2, AtSign, Clock } from 'lucide-react'
+import { Hash, Volume2, AtSign, Clock, Users } from 'lucide-react'
 import './QuickSwitcher.css'
 
 interface QuickSwitcherProps {
@@ -10,7 +10,7 @@ interface QuickSwitcherProps {
 
 interface SwitchItem {
   id: string
-  type: 'text' | 'voice' | 'dm'
+  type: 'text' | 'voice' | 'dm' | 'group-dm'
   name: string
   subtitle: string
   score: number
@@ -39,7 +39,13 @@ function fuzzyMatch(query: string, target: string): number {
 }
 
 export default function QuickSwitcher({ onClose }: QuickSwitcherProps) {
-  const { channels, dmChannels, setActiveChannel, setActiveDMChannel } = useChatStore()
+  const channels = useChatStore((s) => s.channels)
+  const dmChannels = useChatStore((s) => s.dmChannels)
+  const groupDMChannels = useChatStore((s) => s.groupDMChannels)
+  const setActiveChannel = useChatStore((s) => s.setActiveChannel)
+  const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
+  const setActiveGroupDMChannel = useChatStore((s) => s.setActiveGroupDMChannel)
+  const setViewedVoiceChannel = useChatStore((s) => s.setViewedVoiceChannel)
   const recentChannels = useSettingsStore((s) => s.recentChannels ?? [])
   const pushRecent = useSettingsStore((s) => s.pushRecentChannel)
   const [query, setQuery] = useState('')
@@ -86,13 +92,28 @@ export default function QuickSwitcher({ onClose }: QuickSwitcherProps) {
       })
     }
 
+    for (const gdm of groupDMChannels) {
+      const name = gdm.name || 'Group DM'
+      const score = q ? fuzzyMatch(q, name) : 0
+      if (q && score === 0 && !name.toLowerCase().includes(q)) continue
+      const isRecent = recentChannels.some((r) => r.id === gdm.id && r.type === 'group-dm')
+      items.push({
+        id: gdm.id,
+        type: 'group-dm',
+        name,
+        subtitle: `Group DM · ${gdm.members.length} members`,
+        score: q ? score : isRecent ? 50 : 0,
+        isRecent,
+      })
+    }
+
     items.sort((a, b) => {
       if (q) return b.score - a.score
       return b.score - a.score
     })
 
     return items
-  }, [query, channels, dmChannels, recentChannels])
+  }, [query, channels, dmChannels, groupDMChannels, recentChannels])
 
   useEffect(() => {
     setSelectedIndex(0)
@@ -110,8 +131,12 @@ export default function QuickSwitcher({ onClose }: QuickSwitcherProps) {
     pushRecent({ id: item.id, type: item.type })
     if (item.type === 'dm') {
       setActiveDMChannel(item.id)
+    } else if (item.type === 'group-dm') {
+      setActiveGroupDMChannel(item.id)
     } else if (item.type === 'voice') {
-      setActiveChannel(item.id)
+      // Same as clicking a voice channel's stage in the sidebar, but without
+      // joining: picking a result should navigate, not open the microphone.
+      setViewedVoiceChannel(item.id)
     } else {
       setActiveChannel(item.id)
     }
@@ -168,6 +193,7 @@ export default function QuickSwitcher({ onClose }: QuickSwitcherProps) {
                 {item.type === 'text' && <Hash size={14} />}
                 {item.type === 'voice' && <Volume2 size={14} />}
                 {item.type === 'dm' && <AtSign size={14} />}
+                {item.type === 'group-dm' && <Users size={14} />}
               </span>
               <div className="quick-switcher__item-info">
                 <span className="quick-switcher__item-name">

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { Socket } from 'socket.io-client'
 import { createPortal } from 'react-dom'
 import { useServerStore } from '../store/serverStore'
@@ -9,6 +9,7 @@ import { useMobile } from '../hooks/useMobile'
 import { useHaptics } from '../hooks/useHaptics'
 import { useLongPressItems } from '../hooks/useLongPressItems'
 import { isTauri } from '../utils/platform'
+import { showErrorToast } from '../utils/showNotification'
 import { useNavigate } from 'react-router-dom'
 import {
   createChannel,
@@ -39,6 +40,8 @@ interface SidebarProps {
   voicePanel?: React.ReactNode
 }
 
+const NO_MUTES: Record<string, number | null> = {}
+
 export default function Sidebar({
   joinVoice,
   leaveVoice,
@@ -64,7 +67,9 @@ export default function Sidebar({
   const activeGroupDMChannelId = useChatStore((s) => s.activeGroupDMChannelId)
   const unreadCounts = useChatStore((s) => s.unreadCounts)
   const mentionCounts = useChatStore((s) => s.mentionCounts)
-  const channelMutes = useChatStore((s) => s.channelMutes)
+  const channelMutes = useChatStore(
+    (s) => (session ? s.channelMutes[session.serverId] : undefined) ?? NO_MUTES,
+  )
   const members = useChatStore((s) => s.members)
   const setActiveChannel = useChatStore((s) => s.setActiveChannel)
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
@@ -86,6 +91,9 @@ export default function Sidebar({
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
   const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null)
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
+  // A voice join is a multi-step negotiation; a second click while one is in
+  // flight used to start a parallel join that tore down the first halfway.
+  const joiningVoiceRef = useRef(false)
   const [drag, setDrag] = useState<{ channelId: string; type: 'text' | 'voice' } | null>(null)
   const [dragOver, setDragOver] = useState<{
     channelId: string
@@ -151,11 +159,16 @@ export default function Sidebar({
     const allOrdered =
       drag.type === 'text' ? [...reordered, ...otherType] : [...otherType, ...reordered]
 
+    const previous = channels
     setChannels(allOrdered)
     setDrag(null)
     setDragOver(null)
     reorderChannels(session.url, order).catch((err) => {
       console.error('Failed to reorder channels:', err)
+      // Roll back the optimistic order, unless something else (a socket
+      // update) has replaced the list since.
+      if (useChatStore.getState().channels === allOrdered) setChannels(previous)
+      showErrorToast('reorder channels')
     })
   }
 
@@ -393,11 +406,24 @@ export default function Sidebar({
             } else {
               setViewedVoiceChannel(ch.id)
               onOpenVoiceStage?.(ch.id)
-              if (activeVoiceChannelId !== ch.id) {
+              if (activeVoiceChannelId !== ch.id && !joiningVoiceRef.current) {
+                joiningVoiceRef.current = true
                 ;(async () => {
-                  if (activeVoiceChannelId) await leaveVoice()
-                  joinVoice(ch.id)
-                  haptics.success()
+                  try {
+                    if (activeVoiceChannelId) await leaveVoice()
+                    const error = await joinVoice(ch.id)
+                    if (error) {
+                      haptics.error()
+                      showErrorToast(`join #${ch.name}`)
+                    } else {
+                      haptics.success()
+                    }
+                  } catch (err) {
+                    console.error('Failed to join voice:', err)
+                    showErrorToast(`join #${ch.name}`)
+                  } finally {
+                    joiningVoiceRef.current = false
+                  }
                 })()
               }
             }

@@ -10,6 +10,7 @@ import {
 } from '@kizuna/shared'
 import type { Message, PinnedMessage } from '@kizuna/shared'
 import { useChatStore } from '../store/chatStore'
+import { useSettingsStore } from '../store/settingsStore'
 import type { ServerSession } from '../store/serverStore'
 
 interface UseChannelMessagesOptions {
@@ -17,6 +18,21 @@ interface UseChannelMessagesOptions {
   socketRef: MutableRefObject<Socket | null>
   tryDecryptDM: (msg: Message) => Message
   tryDecryptGroupDM: (msg: Message) => Message
+}
+
+const PAGE_SIZE = 50
+
+/** Whether another older page may exist after fetching one. A full page means
+ * the server probably has more (it also reports hasMore itself on some routes).
+ * A page that added nothing new means we are looping on the same cursor, so stop. */
+export function olderPageHasMore(
+  pageLength: number,
+  limit: number,
+  serverHasMore: boolean,
+  added: number,
+): boolean {
+  if (added <= 0) return false
+  return serverHasMore || pageLength >= limit
 }
 
 // Loads message history (plus permissions/pins/read-state) whenever the active
@@ -33,6 +49,10 @@ export function useChannelMessages({
   const dmChannels = useChatStore((s) => s.dmChannels)
   const groupDMChannels = useChatStore((s) => s.groupDMChannels)
   const setPinned = useChatStore((s) => s.setPinnedMessages)
+  // Bumped by useSocket on every reconnect: the new socket is in no rooms and
+  // missed whatever was sent while it was down, so each effect below rejoins
+  // its room and refetches the newest page (merged into the cache by id).
+  const reconnectNonce = useSettingsStore((s) => s.socketReconnectNonce)
   const activeAnyChannelId = activeChannelId || activeDMChannelId || activeGroupDMChannelId || null
 
   const [loading, setLoading] = useState(false)
@@ -58,6 +78,33 @@ export function useChannelMessages({
 
   const reloadMessages = useCallback(() => setReloadNonce((n) => n + 1), [])
 
+  /* Locate the "New Messages" separator against the last-read time we had
+   * *before* this visit, then tell the server the conversation is read. The
+   * read ack returns "now", so emitting it before the fetch resolved used to
+   * overwrite lastRead first and the separator never showed. */
+  const markReadAfterFetch = useCallback(
+    (
+      readEvent: 'channel:read' | 'dm:read' | 'group-dm:read',
+      channelId: string,
+      msgs: Message[] | null,
+      isCancelled: () => boolean,
+    ) => {
+      if (isCancelled()) return
+      if (msgs) {
+        const lastRead = useChatStore.getState().channelLastReadAt[channelId]
+        const firstNew = lastRead ? msgs.find((m) => m.created_at > lastRead) : undefined
+        newMessagesRef.current = firstNew ? firstNew.id : null
+      }
+      socketRef.current?.emit(readEvent, { channelId }, (res: { last_read_at?: number }) => {
+        if (isCancelled()) return
+        if (res?.last_read_at) {
+          useChatStore.getState().setChannelLastReadAt(channelId, res.last_read_at)
+        }
+      })
+    },
+    [socketRef],
+  )
+
   useEffect(() => {
     if (activeChannelId) {
       let cancelled = false
@@ -69,17 +116,12 @@ export function useChannelMessages({
           if (cancelled) return
           useChatStore.getState().reconcileMessages(activeChannelId, msgs)
           useChatStore.getState().setHasMoreMessages(activeChannelId, hasMore)
-          const lastRead = useChatStore.getState().channelLastReadAt[activeChannelId]
-          if (lastRead && msgs.length > 0) {
-            const firstNew = msgs.find((m) => m.created_at > lastRead)
-            newMessagesRef.current = firstNew ? firstNew.id : null
-          } else {
-            newMessagesRef.current = null
-          }
+          markReadAfterFetch('channel:read', activeChannelId, msgs, () => cancelled)
         })
         .catch((err) => {
           console.error('Failed to load messages:', err)
           if (!cancelled) setLoadError('Failed to load messages')
+          markReadAfterFetch('channel:read', activeChannelId, null, () => cancelled)
         })
         .finally(() => {
           if (!cancelled) setLoading(false)
@@ -110,16 +152,6 @@ export function useChannelMessages({
 
       socketRef.current?.emit('channel:join', activeChannelId)
       socketRef.current?.emit('mentions:read', { channelId: activeChannelId })
-      socketRef.current?.emit(
-        'channel:read',
-        { channelId: activeChannelId },
-        (res: { last_read_at?: number }) => {
-          if (cancelled) return
-          if (res?.last_read_at) {
-            useChatStore.getState().setChannelLastReadAt(activeChannelId, res.last_read_at)
-          }
-        },
-      )
 
       return () => {
         cancelled = true
@@ -127,7 +159,7 @@ export function useChannelMessages({
         socketRef.current?.emit('typing:stop', { channelId: activeChannelId })
       }
     }
-  }, [activeChannelId, reloadNonce])
+  }, [activeChannelId, reloadNonce, reconnectNonce])
 
   useEffect(() => {
     if (activeDMChannelId) {
@@ -141,17 +173,12 @@ export function useChannelMessages({
           const decrypted = msgs.map((m) => tryDecryptDM(m))
           useChatStore.getState().reconcileMessages(activeDMChannelId, decrypted)
           useChatStore.getState().setHasMoreMessages(activeDMChannelId, hasMore)
-          const lastRead = useChatStore.getState().channelLastReadAt[activeDMChannelId]
-          if (lastRead && decrypted.length > 0) {
-            const firstNew = decrypted.find((m) => m.created_at > lastRead)
-            newMessagesRef.current = firstNew ? firstNew.id : null
-          } else {
-            newMessagesRef.current = null
-          }
+          markReadAfterFetch('dm:read', activeDMChannelId, decrypted, () => cancelled)
         })
         .catch((err) => {
           console.error('Failed to load messages:', err)
           if (!cancelled) setLoadError('Failed to load messages')
+          markReadAfterFetch('dm:read', activeDMChannelId, null, () => cancelled)
         })
         .finally(() => {
           if (!cancelled) setLoading(false)
@@ -163,16 +190,6 @@ export function useChannelMessages({
       }))
 
       socketRef.current?.emit('channel:join', activeDMChannelId)
-      socketRef.current?.emit(
-        'dm:read',
-        { channelId: activeDMChannelId },
-        (res: { last_read_at?: number }) => {
-          if (cancelled) return
-          if (res?.last_read_at) {
-            useChatStore.getState().setChannelLastReadAt(activeDMChannelId, res.last_read_at)
-          }
-        },
-      )
 
       return () => {
         cancelled = true
@@ -180,7 +197,7 @@ export function useChannelMessages({
         socketRef.current?.emit('typing:stop', { channelId: activeDMChannelId })
       }
     }
-  }, [activeDMChannelId, tryDecryptDM, reloadNonce])
+  }, [activeDMChannelId, tryDecryptDM, reloadNonce, reconnectNonce])
 
   // Re-decrypt already-loaded DM messages when channel keys arrive/change.
   useEffect(() => {
@@ -207,17 +224,12 @@ export function useChannelMessages({
           const decrypted = msgs.map((m) => tryDecryptGroupDM(m))
           useChatStore.getState().reconcileMessages(activeGroupDMChannelId, decrypted)
           useChatStore.getState().setHasMoreMessages(activeGroupDMChannelId, hasMore)
-          const lastRead = useChatStore.getState().channelLastReadAt[activeGroupDMChannelId]
-          if (lastRead && decrypted.length > 0) {
-            const firstNew = decrypted.find((m) => m.created_at > lastRead)
-            newMessagesRef.current = firstNew ? firstNew.id : null
-          } else {
-            newMessagesRef.current = null
-          }
+          markReadAfterFetch('group-dm:read', activeGroupDMChannelId, decrypted, () => cancelled)
         })
         .catch((err) => {
           console.error('Failed to load messages:', err)
           if (!cancelled) setLoadError('Failed to load messages')
+          markReadAfterFetch('group-dm:read', activeGroupDMChannelId, null, () => cancelled)
         })
         .finally(() => {
           if (!cancelled) setLoading(false)
@@ -229,16 +241,6 @@ export function useChannelMessages({
       }))
 
       socketRef.current?.emit('channel:join', activeGroupDMChannelId)
-      socketRef.current?.emit(
-        'group-dm:read',
-        { channelId: activeGroupDMChannelId },
-        (res: { last_read_at?: number }) => {
-          if (cancelled) return
-          if (res?.last_read_at) {
-            useChatStore.getState().setChannelLastReadAt(activeGroupDMChannelId, res.last_read_at)
-          }
-        },
-      )
 
       return () => {
         cancelled = true
@@ -246,7 +248,7 @@ export function useChannelMessages({
         socketRef.current?.emit('typing:stop', { channelId: activeGroupDMChannelId })
       }
     }
-  }, [activeGroupDMChannelId, tryDecryptGroupDM, reloadNonce])
+  }, [activeGroupDMChannelId, tryDecryptGroupDM, reloadNonce, reconnectNonce])
 
   // Re-decrypt already-loaded group-DM messages when member keys arrive/change.
   useEffect(() => {
@@ -276,15 +278,17 @@ export function useChannelMessages({
       try {
         const { messages: olderMsgs, hasMore } =
           channelId === activeDMChannelId
-            ? await fetchDMMessages(session.url, channelId, 50, oldestId)
+            ? await fetchDMMessages(session.url, channelId, PAGE_SIZE, oldestId)
             : channelId === activeGroupDMChannelId
-              ? await fetchGroupDMMessages(session.url, channelId, 50, oldestId)
-              : await fetchMessages(session.url, channelId, 50, oldestId)
+              ? await fetchGroupDMMessages(session.url, channelId, PAGE_SIZE, oldestId)
+              : await fetchMessages(session.url, channelId, PAGE_SIZE, oldestId)
         if (olderMsgs.length === 0) {
           store.setHasMoreMessages(channelId, false)
           return
         }
-        const beforeLen = (store.messages[channelId] || []).length
+        // Read lengths through getState(): `store` is the snapshot from before
+        // the await, and its `messages` never reflects the prepend below.
+        const beforeLen = (useChatStore.getState().messages[channelId] || []).length
         const decrypted =
           channelId === activeDMChannelId
             ? olderMsgs.map((m) => tryDecryptDM(m))
@@ -292,8 +296,11 @@ export function useChannelMessages({
               ? olderMsgs.map((m) => tryDecryptGroupDM(m))
               : olderMsgs
         store.prependMessages(channelId, decrypted)
-        const afterLen = (store.messages[channelId] || []).length
-        store.setHasMoreMessages(channelId, hasMore && afterLen > beforeLen)
+        const afterLen = (useChatStore.getState().messages[channelId] || []).length
+        store.setHasMoreMessages(
+          channelId,
+          olderPageHasMore(olderMsgs.length, PAGE_SIZE, hasMore, afterLen - beforeLen),
+        )
       } catch (err) {
         console.error('Failed to load more messages:', err)
         store.setLoadMoreError(channelId, 'Failed to load older messages')

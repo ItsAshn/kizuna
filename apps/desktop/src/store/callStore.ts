@@ -12,12 +12,6 @@ export interface DMIncomingCall {
   calleeUsername: string
 }
 
-export interface GroupDMIncomingCall {
-  channelId: string
-  callerUserId: string
-  callerUsername: string
-}
-
 interface CallState {
   dmCallStatus: DMCallStatus
   dmCallChannelId: string | null
@@ -26,11 +20,6 @@ interface CallState {
   incomingCall: DMIncomingCall | null
   dmCallShouldCleanup: boolean
 
-  groupDMCallStatus: DMCallStatus
-  groupDMCallChannelId: string | null
-  groupDMIncomingCall: GroupDMIncomingCall | null
-  groupDMCallShouldCleanup: boolean
-
   screenSharePeerId: string | null
   screenShareUsername: string | null
   isScreenSharing: boolean
@@ -38,7 +27,6 @@ interface CallState {
   availableMonitors: MonitorInfo[]
 
   isCameraOn: boolean
-  cameraPeerIds: string[]
   localCameraVideoProducerId: string | null
 
   setDMCallStatus: (status: DMCallStatus) => void
@@ -48,12 +36,6 @@ interface CallState {
   setDMCallShouldCleanup: (should: boolean) => void
   clearDMCall: () => void
 
-  setGroupDMCallStatus: (status: DMCallStatus) => void
-  setGroupDMCallChannelId: (channelId: string | null) => void
-  setGroupDMIncomingCall: (call: GroupDMIncomingCall | null) => void
-  setGroupDMCallShouldCleanup: (should: boolean) => void
-  clearGroupDMCall: () => void
-
   setScreenSharePeer: (peerId: string | null, username: string | null) => void
   clearScreenSharePeer: () => void
   setIsScreenSharing: (active: boolean) => void
@@ -61,9 +43,6 @@ interface CallState {
   setAvailableMonitors: (monitors: MonitorInfo[]) => void
 
   setIsCameraOn: (on: boolean) => void
-  setCameraPeerIds: (ids: string[]) => void
-  addCameraPeerId: (id: string) => void
-  removeCameraPeerId: (id: string) => void
   setLocalCameraVideoProducerId: (producerId: string | null) => void
 }
 
@@ -75,11 +54,6 @@ export const useCallStore = create<CallState>()((set) => ({
   incomingCall: null,
   dmCallShouldCleanup: false,
 
-  groupDMCallStatus: 'idle',
-  groupDMCallChannelId: null,
-  groupDMIncomingCall: null,
-  groupDMCallShouldCleanup: false,
-
   screenSharePeerId: null,
   screenShareUsername: null,
   isScreenSharing: false,
@@ -87,7 +61,6 @@ export const useCallStore = create<CallState>()((set) => ({
   availableMonitors: [],
 
   isCameraOn: false,
-  cameraPeerIds: [],
   localCameraVideoProducerId: null,
 
   setDMCallStatus: (dmCallStatus) => set({ dmCallStatus }),
@@ -110,22 +83,6 @@ export const useCallStore = create<CallState>()((set) => ({
       dmCallShouldCleanup: false,
     }),
 
-  setGroupDMCallStatus: (groupDMCallStatus) => set({ groupDMCallStatus }),
-  setGroupDMCallChannelId: (groupDMCallChannelId) => set({ groupDMCallChannelId }),
-  setGroupDMIncomingCall: (groupDMIncomingCall) =>
-    set({
-      groupDMIncomingCall,
-      groupDMCallStatus: groupDMIncomingCall ? 'ringing-incoming' : 'idle',
-    }),
-  setGroupDMCallShouldCleanup: (groupDMCallShouldCleanup) => set({ groupDMCallShouldCleanup }),
-  clearGroupDMCall: () =>
-    set({
-      groupDMCallStatus: 'idle',
-      groupDMCallChannelId: null,
-      groupDMIncomingCall: null,
-      groupDMCallShouldCleanup: false,
-    }),
-
   setScreenSharePeer: (screenSharePeerId, screenShareUsername) =>
     set({ screenSharePeerId, screenShareUsername }),
   clearScreenSharePeer: () => set({ screenSharePeerId: null, screenShareUsername: null }),
@@ -135,17 +92,6 @@ export const useCallStore = create<CallState>()((set) => ({
   setAvailableMonitors: (availableMonitors) => set({ availableMonitors }),
 
   setIsCameraOn: (isCameraOn) => set({ isCameraOn }),
-  setCameraPeerIds: (cameraPeerIds) => set({ cameraPeerIds }),
-  addCameraPeerId: (peerId) =>
-    set((s) => ({
-      cameraPeerIds: s.cameraPeerIds.includes(peerId)
-        ? s.cameraPeerIds
-        : [...s.cameraPeerIds, peerId],
-    })),
-  removeCameraPeerId: (peerId) =>
-    set((s) => ({
-      cameraPeerIds: s.cameraPeerIds.filter((id) => id !== peerId),
-    })),
   setLocalCameraVideoProducerId: (localCameraVideoProducerId) =>
     set({ localCameraVideoProducerId }),
 }))

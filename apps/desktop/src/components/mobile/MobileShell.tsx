@@ -316,6 +316,7 @@ export default function MobileShell({
         </div>
 
         <VoiceOverlay
+          joinVoice={joinVoice}
           leaveVoice={leaveVoice}
           toggleMute={toggleMute}
           socketRef={socketRef}
@@ -343,7 +344,7 @@ export default function MobileShell({
           toggleCamera={toggleCamera}
           channelId={activeVoiceChannelId}
         />
-        {activeChannelId && <ThreadPanel channelId={activeChannelId} />}
+        {activeChannelId && <ThreadPanel channelId={activeChannelId} socketRef={socketRef} />}
         <NotificationContainer />
       </div>
     </>
