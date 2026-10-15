@@ -10,39 +10,26 @@
 //! samples: at 48kHz the frames arrive ~50x/sec, and shipping them over IPC as a
 //! JSON number array costs far more than the one float the meter draws.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
 use tauri::{AppHandle, Emitter};
 
 use super::encode;
 
 pub struct MicTestSession {
-    cancel: Arc<AtomicBool>,
-    /// Held so the capture stream stays alive for the session's lifetime;
-    /// dropping it stops the device. `None` when capture runs via a subprocess.
-    _stream: Option<cpal::Stream>,
+    /// Owns the microphone for the session's lifetime. Dropping it closes the
+    /// CPAL stream, or kills and reaps the parec subprocess.
+    _capture: encode::CaptureHandle,
 }
 
 impl MicTestSession {
     pub fn start(app: AppHandle, device_id: Option<String>, sample_rate: u32) -> Result<Self, String> {
-        let cancel = Arc::new(AtomicBool::new(false));
         let (pcm_tx, mut pcm_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<f32>>();
 
-        let stream = encode::start_native_audio_capture(
-            device_id,
-            sample_rate,
-            1,
-            pcm_tx,
-            Arc::clone(&cancel),
-        )?;
+        let capture = encode::start_native_audio_capture(device_id, sample_rate, pcm_tx)?;
 
-        let cancel_reader = Arc::clone(&cancel);
+        // Ends by itself once the capture is dropped: that drops the sender,
+        // and `recv` then returns `None`.
         tauri::async_runtime::spawn(async move {
             while let Some(frame) = pcm_rx.recv().await {
-                if cancel_reader.load(Ordering::Relaxed) {
-                    break;
-                }
                 if frame.is_empty() {
                     continue;
                 }
@@ -55,16 +42,12 @@ impl MicTestSession {
         });
 
         eprintln!("[MicTest] started");
-        Ok(Self {
-            cancel,
-            _stream: stream,
-        })
+        Ok(Self { _capture: capture })
     }
 }
 
 impl Drop for MicTestSession {
     fn drop(&mut self) {
-        self.cancel.store(true, Ordering::SeqCst);
         eprintln!("[MicTest] stopped");
     }
 }

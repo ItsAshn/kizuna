@@ -11,6 +11,7 @@ import type { types as mediasoupTypes } from 'mediasoup'
 import { getDb } from '../db'
 import { canViewChannel, getUserChannelPermission } from '../middleware/auth'
 import { isId, isRecord } from './validate'
+import { chooseSocketRtpFraming } from './socketRtpFraming'
 import { resolveAccessibleRoom } from './chat/helpers'
 
 type TransportWithDirection = mediasoupTypes.Transport & { _direction?: string }
@@ -954,15 +955,17 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
 
   socket.on('voice:enableSocketRtp', (opts?: unknown, cb?: unknown) => {
     // Older clients call this with no arguments at all.
-    const requested = isRecord(opts) ? opts.framing : undefined
     const ack = typeof opts === 'function' ? asAck(opts) : asAck(cb)
-    const framing = typeof requested === 'number' && requested >= 2 ? 2 : 1
+    const framing = chooseSocketRtpFraming(opts)
+
+    // The ack carries the framing this server chose, and is sent before the
+    // framing is recorded: forwarding (which reads it per packet) cannot start
+    // until this handler returns, so the ack is always the first thing the
+    // client hears and it never has to guess what the payloads look like.
+    // Repeat requests (a client retrying after a slow ack) get the same answer.
+    ack?.({ framing })
     vlog('socketRtp', `enabled | socketId=${socket.id} | framing=${framing}`)
     socketRtpFraming.set(socket.id, framing)
-
-    // The ack is how a new client learns this server understands framing 2.
-    // An old server never calls back, and the client falls back to framing 1.
-    ack?.({ framing })
 
     const peer = peers.get(socket.id)
     if (peer) {
