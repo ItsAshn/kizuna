@@ -4,17 +4,60 @@ import { promisify } from 'node:util'
 const resolve4 = promisify(dns.resolve4)
 let ipWatcherInterval: ReturnType<typeof setInterval> | null = null
 
+type AddressMode = 'auto' | 'ddns' | 'static'
+
+// resolvePublicAddress overwrites process.env.PUBLIC_ADDRESS with the resolved
+// IP, so the operator's original setting has to be captured once, up front.
+// Deciding from the resolved value made the watcher think every auto-detect or
+// DDNS install was "static" (it saw an IP) and never re-check.
+let configuredAddress: string | null = null
+
+function getConfigured(): string {
+  if (configuredAddress === null) configuredAddress = (process.env.PUBLIC_ADDRESS || '').trim()
+  return configuredAddress
+}
+
+export function addressMode(configured: string): AddressMode {
+  if (!configured) return 'auto'
+  if (configured === 'localhost') return 'static'
+  // A hostname (DDNS) starts with a letter and isn't an IPv6 literal.
+  if (/^[a-zA-Z]/.test(configured) && !configured.includes(':')) return 'ddns'
+  return 'static'
+}
+
+const LOOPBACK_FALLBACK = '127.0.0.1'
+
 export async function resolvePublicAddress(): Promise<void> {
-  const configured = process.env.PUBLIC_ADDRESS
-  if (!configured || configured.trim() === '') {
-    // Auto-detect
+  const configured = getConfigured()
+  const mode = addressMode(configured)
+  const previous = process.env.PUBLIC_ADDRESS
+
+  if (mode === 'auto') {
     const detected = await detectPublicIp()
-    process.env.PUBLIC_ADDRESS = detected
+    if (detected) {
+      process.env.PUBLIC_ADDRESS = detected
+      return
+    }
+    // Keep the last good address on a transient failure; only fall back to
+    // loopback when there has never been one, and say so loudly, because
+    // voice will then only work for clients on this machine.
+    if (previous && previous !== LOOPBACK_FALLBACK) {
+      console.error(
+        `[!] Public IP auto-detection failed; keeping the last known address ${previous}.`,
+      )
+      return
+    }
+    console.error(
+      `[!] Public IP auto-detection failed (all lookup services unreachable). Falling back to ${LOOPBACK_FALLBACK}.`,
+    )
+    console.error(
+      '[!] Voice will only work for clients on this machine. Set PUBLIC_ADDRESS explicitly to fix this.',
+    )
+    process.env.PUBLIC_ADDRESS = LOOPBACK_FALLBACK
     return
   }
 
-  // Check if it's a hostname (DDNS)
-  if (/^[a-zA-Z]/.test(configured) && !/^\d+\.\d+/.test(configured)) {
+  if (mode === 'ddns') {
     try {
       const addresses = await resolve4(configured)
       if (addresses.length > 0) {
@@ -22,11 +65,22 @@ export async function resolvePublicAddress(): Promise<void> {
         return
       }
     } catch {
-      console.warn(`[i] Could not resolve DDNS hostname: ${configured}`)
+      // handled below
     }
+    if (previous && previous !== configured) {
+      console.error(
+        `[!] Could not resolve DDNS hostname ${configured}; keeping the last known address ${previous}.`,
+      )
+      return
+    }
+    console.error(
+      `[!] Could not resolve DDNS hostname ${configured}; announcing the hostname as-is.`,
+    )
+    process.env.PUBLIC_ADDRESS = configured
+    return
   }
 
-  // Already an IP — use as-is
+  // Static IP — use as-is
   process.env.PUBLIC_ADDRESS = configured
 
   if (configured === '127.0.0.1' || configured === '::1' || configured === 'localhost') {
@@ -42,23 +96,23 @@ export async function resolvePublicAddress(): Promise<void> {
 }
 
 export function startIpWatcher(): void {
-  const configured = process.env.PUBLIC_ADDRESS || ''
-  // Only watch for auto-detect and DDNS modes
-  if (!configured || configured.trim() === '' || /^[a-zA-Z]/.test(configured)) {
-    const interval = parseInt(process.env.IP_CHECK_INTERVAL || '300', 10) * 1000
-    ipWatcherInterval = setInterval(async () => {
-      try {
-        const oldAddress = process.env.PUBLIC_ADDRESS
-        await resolvePublicAddress()
-        const newAddress = process.env.PUBLIC_ADDRESS
-        if (oldAddress !== newAddress) {
-          console.log(`[i] Public address changed: ${oldAddress} → ${newAddress}`)
-        }
-      } catch {
-        // Ignore errors in watcher
+  // Only auto-detect and DDNS modes can change at runtime.
+  if (addressMode(getConfigured()) === 'static') return
+  if (ipWatcherInterval) return
+
+  const interval = parseInt(process.env.IP_CHECK_INTERVAL || '300', 10) * 1000
+  ipWatcherInterval = setInterval(async () => {
+    try {
+      const oldAddress = process.env.PUBLIC_ADDRESS
+      await resolvePublicAddress()
+      const newAddress = process.env.PUBLIC_ADDRESS
+      if (oldAddress !== newAddress) {
+        console.log(`[i] Public address changed: ${oldAddress} → ${newAddress}`)
       }
-    }, interval).unref()
-  }
+    } catch (err) {
+      console.error('[!] Public address check failed:', err instanceof Error ? err.message : err)
+    }
+  }, interval).unref()
 }
 
 export function stopIpWatcher(): void {
@@ -68,7 +122,7 @@ export function stopIpWatcher(): void {
   }
 }
 
-async function detectPublicIp(): Promise<string> {
+async function detectPublicIp(): Promise<string | null> {
   const services = ['https://api.ipify.org', 'https://icanhazip.com', 'https://ifconfig.me/ip']
 
   for (const url of services) {
@@ -86,5 +140,5 @@ async function detectPublicIp(): Promise<string> {
     }
   }
 
-  return '127.0.0.1'
+  return null
 }

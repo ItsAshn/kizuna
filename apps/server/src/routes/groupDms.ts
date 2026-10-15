@@ -10,6 +10,7 @@ import {
 } from '../middleware/auth'
 import { getAuth } from '../utils/auth'
 import { getIo } from '../utils/io'
+import { deleteGroupDmRows, unlinkAttachmentFiles } from '../services/messageDeletion'
 
 interface GroupDMChannelRow {
   id: string
@@ -267,20 +268,23 @@ groupDmRoutes.get('/:channelId/messages', authMiddleware, (c) => {
     public_key: string | null
   }[]
   if (before) {
+    // Keyset on (created_at, rowid): created_at has one-second resolution, so
+    // comparing it alone skipped every message sharing the anchor's second.
     const anchor = db
-      .prepare('SELECT created_at FROM group_dm_messages WHERE id = ?')
-      .get(before) as { created_at: number } | undefined
+      .prepare('SELECT created_at, rowid FROM group_dm_messages WHERE id = ? AND channel_id = ?')
+      .get(before, channelId) as { created_at: number; rowid: number } | undefined
     rows = anchor
       ? (db
           .prepare(
             `
           SELECT gdm.*, u.display_name, u.avatar, u.public_key FROM group_dm_messages gdm
           LEFT JOIN users u ON gdm.from_id = u.id
-          WHERE gdm.channel_id = ? AND gdm.created_at < ?
-          ORDER BY gdm.created_at DESC LIMIT ?
+          WHERE gdm.channel_id = ?
+            AND (gdm.created_at < ? OR (gdm.created_at = ? AND gdm.rowid < ?))
+          ORDER BY gdm.created_at DESC, gdm.rowid DESC LIMIT ?
         `,
           )
-          .all(channelId, anchor.created_at, limit) as {
+          .all(channelId, anchor.created_at, anchor.created_at, anchor.rowid, limit) as {
           id: string
           channel_id: string
           from_id: string
@@ -305,7 +309,7 @@ groupDmRoutes.get('/:channelId/messages', authMiddleware, (c) => {
       SELECT gdm.*, u.display_name, u.avatar, u.public_key FROM group_dm_messages gdm
       LEFT JOIN users u ON gdm.from_id = u.id
       WHERE gdm.channel_id = ?
-      ORDER BY gdm.created_at DESC LIMIT ?
+      ORDER BY gdm.created_at DESC, gdm.rowid DESC LIMIT ?
     `,
       )
       .all(channelId, limit) as {
@@ -612,14 +616,7 @@ groupDmRoutes.delete('/:channelId/members/:userId', authMiddleware, (c) => {
       .prepare('SELECT user_id FROM group_dm_members WHERE channel_id = ?')
       .all(channelId) as { user_id: string }[]
 
-    db.prepare('DELETE FROM group_dm_reads WHERE channel_id = ?').run(channelId)
-    db.prepare('DELETE FROM group_dm_voice_participants WHERE channel_id = ?').run(channelId)
-    db.prepare(
-      'DELETE FROM message_reactions WHERE message_id IN (SELECT id FROM group_dm_messages WHERE channel_id = ?)',
-    ).run(channelId)
-    db.prepare('DELETE FROM group_dm_messages WHERE channel_id = ?').run(channelId)
-    db.prepare('DELETE FROM group_dm_members WHERE channel_id = ?').run(channelId)
-    db.prepare('DELETE FROM group_dm_channels WHERE id = ?').run(channelId)
+    unlinkAttachmentFiles(deleteGroupDmRows(channelId))
 
     try {
       const io = getIo(c)

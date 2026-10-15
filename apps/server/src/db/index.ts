@@ -42,80 +42,6 @@ export function closeDb(): void {
   }
 }
 
-export function deleteUserAccount(userId: string, deleteData: boolean): void {
-  const db = getDb()
-
-  db.transaction(() => {
-    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId)
-    db.prepare('DELETE FROM message_reactions WHERE user_id = ?').run(userId)
-    db.prepare('DELETE FROM channel_reads WHERE user_id = ?').run(userId)
-    db.prepare('DELETE FROM channel_mutes WHERE user_id = ?').run(userId)
-
-    const dmChannelIds = (
-      db
-        .prepare('SELECT id FROM dm_channels WHERE user1_id = ? OR user2_id = ?')
-        .all(userId, userId) as { id: string }[]
-    ).map((r) => r.id)
-
-    for (const channelId of dmChannelIds) {
-      db.prepare('DELETE FROM dm_reads WHERE channel_id = ?').run(channelId)
-      if (deleteData) {
-        db.prepare('DELETE FROM direct_messages WHERE channel_id = ?').run(channelId)
-      }
-    }
-    if (deleteData) {
-      db.prepare('DELETE FROM dm_reads WHERE user_id = ?').run(userId)
-    }
-    db.prepare('DELETE FROM dm_channels WHERE user1_id = ? OR user2_id = ?').run(userId, userId)
-
-    if (deleteData) {
-      const groupDmChannelIds = (
-        db.prepare('SELECT channel_id FROM group_dm_members WHERE user_id = ?').all(userId) as {
-          channel_id: string
-        }[]
-      ).map((r) => r.channel_id)
-
-      for (const channelId of groupDmChannelIds) {
-        db.prepare('DELETE FROM group_dm_messages WHERE channel_id = ? AND from_id = ?').run(
-          channelId,
-          userId,
-        )
-      }
-      db.prepare('DELETE FROM group_dm_messages WHERE from_id = ?').run(userId)
-      db.prepare('DELETE FROM direct_messages WHERE from_id = ? OR to_id = ?').run(userId, userId)
-      db.prepare('DELETE FROM messages WHERE author_id = ?').run(userId)
-      db.prepare('DELETE FROM mentions WHERE author_id = ? OR mentioned_user_id = ?').run(
-        userId,
-        userId,
-      )
-      db.prepare('DELETE FROM message_edits WHERE edited_by = ?').run(userId)
-      db.prepare(
-        'DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE author_id = ?)',
-      ).run(userId)
-      db.prepare('DELETE FROM polls WHERE created_by = ?').run(userId)
-      db.prepare('DELETE FROM webhooks WHERE created_by = ?').run(userId)
-      db.prepare('DELETE FROM gifs WHERE uploaded_by = ?').run(userId)
-      db.prepare('DELETE FROM threads WHERE creator_id = ?').run(userId)
-      db.prepare('DELETE FROM pinned_messages WHERE pinned_by = ?').run(userId)
-      db.prepare('DELETE FROM invite_codes WHERE created_by = ?').run(userId)
-      db.prepare('DELETE FROM audit_logs WHERE actor_id = ? OR target_id = ?').run(userId, userId)
-      db.prepare('DELETE FROM bans WHERE user_id = ? OR banned_by = ?').run(userId, userId)
-    } else {
-      db.prepare('UPDATE group_dm_channels SET owner_id = NULL WHERE owner_id = ?').run(userId)
-    }
-
-    db.prepare('DELETE FROM group_dm_reads WHERE user_id = ?').run(userId)
-    db.prepare('DELETE FROM group_dm_members WHERE user_id = ?').run(userId)
-    db.prepare('DELETE FROM group_dm_voice_participants WHERE user_id = ?').run(userId)
-    db.prepare('DELETE FROM identity_links WHERE user_id = ?').run(userId)
-    db.prepare('DELETE FROM verification_tokens WHERE user_id = ?').run(userId)
-    db.prepare('DELETE FROM member_roles WHERE user_id = ?').run(userId)
-    db.prepare('DELETE FROM removed_members WHERE user_id = ?').run(userId)
-    db.prepare('DELETE FROM server_members WHERE user_id = ?').run(userId)
-    db.prepare('DELETE FROM users WHERE id = ?').run(userId)
-  })()
-}
-
 const EXPECTED_SCHEMA: Record<string, string[]> = {
   users: [
     'id',
@@ -489,7 +415,19 @@ function runMigrations(database: Database.Database): void {
   interface Migration {
     name: string
     sql: string
+    // Run with foreign_keys OFF (SQLite only allows toggling it outside a
+    // transaction). Needed for table rebuilds: with enforcement on, DROP TABLE
+    // performs an implicit DELETE that fires ON DELETE CASCADE in child tables.
+    // The listed tables are FK-checked before the migration commits.
+    foreignKeysOff?: { check: string[] }
+    // Recorded as applied without running when this returns true, for
+    // migrations a later one has superseded.
+    skip?: () => boolean
   }
+
+  // The FTS layout before fts_external_content is incompatible with the one
+  // after it; once the new tables exist the old FTS migrations must not run.
+  const hasExternalFts = () => tableExists(database, 'dm_messages_fts')
 
   const migrations: Migration[] = [
     {
@@ -771,7 +709,7 @@ function runMigrations(database: Database.Database): void {
     },
     {
       name: 'migrate_message_reactions',
-      sql: `INSERT INTO message_reactions_new (message_id, user_id, reaction_key, reaction_type, created_at)
+      sql: `INSERT OR IGNORE INTO message_reactions_new (message_id, user_id, reaction_key, reaction_type, created_at)
      SELECT message_id, user_id, reaction_key, reaction_type, created_at FROM message_reactions`,
     },
     { name: 'drop_message_reactions_v1', sql: `DROP TABLE IF EXISTS message_reactions` },
@@ -885,6 +823,7 @@ function runMigrations(database: Database.Database): void {
     {
       name: 'messages_fts',
       sql: `CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(content, content_rowid='rowid')`,
+      skip: hasExternalFts,
     },
     {
       name: 'pinned_messages_table',
@@ -1003,6 +942,7 @@ function runMigrations(database: Database.Database): void {
     },
     {
       name: 'messages_fts_rebuild',
+      skip: hasExternalFts,
       sql: `
       DROP TABLE IF EXISTS messages_fts;
       CREATE VIRTUAL TABLE messages_fts USING fts5(source, message_id, content);
@@ -1119,6 +1059,7 @@ function runMigrations(database: Database.Database): void {
     },
     {
       name: 'group_dm_fts',
+      skip: hasExternalFts,
       sql: `
       INSERT INTO messages_fts(source, message_id, content)
         SELECT 'group_dm', id, content FROM group_dm_messages WHERE content IS NOT NULL AND content != '';
@@ -1211,8 +1152,13 @@ function runMigrations(database: Database.Database): void {
     },
     {
       name: 'polls_remove_channel_fk',
+      // Idempotent: a polls_new left behind by an interrupted run is dropped
+      // first instead of colliding with the copy (which used to be swallowed as
+      // a UNIQUE error and recorded as applied with polls never rebuilt).
+      foreignKeysOff: { check: ['polls', 'poll_options', 'poll_votes'] },
       sql: `
-      CREATE TABLE IF NOT EXISTS polls_new (
+      DROP TABLE IF EXISTS polls_new;
+      CREATE TABLE polls_new (
         id TEXT PRIMARY KEY,
         channel_id TEXT NOT NULL,
         channel_type TEXT NOT NULL DEFAULT 'channel',
@@ -1305,29 +1251,160 @@ function runMigrations(database: Database.Database): void {
       name: 'verification_tokens_nonce',
       sql: `ALTER TABLE verification_tokens ADD COLUMN nonce TEXT`,
     },
+    {
+      // Lookups by message id (message deletion, pin checks) and poll tallies
+      // were full table scans.
+      name: 'idx_message_and_poll_lookups',
+      sql: `
+      CREATE INDEX IF NOT EXISTS idx_mentions_message ON mentions(message_id);
+      CREATE INDEX IF NOT EXISTS idx_pinned_messages_message ON pinned_messages(message_id);
+      CREATE INDEX IF NOT EXISTS idx_poll_options_poll ON poll_options(poll_id);
+      CREATE INDEX IF NOT EXISTS idx_poll_votes_option ON poll_votes(option_id);
+      CREATE INDEX IF NOT EXISTS idx_polls_channel ON polls(channel_id, channel_type);
+    `,
+    },
+    {
+      // Replaces the single regular FTS table (which stored a copy of every
+      // message and was keyed by an unindexed message_id column, so every
+      // update or delete trigger scanned the whole index) with one
+      // external-content table per message table. The index now reads text from
+      // the message table itself and is maintained by rowid, the standard FTS5
+      // pattern.
+      //
+      // Caveat: these tables have no INTEGER PRIMARY KEY, so a manual VACUUM may
+      // renumber rowids. After one, run
+      //   INSERT INTO <name>_fts(<name>_fts) VALUES('rebuild')
+      // for messages_fts, dm_messages_fts and group_dm_messages_fts.
+      name: 'fts_external_content',
+      sql: `
+      DROP TRIGGER IF EXISTS messages_fts_insert;
+      DROP TRIGGER IF EXISTS messages_fts_update;
+      DROP TRIGGER IF EXISTS messages_fts_delete;
+      DROP TRIGGER IF EXISTS dm_fts_insert;
+      DROP TRIGGER IF EXISTS dm_fts_update;
+      DROP TRIGGER IF EXISTS dm_fts_delete;
+      DROP TRIGGER IF EXISTS group_dm_fts_insert;
+      DROP TRIGGER IF EXISTS group_dm_fts_update;
+      DROP TRIGGER IF EXISTS group_dm_fts_delete;
+      DROP TRIGGER IF EXISTS messages_fts_ai;
+      DROP TRIGGER IF EXISTS messages_fts_ad;
+      DROP TRIGGER IF EXISTS messages_fts_au;
+      DROP TRIGGER IF EXISTS dm_messages_fts_ai;
+      DROP TRIGGER IF EXISTS dm_messages_fts_ad;
+      DROP TRIGGER IF EXISTS dm_messages_fts_au;
+      DROP TRIGGER IF EXISTS group_dm_messages_fts_ai;
+      DROP TRIGGER IF EXISTS group_dm_messages_fts_ad;
+      DROP TRIGGER IF EXISTS group_dm_messages_fts_au;
+      DROP TABLE IF EXISTS messages_fts;
+      DROP TABLE IF EXISTS dm_messages_fts;
+      DROP TABLE IF EXISTS group_dm_messages_fts;
+
+      CREATE VIRTUAL TABLE messages_fts USING fts5(
+        content, content='messages', content_rowid='rowid'
+      );
+      CREATE VIRTUAL TABLE dm_messages_fts USING fts5(
+        content, content='direct_messages', content_rowid='rowid'
+      );
+      CREATE VIRTUAL TABLE group_dm_messages_fts USING fts5(
+        content, content='group_dm_messages', content_rowid='rowid'
+      );
+      INSERT INTO messages_fts(messages_fts) VALUES ('rebuild');
+      INSERT INTO dm_messages_fts(dm_messages_fts) VALUES ('rebuild');
+      INSERT INTO group_dm_messages_fts(group_dm_messages_fts) VALUES ('rebuild');
+
+      CREATE TRIGGER messages_fts_ai AFTER INSERT ON messages BEGIN
+        INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+      END;
+      CREATE TRIGGER messages_fts_ad AFTER DELETE ON messages BEGIN
+        INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+      END;
+      CREATE TRIGGER messages_fts_au AFTER UPDATE OF content ON messages BEGIN
+        INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+        INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+      END;
+
+      CREATE TRIGGER dm_messages_fts_ai AFTER INSERT ON direct_messages BEGIN
+        INSERT INTO dm_messages_fts(rowid, content) VALUES (new.rowid, new.content);
+      END;
+      CREATE TRIGGER dm_messages_fts_ad AFTER DELETE ON direct_messages BEGIN
+        INSERT INTO dm_messages_fts(dm_messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+      END;
+      CREATE TRIGGER dm_messages_fts_au AFTER UPDATE OF content ON direct_messages BEGIN
+        INSERT INTO dm_messages_fts(dm_messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+        INSERT INTO dm_messages_fts(rowid, content) VALUES (new.rowid, new.content);
+      END;
+
+      CREATE TRIGGER group_dm_messages_fts_ai AFTER INSERT ON group_dm_messages BEGIN
+        INSERT INTO group_dm_messages_fts(rowid, content) VALUES (new.rowid, new.content);
+      END;
+      CREATE TRIGGER group_dm_messages_fts_ad AFTER DELETE ON group_dm_messages BEGIN
+        INSERT INTO group_dm_messages_fts(group_dm_messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+      END;
+      CREATE TRIGGER group_dm_messages_fts_au AFTER UPDATE OF content ON group_dm_messages BEGIN
+        INSERT INTO group_dm_messages_fts(group_dm_messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+        INSERT INTO group_dm_messages_fts(rowid, content) VALUES (new.rowid, new.content);
+      END;
+    `,
+    },
   ]
 
   const insertStmt = database.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)')
 
-  for (const { name, sql } of migrations) {
+  for (const migration of migrations) {
+    const { name, sql } = migration
     if (applied.has(name)) continue
-    try {
+
+    if (migration.skip?.()) {
+      insertStmt.run(name)
+      applied.add(name)
+      continue
+    }
+
+    // Each migration and its _migrations record commit together, so a crash
+    // mid-migration leaves nothing half-applied and it simply runs again.
+    const apply = database.transaction(() => {
       database.exec(sql)
+      if (migration.foreignKeysOff) {
+        for (const table of migration.foreignKeysOff.check) {
+          const violations = database.pragma(`foreign_key_check("${table}")`) as unknown[]
+          if (violations.length > 0) {
+            throw new Error(`foreign key violations in ${table} after migration`)
+          }
+        }
+      }
+      insertStmt.run(name)
+    })
+
+    try {
+      if (migration.foreignKeysOff) {
+        database.pragma('foreign_keys = OFF')
+        try {
+          apply()
+        } finally {
+          database.pragma('foreign_keys = ON')
+        }
+      } else {
+        apply()
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : ''
-      if (
-        msg.includes('duplicate column') ||
-        msg.includes('already exists') ||
-        msg.includes('UNIQUE constraint failed')
-      ) {
+      const msg = err instanceof Error ? err.message : String(err)
+      // schema.ts creates current tables with every column, and older installs
+      // may have gained a column outside migration tracking, so an ADD COLUMN
+      // finding its column already there means the migration's goal is met.
+      // That is the only failure tolerated; anything else stops startup.
+      if (isSingleAddColumn(sql) && msg.includes('duplicate column name')) {
         insertStmt.run(name)
         applied.add(name)
         continue
       }
-      console.error(`[DB] Migration "${name}" failed:`, msg.slice(0, 200))
+      console.error(`[DB] Migration "${name}" failed:`, msg.slice(0, 500))
       throw err
     }
-    insertStmt.run(name)
     applied.add(name)
   }
+}
+
+function isSingleAddColumn(sql: string): boolean {
+  const stmt = sql.trim().replace(/;\s*$/, '')
+  return !stmt.includes(';') && /^ALTER\s+TABLE\s+\S+\s+ADD\s+COLUMN\s/i.test(stmt)
 }

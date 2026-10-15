@@ -63,6 +63,9 @@ export function emitToChannel(
   event: string,
   data: unknown,
   actorUserId: string,
+  // Extra rooms that should get the event too (e.g. a thread's room). Socket.IO
+  // de-duplicates across the room union, so a socket in both gets it once.
+  extraRooms: string[] = [],
 ): void {
   try {
     const io = getIo(c)
@@ -70,7 +73,7 @@ export function emitToChannel(
       console.warn(`[emitToChannel] Socket.IO instance not available for event: ${event}`)
       return
     }
-    io.to(channelId).emit(event, data)
+    io.to([channelId, ...extraRooms]).emit(event, data)
     for (const uid of getEligibleNotifyUserIds(channelId, actorUserId)) {
       io.to(`user:${uid}`).emit(event, data)
     }
