@@ -28,8 +28,12 @@ pub struct ScreenFramePayload {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PixelFormat {
+    /// 4 bytes per pixel; the 4th byte is ignored.
     Bgra,
+    /// 4 bytes per pixel; the 4th byte is ignored.
     Rgba,
+    /// 3 bytes per pixel (webcams).
+    Rgb,
 }
 
 impl PixelFormat {
@@ -40,6 +44,14 @@ impl PixelFormat {
         match self {
             PixelFormat::Bgra => "BGRx",
             PixelFormat::Rgba => "RGBx",
+            PixelFormat::Rgb => "RGB",
+        }
+    }
+
+    pub fn bytes_per_pixel(self) -> usize {
+        match self {
+            PixelFormat::Bgra | PixelFormat::Rgba => 4,
+            PixelFormat::Rgb => 3,
         }
     }
 }
@@ -56,31 +68,59 @@ pub struct RawFrame {
 /// instead of JPEG-encoding them for the webview. The channel is bounded so a
 /// slow encoder drops frames rather than growing an unbounded backlog of
 /// multi-megabyte buffers.
-static VIDEO_SINK: Mutex<Option<SyncSender<RawFrame>>> = Mutex::new(None);
+static VIDEO_SINKS: Mutex<[Option<SyncSender<RawFrame>>; 2]> = Mutex::new([None, None]);
 
-pub fn set_video_sink(sink: SyncSender<RawFrame>) {
-    if let Ok(mut guard) = VIDEO_SINK.lock() {
-        *guard = Some(sink);
+/// Which outgoing video a frame belongs to. Each has its own native encoder
+/// and its own RTP stream on the send transport.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum VideoSource {
+    Screen,
+    Camera,
+}
+
+impl VideoSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            VideoSource::Screen => "screen",
+            VideoSource::Camera => "camera",
+        }
+    }
+
+    fn slot(self) -> usize {
+        match self {
+            VideoSource::Screen => 0,
+            VideoSource::Camera => 1,
+        }
     }
 }
 
-pub fn clear_video_sink() {
-    if let Ok(mut guard) = VIDEO_SINK.lock() {
-        *guard = None;
+pub fn set_video_sink(source: VideoSource, sink: SyncSender<RawFrame>) {
+    if let Ok(mut guard) = VIDEO_SINKS.lock() {
+        guard[source.slot()] = Some(sink);
     }
 }
 
-pub fn video_sink_active() -> bool {
-    VIDEO_SINK.lock().map(|g| g.is_some()).unwrap_or(false)
+pub fn clear_video_sink(source: VideoSource) {
+    if let Ok(mut guard) = VIDEO_SINKS.lock() {
+        guard[source.slot()] = None;
+    }
 }
 
-/// Hands a frame to the native encoder. Returns false when no encoder is
-/// attached, which tells the caller to fall back to the webview JPEG path.
-pub fn publish_raw_frame(frame: RawFrame) -> bool {
-    let Ok(guard) = VIDEO_SINK.lock() else {
+pub fn video_sink_active_for(source: VideoSource) -> bool {
+    VIDEO_SINKS
+        .lock()
+        .map(|g| g[source.slot()].is_some())
+        .unwrap_or(false)
+}
+
+/// Hands a frame to the native encoder for `source`. Returns false when no
+/// encoder is attached, which tells the caller to fall back to the webview
+/// JPEG path.
+pub fn publish_raw_frame_for(source: VideoSource, frame: RawFrame) -> bool {
+    let Ok(guard) = VIDEO_SINKS.lock() else {
         return false;
     };
-    let Some(sink) = guard.as_ref() else {
+    let Some(sink) = guard[source.slot()].as_ref() else {
         return false;
     };
     match sink.try_send(frame) {
@@ -90,6 +130,16 @@ pub fn publish_raw_frame(frame: RawFrame) -> bool {
         Err(TrySendError::Full(_)) => true,
         Err(TrySendError::Disconnected(_)) => false,
     }
+}
+
+/// Whether screen frames go to the native encoder (screen capture backends).
+pub fn video_sink_active() -> bool {
+    video_sink_active_for(VideoSource::Screen)
+}
+
+/// Hands a screen frame to the native encoder (screen capture backends).
+pub fn publish_raw_frame(frame: RawFrame) -> bool {
+    publish_raw_frame_for(VideoSource::Screen, frame)
 }
 
 #[derive(Clone, Serialize)]

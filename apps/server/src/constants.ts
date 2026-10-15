@@ -61,3 +61,21 @@ export const ALLOWED_UPLOAD_EXTENSIONS = [
   '.tar',
   '.gz',
 ]
+
+/**
+ * Voice transports a peer may hold at once. The native Windows/macOS client is
+ * the largest legitimate user: audio send, audio DirectTransport, webview video
+ * send and webview video recv. Each (direction, purpose) pair is limited to one.
+ */
+export const MAX_TRANSPORTS_PER_PEER = 4
+
+/**
+ * Incoming bitrate caps for send transports that carry video, in bits/s.
+ * Audio-only transports are capped at the server's voice bitrate instead.
+ * Screenshare tops out around 4 Mbps and camera around 600 kbps, so these
+ * leave headroom for both on one transport plus retransmissions.
+ */
+export const MAX_INCOMING_BITRATE_BPS = {
+  av: 6_000_000,
+  video: 6_000_000,
+} as const
