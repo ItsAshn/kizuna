@@ -8,6 +8,7 @@ import { MessageCircle, Clock, Calendar } from 'lucide-react'
 import { ActivityIcon, activityVerb } from '../utils/activity'
 import { hexToRgba } from '../utils/color'
 import { Avatar } from './ui'
+import { useOverlay } from '../lib/overlayStack'
 import type { Member } from '@kizuna/shared'
 import './UserProfileCard.css'
 
@@ -75,21 +76,16 @@ export default function UserProfileCard({
     setPos({ top, left })
   }, [anchorEl])
 
+  useOverlay(true, onClose)
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         onClose()
       }
     }
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
     document.addEventListener('mousedown', handleClick, true)
-    window.addEventListener('keydown', handleKey)
-    return () => {
-      document.removeEventListener('mousedown', handleClick, true)
-      window.removeEventListener('keydown', handleKey)
-    }
+    return () => document.removeEventListener('mousedown', handleClick, true)
   }, [onClose])
 
   const handleStartDM = async () => {

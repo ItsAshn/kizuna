@@ -1,34 +1,14 @@
-.incoming-call-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--modal-backdrop);
-  animation: incomingCallFadeIn 0.2s ease-out;
+.incoming-call-modal {
+  width: var(--modal-w-xs);
 }
 
-@keyframes incomingCallFadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
+/* The card is the modal body now; ui/Modal draws the surface around it. */
 .incoming-call-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: var(--space-6) var(--space-5);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-3);
-  min-width: 280px;
-  box-shadow: 0 16px 48px color-mix(in srgb, var(--shadow) 40%, transparent);
+  padding: var(--space-4) var(--space-5) var(--space-6);
 }
 
 .incoming-call-avatar {
@@ -95,7 +75,7 @@
 
 .incoming-call-btn--accept {
   background: var(--green);
-  color: var(--text-primary);
+  color: var(--on-success);
 }
 
 .incoming-call-btn--accept:hover {
@@ -104,7 +84,7 @@
 
 .incoming-call-btn--reject {
   background: var(--red);
-  color: var(--text-primary);
+  color: var(--on-danger);
 }
 
 .incoming-call-btn--reject:hover {
@@ -112,13 +92,6 @@
 }
 
 @media (max-width: 767px) {
-  .incoming-call-card {
-    width: min(360px, calc(100vw - 32px));
-    min-width: 0;
-    padding: 28px var(--space-6);
-    padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
-  }
-
   .incoming-call-actions {
     gap: 48px;
     margin-top: var(--space-1);

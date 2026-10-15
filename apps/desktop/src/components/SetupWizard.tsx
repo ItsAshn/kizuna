@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { isTauri } from '../utils/platform'
+import { useOverlay } from '../lib/overlayStack'
 import './SetupWizard.css'
 
 interface EnvIssue {
@@ -49,13 +50,7 @@ export default function SetupWizard({ onClose }: { onClose: () => void }) {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [onClose])
+  useOverlay(true, onClose)
 
   const handleCopy = async (cmd: string) => {
     try {

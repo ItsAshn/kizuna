@@ -512,6 +512,16 @@
   opacity: 0.9;
 }
 
+/* Finger-sized hit areas (44px) on touch screens; the 28px desktop size is
+   too small to hit reliably while a recording is running. */
+@media (pointer: coarse), (max-width: 767px) {
+  .chat-area__recording-cancel,
+  .chat-area__recording-send {
+    width: 44px;
+    height: 44px;
+  }
+}
+
 /* ── Mention autocomplete ──────────────────────────────────── */
 
 .chat-area__mention-suggestions {
@@ -805,6 +815,14 @@
 
 .chat-area__upload-cancel:hover {
   color: var(--red);
+}
+
+@media (pointer: coarse), (max-width: 767px) {
+  .chat-area__upload-cancel {
+    min-height: 44px;
+    min-width: 44px;
+    padding: var(--space-2) var(--space-3);
+  }
 }
 
 .chat-area__upload-progress {

@@ -88,6 +88,10 @@
   --error-faded: #fca5a5;
   --error-bg: color-mix(in srgb, var(--error) 12%, transparent);
   --success-bg: color-mix(in srgb, var(--success) 12%, transparent);
+  /* Flash behind a message the user jumped to (search, pins, replies). */
+  --bg-highlight: color-mix(in srgb, var(--brand) 12%, transparent);
+  /* The server-host badge in member lists — gold, distinct from roles. */
+  --badge-host: var(--yellow);
 
   /* ── "On" colours ───────────────────────────────────────────
      What text and icons turn when they sit on a filled surface rather than

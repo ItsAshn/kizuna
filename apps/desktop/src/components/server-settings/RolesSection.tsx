@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { fetchRoles, createRole, updateRole, deleteRole, reorderRoles } from '@kizuna/shared'
 import type { CustomRole, Permission } from '@kizuna/shared'
 import { useChatStore } from '../../store/chatStore'
+import { showErrorToast } from '../../utils/showNotification'
 import { handleApiErr, useMountedRef } from './common'
 import './RolesSection.css'
 
@@ -213,6 +214,7 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
                 key={p.key}
                 onClick={() => setNewRolePerms((prev) => ({ ...prev, [p.key]: !prev[p.key] }))}
                 className={`server-menu__perm-toggle ${newRolePerms[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
+                aria-pressed={!!newRolePerms[p.key]}
                 title={p.desc}
               >
                 {p.label}
@@ -294,6 +296,7 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
                         key={p.key}
                         onClick={() => setEditPerms((prev) => ({ ...prev, [p.key]: !prev[p.key] }))}
                         className={`server-menu__perm-toggle ${editPerms[p.key] ? 'server-menu__perm-toggle--on' : ''}`}
+                        aria-pressed={!!editPerms[p.key]}
                         title={p.desc}
                       >
                         {p.label}
@@ -385,6 +388,7 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
                                   setRoles(newRoles)
                                 } catch (err) {
                                   console.error('Failed to reorder role up:', err)
+                                  showErrorToast('move the role')
                                 }
                               }
                               setReorderingRoles(false)
@@ -392,6 +396,7 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
                             disabled={idx === 0 || reorderingRoles}
                             className="server-menu__role-action-btn"
                             title="Move up"
+                            aria-label={`Move ${role.name} up`}
                           >
                             &#9650;
                           </button>
@@ -416,6 +421,7 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
                                   setRoles(newRoles)
                                 } catch (err) {
                                   console.error('Failed to reorder role down:', err)
+                                  showErrorToast('move the role')
                                 }
                               }
                               setReorderingRoles(false)
@@ -423,6 +429,7 @@ export function RolesSection({ serverUrl }: { serverUrl: string | undefined }) {
                             disabled={idx === roles.length - 1 || reorderingRoles}
                             className="server-menu__role-action-btn"
                             title="Move down"
+                            aria-label={`Move ${role.name} down`}
                           >
                             &#9660;
                           </button>

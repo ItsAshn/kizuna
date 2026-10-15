@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Phone, PhoneOff } from 'lucide-react'
 import type { DMIncomingCall } from '../store/callStore'
+import Modal from './ui/Modal'
 import './IncomingCallModal.css'
 
 interface IncomingCallModalProps {
@@ -64,37 +65,38 @@ export default function IncomingCallModal({
     }
   }, [])
 
-  const handleAccept = () => {
-    onAccept()
-  }
+  const caller = incomingCall.callerUsername
 
-  const handleReject = () => {
-    onReject()
-  }
-
+  // ui/Modal supplies the dialog role, focus handling and the overlay stack;
+  // dismissing it (Escape, backdrop, Android back) declines the call, the
+  // same as hanging up a ringing phone.
   return (
-    <div className="incoming-call-overlay">
+    <Modal open onClose={onReject} title="// incoming call" className="incoming-call-modal">
       <div className="incoming-call-card">
-        <div className="incoming-call-avatar">{incomingCall.callerUsername[0]?.toUpperCase()}</div>
-        <h2 className="incoming-call-title">{incomingCall.callerUsername}</h2>
+        <div className="incoming-call-avatar" aria-hidden="true">
+          {caller[0]?.toUpperCase()}
+        </div>
+        <h2 className="incoming-call-title">{caller}</h2>
         <p className="incoming-call-subtitle">Incoming Call</p>
         <div className="incoming-call-actions">
           <button
-            onClick={handleAccept}
+            onClick={onAccept}
             className="incoming-call-btn incoming-call-btn--accept"
             title="Accept call"
+            aria-label={`Accept call from ${caller}`}
           >
             <Phone className="icon-md" />
           </button>
           <button
-            onClick={handleReject}
+            onClick={onReject}
             className="incoming-call-btn incoming-call-btn--reject"
             title="Decline call"
+            aria-label={`Decline call from ${caller}`}
           >
             <PhoneOff className="icon-md" />
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }

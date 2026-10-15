@@ -1,5 +1,6 @@
-import { useEffect, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import BottomSheet from './BottomSheet'
+import { useOverlay } from '../../lib/overlayStack'
 
 /**
  * Shared shell for picker popups: a floating panel with outside-click and
@@ -18,15 +19,9 @@ export default function PickerSurface({
   onClose: () => void
   children: ReactNode
 }) {
-  useEffect(() => {
-    // The mobile BottomSheet handles Escape itself (with exit animation).
-    if (isMobile) return
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [onClose, isMobile])
+  // The mobile BottomSheet registers itself (and animates out); the desktop
+  // popover registers here so Escape/back close only the topmost overlay.
+  useOverlay(!isMobile, onClose)
 
   if (isMobile) {
     return (

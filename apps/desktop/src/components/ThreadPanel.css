@@ -50,46 +50,6 @@
   text-overflow: ellipsis;
 }
 
-.thread-panel__back {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 0;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-}
-
-.thread-panel__back:hover {
-  color: var(--text-primary);
-  background: var(--bg-tertiary);
-}
-
-.thread-panel__close {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-family: var(--font-mono);
-  border: none;
-  background: none;
-  cursor: pointer;
-  padding: var(--space-1);
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: color 0.15s ease;
-}
-
-.thread-panel__close:hover {
-  color: var(--text-primary);
-}
-
 /* ── Metadata bar ──────────────────────── */
 
 .thread-panel__meta {
@@ -365,19 +325,6 @@
 
   .thread-panel__header-title {
     font-size: 15px;
-  }
-
-  .thread-panel__back {
-    width: 44px;
-    height: 44px;
-  }
-
-  .thread-panel__close {
-    min-width: 44px;
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   .thread-panel__meta {
