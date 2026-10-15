@@ -123,20 +123,18 @@ const envSchema = z.object({
     .positive()
     .default(60)
     .describe('Max events queued per outgoing webhook per minute; excess is dropped'),
-  ALLOW_PRIVATE_WEBHOOK_TARGETS: envBool(false)
-    .describe(
-      'Allow outgoing webhooks to target private, loopback, and link-local addresses. ' +
-        'Off by default so a webhook cannot be pointed at services on the host network. ' +
-        'Set to "true" if you are bridging to something on your LAN (e.g. Home Assistant).',
-    ),
-  AUTO_TAGGING_ENABLED: envBool(false)
-    .describe(
-      'Enable AI-powered auto-tagging for uploaded GIFs. When enabled, a CLIP ViT-B/32 vision model ' +
-        'is loaded on first use (~600MB disk download, cached). The model consumes ~1.2-1.5GB of ' +
-        'additional RAM while loaded and stays in memory after first inference. Tags are generated ' +
-        'as suggestions only — an admin must confirm them before they go live. ' +
-        'Set to "true" to enable, default is "false" (no model loaded, zero overhead).',
-    ),
+  ALLOW_PRIVATE_WEBHOOK_TARGETS: envBool(false).describe(
+    'Allow outgoing webhooks to target private, loopback, and link-local addresses. ' +
+      'Off by default so a webhook cannot be pointed at services on the host network. ' +
+      'Set to "true" if you are bridging to something on your LAN (e.g. Home Assistant).',
+  ),
+  AUTO_TAGGING_ENABLED: envBool(false).describe(
+    'Enable AI-powered auto-tagging for uploaded GIFs. When enabled, a CLIP ViT-B/32 vision model ' +
+      'is loaded on first use (~600MB disk download, cached). The model consumes ~1.2-1.5GB of ' +
+      'additional RAM while loaded and stays in memory after first inference. Tags are generated ' +
+      'as suggestions only — an admin must confirm them before they go live. ' +
+      'Set to "true" to enable, default is "false" (no model loaded, zero overhead).',
+  ),
 })
 
 export type EnvConfig = z.infer<typeof envSchema>

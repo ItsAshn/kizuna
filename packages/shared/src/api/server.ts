@@ -104,7 +104,7 @@ export async function joinWithInvite(
   code: string,
 ): Promise<{ ok: boolean; alreadyMember: boolean }> {
   const res = await axios.post(
-    `${normalizeUrl(serverUrl)}/api/server/join/${code.toUpperCase()}`,
+    `${normalizeUrl(serverUrl)}/api/server/join/${encodeURIComponent(code.trim())}`,
     {},
     { withCredentials: true },
   )

@@ -1,6 +1,21 @@
 import { Hono } from 'hono'
 import { getDb } from '../db'
 import { authMiddleware } from '../middleware/auth'
+import { safeFetch } from '../utils/safeFetch'
+
+/** Unfurls per request — each one is an outbound fetch, so keep it small. */
+const MAX_URLS = 5
+const MAX_HTML_BYTES = 512 * 1024
+
+function isHttpUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 2048) return false
+  try {
+    const { protocol } = new URL(value)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}
 
 const embedRoutes = new Hono()
 
@@ -13,7 +28,8 @@ embedRoutes.post('/unfurl', authMiddleware, async (c) => {
     return c.json({ error: 'Invalid body' }, 400)
   }
 
-  const urls: string[] = body?.urls || []
+  const rawUrls: unknown[] = Array.isArray(body?.urls) ? body.urls : []
+  const urls = [...new Set(rawUrls.filter(isHttpUrl))].slice(0, MAX_URLS)
   if (!urls.length) return c.json({ embeds: [] })
 
   const results: Record<
@@ -53,11 +69,12 @@ embedRoutes.post('/unfurl', authMiddleware, async (c) => {
     const ytMatch = url.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
     if (ytMatch) {
       try {
-        const oembedRes = await fetch(
+        const oembedRes = await safeFetch(
           `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${ytMatch[1]}`)}&format=json`,
+          { timeoutMs: 5000, maxBytes: 64 * 1024 },
         )
         if (oembedRes.ok) {
-          const oembed = (await oembedRes.json()) as { title?: string; thumbnail_url?: string }
+          const oembed = oembedRes.json() as { title?: string; thumbnail_url?: string }
           const title = oembed.title || null
           const image = oembed.thumbnail_url || null
 
@@ -88,16 +105,18 @@ embedRoutes.post('/unfurl', authMiddleware, async (c) => {
     }
 
     try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 5000)
-      const res = await fetch(url, {
-        signal: controller.signal,
+      // safeFetch rejects private/loopback/metadata targets (re-checked on
+      // every redirect hop) and pins the connection to the vetted address.
+      // Truncating is fine: the meta tags live in <head>.
+      const res = await safeFetch(url, {
+        timeoutMs: 5000,
+        maxBytes: MAX_HTML_BYTES,
+        truncate: true,
         headers: { 'User-Agent': 'Kizuna/1.0 (Link Unfurler)' },
       })
-      clearTimeout(timeout)
 
       if (!res.ok) continue
-      const html = await res.text()
+      const html = res.text()
 
       const getMeta = (name: string) => {
         const propMatch = new RegExp(

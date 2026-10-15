@@ -115,3 +115,31 @@ export function resolveAccessibleRoom(
   if (gdm) return { kind: 'group-dm' }
   return null
 }
+
+type MessageInfo = NonNullable<ReturnType<typeof getMessageInfo>>
+
+// Whether the user may see (and therefore react to) a message resolved by
+// getMessageInfo: a server channel they can view, a DM they are a party to,
+// or a group DM they belong to.
+export function canAccessMessage(userId: string, info: MessageInfo): boolean {
+  if (info.isDM) {
+    return (
+      !!info.participants &&
+      (info.participants.user1_id === userId || info.participants.user2_id === userId)
+    )
+  }
+  if (info.isGroupDM) return !!info.groupMembers?.includes(userId)
+  return canViewChannel(userId, info.channel_id)
+}
+
+export function isDmParticipant(userId: string, dmChannelId: string): boolean {
+  return !!getDb()
+    .prepare('SELECT 1 FROM dm_channels WHERE id = ? AND (user1_id = ? OR user2_id = ?)')
+    .get(dmChannelId, userId, userId)
+}
+
+export function isGroupDmMember(userId: string, channelId: string): boolean {
+  return !!getDb()
+    .prepare('SELECT 1 FROM group_dm_members WHERE channel_id = ? AND user_id = ?')
+    .get(channelId, userId)
+}

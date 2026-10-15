@@ -10,6 +10,7 @@ import {
   canWriteToChannel,
   canViewChannel,
   isUserAdmin,
+  getUserChannelPermission,
 } from '../middleware/auth'
 import { checkSpam } from '../services/spamFilter'
 import { parseMentions, processMentions } from '../socket/chatHandler'
@@ -37,6 +38,18 @@ interface ReactionGroup {
 }
 
 const messageRoutes = new Hono()
+
+// Page size for history reads. SQLite treats a negative LIMIT as "no limit",
+// so anything outside 1..100 (or unparsable) must never reach the query.
+function parseLimit(raw: string | undefined, fallback = 50): number {
+  const n = parseInt(raw ?? '', 10)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(Math.max(n, 1), 100)
+}
+
+function channelExists(channelId: string): boolean {
+  return !!getDb().prepare('SELECT 1 FROM channels WHERE id = ?').get(channelId)
+}
 
 function mapMessage(row: Record<string, unknown>) {
   return {
@@ -117,7 +130,7 @@ function fetchReactionsForMessages(
 messageRoutes.get('/:channelId', authMiddleware, (c) => {
   const channelId = c.req.param('channelId')!
   const user = getAuth(c)
-  const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 100)
+  const limit = parseLimit(c.req.query('limit'))
   const before = c.req.query('before')
 
   if (!canViewChannel(user.userId, channelId)) {
@@ -166,12 +179,13 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
   const user = getAuth(c)
   const channelId = c.req.param('channelId')!
 
-  const userPerms = getUserPermissions(user.userId)
-  if (!userPerms || !hasPermission(userPerms, 'send_messages')) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
-  if (!canViewChannel(user.userId, channelId)) {
+  if (!channelExists(channelId) || !canViewChannel(user.userId, channelId)) {
     return c.json({ error: 'Channel not found' }, 404)
+  }
+  // Per-channel resolution so a role override that denies send_messages here
+  // is honoured, not just the server-wide base permission.
+  if (!getUserChannelPermission(user.userId, channelId, 'send_messages')) {
+    return c.json({ error: 'Forbidden' }, 403)
   }
   if (!canWriteToChannel(user.userId, channelId)) {
     return c.json({ error: 'This channel is locked' }, 403)

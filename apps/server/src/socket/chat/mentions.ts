@@ -1,7 +1,7 @@
 import type { Server } from 'socket.io'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../../db'
-import { getEligibleNotifyUserIds } from '../../middleware/auth'
+import { canViewChannel, getEligibleNotifyUserIds } from '../../middleware/auth'
 import { type MentionResult, type ProcessMentionsMessage } from './infra'
 
 export function parseMentions(content: string): MentionResult[] {
@@ -38,6 +38,18 @@ export function processMentions(
 ): void {
   if (!mentions.length) return
   const db = getDb()
+  // Mention rows and notifications carry the message content, so nobody who
+  // cannot view the channel may get one — whether they were named directly,
+  // via a role, or via @everyone/@here.
+  const viewCache = new Map<string, boolean>()
+  const canView = (uid: string): boolean => {
+    let ok = viewCache.get(uid)
+    if (ok === undefined) {
+      ok = canViewChannel(uid, message.channel_id)
+      viewCache.set(uid, ok)
+    }
+    return ok
+  }
 
   for (const mention of mentions) {
     const mentionId = uuidv4()
@@ -66,6 +78,9 @@ export function processMentions(
         mention.type,
       )
 
+      // Shared row; per-member read state lives in mention_reads. The
+      // recipient list is already restricted to members who can view the
+      // channel (and have not muted it).
       for (const uid of getEligibleNotifyUserIds(message.channel_id, base.author_id!)) {
         io.to(`user:${uid}`).emit('message:mention', {
           ...base,
@@ -84,6 +99,7 @@ export function processMentions(
           .all(role.id) as { user_id: string }[]
 
         for (const rm of roleMembers) {
+          if (!canView(rm.user_id)) continue
           const roleMentionId = uuidv4()
           db.prepare(
             `INSERT OR IGNORE INTO mentions
@@ -115,7 +131,7 @@ export function processMentions(
       const user = db
         .prepare('SELECT id, username FROM users WHERE username = ?')
         .get(mention.target!) as { id: string; username: string } | undefined
-      if (!user) continue
+      if (!user || !canView(user.id)) continue
 
       db.prepare(
         `INSERT OR IGNORE INTO mentions

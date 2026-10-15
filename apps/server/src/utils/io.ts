@@ -1,6 +1,6 @@
 import type { Context } from 'hono'
 import type { Server as IoServer } from 'socket.io'
-import { getEligibleNotifyUserIds } from '../middleware/auth'
+import { canViewChannel, getEligibleNotifyUserIds } from '../middleware/auth'
 
 export function getIo(c: Context): IoServer | undefined {
   return c.get('io' as never) as IoServer | undefined
@@ -76,5 +76,29 @@ export function emitToChannel(
     }
   } catch (err) {
     console.warn(`[emitToChannel] Failed to emit "${event}" to channel "${channelId}":`, err)
+  }
+}
+
+// Channel metadata (name, topic) of hidden channels must not reach members who
+// can't see them. Viewers get the event; everyone else is told the channel is
+// gone so a channel that just became hidden drops out of their sidebar.
+export function emitChannelMeta(c: Context, channelId: string, event: string, data: unknown): void {
+  try {
+    const io = getIo(c)
+    if (!io) return
+    const verdict = new Map<string, boolean>()
+    for (const socket of io.sockets.sockets.values()) {
+      const uid = socket.data?.userId as string | undefined
+      if (!uid) continue
+      let canView = verdict.get(uid)
+      if (canView === undefined) {
+        canView = canViewChannel(uid, channelId)
+        verdict.set(uid, canView)
+      }
+      if (canView) socket.emit(event, data)
+      else if (event === 'channel:updated') socket.emit('channel:deleted', { id: channelId })
+    }
+  } catch (err) {
+    console.warn(`[emitChannelMeta] Failed to emit "${event}":`, err)
   }
 }

@@ -28,7 +28,10 @@ export function getClientIp(c: Context): string {
   if (TRUST_PROXY) {
     const xff = c.req.header('x-forwarded-for')
     if (xff) {
-      const parts = xff.split(',').map((p) => p.trim()).filter(Boolean)
+      const parts = xff
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean)
       const last = parts[parts.length - 1]
       if (last) return last
     }

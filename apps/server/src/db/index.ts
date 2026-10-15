@@ -1285,6 +1285,26 @@ function runMigrations(database: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_owd_hook ON outgoing_webhook_deliveries(webhook_id, created_at);
     `,
     },
+    {
+      // @everyone/@here mentions are one shared row per message, so their
+      // `read` flag can't represent per-member state. Each member's read of a
+      // shared mention is recorded here instead; direct mentions keep `read`.
+      name: 'mention_reads_table',
+      sql: `
+      CREATE TABLE IF NOT EXISTS mention_reads (
+        mention_id TEXT NOT NULL REFERENCES mentions(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        PRIMARY KEY (mention_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_mention_reads_user ON mention_reads(user_id);
+    `,
+    },
+    {
+      // Identity-link verification binds a token to the requesting server's
+      // nonce so a relayed token can't be redeemed by someone else.
+      name: 'verification_tokens_nonce',
+      sql: `ALTER TABLE verification_tokens ADD COLUMN nonce TEXT`,
+    },
   ]
 
   const insertStmt = database.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)')

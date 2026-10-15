@@ -13,7 +13,9 @@ import {
   type OutgoingWebhookEventData,
 } from '@kizuna/shared/webhook-events'
 import { getDb } from '../db'
+import { canViewChannel } from '../middleware/auth'
 import { createLogger } from '../utils/logger'
+import { SafeFetchError, assertPublicUrl, safeFetch } from '../utils/safeFetch'
 
 const log = createLogger('outgoing-webhooks')
 
@@ -94,82 +96,35 @@ let timer: NodeJS.Timeout | null = null
 // Target validation (SSRF)
 // ---------------------------------------------------------------------------
 
-const BLOCKED_HOSTNAMES = new Set([
-  'localhost',
-  'localhost.localdomain',
-  'ip6-localhost',
-  'ip6-loopback',
-])
-
-/** Literal IPv4 in any of the private / loopback / link-local ranges. */
-function isPrivateIPv4(host: string): boolean {
-  const parts = host.split('.')
-  if (parts.length !== 4) return false
-  const nums = parts.map((p) => (/^\d{1,3}$/.test(p) ? Number(p) : NaN))
-  if (nums.some((n) => Number.isNaN(n) || n > 255)) return false
-  const [a, b] = nums as [number, number, number, number]
-  if (a === 10 || a === 127 || a === 0) return true
-  if (a === 172 && b >= 16 && b <= 31) return true
-  if (a === 192 && b === 168) return true
-  // 169.254/16 covers cloud metadata (169.254.169.254) as well as APIPA.
-  if (a === 169 && b === 254) return true
-  if (a === 100 && b >= 64 && b <= 127) return true // CGNAT
-  return false
-}
-
-function isPrivateIPv6(host: string): boolean {
-  const h = host.replace(/^\[|\]$/g, '').toLowerCase()
-  if (h === '::1' || h === '::') return true
-  if (h.startsWith('fe80:')) return true // link-local
-  if (/^f[cd][0-9a-f]{2}:/.test(h)) return true // unique-local fc00::/7
-  // IPv4-mapped (::ffff:127.0.0.1) inherits the v4 rules.
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(h)
-  if (mapped) return isPrivateIPv4(mapped[1]!)
-  return false
-}
-
 /**
  * Rejects targets that would let a webhook reach services on the host network,
  * plus this server's own incoming-webhook endpoint (which would loop forever).
  *
- * This is a literal-address and hostname check, not a DNS-rebinding-proof one:
- * a hostname that resolves to a private address at request time still gets
- * through. Resolving and pinning the address would be disproportionate here —
- * the URL is set by someone already holding manage_webhooks, and the goal is to
- * stop accidents and casual probing rather than a determined admin.
+ * This is the creation-time check: scheme, credentials, local hostnames and
+ * literal private addresses. The authoritative check happens at send time in
+ * `safeFetch`, which resolves the hostname, rejects it if any address is
+ * private, and pins the connection to the vetted address (DNS-rebinding safe).
  */
 export function isSafeWebhookTarget(rawUrl: string): { ok: true } | { ok: false; reason: string } {
   let url: URL
   try {
-    url = new URL(rawUrl)
-  } catch {
-    return { ok: false, reason: 'not a valid URL' }
-  }
-
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    return { ok: false, reason: 'url must be http or https' }
+    // Scheme and credentials are always enforced; addresses only when private
+    // targets are not explicitly allowed.
+    url = assertPublicUrl(rawUrl, { allowPrivate: config.allowPrivateTargets })
+  } catch (err) {
+    if (err instanceof SafeFetchError && err.code === 'BLOCKED_ADDRESS') {
+      return {
+        ok: false,
+        reason: `${err.message} — set ALLOW_PRIVATE_WEBHOOK_TARGETS=true to allow it`,
+      }
+    }
+    return { ok: false, reason: err instanceof Error ? err.message : 'not a valid URL' }
   }
 
   // A hook pointed at our own incoming endpoint would post a message, which
   // fires message.created, which posts another message, forever.
   if (url.pathname.includes('/api/webhooks/incoming/')) {
     return { ok: false, reason: 'cannot target an incoming webhook endpoint — that would loop' }
-  }
-
-  if (config.allowPrivateTargets) return { ok: true }
-
-  const host = url.hostname.toLowerCase()
-  if (BLOCKED_HOSTNAMES.has(host) || host.endsWith('.local') || host.endsWith('.internal')) {
-    return {
-      ok: false,
-      reason: `"${host}" is a local address — set ALLOW_PRIVATE_WEBHOOK_TARGETS=true to allow it`,
-    }
-  }
-  if (isPrivateIPv4(host) || isPrivateIPv6(host)) {
-    return {
-      ok: false,
-      reason: `"${host}" is a private address — set ALLOW_PRIVATE_WEBHOOK_TARGETS=true to allow it`,
-    }
   }
 
   return { ok: true }
@@ -264,6 +219,22 @@ export function dispatchOutgoing(
     if (rows.length === 0) return
 
     const channelId = opts?.channelId
+    // Channel events carry channel content (message text, names). Whoever
+    // created the hook must be able to see that channel — otherwise a
+    // server-wide hook created with only manage_webhooks would leak hidden
+    // channels. channel.* events pass the channel in `data` rather than opts.
+    const visibilityChannelId = channelId ?? data.channel?.id
+    const visibleTo = new Map<string, boolean>()
+    const creatorCanSee = (userId: string | null): boolean => {
+      if (!visibilityChannelId) return true
+      if (!userId) return false
+      let ok = visibleTo.get(userId)
+      if (ok === undefined) {
+        ok = canViewChannel(userId, visibilityChannelId)
+        visibleTo.set(userId, ok)
+      }
+      return ok
+    }
     const now = Date.now()
 
     // Call sites generally have only a channel id. Resolving the name costs a
@@ -292,6 +263,8 @@ export function dispatchOutgoing(
       }
 
       if (opts?.viaWebhook && webhook.skip_webhook_messages) continue
+
+      if (!creatorCanSee(webhook.created_by)) continue
 
       if (overRateLimit(webhook.id)) continue
 
@@ -354,7 +327,7 @@ async function sendOnce(
   const timestamp = Math.floor(Date.now() / 1000)
   const started = Date.now()
   try {
-    const res = await fetch(webhook.url, {
+    const res = await safeFetch(webhook.url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -365,10 +338,14 @@ async function sendOnce(
         'X-Kizuna-Signature': signBody(webhook.secret, timestamp, body),
       },
       body,
-      signal: AbortSignal.timeout(config.timeoutMs),
+      timeoutMs: config.timeoutMs,
+      // Resolves + checks every address and pins the connection, so a hostname
+      // that rebinds to a private address after creation is still refused.
+      allowPrivate: config.allowPrivateTargets,
+      // The response body is never used; read a little and drop the rest.
+      maxBytes: 16 * 1024,
+      truncate: true,
     })
-    // Drain the body so the socket can be reused rather than left half-read.
-    await res.text().catch(() => '')
     return {
       status: res.status,
       duration_ms: Date.now() - started,
@@ -376,14 +353,14 @@ async function sendOnce(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return {
-      status: null,
-      duration_ms: Date.now() - started,
-      error:
-        message.includes('timed out') || message.includes('aborted')
-          ? 'request timed out'
-          : message,
+    let error = message
+    if (err instanceof SafeFetchError) {
+      if (err.code === 'TIMEOUT') error = 'request timed out'
+      else if (err.code === 'BLOCKED_ADDRESS') {
+        error = `blocked target: ${message} — set ALLOW_PRIVATE_WEBHOOK_TARGETS=true to allow it`
+      }
     }
+    return { status: null, duration_ms: Date.now() - started, error }
   }
 }
 

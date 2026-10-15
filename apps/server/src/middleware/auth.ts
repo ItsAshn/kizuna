@@ -494,7 +494,10 @@ export type SessionCheck =
 // the per-device session row. Every entry point that accepts a token (REST,
 // the socket handshake, /refresh, /join) must go through this so a logout or
 // password reset actually ends access everywhere.
-export function verifySession(token: string, opts: { ignoreExpiration?: boolean } = {}): SessionCheck {
+export function verifySession(
+  token: string,
+  opts: { ignoreExpiration?: boolean } = {},
+): SessionCheck {
   let payload: JwtPayload
   try {
     payload = jwt.verify(token, getJwtSecret(), {

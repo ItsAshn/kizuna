@@ -72,6 +72,34 @@ export function resolveCorsOrigin(origin: string): string | undefined {
   return undefined
 }
 
+// Same truthiness rules as config.ts's envBool for IS_REGISTRY.
+function isRegistryEnabled(): boolean {
+  return ['true', '1', 'yes', 'on'].includes((process.env.IS_REGISTRY || '').trim().toLowerCase())
+}
+
+// Allowance for multipart framing on top of the file payload; the routes
+// still check the parsed file's exact size.
+const MULTIPART_OVERHEAD = 64 * 1024
+
+/**
+ * Body-size cap for upload endpoints, or null if the request isn't an upload.
+ * Mirrors each route's own maximum (attachments, backgrounds, GIFs, packs).
+ */
+export function uploadBodyLimit(method: string, path: string): number | null {
+  if (method !== 'POST' && method !== 'PUT' && method !== 'PATCH') return null
+  const env = (name: string, fallback: number) => {
+    const n = parseInt(process.env[name] || '', 10)
+    return Number.isFinite(n) && n > 0 ? n : fallback
+  }
+  let max: number | null = null
+  if (path === '/api/gifs/upload') max = env('MAX_GIF_SIZE', 52428800)
+  else if (path === '/api/gifs/pack' || path === '/api/gifs/sticker-pack') {
+    max = env('MAX_PACK_SIZE', 15728640)
+  } else if (path === '/api/server/background') max = 10 * 1024 * 1024
+  else if (/^\/api\/attachments\/[^/]+$/.test(path)) max = env('MAX_FILE_SIZE', 10485760)
+  return max === null ? null : max + MULTIPART_OVERHEAD
+}
+
 export function createApp(httpPort: number) {
   const app = new Hono<HonoEnv>()
 
@@ -93,13 +121,20 @@ export function createApp(httpPort: number) {
 
   app.use('*', async (c, next) => {
     const path = new URL(c.req.url).pathname
-    if (
-      path.startsWith('/api/attachments/') ||
-      path === '/api/server/background' ||
-      path === '/api/gifs/upload' ||
-      path === '/api/gifs/pack' ||
-      path === '/api/gifs/sticker-pack'
-    ) {
+    const uploadMax = uploadBodyLimit(c.req.method, path)
+    if (uploadMax !== null) {
+      // Upload routes skip the generic JSON cap but get their own: a declared
+      // length is mandatory (chunked bodies can't be bounded before the route
+      // buffers them with formData()) and must fit the route's maximum.
+      const lengthHeader = c.req.header('content-length')
+      if (!lengthHeader) return c.json({ error: 'Content-Length required' }, 411)
+      const contentLength = Number(lengthHeader)
+      if (!Number.isInteger(contentLength) || contentLength < 0) {
+        return c.json({ error: 'Invalid Content-Length' }, 400)
+      }
+      if (contentLength > uploadMax) {
+        return c.json({ error: 'Request body too large' }, 413)
+      }
       return next()
     }
     const contentLength = parseInt(c.req.header('content-length') || '0', 10)
@@ -181,8 +216,12 @@ export function createApp(httpPort: number) {
   app.use('/api/embeds/*', apiLimiter)
   app.route('/api/embeds', embedRoutes)
 
-  app.use('/api/registry/*', apiLimiter)
-  app.route('/api/registry', registryRoutes)
+  // The public server directory only exists on a registry host; on every
+  // other server these routes would let anyone write listings into its DB.
+  if (isRegistryEnabled()) {
+    app.use('/api/registry/*', apiLimiter)
+    app.route('/api/registry', registryRoutes)
+  }
 
   app.use('/api/*', apiLimiter)
   app.route('/api/outgoing-webhooks', outgoingWebhookRoutes)

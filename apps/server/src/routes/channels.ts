@@ -9,7 +9,7 @@ import {
   canViewChannel,
 } from '../middleware/auth'
 import type { HonoEnv } from '../types'
-import { emitIo } from '../utils/io'
+import { emitIo, emitChannelMeta } from '../utils/io'
 import { dispatchOutgoing } from '../services/outgoingWebhooks'
 
 const channelRoutes = new Hono<HonoEnv>()
@@ -94,7 +94,7 @@ channelRoutes.post('/', authMiddleware, requirePermission('manage_channels'), as
     unknown
   >
 
-  emitIo(c, 'channel:created', mapChannel(channel))
+  emitChannelMeta(c, id, 'channel:created', mapChannel(channel))
   dispatchOutgoing('channel.created', { channel: { id, name: slug } })
 
   return c.json({ channel: mapChannel(channel) }, 201)
@@ -170,7 +170,7 @@ channelRoutes.patch('/:id', authMiddleware, requirePermission('manage_channels')
     .prepare('SELECT * FROM channels WHERE id = ?')
     .get(c.req.param('id')) as Record<string, unknown>
 
-  emitIo(c, 'channel:updated', mapChannel(updated))
+  emitChannelMeta(c, c.req.param('id') || '', 'channel:updated', mapChannel(updated))
   dispatchOutgoing(
     'channel.updated',
     { channel: { id: c.req.param('id')!, name: updated.name as string } },
@@ -300,7 +300,7 @@ channelRoutes.put(
       JSON.stringify(body.deny_permissions || {}),
     )
 
-    emitIo(c, 'channel:updated', { id: channelId })
+    emitChannelMeta(c, channelId ?? '', 'channel:updated', { id: channelId })
 
     return c.json({ ok: true })
   },
@@ -320,7 +320,7 @@ channelRoutes.delete(
       roleId,
     )
 
-    emitIo(c, 'channel:updated', { id: channelId })
+    emitChannelMeta(c, channelId ?? '', 'channel:updated', { id: channelId })
 
     return c.json({ ok: true })
   },

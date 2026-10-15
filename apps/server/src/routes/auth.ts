@@ -144,10 +144,7 @@ authRoutes.post('/register', sensitiveAuthLimiter, async (c) => {
     db.prepare(
       'INSERT OR REPLACE INTO sessions (token_id, user_id, created_at) VALUES (?, ?, unixepoch())',
     ).run(tokenId, user.id)
-    c.header(
-      'Set-Cookie',
-      sessionCookie(c, token),
-    )
+    c.header('Set-Cookie', sessionCookie(c, token))
     emitIo(c, 'member:added', getMemberById(id))
     dispatchOutgoing('member.joined', {
       user: { id, username: user.username, display_name: user.display_name },
@@ -266,10 +263,7 @@ authRoutes.post('/login', sensitiveAuthLimiter, async (c) => {
   db.prepare(
     'INSERT OR REPLACE INTO sessions (token_id, user_id, created_at) VALUES (?, ?, unixepoch())',
   ).run(tokenId, user.id)
-  c.header(
-    'Set-Cookie',
-    sessionCookie(c, token),
-  )
+  c.header('Set-Cookie', sessionCookie(c, token))
   return c.json({
     token,
     user: {
@@ -382,6 +376,14 @@ authRoutes.patch('/me/status', authMiddleware, async (c) => {
     if (status_sticker_id === null || status_sticker_id === '') {
       updates.push('status_sticker_id = NULL')
     } else {
+      // Must reference a sticker/gif this server actually hosts; the client
+      // renders it as /api/gifs/... so arbitrary values would be fetched blind.
+      if (
+        typeof status_sticker_id !== 'string' ||
+        !db.prepare('SELECT 1 FROM gifs WHERE id = ?').get(status_sticker_id)
+      ) {
+        return c.json({ error: 'Unknown sticker' }, 400)
+      }
       updates.push('status_sticker_id = ?')
       values.push(status_sticker_id)
     }
@@ -412,9 +414,43 @@ authRoutes.patch('/me/status', authMiddleware, async (c) => {
   return c.json({ ok: true })
 })
 
+const MAX_DISPLAY_NAME_LENGTH = 64
+
+// Profile images are rendered by every viewer, so they must never point off the
+// server: an external URL would leak each viewer's IP to whoever hosts it (the
+// same reason custom CSS blocks url()). The client sends inline data URLs; a
+// server-relative upload path is accepted too. undefined/null/'' = unchanged/clear.
+const PROFILE_DATA_URL_RE = /^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/
+const PROFILE_UPLOAD_PATH_RE = /^\/api\/attachments\/file\/[A-Za-z0-9._-]+$/
+
+function isValidProfileImage(value: unknown): boolean {
+  if (value === undefined || value === null || value === '') return true
+  if (typeof value !== 'string') return false
+  return PROFILE_DATA_URL_RE.test(value) || PROFILE_UPLOAD_PATH_RE.test(value)
+}
+
 authRoutes.patch('/profile', authMiddleware, async (c) => {
   const auth = getAuth(c)
-  const { display_name, avatar, banner } = await c.req.json()
+  const body = (await c.req.json().catch(() => null)) as {
+    display_name?: unknown
+    avatar?: unknown
+    banner?: unknown
+  } | null
+  if (!body) return c.json({ error: 'Invalid JSON' }, 400)
+  const { avatar, banner } = body
+
+  if (body.display_name !== undefined && typeof body.display_name !== 'string') {
+    return c.json({ error: 'display_name must be a string' }, 400)
+  }
+  const display_name = body.display_name?.trim()
+  if (display_name && display_name.length > MAX_DISPLAY_NAME_LENGTH) {
+    return c.json(
+      { error: `Display name must be at most ${MAX_DISPLAY_NAME_LENGTH} characters` },
+      400,
+    )
+  }
+  if (!isValidProfileImage(avatar)) return c.json({ error: 'Invalid avatar' }, 400)
+  if (!isValidProfileImage(banner)) return c.json({ error: 'Invalid banner' }, 400)
 
   if (!display_name && avatar === undefined && banner === undefined) {
     return c.json({ error: 'Nothing to update' }, 400)
@@ -437,9 +473,9 @@ authRoutes.patch('/profile', authMiddleware, async (c) => {
     return c.json({ error: 'User not found' }, 404)
   }
 
-  const newName = display_name?.trim() || user.display_name
-  const newAvatar = avatar === null ? null : avatar || user.avatar
-  const newBanner = banner === null ? null : banner || user.banner
+  const newName = display_name || user.display_name
+  const newAvatar = avatar === null ? null : (avatar as string | undefined) || user.avatar
+  const newBanner = banner === null ? null : (banner as string | undefined) || user.banner
 
   db.prepare('UPDATE users SET display_name = ?, avatar = ?, banner = ? WHERE id = ?').run(
     newName,
@@ -786,10 +822,7 @@ authRoutes.post('/refresh', async (c) => {
     db.prepare(
       'INSERT OR REPLACE INTO sessions (token_id, user_id, created_at) VALUES (?, ?, unixepoch())',
     ).run(tokenId, userInfo.userId)
-    c.header(
-      'Set-Cookie',
-      sessionCookie(c, newToken),
-    )
+    c.header('Set-Cookie', sessionCookie(c, newToken))
     return c.json({ ok: true, token: newToken })
   } catch {
     return c.json({ error: 'Invalid token' }, 401)

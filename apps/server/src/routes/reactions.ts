@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { getDb } from '../db'
-import { authMiddleware, getUserPermissions, hasPermission } from '../middleware/auth'
+import { authMiddleware, canViewChannel, getUserChannelPermission } from '../middleware/auth'
 import type Database from 'better-sqlite3'
 import { getAuth } from '../utils/auth'
 import { getIo } from '../utils/io'
@@ -40,6 +40,15 @@ function getMessageInfo(
     }
 
   return null
+}
+
+// DM reactions are for the two participants; channel reactions for anyone who
+// can see the channel.
+function canAccessMessage(userId: string, info: NonNullable<ReturnType<typeof getMessageInfo>>) {
+  if (info.isDM) {
+    return info.participants?.user1_id === userId || info.participants?.user2_id === userId
+  }
+  return canViewChannel(userId, info.channel_id)
 }
 
 function getReactionsForMessage(
@@ -119,11 +128,15 @@ reactionRoutes.post('/:messageId', authMiddleware, async (c) => {
   const msgInfo = getMessageInfo(db, messageId)
   if (!msgInfo) return c.json({ error: 'Message not found' }, 404)
 
-  if (!msgInfo.isDM) {
-    const userPerms = getUserPermissions(user.userId)
-    if (!userPerms || !hasPermission(userPerms, 'add_reactions')) {
-      return c.json({ error: 'Forbidden' }, 403)
-    }
+  if (!canAccessMessage(user.userId, msgInfo)) {
+    return c.json({ error: 'Message not found' }, 404)
+  }
+  // Resolved per channel so a role override denying add_reactions is honoured.
+  if (
+    !msgInfo.isDM &&
+    !getUserChannelPermission(user.userId, msgInfo.channel_id, 'add_reactions')
+  ) {
+    return c.json({ error: 'Forbidden' }, 403)
   }
 
   const existing = findReaction(db, messageId, user.userId, reaction_key)
