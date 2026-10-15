@@ -25,6 +25,8 @@ import './MobileShell.css'
 
 interface MobileShellProps {
   session: { url: string; serverId: string; user: User }
+  /** The server's channel list etc. is still being fetched. */
+  initialLoading?: boolean
   servers: SavedServer[]
   sessions: Record<string, { serverId: string; url: string; token: string }>
   dmChannels: DMChannelData[]
@@ -64,6 +66,7 @@ interface MobileShellProps {
 
 export default function MobileShell({
   session,
+  initialLoading,
   servers,
   sessions,
   dmChannels,
@@ -257,6 +260,7 @@ export default function MobileShell({
           joinVoice={joinVoice}
           leaveVoice={leaveVoice}
           socketRef={socketRef}
+          loading={initialLoading}
           onOpenMenu={onOpenMenu}
           onBackToServers={popView}
           onOpenVoiceStage={(channelId) => pushView({ type: 'voice', channelId })}

@@ -59,6 +59,7 @@ import { useChannelMessages } from '../hooks/useChannelMessages'
 import { useAttachmentUpload } from '../hooks/useAttachmentUpload'
 import type { ConversationTarget } from '../hooks/useAttachmentUpload'
 import { useFormattingToolbar } from '../hooks/useFormattingToolbar'
+import { showErrorToast } from '../utils/showNotification'
 import { useNotificationStore } from '../store/notificationStore'
 import MessageBubble from './MessageBubble'
 import GifPicker from './GifPicker'
@@ -719,6 +720,7 @@ export default function ChatArea({
         }
       } catch (err) {
         console.error('Failed to delete message:', err)
+        showErrorToast('delete the message')
       }
     },
     [session, activeChannelId, activeDMChannelId, activeGroupDMChannelId],
@@ -792,6 +794,7 @@ export default function ChatArea({
         }
       } catch (err) {
         console.error('Failed to edit message:', err)
+        showErrorToast('edit the message')
       }
     },
     [session, activeChannelId, activeDMChannelId, activeGroupDMChannelId, encryptOutgoing],
@@ -804,6 +807,7 @@ export default function ChatArea({
         await pinMessage(session.url, activeChannelId, messageId)
       } catch (err) {
         console.error('Failed to pin message:', err)
+        showErrorToast('pin the message')
       }
     },
     [session, activeChannelId],
@@ -816,6 +820,7 @@ export default function ChatArea({
         await unpinMessage(session.url, activeChannelId, messageId)
       } catch (err) {
         console.error('Failed to unpin message:', err)
+        showErrorToast('unpin the message')
       }
     },
     [session, activeChannelId],
@@ -829,6 +834,7 @@ export default function ChatArea({
         useChatStore.getState().setActiveThreadId(result.id)
       } catch (err) {
         console.error('Failed to create thread:', err)
+        showErrorToast('create the thread')
       }
     },
     [session, activeChannelId],
@@ -1004,7 +1010,7 @@ export default function ChatArea({
           const el = document.getElementById(`msg-${messageId}`)
           if (el) {
             el.style.transition = 'background-color 0.3s ease'
-            el.style.backgroundColor = 'var(--bg-highlight, rgba(108, 90, 245, 0.12))'
+            el.style.backgroundColor = 'var(--bg-highlight)'
             setTimeout(() => {
               el.style.backgroundColor = ''
             }, 2500)
@@ -1255,6 +1261,13 @@ export default function ChatArea({
                     ? 'Calling...'
                     : 'Start call'
               }
+              aria-label={
+                dmCallStatus === 'active' && dmCallChannelId === activeDM.id
+                  ? 'End call'
+                  : dmCallStatus === 'ringing-outgoing' && dmCallChannelId === activeDM.id
+                    ? 'Calling…'
+                    : `Call ${activeDM.other_display_name}`
+              }
               disabled={dmCallStatus === 'ringing-outgoing' && dmCallChannelId === activeDM.id}
             >
               <Phone className="icon-xs" />
@@ -1264,7 +1277,8 @@ export default function ChatArea({
             <button
               className={`chat-area__header-members-btn${membersOpen ? ' chat-area__header-members-btn--active' : ''}`}
               onClick={onToggleMembers}
-              aria-label="Show members"
+              aria-label={`Members (${headerMemberCount})`}
+              aria-pressed={!!membersOpen}
             >
               <Users className="icon-sm" />
               <span>{headerMemberCount}</span>

@@ -19,6 +19,7 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [serverwide, setServerwide] = useState(!channelId)
   const inputRef = useRef<HTMLInputElement>(null)
   const lastQueryRef = useRef('')
@@ -40,6 +41,7 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
         setLoadingMore(true)
       }
       lastQueryRef.current = q
+      setError(null)
       try {
         const { results: r, hasMore: hm } = await searchMessages(
           session.url,
@@ -55,7 +57,12 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
           setResults((prev) => [...prev, ...r])
         }
         setHasMore(hm)
-      } catch {}
+      } catch (err) {
+        if (lastQueryRef.current !== q) return
+        console.error('Search failed:', err)
+        // A failed request is not an empty result set — say which it was.
+        setError(isNewSearch ? 'Search failed. Please try again.' : 'Could not load more results.')
+      }
       setLoading(false)
       setLoadingMore(false)
     },
@@ -66,6 +73,7 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
     if (!query.trim() || query.length < 2) {
       setResults([])
       setHasMore(false)
+      setError(null)
       return
     }
 
@@ -160,7 +168,12 @@ export default function SearchBar({ channelId, onClose, onJumpToMessage }: Searc
           )}
         </div>
       )}
-      {query.length >= 2 && !loading && results.length === 0 && (
+      {error && (
+        <div className="search-bar__empty search-bar__empty--error" role="alert">
+          {error}
+        </div>
+      )}
+      {query.length >= 2 && !loading && !error && results.length === 0 && (
         <div className="search-bar__empty">No results found</div>
       )}
     </div>
