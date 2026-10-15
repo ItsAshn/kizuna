@@ -8,6 +8,9 @@ pub mod encode;
 // has no WebRTC stack to encode it for us.
 #[cfg(target_os = "linux")]
 pub mod video;
+// Native video receive, for the same reason: no WebRTC in WebKitGTK.
+#[cfg(target_os = "linux")]
+pub mod video_recv;
 pub mod dsp;
 pub mod rnnoise;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

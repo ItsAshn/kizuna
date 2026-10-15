@@ -501,7 +501,7 @@ pub(crate) fn scaled_dimensions(width: u32, height: u32, max_dimension: u32) -> 
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::capture::PixelFormat;
     use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;

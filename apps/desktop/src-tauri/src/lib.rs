@@ -551,6 +551,11 @@ async fn voice_leave() -> Result<(), String> {
             }
         }
 
+        // Remote video goes with the call (its transport is closed on the
+        // server when we leave).
+        #[cfg(target_os = "linux")]
+        tauri::async_runtime::block_on(close_video_recv());
+
         {
             let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
             if let Some(ref mut controller) = *guard {
@@ -564,6 +569,109 @@ async fn voice_leave() -> Result<(), String> {
         replace_audio_output(None)
     })
     .await
+}
+
+/// The call's native video receiver (Linux; see voice/video_recv.rs). Behind a
+/// tokio mutex because every operation on it awaits SDP negotiation.
+#[cfg(target_os = "linux")]
+static VIDEO_RECV: tokio::sync::Mutex<Option<voice::video_recv::VideoRecvController>> =
+    tokio::sync::Mutex::const_new(None);
+
+#[cfg(target_os = "linux")]
+async fn close_video_recv() {
+    let prev = VIDEO_RECV.lock().await.take();
+    if let Some(mut rx) = prev {
+        rx.close().await;
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+const NO_NATIVE_VIDEO_RECV: &str =
+    "Native video receive is only built on Linux; this webview receives video itself";
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+struct VideoRecvAdded {
+    stream_id: u32,
+    dtls: Option<serde_json::Value>,
+}
+
+/// Open the native video receiver for this call. Decoded frames go to
+/// `on_frame` as raw bytes: a 12-byte header (`u32` stream id, `u16` width,
+/// `u16` height, `u32` reserved, little endian) followed by a JPEG.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn video_recv_open(
+    ice_servers: Vec<serde_json::Value>,
+    transport_params: serde_json::Value,
+    on_frame: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
+) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        close_video_recv().await;
+        let sink: voice::video_recv::FrameSink = std::sync::Arc::new(move |msg: Vec<u8>| {
+            let _ = on_frame.send(tauri::ipc::InvokeResponseBody::Raw(msg));
+        });
+        let rx = voice::video_recv::VideoRecvController::new(&ice_servers, &transport_params, sink);
+        *VIDEO_RECV.lock().await = Some(rx);
+        Ok(())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (ice_servers, transport_params, on_frame);
+        Err(NO_NATIVE_VIDEO_RECV.into())
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn video_recv_add(
+    consumer_id: String,
+    ssrc: u32,
+    payload_type: u8,
+    cname: Option<String>,
+) -> Result<VideoRecvAdded, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let mut guard = VIDEO_RECV.lock().await;
+        let rx = guard.as_mut().ok_or("Video receiver is not open")?;
+        let (stream_id, dtls) = rx
+            .add_consumer(&consumer_id, ssrc, payload_type, cname.as_deref().unwrap_or(""))
+            .await?;
+        Ok(VideoRecvAdded { stream_id, dtls })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (consumer_id, ssrc, payload_type, cname);
+        Err(NO_NATIVE_VIDEO_RECV.into())
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn video_recv_remove(consumer_id: String) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let mut guard = VIDEO_RECV.lock().await;
+        match guard.as_mut() {
+            Some(rx) => rx.remove_consumer(&consumer_id).await,
+            None => Ok(()),
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = consumer_id;
+        Ok(())
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn video_recv_close() -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    close_video_recv().await;
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -836,6 +944,10 @@ pub fn run() {
                     voice_remove_peer,
                     voice_screen_share_start,
                     voice_screen_share_stop,
+                    video_recv_open,
+                    video_recv_add,
+                    video_recv_remove,
+                    video_recv_close,
                     set_background_enabled,
                 ]
             }
