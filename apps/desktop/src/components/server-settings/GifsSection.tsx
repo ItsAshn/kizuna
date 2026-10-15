@@ -462,7 +462,7 @@ export function GifsSection({ serverUrl }: { serverUrl: string | undefined }) {
               >
                 {showTaggerWarning ? (
                   <>
-                    <span style={{ fontSize: '11px', color: '#e8b851', flex: 1 }}>
+                    <span style={{ fontSize: '11px', color: 'var(--warning)', flex: 1 }}>
                       This will load a CLIP ViT-B/32 model using ~1.5 GB of RAM. Continue?
                     </span>
                     <button
@@ -495,7 +495,7 @@ export function GifsSection({ serverUrl }: { serverUrl: string | undefined }) {
               </div>
             )}
             {taggerStatus.loading && (
-              <p style={{ fontSize: '11px', color: '#888', margin: '0 0 8px 0' }}>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 0 8px 0' }}>
                 loading tagging model... this may take a minute
               </p>
             )}
@@ -503,7 +503,7 @@ export function GifsSection({ serverUrl }: { serverUrl: string | undefined }) {
               <div
                 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}
               >
-                <span style={{ fontSize: '11px', color: '#6f6' }}>model loaded</span>
+                <span style={{ fontSize: '11px', color: 'var(--success)' }}>model loaded</span>
                 <button
                   onClick={handleUnloadTagger}
                   disabled={generatingTags.size > 0}
@@ -560,6 +560,7 @@ export function GifsSection({ serverUrl }: { serverUrl: string | undefined }) {
                           onClick={() => handleStartEdit(gif)}
                           className="server-menu__gif-edit"
                           title="Edit GIF"
+                          aria-label="Edit GIF"
                         >
                           <Pencil size={12} />
                         </button>
@@ -568,6 +569,7 @@ export function GifsSection({ serverUrl }: { serverUrl: string | undefined }) {
                             onClick={() => handleGenerateTags(gif.id)}
                             className="server-menu__gif-ai"
                             title="Generate tags with AI"
+                            aria-label="Generate tags with AI"
                             disabled={generatingTags.has(gif.id)}
                           >
                             {generatingTags.has(gif.id) ? (
@@ -581,6 +583,7 @@ export function GifsSection({ serverUrl }: { serverUrl: string | undefined }) {
                           onClick={() => handleDeleteGif(gif.id)}
                           className="server-menu__gif-delete"
                           title="Delete GIF"
+                          aria-label="Delete GIF"
                         >
                           <X size={12} />
                         </button>

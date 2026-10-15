@@ -301,7 +301,7 @@
   height: 6px;
   margin-left: 6px;
   border-radius: 50%;
-  background: var(--green, #3ba55d);
+  background: var(--green);
   vertical-align: middle;
 }
 
