@@ -551,6 +551,9 @@ async fn voice_leave() -> Result<(), String> {
             }
         }
 
+        // Likewise the camera: on Linux it is encoded onto this call.
+        close_camera_session();
+
         // Remote video goes with the call (its transport is closed on the
         // server when we leave).
         #[cfg(target_os = "linux")]
@@ -752,43 +755,115 @@ fn camera_list_devices() -> Result<Vec<capture::camera::CameraDevice>, String> {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[tauri::command]
-fn camera_start(
+fn open_camera_session(
     app: tauri::AppHandle,
     camera_index: usize,
     width: u32,
     height: u32,
     fps: u32,
 ) -> Result<(), String> {
-    let mut session_guard =
-        CAMERA_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if session_guard.is_some() {
+    {
+        let guard = CAMERA_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+        if guard.is_some() {
+            return Err("A camera session is already active".into());
+        }
+    }
+    // Opening blocks until the device streams (or fails), so the lock is not
+    // held across it.
+    let session = capture::camera::start_camera(app, camera_index, width, height, fps)?;
+    let mut guard = CAMERA_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if guard.is_some() {
         return Err("A camera session is already active".into());
     }
-
-    let session = capture::camera::start_camera(
-        app,
-        camera_index,
-        width,
-        height,
-        fps,
-    )?;
-
-    *session_guard = Some(session);
+    *guard = Some(session);
     Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[tauri::command]
-fn camera_stop() -> Result<(), String> {
-    let mut session_guard =
-        CAMERA_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if let Some(mut session) = session_guard.take() {
-        session.stop();
-        Ok(())
-    } else {
-        Err("No active camera session".into())
+fn close_camera_session() -> bool {
+    let session = CAMERA_SESSION.lock().ok().and_then(|mut g| g.take());
+    match session {
+        Some(mut session) => {
+            session.stop();
+            true
+        }
+        None => false,
     }
+}
+
+/// Webview camera path (Windows/macOS): frames are emitted as `camera:frame`
+/// JPEGs for the page to send. Async so opening the device (which waits for
+/// it to stream) stays off the main thread.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn camera_start(
+    app: tauri::AppHandle,
+    camera_index: usize,
+    width: u32,
+    height: u32,
+    fps: u32,
+) -> Result<(), String> {
+    run_blocking("camera_start", move || {
+        open_camera_session(app, camera_index, width, height, fps)
+    })
+    .await
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn camera_stop() -> Result<(), String> {
+    run_blocking("camera_stop", || {
+        if close_camera_session() {
+            Ok(())
+        } else {
+            Err("No active camera session".into())
+        }
+    })
+    .await
+}
+
+/// Native camera path (Linux): the camera is VP8-encoded here and sent on the
+/// call's camera track, which the caller must already have produced. A
+/// reduced-rate `camera:frame` JPEG preview still goes to the page for the
+/// self-view.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn voice_camera_start(
+    app: tauri::AppHandle,
+    camera_index: usize,
+    width: u32,
+    height: u32,
+    fps: u32,
+) -> Result<(), String> {
+    run_blocking("voice_camera_start", move || {
+        #[cfg(target_os = "linux")]
+        {
+            let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+            let controller = guard.as_mut().ok_or("Voice is not connected")?;
+            controller.start_video(capture::VideoSource::Camera, fps.max(1), None)?;
+        }
+        // The encoder is attached first so the first frames are not wasted on
+        // the JPEG path.
+        let opened = open_camera_session(app, camera_index, width, height, fps);
+        if opened.is_err() {
+            #[cfg(target_os = "linux")]
+            stop_native_video(capture::VideoSource::Camera);
+        }
+        opened
+    })
+    .await
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn voice_camera_stop() -> Result<(), String> {
+    run_blocking("voice_camera_stop", || {
+        #[cfg(target_os = "linux")]
+        stop_native_video(capture::VideoSource::Camera);
+        close_camera_session();
+        Ok(())
+    })
+    .await
 }
 
 /// Starts screensharing over the native WebRTC send transport.
@@ -861,12 +936,17 @@ fn voice_screen_share_stop() -> Result<(), String> {
 }
 
 #[cfg(target_os = "linux")]
-fn stop_native_screen_encode() {
+fn stop_native_video(source: capture::VideoSource) {
     if let Ok(mut guard) = VOICE_CONTROLLER.lock() {
         if let Some(controller) = guard.as_mut() {
-            controller.stop_screen_share();
+            controller.stop_video(source);
         }
     }
+}
+
+#[cfg(target_os = "linux")]
+fn stop_native_screen_encode() {
+    stop_native_video(capture::VideoSource::Screen);
 }
 
 /// Bring the main window back after close-to-tray hid it.
@@ -915,6 +995,8 @@ pub fn run() {
                     camera_list_devices,
                     camera_start,
                     camera_stop,
+                    voice_camera_start,
+                    voice_camera_stop,
                     list_audio_input_devices,
                     list_audio_output_devices,
                     start_audio_capture,

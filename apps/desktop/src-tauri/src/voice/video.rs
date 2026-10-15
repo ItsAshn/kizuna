@@ -476,8 +476,11 @@ fn run_feeder(
             current = Some((frame.width, frame.height, format));
         }
 
-        let mut data = frame.data;
-        data.truncate(expected);
+        let data = pad_rows_for_gst(
+            frame.data,
+            frame.width as usize * frame.format.bytes_per_pixel(),
+            frame.height as usize,
+        );
         let buffer = gst::Buffer::from_mut_slice(data);
         if appsrc.push_buffer(buffer).is_err() {
             break;
@@ -485,6 +488,23 @@ fn run_feeder(
     }
 
     let _ = appsrc.end_of_stream();
+}
+
+/// GStreamer's default stride for packed RGB formats rounds each row up to a
+/// multiple of 4 bytes. Frames arrive tightly packed, which only matches for
+/// 4-byte pixels or widths where `3 * width` is already aligned.
+fn pad_rows_for_gst(mut data: Vec<u8>, row_bytes: usize, height: usize) -> Vec<u8> {
+    let stride = (row_bytes + 3) & !3;
+    if stride == row_bytes {
+        data.truncate(row_bytes * height);
+        return data;
+    }
+    let mut out = vec![0u8; stride * height];
+    for y in 0..height {
+        out[y * stride..y * stride + row_bytes]
+            .copy_from_slice(&data[y * row_bytes..(y + 1) * row_bytes]);
+    }
+    out
 }
 
 /// Caps the long edge at `max_dimension`, preserving aspect ratio and keeping
@@ -651,6 +671,58 @@ pub(crate) mod tests {
             "forced keyframe never appeared ({} frames encoded)",
             session.frames_encoded()
         );
+        session.stop();
+    }
+
+    #[test]
+    fn rgb_rows_are_padded_to_gstreamer_stride() {
+        // 2x2 RGB: 6-byte rows padded to 8.
+        let out = pad_rows_for_gst((1..=12).collect(), 6, 2);
+        assert_eq!(out, vec![1, 2, 3, 4, 5, 6, 0, 0, 7, 8, 9, 10, 11, 12, 0, 0]);
+        // Already aligned: unchanged.
+        let out = pad_rows_for_gst(vec![1; 16], 8, 2);
+        assert_eq!(out.len(), 16);
+    }
+
+    /// Camera frames are packed RGB, letterboxed to the encode size. A width
+    /// whose RGB rows are not 4-byte aligned must still encode.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn camera_rgb_frames_encode() {
+        if !gst_available() {
+            eprintln!("skipping: GStreamer VP8 plugins not available");
+            return;
+        }
+        let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel(2);
+        let mut session = VideoSendSession::start(
+            vp8_track(),
+            frame_rx,
+            VideoEncodeConfig::for_source(VideoSource::Camera, 15),
+        )
+        .expect("pipeline");
+        for (w, h) in [(640u32, 480u32), (642, 480)] {
+            for i in 0..5u32 {
+                frame_tx
+                    .send(RawFrame {
+                        width: w,
+                        height: h,
+                        format: PixelFormat::Rgb,
+                        data: vec![(i * 40) as u8; (w * h * 3) as usize],
+                    })
+                    .expect("feeder alive");
+                std::thread::sleep(Duration::from_millis(40));
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        let bus = session.pipeline.bus().expect("bus");
+        let errors: Vec<_> = bus
+            .iter_timed(gst::ClockTime::ZERO)
+            .filter_map(|msg| match msg.view() {
+                gst::MessageView::Error(e) => Some(e.error().to_string()),
+                _ => None,
+            })
+            .collect();
+        assert!(errors.is_empty(), "pipeline reported errors: {errors:?}");
+        assert!(session.frames_encoded() >= 4, "encoded {}", session.frames_encoded());
         session.stop();
     }
 
