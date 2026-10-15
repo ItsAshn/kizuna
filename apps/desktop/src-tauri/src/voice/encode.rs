@@ -1,7 +1,7 @@
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -10,20 +10,112 @@ use webrtc::media::Sample;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
 use super::dsp::AudioProcessor;
+use super::resample::{downmix_to_mono, LinearResampler, Rechunker};
 
 /// Payload sent from the audio send loop to signal speaking state + audio level.
 pub type SpeakingEvent = (bool, f32); // (is_speaking, rms_level)
 
+/// A running microphone capture. Dropping it (or calling `stop`) releases the
+/// device: the CPAL stream is closed, or the `parec` child is killed *and
+/// reaped* and its reader thread joined. Before this existed the parec path
+/// was fire-and-forget, so every join leaked a recording process.
+pub struct CaptureHandle {
+    cancel: Arc<AtomicBool>,
+    stream: Option<cpal::Stream>,
+    parec: Option<ParecCapture>,
+}
+
+impl CaptureHandle {
+    fn from_stream(cancel: &Arc<AtomicBool>, stream: cpal::Stream) -> Self {
+        Self {
+            cancel: Arc::clone(cancel),
+            stream: Some(stream),
+            parec: None,
+        }
+    }
+
+    fn from_parec(cancel: &Arc<AtomicBool>, parec: ParecCapture) -> Self {
+        Self {
+            cancel: Arc::clone(cancel),
+            stream: None,
+            parec: Some(parec),
+        }
+    }
+
+    pub fn stop(&mut self) {
+        self.cancel.store(true, Ordering::SeqCst);
+        self.stream = None;
+        if let Some(mut parec) = self.parec.take() {
+            parec.stop();
+        }
+    }
+}
+
+impl Drop for CaptureHandle {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+struct ParecCapture {
+    /// Shared with the reader thread so whichever side finishes first can kill
+    /// and reap the process; `reap` is idempotent.
+    child: Arc<Mutex<Option<Child>>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl ParecCapture {
+    fn stop(&mut self) {
+        // Killing the child closes its stdout, which unblocks the reader's
+        // `read` with EOF, so the join below cannot hang.
+        reap(&self.child);
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+fn reap(child: &Mutex<Option<Child>>) {
+    let taken = match child.lock() {
+        Ok(mut g) => g.take(),
+        Err(poisoned) => poisoned.into_inner().take(),
+    };
+    if let Some(mut c) = taken {
+        let pid = c.id();
+        let _ = c.kill();
+        // wait() is what actually removes the process; kill alone leaves a
+        // zombie behind for every call.
+        let _ = c.wait();
+        eprintln!("[ParecCapture] parec (pid={pid}) stopped");
+    }
+}
+
+/// Start capturing the microphone as mono `f32` at `sample_rate`, delivered on
+/// `pcm_tx` in 20ms frames.
+///
+/// Whatever the device's native format is, what comes out is mono at
+/// `sample_rate`: CPAL devices are opened in a configuration they actually
+/// support and converted here, and parec is asked for the target format
+/// directly (the sound server converts).
 pub fn start_native_audio_capture(
     device_id: Option<String>,
     sample_rate: u32,
-    channels: u16,
     pcm_tx: tokio::sync::mpsc::UnboundedSender<Vec<f32>>,
-    cancel: Arc<AtomicBool>,
-) -> Result<Option<cpal::Stream>, String> {
+) -> Result<CaptureHandle, String> {
+    let cancel = Arc::new(AtomicBool::new(false));
     let host = cpal::default_host();
     let host_id = host.id();
     let is_alsa = format!("{:?}", host_id).to_lowercase().contains("alsa");
+
+    // Device ids the sound server knows as sources (`alsa_input.*`, but just as
+    // well `bluez_input.*`, filter chains and virtual sources, all of which the
+    // settings list offers) must be captured by name through parec. Only ids
+    // that are not pulse sources, i.e. CPAL device ids, take the CPAL path.
+    let requested_is_pulse = if is_alsa {
+        device_id.as_deref().map(is_pulse_source)
+    } else {
+        None
+    };
 
     // ─── PipeWire/PulseAudio path: use parec subprocess ────────────
     // CPAL's ALSA backend produces corrupted audio on PipeWire systems
@@ -31,10 +123,7 @@ pub fn start_native_audio_capture(
     // `parec` talks through the pipewire-pulse protocol and reliably
     // produces correct float32 data.
     if is_alsa {
-        let use_parec = device_id
-            .as_deref()
-            .map(|id| id.starts_with("alsa_input.") || id.starts_with("alsa_output."))
-            .unwrap_or(true);
+        let use_parec = requested_is_pulse.unwrap_or(true);
 
         if use_parec {
             // When no specific mic is selected, don't let "default" resolve to a
@@ -45,9 +134,9 @@ pub fn start_native_audio_capture(
             let resolved = resolve_non_bluetooth_source(device_id.as_deref());
             let parec_device = resolved.as_deref().unwrap_or("default");
             eprintln!("[AudioCapture] trying parec (device: {parec_device}) — avoids CPAL ALSA/PipeWire corruption");
-            if try_parec_capture(parec_device, sample_rate, channels, &pcm_tx, &cancel) {
+            if let Some(parec) = try_parec_capture(parec_device, sample_rate, &pcm_tx, &cancel) {
                 eprintln!("[AudioCapture] using parec subprocess for device: {parec_device}");
-                return Ok(None);
+                return Ok(CaptureHandle::from_parec(&cancel, parec));
             }
             eprintln!("[AudioCapture] parec failed for '{parec_device}', falling back to CPAL");
         }
@@ -56,8 +145,7 @@ pub fn start_native_audio_capture(
     // ─── CPAL path: for non-PipeWire devices or fallback ───────────
     // If a specific non-PipeWire device was requested, try it directly.
     if let Some(ref id) = device_id {
-        let is_pipewire_device = id.starts_with("alsa_input.") || id.starts_with("alsa_output.");
-        if !is_pipewire_device {
+        if requested_is_pulse != Some(true) {
             let device = host
                 .input_devices()
                 .map_err(|e| format!("Failed to enumerate input devices: {e}"))?
@@ -68,8 +156,10 @@ pub fn start_native_audio_capture(
                 })
                 .ok_or_else(|| format!("Input device '{}' not found", id))?;
 
-            return open_device(&device, sample_rate, channels, &pcm_tx, &cancel)
-                .map(|s| { eprintln!("[AudioCapture] using specific device: {id}"); Some(s) });
+            return open_device(&device, sample_rate, &pcm_tx, &cancel).map(|s| {
+                eprintln!("[AudioCapture] using specific device: {id}");
+                CaptureHandle::from_stream(&cancel, s)
+            });
         }
         eprintln!("[AudioCapture] PipeWire-managed device '{id}' selected — already tried parec above");
     }
@@ -88,7 +178,7 @@ pub fn start_native_audio_capture(
                 .unwrap_or_else(|_| "unknown".into());
             let lower = dname.to_lowercase();
             if pred(&lower) {
-                match open_device(device, sample_rate, channels, &pcm_tx, &cancel) {
+                match open_device(device, sample_rate, &pcm_tx, &cancel) {
                     Ok(stream) => {
                         eprintln!("[AudioCapture] using sound server device: {dname}");
                         return Some(stream);
@@ -110,21 +200,21 @@ pub fn start_native_audio_capture(
         if let Some(stream) = try_open_by_name(|n| {
             n.contains("pipewire") || n.contains("pulseaudio") || n.contains(" pulse ")
         }) {
-            return Ok(Some(stream));
+            return Ok(CaptureHandle::from_stream(&cancel, stream));
         }
     }
 
     // Try the ALSA default PCM device — on PipeWire systems this routes
     // through the PipeWire ALSA plugin and captures the default source.
     if let Some(default_device) = host.default_input_device() {
-        match open_device(&default_device, sample_rate, channels, &pcm_tx, &cancel) {
+        match open_device(&default_device, sample_rate, &pcm_tx, &cancel) {
             Ok(stream) => {
                 let dname = default_device
                     .description()
                     .map(|d| d.name().to_string())
                     .unwrap_or_else(|_| "default".into());
                 eprintln!("[AudioCapture] using default device: {dname}");
-                return Ok(Some(stream));
+                return Ok(CaptureHandle::from_stream(&cancel, stream));
             }
             Err(e) => {
                 eprintln!("[AudioCapture] default device failed: {e} (will try other devices)");
@@ -137,7 +227,7 @@ pub fn start_native_audio_capture(
         if let Some(stream) = try_open_by_name(|n| {
             n.contains("pipewire") || n.contains("pulseaudio") || n.contains(" pulse ")
         }) {
-            return Ok(Some(stream));
+            return Ok(CaptureHandle::from_stream(&cancel, stream));
         }
     }
 
@@ -170,10 +260,10 @@ pub fn start_native_audio_capture(
         }
 
         hardware_found = true;
-        match open_device(device, sample_rate, channels, &pcm_tx, &cancel) {
+        match open_device(device, sample_rate, &pcm_tx, &cancel) {
             Ok(stream) => {
                 eprintln!("[AudioCapture] using fallback device: {dname}");
-                return Ok(Some(stream));
+                return Ok(CaptureHandle::from_stream(&cancel, stream));
             }
             Err(e) => {
                 eprintln!("[AudioCapture] trying next device '{dname}' (error: {e})");
@@ -184,9 +274,9 @@ pub fn start_native_audio_capture(
     // Last resort: try parec with default source when everything else failed.
     if is_alsa {
         eprintln!("[AudioCapture] CPAL exhausted, trying parec with default source as last resort");
-        if try_parec_capture("default", sample_rate, channels, &pcm_tx, &cancel) {
+        if let Some(parec) = try_parec_capture("default", sample_rate, &pcm_tx, &cancel) {
             eprintln!("[AudioCapture] using parec default fallback");
-            return Ok(None);
+            return Ok(CaptureHandle::from_parec(&cancel, parec));
         }
     }
 
@@ -195,6 +285,54 @@ pub fn start_native_audio_capture(
     }
 
     Err("No working audio input device found".into())
+}
+
+/// Names of the sound server's capture sources (`pactl list short sources`),
+/// or `None` when pactl is unavailable.
+fn pulse_source_names() -> Option<Vec<String>> {
+    let out = Command::new("pactl")
+        .args(["list", "short", "sources"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    Some(parse_short_list_names(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// Second column of `pactl list short ...` output: `<index>\t<name>\t...`.
+fn parse_short_list_names(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| line.split('\t').nth(1))
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .collect()
+}
+
+/// Whether `id` names a PulseAudio/PipeWire source, and so has to be captured
+/// with `parec --device=<id>`, rather than being a CPAL device id.
+///
+/// Asking pactl is authoritative. The prefix check only covers a system where
+/// pactl is missing or the source vanished between listing and joining (parec
+/// then fails and we fall back to CPAL, which is still the right outcome).
+fn is_pulse_source(id: &str) -> bool {
+    if let Some(names) = pulse_source_names() {
+        if names.iter().any(|n| n == id) {
+            return true;
+        }
+    }
+    looks_like_pulse_name(id)
+}
+
+fn looks_like_pulse_name(id: &str) -> bool {
+    [
+        "alsa_input.",
+        "alsa_output.",
+        "bluez_input.",
+        "bluez_output.",
+        "bluez_source.",
+        "bluez_sink.",
+    ]
+    .iter()
+    .any(|p| id.starts_with(p))
 }
 
 /// Returns true if a PulseAudio/PipeWire source name looks like a Bluetooth
@@ -277,28 +415,30 @@ fn resolve_non_bluetooth_source(requested: Option<&str>) -> Option<String> {
     None
 }
 
-/// Fallback capture using `parec` subprocess (PulseAudio/pipewire-pulse).
-/// This is used when CPAL's ALSA backend cannot open the device.
-/// Returns `true` if the subprocess was spawned successfully.
+/// Capture through a `parec` subprocess (PulseAudio/pipewire-pulse), mono at
+/// `sample_rate`. Returns `None` when parec cannot be started.
+///
+/// The reader thread stops on cancel, on EOF, and as soon as `pcm_tx.send`
+/// fails (the consumer is gone). Whichever side stops first kills and reaps the
+/// child, so no parec outlives its call.
 fn try_parec_capture(
     device_id: &str,
     sample_rate: u32,
-    channels: u16,
     pcm_tx: &tokio::sync::mpsc::UnboundedSender<Vec<f32>>,
     cancel: &Arc<AtomicBool>,
-) -> bool {
+) -> Option<ParecCapture> {
     let device = device_id.to_string();
     let pcm_tx = pcm_tx.clone();
     let cancel = cancel.clone();
-    let frame_size = 960usize;
-    let read_size = frame_size * (channels as usize) * 4; // f32 = 4 bytes
+    let frame_size = (sample_rate as usize / 50).max(1); // 20ms
+    let read_size = frame_size * 4; // mono f32
 
     let mut child = match Command::new("parec")
         .args([
-            "--device", &device,
+            &format!("--device={device}"),
             "--format=float32le",
             &format!("--rate={}", sample_rate),
-            &format!("--channels={}", channels),
+            "--channels=1",
             "--latency-msec=20",
             "--raw",
         ])
@@ -309,7 +449,7 @@ fn try_parec_capture(
         Ok(c) => c,
         Err(e) => {
             eprintln!("[ParecCapture] failed to spawn parec: {e}");
-            return false;
+            return None;
         }
     };
 
@@ -321,137 +461,159 @@ fn try_parec_capture(
         None => {
             eprintln!("[ParecCapture] no stdout from parec");
             let _ = child.kill();
-            return false;
+            let _ = child.wait();
+            return None;
         }
     };
 
-    std::thread::spawn(move || {
-        let mut child = child;
-        let mut leftover = Vec::new();
-        let mut byte_buf = [0u8; 4];
-        let mut callback_count = 0u64;
+    let child = Arc::new(Mutex::new(Some(child)));
+    let thread_child = Arc::clone(&child);
 
-        loop {
-            if cancel.load(Ordering::Relaxed) {
-                break;
-            }
-
-            // Read raw bytes from parec stdout
+    let thread = std::thread::Builder::new()
+        .name("parec-capture".into())
+        .spawn(move || {
+            let mut leftover = Vec::new();
             let mut temp = vec![0u8; 65536];
-            match stdout.read(&mut temp) {
-                Ok(0) => {
-                    eprintln!("[ParecCapture] stdout EOF");
+            let mut callback_count = 0u64;
+
+            'read: loop {
+                if cancel.load(Ordering::Relaxed) {
                     break;
                 }
-                Ok(n) => {
-                    temp.truncate(n);
-                    leftover.extend_from_slice(&temp);
 
-                    // Process complete frames
-                    while leftover.len() >= read_size {
-                        let raw: Vec<f32> = leftover[..read_size]
-                            .chunks_exact(4)
-                            .map(|b| {
-                                byte_buf.copy_from_slice(b);
-                                f32::from_le_bytes(byte_buf)
-                            })
-                            .collect();
-                        leftover.drain(..read_size);
+                match stdout.read(&mut temp) {
+                    Ok(0) => {
+                        eprintln!("[ParecCapture] stdout EOF");
+                        break;
+                    }
+                    Ok(n) => {
+                        leftover.extend_from_slice(&temp[..n]);
 
-                        if cancel.load(Ordering::Relaxed) {
-                            break;
+                        while leftover.len() >= read_size {
+                            let raw: Vec<f32> = leftover[..read_size]
+                                .as_chunks::<4>()
+                                .0
+                                .iter()
+                                .map(|b| f32::from_le_bytes(*b))
+                                .collect();
+                            leftover.drain(..read_size);
+
+                            if cancel.load(Ordering::Relaxed) {
+                                break 'read;
+                            }
+
+                            callback_count += 1;
+                            if callback_count <= 5 || callback_count.is_multiple_of(500) {
+                                eprintln!(
+                                    "[ParecCapture] callback #{callback_count}, samples={}",
+                                    raw.len()
+                                );
+                            }
+
+                            if pcm_tx.send(raw).is_err() {
+                                // Nobody is listening any more: stop recording
+                                // rather than spin on a dead channel forever.
+                                eprintln!("[ParecCapture] consumer gone, stopping");
+                                break 'read;
+                            }
                         }
-
-                        callback_count += 1;
-                        if callback_count <= 5 || callback_count % 500 == 0 {
-                            eprintln!("[ParecCapture] callback #{callback_count}, samples={}", raw.len());
-                        }
-
-                        let _ = pcm_tx.send(raw);
+                    }
+                    Err(e) => {
+                        eprintln!("[ParecCapture] read error: {e}");
+                        break;
                     }
                 }
-                Err(e) => {
-                    eprintln!("[ParecCapture] read error: {e}");
-                    break;
-                }
             }
+
+            reap(&thread_child);
+            eprintln!("[ParecCapture] thread exiting after {callback_count} callbacks");
+        });
+
+    match thread {
+        Ok(t) => Some(ParecCapture {
+            child,
+            thread: Some(t),
+        }),
+        Err(e) => {
+            eprintln!("[ParecCapture] failed to spawn reader thread: {e}");
+            reap(&child);
+            None
         }
+    }
+}
 
-        let _ = child.kill();
-        eprintln!("[ParecCapture] thread exiting after {callback_count} callbacks");
-    });
+/// Rank of a sample format for capture, lower is better; `None` if unsupported.
+fn input_format_rank(f: cpal::SampleFormat) -> Option<u8> {
+    match f {
+        cpal::SampleFormat::F32 => Some(0),
+        cpal::SampleFormat::I16 => Some(1),
+        cpal::SampleFormat::I32 => Some(2),
+        cpal::SampleFormat::U16 => Some(3),
+        _ => None,
+    }
+}
 
-    true
+/// Pick a configuration the device really supports, preferring one that runs
+/// at `target_rate` (no resampling) with as few channels as possible.
+///
+/// The old code forced `{1 channel, 48 kHz, 960-frame buffer}` regardless of
+/// what the device offered. Devices that only do stereo or 44.1 kHz then either
+/// failed to open or, worse, opened and delivered samples at a different rate
+/// than we assumed.
+fn choose_input_config(
+    device: &cpal::Device,
+    target_rate: u32,
+) -> Result<cpal::SupportedStreamConfig, String> {
+    let ranges: Vec<cpal::SupportedStreamConfigRange> = device
+        .supported_input_configs()
+        .map(|it| it.collect())
+        .unwrap_or_default();
+
+    let best_at_target = ranges
+        .iter()
+        .filter(|r| r.min_sample_rate() <= target_rate && target_rate <= r.max_sample_rate())
+        .filter_map(|r| input_format_rank(r.sample_format()).map(|rank| (r, rank)))
+        .min_by_key(|(r, rank)| (r.channels(), *rank));
+    if let Some((range, _)) = best_at_target {
+        return Ok((*range).with_sample_rate(target_rate));
+    }
+
+    // Nothing runs at the target rate: take the device's own default if we can
+    // read its sample format, and resample.
+    if let Ok(default) = device.default_input_config() {
+        if input_format_rank(default.sample_format()).is_some() {
+            return Ok(default);
+        }
+    }
+
+    ranges
+        .iter()
+        .filter_map(|r| input_format_rank(r.sample_format()).map(|rank| (r, rank)))
+        .min_by_key(|(r, rank)| (r.channels(), *rank))
+        .map(|(r, _)| (*r).with_max_sample_rate())
+        .ok_or_else(|| "Device offers no usable input configuration".to_string())
 }
 
 fn open_device(
     device: &cpal::Device,
     sample_rate: u32,
-    channels: u16,
     pcm_tx: &tokio::sync::mpsc::UnboundedSender<Vec<f32>>,
     cancel: &Arc<AtomicBool>,
 ) -> Result<cpal::Stream, String> {
-    let default_cfg = device
-        .default_input_config()
-        .map_err(|e| format!("Cannot get default input config: {e}"))?;
-    let sample_format = default_cfg.sample_format();
+    let supported = choose_input_config(device, sample_rate)?;
+    let sample_format = supported.sample_format();
+    let config: cpal::StreamConfig = supported.config();
+    eprintln!(
+        "[AudioCapture] opening input: {}ch {}Hz {:?} (converting to mono {}Hz)",
+        config.channels, config.sample_rate, sample_format, sample_rate
+    );
 
-    let config = cpal::StreamConfig {
-        channels,
-        sample_rate,
-        buffer_size: cpal::BufferSize::Fixed(960),
-    };
-
-    let err_fn = |err| {
-        eprintln!("[AudioCapture] cpal error: {err}");
-    };
-
-    let pcm_tx = pcm_tx.clone();
-    let cancel = cancel.clone();
     let stream = match sample_format {
-        cpal::SampleFormat::F32 => device.build_input_stream(
-            &config,
-            move |data: &[f32], _info| {
-                if cancel.load(Ordering::Relaxed) { return; }
-                let _ = pcm_tx.send(data.to_vec());
-            },
-            err_fn,
-            None,
-        ),
-        cpal::SampleFormat::I16 => device.build_input_stream(
-            &config,
-            {
-                let pcm_tx = pcm_tx.clone();
-                move |data: &[i16], _info| {
-                    if cancel.load(Ordering::Relaxed) { return; }
-                    let f32_samples: Vec<f32> = data.iter().map(|&s| s as f32 / 32767.0).collect();
-                    let _ = pcm_tx.send(f32_samples);
-                }
-            },
-            err_fn,
-            None,
-        ),
-        cpal::SampleFormat::U16 => device.build_input_stream(
-            &config,
-            {
-                let pcm_tx = pcm_tx.clone();
-                move |data: &[u16], _info| {
-                    if cancel.load(Ordering::Relaxed) { return; }
-                    // Center u16 [0, 65535] to [-1, 1]. Max value maps to 1.00006,
-                    // so clamp to avoid feeding >1.0 into the limiter (overdrive/clip).
-                    let f32_samples: Vec<f32> = data
-                        .iter()
-                        .map(|&s| ((s as f32 - 32768.0) / 32768.0).clamp(-1.0, 1.0))
-                        .collect();
-                    let _ = pcm_tx.send(f32_samples);
-                }
-            },
-            err_fn,
-            None,
-        ),
-        _ => {
-            return Err(format!("Unsupported sample format: {:?}", sample_format));
-        }
+        cpal::SampleFormat::F32 => build_input::<f32>(device, &config, sample_rate, pcm_tx, cancel),
+        cpal::SampleFormat::I16 => build_input::<i16>(device, &config, sample_rate, pcm_tx, cancel),
+        cpal::SampleFormat::I32 => build_input::<i32>(device, &config, sample_rate, pcm_tx, cancel),
+        cpal::SampleFormat::U16 => build_input::<u16>(device, &config, sample_rate, pcm_tx, cancel),
+        other => return Err(format!("Unsupported sample format: {other:?}")),
     }
     .map_err(|e| format!("Failed to build input stream: {e}"))?;
 
@@ -460,6 +622,50 @@ fn open_device(
         .map_err(|e| format!("Failed to start stream: {e}"))?;
 
     Ok(stream)
+}
+
+/// Build an input stream in the device's native format: convert to `f32`,
+/// downmix to mono, resample to `target_rate`, and emit 20ms frames.
+fn build_input<T>(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    target_rate: u32,
+    pcm_tx: &tokio::sync::mpsc::UnboundedSender<Vec<f32>>,
+    cancel: &Arc<AtomicBool>,
+) -> Result<cpal::Stream, cpal::BuildStreamError>
+where
+    T: cpal::SizedSample,
+    f32: cpal::FromSample<T>,
+{
+    let pcm_tx = pcm_tx.clone();
+    let cancel = cancel.clone();
+    let channels = config.channels.max(1) as usize;
+    let mut resampler = LinearResampler::new(config.sample_rate, target_rate);
+    let mut chunker = Rechunker::new((target_rate as usize / 50).max(1));
+    let mut converted: Vec<f32> = Vec::new();
+    let mut mono: Vec<f32> = Vec::new();
+    let mut resampled: Vec<f32> = Vec::new();
+    let mut closed = false;
+
+    device.build_input_stream::<T, _, _>(
+        config,
+        move |data: &[T], _info| {
+            if closed || cancel.load(Ordering::Relaxed) {
+                return;
+            }
+            converted.clear();
+            converted.extend(data.iter().map(|s| s.to_sample::<f32>().clamp(-1.0, 1.0)));
+            mono.clear();
+            downmix_to_mono(&converted, channels, &mut mono);
+            resampled.clear();
+            resampler.process(&mono, &mut resampled);
+            if !chunker.push(&resampled, |frame| pcm_tx.send(frame).is_ok()) {
+                closed = true;
+            }
+        },
+        |err| eprintln!("[AudioCapture] cpal error: {err}"),
+        None,
+    )
 }
 
 pub struct AudioEncoder {
@@ -544,7 +750,7 @@ impl AudioEncoder {
 pub struct AudioSendSession {
     cancel: Arc<AtomicBool>,
     handle: Option<tokio::task::JoinHandle<()>>,
-    _stream: Option<cpal::Stream>,
+    capture: Option<CaptureHandle>,
     processor: Arc<tokio::sync::Mutex<AudioProcessor>>,
     desired_bitrate: Arc<AtomicU32>,
 }
@@ -554,7 +760,7 @@ impl AudioSendSession {
         encoder: AudioEncoder,
         track: Arc<TrackLocalStaticSample>,
         pcm_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<f32>>,
-        cpal_stream: Option<cpal::Stream>,
+        capture: CaptureHandle,
         speaking_tx: tokio::sync::mpsc::UnboundedSender<SpeakingEvent>,
         processor: AudioProcessor,
         initial_bitrate_bps: u32,
@@ -573,7 +779,7 @@ impl AudioSendSession {
         Self {
             cancel,
             handle: Some(handle),
-            _stream: cpal_stream,
+            capture: Some(capture),
             processor,
             desired_bitrate,
         }
@@ -587,10 +793,18 @@ impl AudioSendSession {
         self.desired_bitrate.store(bitrate_bps, Ordering::SeqCst);
     }
 
+    /// Stop sending and release the microphone. Idempotent.
     pub fn stop(&mut self) {
         self.cancel.store(true, Ordering::SeqCst);
-        self.handle = None;
-        self._stream = None;
+        // Dropping a JoinHandle only detaches the task; abort it so it does not
+        // sit parked on `pcm_rx.recv()` holding the encoder and track.
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+        }
+        // Kills and reaps parec / closes the CPAL stream.
+        if let Some(mut capture) = self.capture.take() {
+            capture.stop();
+        }
     }
 }
 
@@ -697,5 +911,54 @@ async fn run_audio_send(
 impl Drop for AudioSendSession {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_source_names_from_pactl_short_output() {
+        let out = "52\talsa_input.pci-0000_00_1f.3.analog-stereo\tPipeWire\ts32le 2ch 48000Hz\tSUSPENDED\n\
+                   61\tbluez_input.AA_BB_CC_DD_EE_FF.0\tPipeWire\tfloat32le 1ch 16000Hz\tRUNNING\n\
+                   70\teffect_input.rnnoise\tPipeWire\tfloat32le 1ch 48000Hz\tIDLE\n";
+        assert_eq!(
+            parse_short_list_names(out),
+            vec![
+                "alsa_input.pci-0000_00_1f.3.analog-stereo",
+                "bluez_input.AA_BB_CC_DD_EE_FF.0",
+                "effect_input.rnnoise",
+            ]
+        );
+    }
+
+    #[test]
+    fn recognises_pulse_names_without_pactl() {
+        assert!(looks_like_pulse_name("bluez_input.AA_BB.0"));
+        assert!(looks_like_pulse_name("alsa_input.usb-foo"));
+        assert!(!looks_like_pulse_name("hw:CARD=PCH,DEV=0"));
+    }
+
+    /// Needs a running PulseAudio/PipeWire session, so it is opt-in:
+    /// `cargo test -- --ignored parec_capture_is_reaped`.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore]
+    fn parec_capture_is_reaped_on_stop() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let parec = try_parec_capture("default", 48_000, &tx, &cancel).expect("parec");
+        drop(tx);
+        let pid = parec.child.lock().unwrap().as_ref().unwrap().id();
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(rx.try_recv().is_ok(), "parec should have produced audio");
+
+        // What voice_leave does: drop the capture handle.
+        drop(CaptureHandle::from_parec(&cancel, parec));
+        assert!(
+            !std::path::Path::new(&format!("/proc/{pid}")).exists(),
+            "parec (pid {pid}) must be killed and reaped, not left running or as a zombie"
+        );
     }
 }

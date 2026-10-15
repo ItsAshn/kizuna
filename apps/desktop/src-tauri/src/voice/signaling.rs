@@ -1,4 +1,3 @@
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use serde_json::{json, Value};
@@ -269,6 +268,7 @@ impl VoiceController {
 
     /// Called after TypeScript has sent connectTransport + produce successfully.
     /// Starts audio capture and encoding.
+    #[allow(clippy::too_many_arguments)]
     pub async fn finish_join(
         &mut self,
         voice_bitrate_kbps: u64,
@@ -278,11 +278,12 @@ impl VoiceController {
         suppression_strength: f32,
         auto_gain_enabled: bool,
         device_id: Option<String>,
+        muted: bool,
     ) -> Result<(), String> {
         let call = self.active_call.as_mut().ok_or("No active call")?;
         let audio_track = call.audio_track.take().ok_or("No audio track")?;
 
-        eprintln!("[VoiceNative] finish_join bitrate={voice_bitrate_kbps}kbps gate_enabled={gate_enabled} gate_threshold_db={gate_threshold_db} suppression_enabled={suppression_enabled} suppression_strength={suppression_strength} agc_enabled={auto_gain_enabled} device_id={device_id:?}");
+        eprintln!("[VoiceNative] finish_join bitrate={voice_bitrate_kbps}kbps gate_enabled={gate_enabled} gate_threshold_db={gate_threshold_db} suppression_enabled={suppression_enabled} suppression_strength={suppression_strength} agc_enabled={auto_gain_enabled} device_id={device_id:?} muted={muted}");
 
         let bitrate_bps = (voice_bitrate_kbps * 1000) as u32;
         let encoder = encode::AudioEncoder::new(48000, 1, bitrate_bps)
@@ -291,12 +292,14 @@ impl VoiceController {
         let (pcm_tx, pcm_rx) = mpsc::unbounded_channel::<Vec<f32>>();
         let (speaking_tx, mut speaking_rx) = mpsc::unbounded_channel::<encode::SpeakingEvent>();
 
-        let cancel = Arc::new(AtomicBool::new(false));
-        let cpal_stream = encode::start_native_audio_capture(
-            device_id, 48000, 1, pcm_tx, cancel.clone(),
-        )?;
+        let capture = encode::start_native_audio_capture(device_id, 48000, pcm_tx)?;
 
         let mut processor = AudioProcessor::new(48000);
+        // Start muted when the user is muted or on push-to-talk. The first
+        // captured frame goes through the processor before JS gets a chance to
+        // call voice_set_muted, so applying it afterwards let a moment of open
+        // mic reach the channel on every join.
+        processor.set_muted(muted);
         processor.set_gate_enabled(gate_enabled);
         processor.set_gate_threshold_db(gate_threshold_db);
         if suppression_enabled {
@@ -312,7 +315,7 @@ impl VoiceController {
             encoder,
             audio_track,
             pcm_rx,
-            cpal_stream,
+            capture,
             speaking_tx,
             processor,
             bitrate_bps,
