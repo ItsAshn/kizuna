@@ -765,11 +765,7 @@ export function registerVoiceHandlers(io: Server, socket: Socket): void {
         return
       }
 
-      const slot = pickRecvTransport(
-        transportSlots(requestingPeer),
-        kind ?? 'audio',
-        transportId,
-      )
+      const slot = pickRecvTransport(transportSlots(requestingPeer), kind ?? 'audio', transportId)
       const recvTransport = slot ? (requestingPeer.transports.get(slot.id) ?? null) : null
       if (!recvTransport) {
         vlog('consume', `rejected: no recv transport | socketId=${socket.id} | peerId=${peerId}`)
