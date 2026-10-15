@@ -1,10 +1,9 @@
 import type { Context } from 'hono'
 
 // Secure must follow the actual transport, not NODE_ENV: the Docker image is
-// served over HTTPS by Caddy but never set NODE_ENV, so the flag was missing
-// in exactly the deployment that needed it.
+// served over HTTPS by Caddy, but a plain-HTTP LAN install also runs in
+// production mode, and a Secure cookie there silently breaks web logins.
 export function isHttpsRequest(c: Context): boolean {
-  if (process.env.NODE_ENV === 'production') return true
   const proto = c.req.header('x-forwarded-proto')
   if (proto) return proto.split(',')[0]?.trim() === 'https'
   return new URL(c.req.url).protocol === 'https:'
