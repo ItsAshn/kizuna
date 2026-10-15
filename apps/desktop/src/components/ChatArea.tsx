@@ -1112,8 +1112,10 @@ export default function ChatArea({
               })
               inputRef.current?.focus()
             }}
-            onPin={activeChannelId ? handlePinMessage : undefined}
-            onUnpin={activeChannelId ? handleUnpinMessage : undefined}
+            // The server only lets the author or a delete_messages holder
+            // pin/unpin, so don't offer it to anyone else.
+            onPin={activeChannelId && messageCanDelete ? handlePinMessage : undefined}
+            onUnpin={activeChannelId && messageCanDelete ? handleUnpinMessage : undefined}
             isPinned={
               activeChannelId
                 ? (pinnedMessages[activeChannelId]?.some((p) => p.messageId === msg.id) ?? false)

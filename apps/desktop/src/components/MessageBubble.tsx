@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
 import { createPortal } from 'react-dom'
 import { Trash2, Pencil } from 'lucide-react'
-import { marked } from 'marked'
+import { Marked, type TokenizerAndRendererExtension } from 'marked'
 import DOMPurify from 'dompurify'
 import hljs from 'highlight.js/lib/core'
 import javascript from 'highlight.js/lib/languages/javascript'
@@ -24,6 +24,7 @@ import { useChatStore } from '../store/chatStore'
 import { Avatar } from './ui'
 import { useMobile } from '../hooks/useMobile'
 import { openExternalLink } from '../utils/platform'
+import { showErrorToast } from '../utils/showNotification'
 import { useHaptics } from '../hooks/useHaptics'
 import { useLongPress } from '../hooks/useLongPress'
 import ReactionPills from './ReactionPills'
@@ -153,28 +154,73 @@ function highlightCodeBlocks(html: string): string {
   }
 }
 
+/* Mentions and spoilers are inline markdown extensions rather than a regex
+ * pass over the raw text. The regex pass injected <span> markup before
+ * `marked` ran, so it also fired inside code spans/blocks (which then showed
+ * the literal HTML) and inside URLs containing "@". As tokenizers they only
+ * see text that marked has not already claimed as code, a link or a URL. */
+let mentionSelf = ''
+
+const mentionExtension: TokenizerAndRendererExtension = {
+  name: 'mention',
+  level: 'inline',
+  start(src) {
+    // Only an "@" at a word boundary can start a mention (not an e-mail).
+    const m = /(^|[^\w@])@[\w-]/.exec(src)
+    return m ? m.index + m[1].length : undefined
+  },
+  tokenizer(src) {
+    const m = /^@(everyone|here|[\w-]+(?:\.[\w-]+)*)/i.exec(src)
+    if (!m) return undefined
+    return { type: 'mention', raw: m[0], tag: m[1] }
+  },
+  renderer(token) {
+    const tag = String(token.tag).toLowerCase()
+    const cls =
+      mentionSelf && tag === mentionSelf
+        ? 'msg-bubble__mention--self'
+        : tag === 'everyone' || tag === 'here'
+          ? 'msg-bubble__mention--group'
+          : 'msg-bubble__mention--user'
+    // The tag is [\w.-] only, so it needs no escaping.
+    return `<span class="${cls}">@${token.tag}</span>`
+  },
+}
+
+// Discord-style spoilers: ||hidden text|| → click to reveal.
+const spoilerExtension: TokenizerAndRendererExtension = {
+  name: 'spoiler',
+  level: 'inline',
+  start(src) {
+    const i = src.indexOf('||')
+    return i >= 0 ? i : undefined
+  },
+  tokenizer(src) {
+    const m = /^\|\|([\s\S]+?)\|\|/.exec(src)
+    if (!m) return undefined
+    return {
+      type: 'spoiler',
+      raw: m[0],
+      tokens: this.lexer.inlineTokens(m[1]),
+    }
+  },
+  renderer(token) {
+    return `<span class="msg-bubble__spoiler">${this.parser.parseInline(token.tokens ?? [])}</span>`
+  },
+}
+
+const messageMarked = new Marked({
+  breaks: true,
+  gfm: true,
+  extensions: [mentionExtension, spoilerExtension],
+})
+
 function renderMessageHtml(content: string, currentUsername?: string): string {
   if (!content) return ''
 
-  const withMentions = content.replace(/@(everyone|here|[\w.-]+)/gi, (match) => {
-    const tag = match.slice(1).toLowerCase()
-    const isMe = currentUsername && tag === currentUsername.toLowerCase()
-    const isGroup = tag === 'everyone' || tag === 'here'
-    const cls = isMe
-      ? 'msg-bubble__mention--self'
-      : isGroup
-        ? 'msg-bubble__mention--group'
-        : 'msg-bubble__mention--user'
-    return `<span class="${cls}">${match}</span>`
-  })
-
-  // Discord-style spoilers: ||hidden text|| → click to reveal.
-  const html = withMentions.replace(
-    /\|\|([\s\S]+?)\|\|/g,
-    (_match, inner) => `<span class="msg-bubble__spoiler">${inner}</span>`,
-  )
-
-  const raw = marked.parse(html, { breaks: true, gfm: true }) as string
+  // Parsing is synchronous, so the renderer can read this safely.
+  mentionSelf = currentUsername?.toLowerCase() ?? ''
+  const raw = messageMarked.parse(content) as string
 
   const clean = DOMPurify.sanitize(raw, {
     ALLOWED_TAGS: [
@@ -281,6 +327,12 @@ function AttachmentPreview({
       target="_blank"
       rel="noopener noreferrer"
       className="msg-bubble__attachment-link"
+      onClick={(e) => {
+        // Inside Tauri a plain target=_blank does nothing (or replaces the
+        // app); the helper routes to the system browser.
+        e.preventDefault()
+        openExternalLink(resolvedUrl)
+      }}
     >
       <span className="msg-bubble__attachment-filename">{displayFilename}</span>
     </a>
@@ -409,7 +461,11 @@ function MessageBubble({
       setBarPos({ top: r.bottom + 25, left: r.left })
     }
     update()
-    const scrollContainer = el.closest('.chat-area__messages')
+    // The element that actually scrolls is Virtuoso's scroller; the
+    // .chat-area__messages wrapper around it is overflow:hidden and never
+    // fires scroll, which left the bar floating where the message used to be.
+    const scrollContainer =
+      el.closest('[data-virtuoso-scroller]') ?? el.closest('.chat-area__messages')
     window.addEventListener('resize', update)
     scrollContainer?.addEventListener('scroll', update, { passive: true })
     return () => {
@@ -419,7 +475,7 @@ function MessageBubble({
   }, [barMounted])
 
   const showMeta = isMobile
-    ? mobileActionsVisible || editing
+    ? mobileActionsVisible || editing || confirmDelete
     : hovered || metaHovered || !!message.edited_at || confirmDelete || editing
 
   const handleToggleReaction = useCallback(
@@ -439,6 +495,7 @@ function MessageBubble({
         }
       } catch (err) {
         console.error('Reaction toggle failed:', err)
+        showErrorToast(hasReacted ? 'remove the reaction' : 'add the reaction')
       }
     },
     [session, message.id, message.reactions, message.channel_id, haptics],
@@ -449,6 +506,60 @@ function MessageBubble({
     setEditContent(message.content)
     setConfirmDelete(false)
   }
+
+  // Every delete path goes through the same inline confirm step; on mobile
+  // the meta row that holds it has to be revealed as well.
+  const requestDelete = () => {
+    setConfirmDelete(true)
+    if (isMobile) setMobileActionsVisible(true)
+  }
+
+  const copyText = () => {
+    navigator.clipboard.writeText(message.content || '').catch(() => {})
+  }
+
+  /* Keyboard shortcuts advertised in the context menu, active for the message
+   * under the pointer: R reply, E edit, Delete delete (with confirm), Ctrl+C
+   * copy when nothing is selected. Ignored while typing in a field. */
+  const shortcutsRef = useRef({ onReply, startEdit, requestDelete, copyText, canEdit, canDelete })
+  shortcutsRef.current = { onReply, startEdit, requestDelete, copyText, canEdit, canDelete }
+  useEffect(() => {
+    if (isMobile || !hovered || editing) return
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (
+        t &&
+        (t.tagName === 'INPUT' ||
+          t.tagName === 'TEXTAREA' ||
+          t.tagName === 'SELECT' ||
+          t.isContentEditable)
+      )
+        return
+      if (e.altKey || e.defaultPrevented) return
+      const sc = shortcutsRef.current
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && !e.shiftKey && e.key.toLowerCase() === 'c') {
+        if (window.getSelection()?.toString()) return
+        e.preventDefault()
+        sc.copyText()
+        return
+      }
+      if (mod || e.shiftKey) return
+      if (e.key === 'r' || e.key === 'R') {
+        if (!sc.onReply) return
+        e.preventDefault()
+        sc.onReply(message)
+      } else if ((e.key === 'e' || e.key === 'E') && sc.canEdit && !isStickerOnly) {
+        e.preventDefault()
+        sc.startEdit()
+      } else if (e.key === 'Delete' && sc.canDelete) {
+        e.preventDefault()
+        sc.requestDelete()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isMobile, hovered, editing, message, isStickerOnly])
 
   const cancelEdit = () => {
     setEditing(false)
@@ -531,10 +642,7 @@ function MessageBubble({
 
     mainItems.push({
       label: 'Copy Text',
-      onClick: () => {
-        const rawText = message.content || ''
-        navigator.clipboard.writeText(rawText).catch(() => {})
-      },
+      onClick: copyText,
       shortcut: 'Ctrl+C',
     })
 
@@ -562,10 +670,7 @@ function MessageBubble({
     if (canDelete) {
       actionItems.push({
         label: 'Delete',
-        onClick: () => {
-          onDelete(message.id)
-          setConfirmDelete(false)
-        },
+        onClick: requestDelete,
         danger: true,
         shortcut: 'Del',
       })
@@ -724,7 +829,12 @@ function MessageBubble({
               {showMeta && <span className="msg-bubble__time">{time}</span>}
               {message.edited_at && <span className="msg-bubble__edited">(edited)</span>}
               {canEdit && !isStickerOnly && (
-                <button className="msg-bubble__edit-btn" onClick={startEdit} title="Edit message">
+                <button
+                  className="msg-bubble__edit-btn"
+                  onClick={startEdit}
+                  title="Edit message"
+                  aria-label="Edit message"
+                >
                   <Pencil size={12} />
                 </button>
               )}
@@ -749,8 +859,9 @@ function MessageBubble({
               ) : canDelete ? (
                 <button
                   className="msg-bubble__delete-btn"
-                  onClick={() => setConfirmDelete(true)}
+                  onClick={requestDelete}
                   title="Delete message"
+                  aria-label="Delete message"
                 >
                   <Trash2 size={12} />
                 </button>
