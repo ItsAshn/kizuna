@@ -7,7 +7,8 @@ import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
 import { useSettingsStore } from '../store/settingsStore'
 import type { ConnectionQuality } from '@kizuna/shared'
-import { isTauri, isMobileTauri } from '../utils/platform'
+import { isTauri, isMobileTauri, isLinuxDesktop } from '../utils/platform'
+import { closeWebviewVideoSend } from './webviewVideoSend'
 
 interface VoiceJoinResult {
   error?: string
@@ -37,14 +38,30 @@ interface TransportResult {
   [key: string]: unknown
 }
 
+/** One native video track on the Rust send transport. */
+export interface NativeVideoSource {
+  rtpParameters: Record<string, unknown>
+  /** Server producer for the track; null until (re-)produced. */
+  producerId: string | null
+}
+
 /**
- * Handle to the video track the Rust send transport already carries, used by
- * the native screenshare path on Linux (see useScreenshare).
+ * Handle to the video tracks the Rust send transport already carries, used by
+ * the native screenshare and camera paths on Linux (see useScreenshare and
+ * useCamera).
  */
 export interface NativeVideoProducer {
   transportId: string
-  rtpParameters: Record<string, unknown>
-  producerId: string | null
+  screen: NativeVideoSource
+  camera: NativeVideoSource
+}
+
+/** What `voice_begin` returns. */
+interface NativeJoinParams {
+  sendDtls: Record<string, unknown>
+  audio: Record<string, unknown>
+  screen: Record<string, unknown>
+  camera: Record<string, unknown>
 }
 
 interface RTCStatEntry {
@@ -488,6 +505,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     sendTransportRef.current = null
     recvTransportRef.current = null
     nativeVideoRef.current = null
+    closeWebviewVideoSend()
     // A screenshare cannot outlive its call — the capture session is torn down
     // with the call, so the button must not stay lit.
     useCallStore.getState().setIsScreenSharing(false)
@@ -1198,9 +1216,15 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
         useVoiceStore.getState().setIceServers(iceServers)
 
-        // Step 2: create send transport via chat socket
+        // Step 2: create send transport via chat socket. On Linux it carries
+        // the natively encoded screen and camera video too; elsewhere video is
+        // sent from the webview on its own transport, so this one is audio only.
         const sendParams: TransportResult = await new Promise((resolve) =>
-          socket!.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
+          socket!.emit(
+            'voice:createTransport',
+            { channelId, direction: 'send', purpose: isLinuxDesktop() ? 'av' : 'audio' },
+            resolve,
+          ),
         )
         if (sendParams?.error) throw new Error(`send transport create: ${sendParams.error}`)
         vlog('joinVoiceNative', 'send transport created', { id: sendParams?.id })
@@ -1214,26 +1238,22 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
         // Step 4: create WebRTC send transport in Rust (recv uses DirectTransport, no Rust PC needed)
         vlog('joinVoiceNative', 'calling voice_begin')
-        const [sendDtls, _recvDtls, audioRtpParams, videoRtpParams] = (await invoke('voice_begin', {
+        const joinParams = (await invoke('voice_begin', {
           channelId,
           iceServers,
           sendParams,
           recvParams,
           voiceBitrateKbps,
-        })) as [
-          Record<string, unknown>,
-          Record<string, unknown>,
-          Record<string, unknown>,
-          Record<string, unknown>,
-        ]
-        vlog('joinVoiceNative', 'voice_begin OK')
+        })) as NativeJoinParams
+        const { sendDtls, audio: audioRtpParams } = joinParams
+        vlog('joinVoiceNative', 'voice_begin OK', { dtlsRole: sendDtls?.role })
 
-        // The video track exists on the Rust send transport from here on; the
-        // screenshare hook produces it on the server the first time it is used.
+        // The video tracks exist on the Rust send transport from here on; the
+        // screenshare and camera hooks produce them on the server when used.
         nativeVideoRef.current = {
           transportId: sendParams.id as string,
-          rtpParameters: videoRtpParams,
-          producerId: null,
+          screen: { rtpParameters: joinParams.screen, producerId: null },
+          camera: { rtpParameters: joinParams.camera, producerId: null },
         }
 
         // Step 5: connect send transport

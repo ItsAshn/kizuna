@@ -39,6 +39,9 @@ webkit2gtk = { version = "2.0", features = ["v2_38"] }
 # runtime dependency users don't already have.
 gstreamer = "0.25"
 gstreamer-app = "0.25"
+# Upstream force-key-unit events, so a viewer's PLI gets a keyframe out of the
+# encoder at once.
+gstreamer-video = "0.25"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", features = [

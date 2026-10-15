@@ -1,31 +1,78 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
+use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
+use crate::capture::VideoSource;
+
 use super::dsp::AudioProcessor;
 use super::encode::{self, AudioSendSession};
 use super::rnnoise::NoiseSuppressionMode;
-use super::transport;
+use super::transport::{self, VideoSendTrack};
 use super::VoiceEvent;
+
+/// What `voice_begin` hands the frontend: the DTLS parameters for
+/// `voice:connectTransport` and the RTP parameters to `voice:produce` each
+/// track with.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinTransportParams {
+    pub send_dtls: Value,
+    pub audio: Value,
+    pub screen: Value,
+    pub camera: Value,
+}
+
+/// One outgoing video track and, while it is live, its encoder.
+pub struct VideoSlot {
+    pub track: Arc<TrackLocalStaticSample>,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub sender: Arc<webrtc::rtp_transceiver::rtp_sender::RTCRtpSender>,
+    #[cfg(target_os = "linux")]
+    pub session: Option<super::video::VideoSendSession>,
+    #[cfg(target_os = "linux")]
+    pub rtcp: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl VideoSlot {
+    fn new(t: VideoSendTrack) -> Self {
+        Self {
+            track: t.track,
+            sender: t.sender,
+            #[cfg(target_os = "linux")]
+            session: None,
+            #[cfg(target_os = "linux")]
+            rtcp: None,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn stop(&mut self, source: VideoSource) {
+        // Detach the capture sink before the encoder goes away so capture
+        // threads stop handing frames to a dead pipeline.
+        crate::capture::clear_video_sink(source);
+        if let Some(handle) = self.rtcp.take() {
+            handle.abort();
+        }
+        if let Some(mut session) = self.session.take() {
+            session.stop();
+        }
+    }
+}
 
 pub struct ActiveCall {
     pub channel_id: String,
     pub send_pc: webrtc::peer_connection::RTCPeerConnection,
     pub voice_bitrate_kbps: u64,
     pub audio_track: Option<Arc<TrackLocalStaticSample>>,
-    pub video_track: Option<Arc<TrackLocalStaticSample>>,
     pub audio_send: Option<AudioSendSession>,
     pub processor: Option<Arc<tokio::sync::Mutex<AudioProcessor>>>,
-    #[cfg(target_os = "linux")]
-    pub video_sender: Arc<webrtc::rtp_transceiver::rtp_sender::RTCRtpSender>,
-    #[cfg(target_os = "linux")]
-    pub video_send: Option<super::video::VideoSendSession>,
-    #[cfg(target_os = "linux")]
-    pub video_rtcp: Option<tokio::task::JoinHandle<()>>,
+    pub video: HashMap<VideoSource, VideoSlot>,
 }
 
 impl ActiveCall {
@@ -86,16 +133,8 @@ impl Drop for ActiveCall {
             s.stop();
         }
         #[cfg(target_os = "linux")]
-        {
-            // Detach the capture sink before the encoder goes away so capture
-            // threads stop handing frames to a dead pipeline.
-            crate::capture::clear_video_sink();
-            if let Some(handle) = self.video_rtcp.take() {
-                handle.abort();
-            }
-            if let Some(ref mut s) = self.video_send {
-                s.stop();
-            }
+        for (source, slot) in self.video.iter_mut() {
+            slot.stop(*source);
         }
         tokio::task::block_in_place(|| {
             tauri::async_runtime::block_on(async {
@@ -132,8 +171,12 @@ impl VoiceController {
         self.signal_tx.clone()
     }
 
-    pub fn video_track(&self) -> Option<Arc<TrackLocalStaticSample>> {
-        self.active_call.as_ref().and_then(|c| c.video_track.clone())
+    #[allow(dead_code)]
+    pub fn video_track(&self, source: VideoSource) -> Option<Arc<TrackLocalStaticSample>> {
+        self.active_call
+            .as_ref()
+            .and_then(|c| c.video.get(&source))
+            .map(|slot| slot.track.clone())
     }
 
     pub async fn drain_signals(&mut self) -> Vec<(String, Value)> {
@@ -170,32 +213,30 @@ impl VoiceController {
         self.emit_state("disconnected", None);
     }
     /// Called after TypeScript has obtained transport params from the server.
-    /// Returns DTLS params (send_dtls, null, null) and RTP parameters for produce.
+    /// Builds the send transport and returns its DTLS parameters plus the RTP
+    /// parameters each of its tracks is produced with.
     pub async fn begin_join(
         &mut self,
         channel_id: &str,
         ice_servers: Vec<Value>,
         send_params: Value,
-        recv_params: Value,
+        _recv_params: Value,
         voice_bitrate_kbps: u64,
-    ) -> Result<(Value, Value, Value, Value), String> {
+    ) -> Result<JoinTransportParams, String> {
         eprintln!("[VoiceNative] begin_join channel={channel_id}");
 
-        let (transport_pair, send_dtls) =
-            transport::create_transports(
-                &ice_servers,
-                &send_params,
-            )
+        // A rejoin replaces the previous call; drop it (and its encoders)
+        // before building the new transport.
+        self.active_call = None;
+
+        let send = transport::create_send_transport(&ice_servers, &send_params)
             .await
             .map_err(|e| {
                 eprintln!("[VoiceNative] begin_join: transport setup failed: {e}");
                 format!("Transport setup: {e}")
             })?;
 
-        let _ = recv_params;
-
-        let rtp_sender = transport_pair.audio_sender.clone();
-        let params = rtp_sender.get_parameters().await;
+        let params = send.audio_sender.get_parameters().await;
         let ssrc = params.encodings.first().map(|e| e.ssrc).unwrap_or(1);
 
         let rtp_params = json!({
@@ -222,48 +263,41 @@ impl VoiceController {
             },
         });
 
-        let video_sender = transport_pair.video_sender.clone();
-        let video_params = video_sender.get_parameters().await;
-        let video_ssrc = video_params.encodings.first().map(|e| e.ssrc).unwrap_or(2);
-
-        let video_rtp_params = json!({
-            "codecs": [{
-                "mimeType": "video/VP8",
-                "payloadType": 100,
-                "clockRate": 90000,
-                "channels": 0,
-                "parameters": {},
-                "rtcpFeedback": [],
-            }],
-            "headerExtensions": [],
-            "encodings": [{
-                "ssrc": video_ssrc,
-                "maxBitrate": super::SCREEN_SHARE_BITRATE_BPS,
-            }],
-            "rtcp": {
-                "cname": "",
-                "reducedSize": true,
-            },
-        });
+        let mut video_params = HashMap::new();
+        let mut video = HashMap::new();
+        for (source, t) in send.video {
+            let p = t.sender.get_parameters().await;
+            let video_ssrc = p.encodings.first().map(|e| e.ssrc).unwrap_or(0);
+            let max = match source {
+                VideoSource::Screen => super::SCREEN_SHARE_MAX_BITRATE_BPS,
+                VideoSource::Camera => super::CAMERA_MAX_BITRATE_BPS,
+            };
+            video_params.insert(source, transport::video_rtp_parameters(video_ssrc, max));
+            video.insert(source, VideoSlot::new(t));
+        }
 
         self.active_call = Some(ActiveCall {
             channel_id: channel_id.to_string(),
-            send_pc: transport_pair.send_pc,
+            send_pc: send.pc,
             voice_bitrate_kbps,
-            audio_track: Some(transport_pair.audio_track),
-            video_track: Some(transport_pair.video_track),
+            audio_track: Some(send.audio_track),
             audio_send: None,
             processor: None,
-            #[cfg(target_os = "linux")]
-            video_sender,
-            #[cfg(target_os = "linux")]
-            video_send: None,
-            #[cfg(target_os = "linux")]
-            video_rtcp: None,
+            video,
         });
 
-        eprintln!("[VoiceNative] begin_join OK: audio_ssrc={ssrc} video_ssrc={video_ssrc}");
-        Ok((send_dtls, json!({}), rtp_params, video_rtp_params))
+        let screen = video_params.remove(&VideoSource::Screen).unwrap_or(Value::Null);
+        let camera = video_params.remove(&VideoSource::Camera).unwrap_or(Value::Null);
+        eprintln!(
+            "[VoiceNative] begin_join OK: audio_ssrc={ssrc} screen_ssrc={} camera_ssrc={} dtls_role={}",
+            screen["encodings"][0]["ssrc"], camera["encodings"][0]["ssrc"], send.dtls["role"]
+        );
+        Ok(JoinTransportParams {
+            send_dtls: send.dtls,
+            audio: rtp_params,
+            screen,
+            camera,
+        })
     }
 
     /// Called after TypeScript has sent connectTransport + produce successfully.
@@ -411,67 +445,118 @@ impl VoiceController {
         }
     }
 
-    /// Starts encoding captured screen frames onto the call's video track.
-    /// The caller is responsible for having produced the video track on the
-    /// server first, and for starting the capture session that fills the sink.
+    /// Starts encoding captured frames for `source` onto its video track. The
+    /// caller is responsible for having produced the track on the server, and
+    /// for starting the capture session that fills the sink.
     #[cfg(target_os = "linux")]
-    pub fn start_screen_share(&mut self, fps: u32, bitrate_bps: u32) -> Result<(), String> {
+    pub fn start_video(
+        &mut self,
+        source: VideoSource,
+        fps: u32,
+        start_bitrate_bps: Option<u32>,
+    ) -> Result<(), String> {
         use webrtc::rtcp::payload_feedbacks::full_intra_request::FullIntraRequest;
         use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
+        use webrtc::rtcp::receiver_report::ReceiverReport;
+        use webrtc::rtcp::sender_report::SenderReport;
 
         let call = self
             .active_call
             .as_mut()
             .ok_or("Not connected to a voice channel")?;
-        if call.video_send.is_some() {
-            return Err("Screen share is already active".into());
+        let slot = call
+            .video
+            .get_mut(&source)
+            .ok_or("This call has no video track for that source")?;
+        if slot.session.is_some() {
+            return Err(format!("{} video is already active", source.as_str()));
         }
-        let track = call
-            .video_track
-            .clone()
-            .ok_or("This call has no video track")?;
+
+        let mut cfg = super::video::VideoEncodeConfig::for_source(source, fps.max(1));
+        if let Some(bps) = start_bitrate_bps {
+            cfg.start_bitrate_bps = bps;
+        }
 
         // Two frames of slack: enough to absorb a scheduling hiccup, small
         // enough that a slow encoder drops frames instead of adding latency.
         let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel(2);
-        let session = super::video::VideoSendSession::start(track, frame_rx, bitrate_bps, fps)?;
+        let session = super::video::VideoSendSession::start(slot.track.clone(), frame_rx, cfg)?;
 
+        // Reading the sender's RTCP also drives its interceptors (the NACK
+        // responder retransmits from here). PLI/FIR force a keyframe; receiver
+        // reports for our SSRC feed the loss-based bitrate controller.
         let requester = session.keyframe_requester();
-        let video_sender = call.video_sender.clone();
+        let bitrate = session.bitrate_handle();
+        let sender = slot.sender.clone();
         let rtcp = tokio::spawn(async move {
-            while let Ok((packets, _)) = video_sender.read_rtcp().await {
+            let ssrc = sender
+                .get_parameters()
+                .await
+                .encodings
+                .first()
+                .map(|e| e.ssrc)
+                .unwrap_or(0);
+            let on_reports = |reports: &[webrtc::rtcp::reception_report::ReceptionReport]| {
+                for r in reports.iter().filter(|r| r.ssrc == ssrc) {
+                    let before = bitrate.get();
+                    let after = bitrate.on_loss_report(r.fraction_lost);
+                    if before != after && (before.abs_diff(after) * 10 > before) {
+                        eprintln!(
+                            "[VoiceNative] {} bitrate {}kbps -> {}kbps (loss {}/256)",
+                            source.as_str(),
+                            before / 1000,
+                            after / 1000,
+                            r.fraction_lost
+                        );
+                    }
+                }
+            };
+            while let Ok((packets, _)) = sender.read_rtcp().await {
                 for packet in packets {
                     let any = packet.as_any();
                     if any.downcast_ref::<PictureLossIndication>().is_some()
                         || any.downcast_ref::<FullIntraRequest>().is_some()
                     {
                         requester.request();
+                    } else if let Some(rr) = any.downcast_ref::<ReceiverReport>() {
+                        on_reports(&rr.reports);
+                    } else if let Some(sr) = any.downcast_ref::<SenderReport>() {
+                        on_reports(&sr.reports);
                     }
                 }
             }
         });
 
-        crate::capture::set_video_sink(frame_tx);
-        call.video_send = Some(session);
-        call.video_rtcp = Some(rtcp);
-        eprintln!("[VoiceNative] screen share encoding started");
+        crate::capture::set_video_sink(source, frame_tx);
+        slot.session = Some(session);
+        slot.rtcp = Some(rtcp);
+        eprintln!("[VoiceNative] {} video encoding started", source.as_str());
         Ok(())
     }
 
     #[cfg(target_os = "linux")]
-    pub fn stop_screen_share(&mut self) {
+    pub fn stop_video(&mut self, source: VideoSource) {
         // Detach the sink first: capture threads then stop producing frames for
         // a pipeline that is about to be torn down.
-        crate::capture::clear_video_sink();
-        if let Some(call) = self.active_call.as_mut() {
-            if let Some(handle) = call.video_rtcp.take() {
-                handle.abort();
-            }
-            if let Some(mut session) = call.video_send.take() {
-                session.stop();
-            }
+        crate::capture::clear_video_sink(source);
+        if let Some(slot) = self
+            .active_call
+            .as_mut()
+            .and_then(|call| call.video.get_mut(&source))
+        {
+            slot.stop(source);
         }
-        eprintln!("[VoiceNative] screen share encoding stopped");
+        eprintln!("[VoiceNative] {} video encoding stopped", source.as_str());
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn start_screen_share(&mut self, fps: u32, bitrate_bps: Option<u32>) -> Result<(), String> {
+        self.start_video(VideoSource::Screen, fps, bitrate_bps)
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn stop_screen_share(&mut self) {
+        self.stop_video(VideoSource::Screen)
     }
 
     pub async fn set_muted(&self, muted: bool) {

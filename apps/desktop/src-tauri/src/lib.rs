@@ -270,7 +270,7 @@ async fn voice_begin(
     send_params: serde_json::Value,
     recv_params: serde_json::Value,
     voice_bitrate_kbps: u64,
-) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), String> {
+) -> Result<voice::JoinTransportParams, String> {
     run_blocking("voice_begin", move || {
         let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
         let controller = guard.as_mut().ok_or("Voice not initialized")?;
@@ -706,12 +706,9 @@ async fn voice_screen_share_start(
 
     #[cfg(target_os = "linux")]
     {
-        let bitrate_bps = bitrate_kbps
-            .map(|kbps| kbps * 1000)
-            .unwrap_or(voice::SCREEN_SHARE_BITRATE_BPS);
         let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
         let controller = guard.as_mut().ok_or("Voice is not connected")?;
-        controller.start_screen_share(fps.max(1), bitrate_bps)?;
+        controller.start_screen_share(fps.max(1), bitrate_kbps.map(|kbps| kbps * 1000))?;
     }
 
     let session = match get_session_type() {
