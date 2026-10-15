@@ -13,8 +13,18 @@
 //                                       -> genuine loss: recover via FEC, else PLC
 //   * nothing newer is buffered at all  -> the sender stopped (DTX, or a stall);
 //                                          emit silence, never invent audio
+//
+// Depth adapts to *timing*, not to loss. A lost packet is concealed by FEC/PLC
+// no matter how deep the buffer is, so growing on loss only added latency: on a
+// link with steady 1% loss the old rule ratcheted the target up to its 300ms
+// ceiling and never came back down, because every loss also reset the shrink
+// counter. Now the target grows only when a packet arrives too late to be
+// played (or the buffer runs dry under a stall), is sized from a smoothed
+// measure of inter-arrival jitter, and shrinks whenever that jitter has been
+// low for a while, whatever the loss rate.
 
 use std::collections::BTreeMap;
+use std::time::Instant;
 
 use opus2::{Channels, Decoder};
 
@@ -24,14 +34,27 @@ const SAMPLE_RATE: f32 = 48000.0;
 
 /// Adaptive target depth bounds, in 20ms frames.
 const MIN_TARGET_FRAMES: usize = 2;
+/// Default ceiling (160ms). Late arrivals alone cannot push past this; only
+/// measured jitter that genuinely needs more can.
+const DEFAULT_CAP_FRAMES: usize = 8;
+/// Absolute ceiling (300ms), reachable only on a link whose measured jitter
+/// calls for it.
 const MAX_TARGET_FRAMES: usize = 15;
 const INITIAL_TARGET_FRAMES: usize = 3;
 /// Hard cap; beyond this the sender is far ahead of us and old audio is stale.
 const MAX_BUFFER_FRAMES: usize = 40;
 /// How far past target the buffer may sit before it walks latency back down.
 const OVERFULL_SLACK: usize = 4;
-/// Consecutive clean playouts before trying a shallower target (500 * 20ms = 10s).
-const SHRINK_AFTER_CLEAN_FRAMES: u32 = 500;
+/// Playouts the jitter estimate must sit below the current target before the
+/// target steps down one frame (150 * 20ms = 3s).
+const SHRINK_AFTER_CALM_FRAMES: u32 = 150;
+/// Playouts after a growth step during which further late packets from the
+/// same burst do not grow the target again.
+const GROW_COOLDOWN_FRAMES: u32 = 10;
+/// How many jitter standard-ish deviations the buffer should cover. The RFC
+/// 3550 estimator is a mean absolute deviation; three of them comfortably
+/// covers the tail of real-world arrival spread.
+const JITTER_HEADROOM: f64 = 3.0;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Playout {
@@ -63,7 +86,17 @@ pub struct PeerJitter {
     /// whether the sender had stopped (DTX) or we simply fell behind.
     starved: bool,
     target_frames: usize,
-    clean_frames: u32,
+    /// Consecutive playouts during which jitter called for a shallower target.
+    calm_frames: u32,
+    grow_cooldown: u32,
+
+    // RFC 3550 interarrival jitter, in samples: a running mean of how much each
+    // packet's transit time differs from the previous one's.
+    epoch: Option<Instant>,
+    last_transit: Option<f64>,
+    jitter: f64,
+    last_wire_ts: Option<u32>,
+    ts_cycles: u64,
 
     /// Last sample handed out, used to ramp out of a gap instead of stepping to
     /// zero (a step is an audible click).
@@ -86,9 +119,53 @@ impl PeerJitter {
             primed: false,
             starved: false,
             target_frames: INITIAL_TARGET_FRAMES,
-            clean_frames: 0,
+            calm_frames: 0,
+            grow_cooldown: 0,
+            epoch: None,
+            last_transit: None,
+            jitter: 0.0,
+            last_wire_ts: None,
+            ts_cycles: 0,
             last_sample: 0.0,
         })
+    }
+
+    /// Current target depth in 20ms frames.
+    #[cfg(test)]
+    pub fn target_frames(&self) -> usize {
+        self.target_frames
+    }
+
+    /// Update the interarrival jitter estimate with a packet that arrived at
+    /// `now` carrying media time `media_ts` (in samples). DTX pauses advance
+    /// both clocks together, so they do not register as jitter.
+    fn observe_arrival(&mut self, now: Instant, media_ts: u64) {
+        let epoch = *self.epoch.get_or_insert(now);
+        let arrival = now.saturating_duration_since(epoch).as_secs_f64() * SAMPLE_RATE as f64;
+        let transit = arrival - media_ts as f64;
+        if let Some(prev) = self.last_transit {
+            let d = (transit - prev).abs();
+            // A multi-second jump is a clock reset or a sender restart, not
+            // jitter; don't let one event inflate the buffer for a minute.
+            if d < SAMPLE_RATE as f64 * 2.0 {
+                self.jitter += (d - self.jitter) / 16.0;
+            }
+        }
+        self.last_transit = Some(transit);
+    }
+
+    /// Depth the measured jitter calls for, before caps.
+    fn jitter_frames(&self) -> usize {
+        let needed = (JITTER_HEADROOM * self.jitter / FRAME_SAMPLES as f64).ceil() as usize;
+        1 + needed
+    }
+
+    /// Highest target allowed right now: the default cap, unless measured
+    /// jitter needs more, and never past the absolute ceiling.
+    fn cap(&self) -> usize {
+        DEFAULT_CAP_FRAMES
+            .max(self.jitter_frames())
+            .min(MAX_TARGET_FRAMES)
     }
 
     /// Unwrap a 16-bit wire sequence number into a monotonic 64-bit one.
@@ -115,10 +192,35 @@ impl PeerJitter {
         }
     }
 
+    /// Unwrap a 32-bit RTP timestamp into a monotonic 64-bit one, the same way
+    /// as sequence numbers. Only differences matter (for jitter), so the
+    /// starting offset is irrelevant.
+    fn extend_ts(&mut self, wire: u32) -> u64 {
+        let Some(last) = self.last_wire_ts else {
+            self.last_wire_ts = Some(wire);
+            return wire as u64 + (1 << 32);
+        };
+        if wire.wrapping_sub(last) < 0x8000_0000 {
+            if wire < last {
+                self.ts_cycles += 1;
+            }
+            self.last_wire_ts = Some(wire);
+            (self.ts_cycles + 1) * (1 << 32) + wire as u64
+        } else {
+            let back = last.wrapping_sub(wire) as u64;
+            ((self.ts_cycles + 1) * (1 << 32) + last as u64).saturating_sub(back)
+        }
+    }
+
     /// Accept a packet. `seq`/`ts` are `None` when talking to a server old enough
     /// that it forwards bare Opus payloads; the buffer then degrades to arrival
     /// order, which disables reordering and FEC but keeps everything else.
     pub fn push(&mut self, seq: Option<u16>, ts: Option<u32>, payload: Vec<u8>) {
+        self.push_at(Instant::now(), seq, ts, payload);
+    }
+
+    /// `push` with an explicit arrival time, so tests can model a network.
+    pub fn push_at(&mut self, now: Instant, seq: Option<u16>, ts: Option<u32>, payload: Vec<u8>) {
         let ext = match seq {
             Some(w) => self.extend_seq(w),
             None => {
@@ -128,9 +230,28 @@ impl PeerJitter {
             }
         };
 
-        // A packet we have already played past is useless.
+        // Jitter needs the sender's media clock. Without timestamps (legacy
+        // server) a DTX pause would be indistinguishable from a huge delay
+        // spike, so the estimate is simply not kept; late arrivals and stalls
+        // still adapt the depth.
+        if let Some(t) = ts {
+            let media_ts = self.extend_ts(t);
+            self.observe_arrival(now, media_ts);
+        }
+
+        // A packet we have already played past is useless, and it is the one
+        // thing that says the buffer is too shallow: it arrived, just after its
+        // slot was concealed. That — not loss — is what deepens the buffer.
         if self.next_seq.is_some_and(|n| ext < n) {
+            self.grow_target();
             return;
+        }
+
+        // Measured jitter can call for more depth before anything is late.
+        let wanted = self.jitter_frames().min(self.cap());
+        if wanted > self.target_frames {
+            self.target_frames = wanted;
+            self.calm_frames = 0;
         }
 
         if self.starved {
@@ -188,24 +309,39 @@ impl PeerJitter {
         }
     }
 
+    /// One step deeper, for a late packet or a stall. Bounded by `cap()`, and
+    /// rate-limited so one burst of stragglers counts once.
     fn grow_target(&mut self) {
-        self.clean_frames = 0;
-        if self.target_frames < MAX_TARGET_FRAMES {
+        self.calm_frames = 0;
+        if self.grow_cooldown > 0 {
+            return;
+        }
+        if self.target_frames < self.cap() {
             self.target_frames += 1;
+            self.grow_cooldown = GROW_COOLDOWN_FRAMES;
         }
     }
 
-    fn note_clean(&mut self) {
-        self.clean_frames += 1;
-        if self.clean_frames >= SHRINK_AFTER_CLEAN_FRAMES && self.target_frames > MIN_TARGET_FRAMES
-        {
-            self.target_frames -= 1;
-            self.clean_frames = 0;
+    /// Called once per playout tick. Steps the target down when measured jitter
+    /// has wanted less depth for long enough. Loss plays no part: it neither
+    /// grows the target nor holds off a shrink.
+    fn adapt_on_tick(&mut self) {
+        self.grow_cooldown = self.grow_cooldown.saturating_sub(1);
+        let floor = self.jitter_frames().clamp(MIN_TARGET_FRAMES, MAX_TARGET_FRAMES);
+        if self.target_frames > floor {
+            self.calm_frames += 1;
+            if self.calm_frames >= SHRINK_AFTER_CALM_FRAMES {
+                self.target_frames -= 1;
+                self.calm_frames = 0;
+            }
+        } else {
+            self.calm_frames = 0;
         }
     }
 
     /// Produce one 20ms frame into `out` (fully overwritten).
     pub fn pop_frame(&mut self, out: &mut [f32]) -> Playout {
+        self.adapt_on_tick();
         if !self.primed {
             return self.ramp_out(out);
         }
@@ -228,15 +364,16 @@ impl PeerJitter {
         if let Some(packet) = self.packets.remove(&next) {
             let n = self.decode(&packet, out, false);
             self.next_seq = Some(next + 1);
-            self.note_clean();
             return self.finish(out, n);
         }
 
         let have_newer = self.packets.keys().next().is_some_and(|&k| k > next);
         if have_newer {
-            // Real loss: something newer arrived, so this frame is not merely late.
-            self.grow_target();
-
+            // Something newer arrived, so this frame is lost or late. Either
+            // way it is concealed now and the buffer is left alone: if it was
+            // merely late, its arrival after this slot grows the target (see
+            // `push_at`); if it was lost, depth would not have helped.
+            //
             // Opus carries a lower-bitrate copy of the previous frame inside the
             // next packet. If seq+1 is buffered we can rebuild the lost frame
             // from it; the packet stays put so it still decodes normally next tick.
@@ -300,6 +437,8 @@ impl PeerJitter {
 mod tests {
     use super::*;
     use opus2::{Application, Encoder};
+    use std::sync::OnceLock;
+    use std::time::Duration;
 
     /// One encodable 20ms frame of a tone, so decodes produce real audio.
     fn tone_packet(encoder: &mut Encoder, phase: &mut f32) -> Vec<u8> {
@@ -317,13 +456,75 @@ mod tests {
         e
     }
 
-    /// Fill a buffer with `count` sequential packets starting at `first_seq`.
+    fn base() -> Instant {
+        static BASE: OnceLock<Instant> = OnceLock::new();
+        *BASE.get_or_init(Instant::now)
+    }
+
+    fn at_ms(ms: f64) -> Instant {
+        base() + Duration::from_secs_f64(ms / 1000.0)
+    }
+
+    fn ts_of(seq: u16) -> u32 {
+        (seq as u32).wrapping_mul(FRAME_SAMPLES as u32)
+    }
+
+    /// Fill a buffer with `count` sequential packets starting at `first_seq`,
+    /// arriving exactly on their 20ms cadence (no jitter).
     fn prime(j: &mut PeerJitter, enc: &mut Encoder, phase: &mut f32, first_seq: u16, count: u16) {
         for i in 0..count {
             let seq = first_seq.wrapping_add(i);
-            let ts = (seq as u32).wrapping_mul(FRAME_SAMPLES as u32);
-            j.push(Some(seq), Some(ts), tone_packet(enc, phase));
+            j.push_at(at_ms(seq as f64 * 20.0), Some(seq), Some(ts_of(seq)), tone_packet(enc, phase));
         }
+    }
+
+    /// Small deterministic PRNG so the network simulations are reproducible.
+    struct Lcg(u64);
+    impl Lcg {
+        fn next_f64(&mut self) -> f64 {
+            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (self.0 >> 11) as f64 / (1u64 << 53) as f64
+        }
+    }
+
+    /// Drive a buffer like the real output thread does: the sender emits frame
+    /// `k` at `k * 20ms`, it arrives `delay_ms(k)` later unless `lost(k)`, and
+    /// playout ticks every 20ms. Returns the target depth after every tick.
+    fn simulate(
+        frames: u64,
+        mut lost: impl FnMut(u64) -> bool,
+        mut delay_ms: impl FnMut(u64) -> f64,
+    ) -> Vec<usize> {
+        let mut j = PeerJitter::new().unwrap();
+        let (mut enc, mut phase) = (encoder(), 0.0);
+        let mut out = vec![0.0f32; FRAME_SAMPLES];
+
+        let mut arrivals: Vec<(f64, u64, Vec<u8>)> = (0..frames)
+            .filter_map(|k| {
+                let packet = tone_packet(&mut enc, &mut phase);
+                if lost(k) {
+                    None
+                } else {
+                    Some((k as f64 * 20.0 + delay_ms(k), k, packet))
+                }
+            })
+            .collect();
+        arrivals.sort_by(|a, b| a.0.total_cmp(&b.0));
+
+        let mut targets = Vec::with_capacity(frames as usize);
+        let mut next = arrivals.into_iter().peekable();
+        // Playout ticks run a little past the last send so the tail drains.
+        for tick in 0..frames + 50 {
+            let now = tick as f64 * 20.0;
+            while next.peek().is_some_and(|(t, _, _)| *t <= now) {
+                let (t, k, packet) = next.next().unwrap();
+                let seq = (k & 0xFFFF) as u16;
+                j.push_at(at_ms(t), Some(seq), Some(ts_of(seq)), packet);
+            }
+            j.pop_frame(&mut out);
+            targets.push(j.target_frames());
+        }
+        targets
     }
 
     #[test]
@@ -344,6 +545,16 @@ mod tests {
         // A straggler from before 103 must map below it, not wrap forward.
         assert_eq!(j.extend_seq(101), 101);
         assert_eq!(j.extend_seq(104), 104);
+    }
+
+    #[test]
+    fn extends_timestamps_across_the_32_bit_wrap() {
+        let mut j = PeerJitter::new().unwrap();
+        let a = j.extend_ts(u32::MAX - 959);
+        let b = j.extend_ts(0); // wrapped forward by 960
+        assert_eq!(b - a, 960);
+        let c = j.extend_ts(u32::MAX - 959); // reordered straggler
+        assert_eq!(c, a);
     }
 
     #[test]
@@ -369,9 +580,9 @@ mod tests {
         let p0 = tone_packet(&mut enc, &mut phase);
         let p1 = tone_packet(&mut enc, &mut phase);
         let p2 = tone_packet(&mut enc, &mut phase);
-        j.push(Some(2), Some(2 * 960), p2);
-        j.push(Some(0), Some(0), p0);
-        j.push(Some(1), Some(960), p1);
+        j.push_at(at_ms(40.0), Some(2), Some(ts_of(2)), p2);
+        j.push_at(at_ms(41.0), Some(0), Some(ts_of(0)), p0);
+        j.push_at(at_ms(42.0), Some(1), Some(ts_of(1)), p1);
 
         assert_eq!(j.next_seq, Some(0), "playout should start at the lowest sequence");
         for expected in 1..=3u64 {
@@ -381,7 +592,7 @@ mod tests {
     }
 
     #[test]
-    fn conceals_a_hole_when_newer_audio_is_already_buffered() {
+    fn conceals_a_hole_without_deepening_the_buffer() {
         let mut j = PeerJitter::new().unwrap();
         let (mut enc, mut phase) = (encoder(), 0.0);
         let mut out = vec![0.0f32; FRAME_SAMPLES];
@@ -394,12 +605,30 @@ mod tests {
             assert_eq!(j.pop_frame(&mut out), Playout::Data);
         }
 
-        // Frame 3 is missing but 4 is buffered: this is loss, so it must be
-        // filled and stepped over rather than stalling the stream.
+        // Frame 3 is missing but 4 is buffered: it must be filled (FEC/PLC) and
+        // stepped over rather than stalling the stream — and since more depth
+        // would not have brought it back, the target must not move.
         let before = j.target_frames;
         assert_eq!(j.pop_frame(&mut out), Playout::Data, "lost frame should be concealed");
         assert_eq!(j.next_seq, Some(4), "playout must advance past the hole");
-        assert!(j.target_frames > before, "real loss should deepen the buffer");
+        assert_eq!(j.target_frames, before, "loss alone must not deepen the buffer");
+    }
+
+    #[test]
+    fn a_packet_that_arrives_after_its_slot_deepens_the_buffer() {
+        let mut j = PeerJitter::new().unwrap();
+        let (mut enc, mut phase) = (encoder(), 0.0);
+        let mut out = vec![0.0f32; FRAME_SAMPLES];
+
+        prime(&mut j, &mut enc, &mut phase, 0, 3);
+        let late = tone_packet(&mut enc, &mut phase);
+        prime(&mut j, &mut enc, &mut phase, 4, 2);
+        for _ in 0..4 {
+            j.pop_frame(&mut out); // plays 0,1,2 and conceals 3
+        }
+        let before = j.target_frames;
+        j.push_at(at_ms(120.0), Some(3), Some(ts_of(3)), late);
+        assert_eq!(j.target_frames, before + 1, "a late packet means the buffer was too shallow");
     }
 
     #[test]
@@ -436,18 +665,25 @@ mod tests {
         };
 
         // Sender kept transmitting: timestamps advance one frame per sequence
-        // step, so the gap was ours and the buffer should grow.
+        // step, but the packet showed up 200ms late. The gap was the network's,
+        // so the buffer should grow.
         let mut stalled = PeerJitter::new().unwrap();
         drain(&mut stalled, &mut enc, &mut phase, &mut out);
         let before = stalled.target_frames;
-        stalled.push(Some(3), Some(3 * 960), tone_packet(&mut enc, &mut phase));
+        stalled.push_at(at_ms(260.0), Some(3), Some(ts_of(3)), tone_packet(&mut enc, &mut phase));
         assert!(stalled.target_frames > before, "a network stall should deepen the buffer");
 
-        // Sender was in DTX: sequence contiguous, timestamp jumped a full second.
+        // Sender was in DTX: sequence contiguous, timestamp (and arrival) a full
+        // second later.
         let mut quiet = PeerJitter::new().unwrap();
         drain(&mut quiet, &mut enc, &mut phase, &mut out);
         let before = quiet.target_frames;
-        quiet.push(Some(3), Some(3 * 960 + 48_000), tone_packet(&mut enc, &mut phase));
+        quiet.push_at(
+            at_ms(60.0 + 1000.0),
+            Some(3),
+            Some(ts_of(3) + 48_000),
+            tone_packet(&mut enc, &mut phase),
+        );
         assert_eq!(quiet.target_frames, before, "a silent talker is not a jitter problem");
     }
 
@@ -484,5 +720,50 @@ mod tests {
         }
         assert_eq!(j.pop_frame(&mut out), Playout::Data);
         assert_eq!(j.pop_frame(&mut out), Playout::Data);
+    }
+
+    #[test]
+    fn steady_random_loss_without_jitter_keeps_the_buffer_shallow() {
+        // 1% random loss on an otherwise perfect link, for a minute. The old
+        // rule grew on every loss and ratcheted to 300ms; loss is concealed
+        // by FEC/PLC whatever the depth, so it must not cost latency.
+        let mut rng = Lcg(7);
+        let targets = simulate(3000, |_| rng.next_f64() < 0.01, |_| 30.0);
+        let max = targets.iter().copied().max().unwrap();
+        assert!(max <= 3, "depth grew to {max} frames under loss alone");
+    }
+
+    #[test]
+    fn real_jitter_grows_the_buffer_within_the_default_cap() {
+        // Up to 80ms of random delay per packet (reordering included).
+        let mut rng = Lcg(11);
+        let targets = simulate(1500, |_| false, |_| 30.0 + rng.next_f64() * 80.0);
+        let last = *targets.last().unwrap();
+        assert!(last >= 4, "80ms of jitter needs more than the initial depth, got {last}");
+        let max = targets.iter().copied().max().unwrap();
+        assert!(max <= DEFAULT_CAP_FRAMES, "depth {max} exceeded the default cap");
+    }
+
+    #[test]
+    fn recovers_once_the_jitter_subsides() {
+        let mut rng = Lcg(13);
+        let targets = simulate(
+            3000,
+            |_| false,
+            |k| if k < 1500 { 30.0 + rng.next_f64() * 80.0 } else { 110.0 },
+        );
+        let during = targets[1400];
+        let after = *targets.last().unwrap();
+        assert!(during >= 4, "jitter phase should have deepened the buffer, got {during}");
+        assert!(after <= 3, "depth should come back down once the link is calm, got {after}");
+    }
+
+    #[test]
+    fn extreme_jitter_never_exceeds_the_hard_cap() {
+        let mut rng = Lcg(17);
+        let targets = simulate(1500, |_| false, |_| 30.0 + rng.next_f64() * 600.0);
+        let max = targets.iter().copied().max().unwrap();
+        assert!(max <= MAX_TARGET_FRAMES, "depth {max} exceeded the hard cap");
+        assert!(max > DEFAULT_CAP_FRAMES, "jitter this large should be allowed past the default cap");
     }
 }
