@@ -28,7 +28,9 @@ use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
 use serde_json::Value;
+use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::ice_transport::ice_server::RTCIceServer;
+use webrtc::peer_connection::signaling_state::RTCSignalingState;
 use webrtc::media::io::sample_builder::SampleBuilder;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -306,18 +308,38 @@ impl VideoRecvController {
         if self.slots.is_empty() {
             return Ok(String::new());
         }
+        if pc.remote_description().await.is_some() {
+            wait_for_ice_start(&pc).await;
+        }
         let offer = self.build_offer();
         match transport::answer_remote_offer(&pc, offer.clone()).await {
             Ok(answer) => Ok(answer),
             Err(e) => {
-                // Seen once under heavy load right after the first answer,
-                // while webrtc-rs was still starting its transports. A second
-                // attempt has always gone through.
-                eprintln!("[VideoRecv] renegotiation failed ({e}), retrying once");
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                eprintln!("[VideoRecv] renegotiation failed ({e}), recovering");
+                // A failed set_remote_description can leave the offer applied
+                // but unanswered; finish that exchange so the connection is
+                // stable again, then apply the offer once more.
+                if pc.signaling_state() == RTCSignalingState::HaveRemoteOffer {
+                    if let Ok(answer) = pc.create_answer(None).await {
+                        let _ = pc.set_local_description(answer).await;
+                    }
+                }
+                wait_for_ice_start(&pc).await;
                 transport::answer_remote_offer(&pc, offer).await
             }
         }
+    }
+}
+
+/// webrtc-rs hands the ICE agent the remote credentials on a task it spawns
+/// after the first answer. A re-offer applied before that sees "changed"
+/// credentials and fails as an ICE restart during gathering — which is what
+/// two consumers added back to back (a screen and a camera at join) used to
+/// hit. The agent leaves `New` once it has them.
+async fn wait_for_ice_start(pc: &RTCPeerConnection) {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while pc.ice_connection_state() == RTCIceConnectionState::New && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(10)).await;
     }
 }
 
