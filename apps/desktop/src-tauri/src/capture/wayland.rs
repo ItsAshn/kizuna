@@ -99,6 +99,7 @@ fn run_pipewire_capture(
 ) {
     let raw_fd = fd.as_raw_fd();
     let mut attempt = 0u32;
+    let mut last_error = String::from("the stream ended");
 
     loop {
         if cancel.load(Ordering::Relaxed) {
@@ -107,10 +108,7 @@ fn run_pipewire_capture(
 
         if attempt > 0 {
             if attempt > MAX_RECONNECT_ATTEMPTS {
-                eprintln!(
-                    "[ScreenCapture] max reconnect attempts ({}) reached, stopping",
-                    MAX_RECONNECT_ATTEMPTS
-                );
+                super::emit_capture_error(&app, format!("Screen capture stopped: {last_error}"));
                 break;
             }
             eprintln!(
@@ -123,7 +121,7 @@ fn run_pipewire_capture(
         let dup_fd = match dup_fd_safe(raw_fd) {
             Ok(d) => d,
             Err(e) => {
-                eprintln!("[ScreenCapture] Failed to dup fd: {e}");
+                super::emit_capture_error(&app, format!("Screen capture stopped: {e}"));
                 break;
             }
         };
@@ -138,6 +136,7 @@ fn run_pipewire_capture(
             }
             Err(e) => {
                 eprintln!("[ScreenCapture] PipeWire error: {}", e);
+                last_error = e;
                 attempt += 1;
                 continue;
             }

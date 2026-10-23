@@ -18,6 +18,20 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use serde::Serialize;
+use tauri::Emitter;
+
+/// Emitted as `screen:error` when a capture backend gives up for good, so the
+/// page can end the share and say why. Without it the sharer kept showing
+/// "sharing" and viewers waited on "Waiting for video…" forever.
+#[derive(Clone, Serialize)]
+pub struct ScreenErrorPayload {
+    pub message: String,
+}
+
+pub(crate) fn emit_capture_error(app: &tauri::AppHandle, message: String) {
+    eprintln!("[ScreenCapture] {message}");
+    let _ = app.emit("screen:error", ScreenErrorPayload { message });
+}
 
 #[derive(Clone, Serialize)]
 pub struct ScreenFramePayload {

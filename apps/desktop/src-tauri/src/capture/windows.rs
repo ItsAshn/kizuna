@@ -178,7 +178,10 @@ mod imp {
                 }
 
                 if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
-                    eprintln!("[ScreenCapture] DXGI: too many consecutive errors, stopping");
+                    super::super::emit_capture_error(
+                        &app,
+                        "Screen capture stopped after repeated errors".into(),
+                    );
                     break;
                 }
 

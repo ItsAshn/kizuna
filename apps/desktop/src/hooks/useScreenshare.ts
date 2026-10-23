@@ -3,6 +3,7 @@ import type { Socket } from 'socket.io-client'
 import type { Transport, Producer } from 'mediasoup-client/types'
 import { useCallStore } from '../store/callStore'
 import { useVoiceStore } from '../store/voiceStore'
+import { useNotificationStore } from '../store/notificationStore'
 import { isTauri, isLinuxDesktop } from '../utils/platform'
 import type { NativeVideoProducer } from './useVoice'
 import { getWebviewVideoSend } from './webviewVideoSend'
@@ -11,6 +12,14 @@ interface ScreenFramePayload {
   jpeg_base64: string
   width: number
   height: number
+}
+
+function notifyScreenshareError(message: string) {
+  useNotificationStore.getState().addNotification({
+    type: 'message',
+    title: 'Screen Share Error',
+    body: message,
+  })
 }
 
 /** Matches SCREEN_SHARE_MAX_BITRATE_BPS on the native side. */
@@ -25,6 +34,7 @@ export function useScreenshare(
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const unlistenRef = useRef<(() => void) | null>(null)
+  const errorUnlistenRef = useRef<(() => void) | null>(null)
   const nativeActiveRef = useRef(false)
 
   const callStore = useCallStore
@@ -40,6 +50,9 @@ export function useScreenshare(
   }
 
   const cleanupLocal = useCallback(() => {
+    errorUnlistenRef.current?.()
+    errorUnlistenRef.current = null
+
     // Native path: the encoder and capture session both live in Rust. The
     // video track stays on the send transport for the whole call, but the
     // server closes its producer on `screen:stop`, so the next share has to
@@ -81,6 +94,25 @@ export function useScreenshare(
   }, [nativeVideoRef])
 
   /**
+   * Rust reports a capture it cannot recover (portal stream lost, DXGI gone,
+   * repeated X11 errors) as `screen:error`. End the share, so viewers are not
+   * left on "Waiting for video…" and the sharer is not shown as still sharing.
+   * Registered before capture starts, so an early failure is not missed.
+   */
+  const listenForCaptureError = useCallback(
+    async (channelId: string) => {
+      const { listen } = await import('@tauri-apps/api/event')
+      errorUnlistenRef.current?.()
+      errorUnlistenRef.current = await listen<{ message: string }>('screen:error', (e) => {
+        notifyScreenshareError(e.payload.message)
+        socketRef.current?.emit('screen:stop', { channelId })
+        cleanupLocal()
+      })
+    },
+    [socketRef, cleanupLocal],
+  )
+
+  /**
    * Linux path: the WebKitGTK webview has no WebRTC stack, so Rust captures,
    * VP8-encodes and sends the frames on the video track the native voice
    * transport already carries. The webview only drives signalling.
@@ -114,6 +146,8 @@ export function useScreenshare(
           native.screen.producerId = produceResult?.id ?? null
         }
 
+        await listenForCaptureError(channelId)
+
         // Bitrate is left to Rust so the encoder and the RTP parameters already
         // announced to the server cannot disagree.
         await invoke('voice_screen_share_start', { monitorIndex, fps })
@@ -129,6 +163,8 @@ export function useScreenshare(
         callStore.getState().setIsScreenSharing(true)
         return null
       } catch (err: unknown) {
+        errorUnlistenRef.current?.()
+        errorUnlistenRef.current = null
         await invoke('voice_screen_share_stop').catch(() => {})
         // Release the producer so the next attempt (or someone else) can share.
         socket.emit('screen:stop', { channelId })
@@ -137,7 +173,7 @@ export function useScreenshare(
         return e?.message || e?.toString?.() || 'Failed to start screenshare'
       }
     },
-    [socketRef, nativeVideoRef],
+    [socketRef, nativeVideoRef, listenForCaptureError],
   )
 
   const startScreenshare = useCallback(
@@ -201,6 +237,7 @@ export function useScreenshare(
         streamRef.current = stream
         const track = stream.getVideoTracks()[0]
 
+        await listenForCaptureError(channelId)
         await invoke('start_screen_capture', { monitorIndex, fps })
 
         const producer = await sendTransport.produce({
@@ -235,7 +272,7 @@ export function useScreenshare(
         return e?.message || e?.toString?.() || 'Failed to start screenshare'
       }
     },
-    [socketRef, sendTransportRef, cleanupLocal, startNativeScreenshare],
+    [socketRef, sendTransportRef, cleanupLocal, startNativeScreenshare, listenForCaptureError],
   )
 
   const stopScreenshare = useCallback(() => {
