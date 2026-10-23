@@ -7,6 +7,7 @@ import { useNotificationStore } from '../store/notificationStore'
 import { isTauri, isMobileTauri, isLinuxDesktop } from '../utils/platform'
 import type { NativeVideoProducer } from './useVoice'
 import { getWebviewVideoSend } from './webviewVideoSend'
+import { nativeFrames, LOCAL_CAMERA_STREAM_ID } from './videoReceiver'
 
 const CAMERA_WIDTH = 640
 const CAMERA_HEIGHT = 480
@@ -75,6 +76,7 @@ export function useCamera(
     unlistenRef.current = null
     errorUnlistenRef.current?.()
     errorUnlistenRef.current = null
+    nativeFrames.forget(LOCAL_CAMERA_STREAM_ID)
 
     if (canvasRef.current) {
       canvasRef.current.remove()
@@ -142,6 +144,22 @@ export function useCamera(
     return canvas.captureStream(CAMERA_FPS)
   }, [])
 
+  /**
+   * Linux self-view. WebKitGTK delivers no frames from canvas.captureStream(),
+   * so the preview JPEGs are painted the way received native video is: through
+   * the native frame dispatcher, under LOCAL_CAMERA_STREAM_ID.
+   */
+  const startNativeSelfView = useCallback(async () => {
+    const { listen } = await import('@tauri-apps/api/event')
+    unlistenRef.current = await listen<CameraFramePayload>('camera:frame', (event) => {
+      try {
+        nativeFrames.dispatchJpeg(LOCAL_CAMERA_STREAM_ID, base64ToUint8(event.payload.jpeg_base64))
+      } catch {
+        // skip malformed frames
+      }
+    })
+  }, [])
+
   const startCamera = useCallback(
     async (channelId: string) => {
       const socket = socketRef.current
@@ -167,7 +185,7 @@ export function useCamera(
           const { invoke } = await import('@tauri-apps/api/core')
 
           // Self-view only; the video itself never touches the webview.
-          cameraStreamRef.current = await startJpegCanvas()
+          await startNativeSelfView()
 
           if (!native.camera.producerId) {
             const res: { id?: string; error?: string } = await new Promise((resolve) =>
@@ -275,7 +293,14 @@ export function useCamera(
         await cleanupLocal()
       }
     },
-    [socketRef, sendTransportRef, nativeVideoRef, cleanupLocal, startJpegCanvas],
+    [
+      socketRef,
+      sendTransportRef,
+      nativeVideoRef,
+      cleanupLocal,
+      startJpegCanvas,
+      startNativeSelfView,
+    ],
   )
 
   const stopCamera = useCallback(

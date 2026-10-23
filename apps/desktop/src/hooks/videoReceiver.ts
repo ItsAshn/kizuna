@@ -173,6 +173,12 @@ export const NATIVE_VIDEO_RTP_CAPABILITIES: RtpCapabilities = {
 /** Size of the header in front of every native frame: u32 streamId, u16 w, u16 h, u32 reserved. */
 export const NATIVE_FRAME_HEADER_BYTES = 12
 
+/**
+ * Stream id of the local camera's self-view on Linux. Rust numbers received
+ * streams from 1, so 0 never collides with one.
+ */
+export const LOCAL_CAMERA_STREAM_ID = 0
+
 type FrameSink = (bitmap: ImageBitmap) => void
 
 /**
@@ -211,11 +217,15 @@ class NativeFrameDispatcher {
 
   dispatch(buf: ArrayBuffer) {
     if (buf.byteLength <= NATIVE_FRAME_HEADER_BYTES) return
-    const view = new DataView(buf)
-    const streamId = view.getUint32(0, true)
+    const streamId = new DataView(buf).getUint32(0, true)
+    this.dispatchJpeg(streamId, new Uint8Array(buf, NATIVE_FRAME_HEADER_BYTES))
+  }
+
+  /** Paint one JPEG frame of `streamId` on every canvas showing it. */
+  dispatchJpeg(streamId: number, jpegBytes: Uint8Array) {
     if (this.busy.has(streamId)) return
     this.busy.add(streamId)
-    const jpeg = new Blob([new Uint8Array(buf, NATIVE_FRAME_HEADER_BYTES)], { type: 'image/jpeg' })
+    const jpeg = new Blob([jpegBytes as BlobPart], { type: 'image/jpeg' })
     createImageBitmap(jpeg)
       .then((bitmap) => {
         this.last.get(streamId)?.close()

@@ -6,6 +6,8 @@ import { useServerStore } from '../store/serverStore'
 import { Mic, MicOff, PhoneOff, Monitor, MonitorOff, Video, VideoOff, Volume2 } from 'lucide-react'
 import MonitorPicker from './MonitorPicker'
 import NativeVideoCanvas from './NativeVideoCanvas'
+import { LOCAL_CAMERA_STREAM_ID } from '../hooks/videoReceiver'
+import { isLinuxDesktop } from '../utils/platform'
 import { useMobile } from '../hooks/useMobile'
 import './VoiceChannelView.css'
 
@@ -185,9 +187,13 @@ export default function VoiceChannelView({
           speaking={isSpeaking}
           muted={isMuted}
           video={
-            isCameraOn && cameraStreamRef.current
-              ? { kind: 'stream', stream: cameraStreamRef.current }
-              : null
+            !isCameraOn
+              ? null
+              : cameraStreamRef.current
+                ? { kind: 'stream', stream: cameraStreamRef.current }
+                : isLinuxDesktop()
+                  ? { kind: 'native', streamId: LOCAL_CAMERA_STREAM_ID }
+                  : null
           }
         />
         {voicePeers.map((peer) => (
