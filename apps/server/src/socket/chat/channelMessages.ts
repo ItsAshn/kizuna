@@ -200,9 +200,14 @@ export function registerChannelMessageHandlers(io: Server, socket: Socket): void
       content: row.content,
       edited_at: row.edited_at ? row.edited_at * 1000 : null,
       created_at: row.created_at * 1000,
+      thread_id: row.thread_id ?? null,
     }
 
-    io.to(existing.channel_id).emit('message:edit', updated)
+    // A thread reply's edit also reaches viewers of the thread's own room.
+    io.to(row.thread_id ? [existing.channel_id, row.thread_id] : existing.channel_id).emit(
+      'message:edit',
+      updated,
+    )
     for (const uid of getEligibleNotifyUserIds(existing.channel_id, userId)) {
       io.to(`user:${uid}`).emit('message:edit', updated)
     }
@@ -223,7 +228,7 @@ export function registerChannelMessageHandlers(io: Server, socket: Socket): void
     if (!isId(messageId)) return
     const db = getDb()
     const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as
-      | { channel_id: string; author_id: string }
+      | { channel_id: string; author_id: string; thread_id: string | null }
       | undefined
     if (!message) return
 
@@ -245,12 +250,17 @@ export function registerChannelMessageHandlers(io: Server, socket: Socket): void
         fs.unlinkSync(filepath)
       } catch {}
     }
-    io.to(message.channel_id).emit('message:delete', {
+    // deleteMessageRows also fixes the thread's counters for a thread reply;
+    // thread viewers get the delete through the thread's room.
+    const deletePayload = {
       id: messageId,
       channel_id: message.channel_id,
-    })
+      thread_id: message.thread_id ?? null,
+    }
+    const rooms = message.thread_id ? [message.channel_id, message.thread_id] : [message.channel_id]
+    io.to(rooms).emit('message:delete', deletePayload)
     for (const uid of getEligibleNotifyUserIds(message.channel_id, userId)) {
-      io.to(`user:${uid}`).emit('message:delete', { id: messageId, channel_id: message.channel_id })
+      io.to(`user:${uid}`).emit('message:delete', deletePayload)
     }
     dispatchOutgoing(
       'message.deleted',

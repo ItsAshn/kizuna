@@ -7,7 +7,18 @@ import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
 import { useSettingsStore } from '../store/settingsStore'
 import type { ConnectionQuality } from '@kizuna/shared'
-import { isTauri, isMobileTauri } from '../utils/platform'
+import { isTauri, isMobileTauri, isLinuxDesktop } from '../utils/platform'
+import { closeWebviewVideoSend } from './webviewVideoSend'
+import {
+  attachNativeCanvas,
+  chooseVideoReceiver,
+  createNativeVideoReceiver,
+  createWebviewVideoReceiver,
+  wrapWebviewReceiver,
+  type ConsumeAck,
+  type PeerVideo,
+  type VideoReceiver,
+} from './videoReceiver'
 
 interface VoiceJoinResult {
   error?: string
@@ -37,14 +48,30 @@ interface TransportResult {
   [key: string]: unknown
 }
 
+/** One native video track on the Rust send transport. */
+export interface NativeVideoSource {
+  rtpParameters: Record<string, unknown>
+  /** Server producer for the track; null until (re-)produced. */
+  producerId: string | null
+}
+
 /**
- * Handle to the video track the Rust send transport already carries, used by
- * the native screenshare path on Linux (see useScreenshare).
+ * Handle to the video tracks the Rust send transport already carries, used by
+ * the native screenshare and camera paths on Linux (see useScreenshare and
+ * useCamera).
  */
 export interface NativeVideoProducer {
   transportId: string
-  rtpParameters: Record<string, unknown>
-  producerId: string | null
+  screen: NativeVideoSource
+  camera: NativeVideoSource
+}
+
+/** What `voice_begin` returns. */
+interface NativeJoinParams {
+  sendDtls: Record<string, unknown>
+  audio: Record<string, unknown>
+  screen: Record<string, unknown>
+  camera: Record<string, unknown>
 }
 
 interface RTCStatEntry {
@@ -321,17 +348,45 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const producerRef = useRef<Producer | null>(null)
   const consumersRef = useRef<Map<string, Consumer>>(new Map())
   const audioElemsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
+  // Muted elements that consume each remote track directly. Chromium (and the
+  // Android WebView) only pulls a remote WebRTC track's audio into WebAudio
+  // while a media element is also playing that track; without one the
+  // per-peer GainNode graph below receives silence.
+  const trackSinkElemsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
+  // Every socket handler a join registers, so the next join, a rejoin and a
+  // leave can remove exactly those — not every handler for the event, and not
+  // leave stale ones stacked up after an auto-rejoin.
+  const voiceListenersRef = useRef<
+    { socket: Socket; event: string; handler: (...args: unknown[]) => void }[]
+  >([])
   // Per-peer playback gain on the browser path. HTMLMediaElement.volume is
   // capped at 1.0 by spec, so the master and per-peer sliders (which go to
   // 200%) can only be honoured through WebAudio.
   const peerGainNodesRef = useRef<Map<string, GainNode>>(new Map())
-  const videoConsumerRef = useRef<Consumer | null>(null)
-  // Everything the native screenshare path needs to produce video on the Rust
-  // send transport. Populated by joinVoiceNative; the producer is created lazily
-  // on first share and reused for the rest of the call.
+  // Everything the native screenshare/camera paths need to produce video on
+  // the Rust send transport. Populated by joinVoiceNative; each producer is
+  // created when its source starts.
   const nativeVideoRef = useRef<NativeVideoProducer | null>(null)
-  const videoElRef = useRef<HTMLVideoElement | null>(null)
-  const cameraConsumersRef = useRef<Map<string, Consumer>>(new Map())
+  // How this call receives remote video (see hooks/videoReceiver.ts), and what
+  // it is currently receiving. Each entry remembers the receiver it came from.
+  const videoReceiverRef = useRef<VideoReceiver | null>(null)
+  const screenVideoRef = useRef<{
+    peerId: string
+    consumerId: string
+    receiver: VideoReceiver
+  } | null>(null)
+  const cameraVideosRef = useRef<Map<string, { consumerId: string; receiver: VideoReceiver }>>(
+    new Map(),
+  )
+  // Camera consumes in flight, so a camera:peerStarted racing the join's own
+  // hasCamera pass doesn't consume the same camera twice.
+  const pendingCamerasRef = useRef<Set<string>>(new Set())
+  // Same for the screen: the sharer whose consume is in flight.
+  const pendingScreenRef = useRef<string | null>(null)
+  // The shared screenshare element: a <video> for a MediaStream, or a canvas
+  // natively decoded frames are painted on.
+  const videoElRef = useRef<HTMLVideoElement | HTMLCanvasElement | null>(null)
+  const screenCanvasDetachRef = useRef<(() => void) | null>(null)
   const channelIdRef = useRef<string | null>(null)
   const localSpeakingCleanupRef = useRef<(() => void) | null>(null)
   const remoteSpeakingCleanupsRef = useRef<Map<string, () => void>>(new Map())
@@ -358,9 +413,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const addVoicePeer = useVoiceStore((s) => s.addVoicePeer)
   const removeVoicePeer = useVoiceStore((s) => s.removeVoicePeer)
   const updateVoicePeer = useVoiceStore((s) => s.updateVoicePeer)
-  const setPeerCameraStream = useVoiceStore((s) => s.setPeerCameraStream)
-  const removePeerCameraStream = useVoiceStore((s) => s.removePeerCameraStream)
-  const clearPeerCameraStreams = useVoiceStore((s) => s.clearPeerCameraStreams)
+  const setPeerCameraVideo = useVoiceStore((s) => s.setPeerCameraVideo)
+  const removePeerCameraVideo = useVoiceStore((s) => s.removePeerCameraVideo)
+  const clearPeerCameraVideos = useVoiceStore((s) => s.clearPeerCameraVideos)
   const setIsMuted = useVoiceStore((s) => s.setIsMuted)
   const setIsSpeaking = useVoiceStore((s) => s.setIsSpeaking)
   const setLocalConnectionQuality = useVoiceStore((s) => s.setLocalConnectionQuality)
@@ -389,8 +444,73 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const clearDMCall = useCallStore((s) => s.clearDMCall)
   const dmCallChannelId = useCallStore((s) => s.dmCallChannelId)
 
+  /** Register a socket handler that belongs to the current call. */
+  const onVoice = useCallback(
+    <A extends unknown[]>(socket: Socket, event: string, handler: (...args: A) => void) => {
+      socket.on(event, handler)
+      voiceListenersRef.current.push({
+        socket,
+        event,
+        handler: handler as unknown as (...args: unknown[]) => void,
+      })
+    },
+    [],
+  )
+
+  /** Remove every handler registered through `onVoice`. Idempotent. */
+  const detachVoiceListeners = useCallback(() => {
+    for (const { socket, event, handler } of voiceListenersRef.current) {
+      socket.off(event, handler)
+    }
+    voiceListenersRef.current = []
+  }, [])
+
+  /** Stop and forget a peer's track-sink element, if it has one. */
+  const releaseTrackSink = useCallback((peerId: string) => {
+    const el = trackSinkElemsRef.current.get(peerId)
+    if (el) {
+      el.pause()
+      el.srcObject = null
+    }
+    trackSinkElemsRef.current.delete(peerId)
+  }, [])
+
+  /** Drop the shared screenshare element, whichever kind it is. */
+  const releaseScreenElement = useCallback(() => {
+    screenCanvasDetachRef.current?.()
+    screenCanvasDetachRef.current = null
+    const el = videoElRef.current
+    if (el instanceof HTMLVideoElement) {
+      el.pause()
+      el.srcObject = null
+    }
+    videoElRef.current = null
+  }, [])
+
+  /**
+   * End all remote video for this call: every consumer, the receiver, the
+   * webview video send transport, and what the UI shows. Used when the call
+   * ends, so the server is not told about each consumer (it closes them with
+   * the transports).
+   */
+  const teardownVideo = useCallback(() => {
+    const screen = screenVideoRef.current
+    screenVideoRef.current = null
+    screen?.receiver.detach(screen.consumerId)
+    cameraVideosRef.current.forEach(({ consumerId, receiver }) => receiver.detach(consumerId))
+    cameraVideosRef.current.clear()
+    pendingCamerasRef.current.clear()
+    pendingScreenRef.current = null
+    videoReceiverRef.current?.close()
+    videoReceiverRef.current = null
+    closeWebviewVideoSend()
+    releaseScreenElement()
+    clearPeerCameraVideos()
+  }, [releaseScreenElement, clearPeerCameraVideos])
+
   const cleanupVoice = useCallback(() => {
     vlog('cleanup', 'starting')
+    detachVoiceListeners()
     pttCleanupRef.current?.()
     pttCleanupRef.current = null
     pttPressedRef.current = false
@@ -418,21 +538,17 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     producerRef.current = null
     consumersRef.current.forEach((c) => c.close())
     consumersRef.current.clear()
-    videoConsumerRef.current?.close()
-    videoConsumerRef.current = null
-    cameraConsumersRef.current.forEach((c) => c.close())
-    cameraConsumersRef.current.clear()
-    clearPeerCameraStreams()
-    if (videoElRef.current) {
-      videoElRef.current.pause()
-      videoElRef.current.srcObject = null
-      videoElRef.current = null
-    }
+    teardownVideo()
     audioElemsRef.current.forEach((el) => {
       el.pause()
       el.srcObject = null
     })
     audioElemsRef.current.clear()
+    trackSinkElemsRef.current.forEach((el) => {
+      el.pause()
+      el.srcObject = null
+    })
+    trackSinkElemsRef.current.clear()
     peerGainNodesRef.current.forEach((node) => node.disconnect())
     peerGainNodesRef.current.clear()
     sendTransportRef.current?.close()
@@ -463,7 +579,8 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setIsSpeaking,
     setLocalConnectionQuality,
     clearScreenSharePeer,
-    clearPeerCameraStreams,
+    teardownVideo,
+    detachVoiceListeners,
   ])
 
   /**
@@ -560,6 +677,17 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       }
       if (!routed) {
         audioEl.srcObject = new MediaStream([consumer.track])
+      } else {
+        // Chromium/Android WebView feed a remote track into WebAudio only while
+        // a media element is consuming it too, so the GainNode graph above
+        // would otherwise play silence. A muted element is enough to keep the
+        // track flowing; audible output still comes from `audioEl`.
+        releaseTrackSink(peerId)
+        const sinkEl = new Audio()
+        sinkEl.muted = true
+        sinkEl.srcObject = new MediaStream([consumer.track])
+        trackSinkElemsRef.current.set(peerId, sinkEl)
+        sinkEl.play().catch((e) => vlog('consume', `track sink play() failed: ${String(e)}`))
       }
       audioElemsRef.current.set(peerId, audioEl)
       applyOutputVolumes()
@@ -603,144 +731,194 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       const peerQInt = setInterval(pollPeerQuality, QUALITY_POLL_MS)
       peerQualityIntervalsRef.current.set(peerId, peerQInt)
     },
-    [audioOutputDeviceId, updateVoicePeer, applyOutputVolumes],
+    [audioOutputDeviceId, updateVoicePeer, applyOutputVolumes, releaseTrackSink],
   )
+
+  /**
+   * Ask the server for a peer's screen or camera video on `receiver`'s
+   * transport, start receiving it, then resume it. Returns null when the peer
+   * has no such video (it stopped meanwhile) or it could not be received.
+   */
+  const consumeVideo = useCallback(
+    async (
+      socket: Socket,
+      receiver: VideoReceiver,
+      peerId: string,
+      channelId: string,
+      source: 'screen' | 'camera',
+    ): Promise<{ consumerId: string; video: PeerVideo } | null> => {
+      const ack: ConsumeAck & { error?: string } = await new Promise((resolve) =>
+        socket.emit(
+          'voice:consume',
+          {
+            channelId,
+            peerId,
+            kind: 'video',
+            source,
+            rtpCapabilities: receiver.rtpCapabilities,
+            // Without it the server used to put video consumers on whatever
+            // recv transport it found first — the audio-only DirectTransport
+            // for native clients.
+            transportId: receiver.transportId,
+          },
+          resolve,
+        ),
+      )
+      if (!ack?.id) {
+        vlog('video', `no ${source} video from ${peerId}: ${ack?.error ?? 'no consumer'}`)
+        return null
+      }
+      let video: PeerVideo
+      try {
+        video = await receiver.attach(ack)
+      } catch (err) {
+        verr('video', `receiving ${source} of ${peerId} failed`, err)
+        socket.emit('voice:closeConsumer', { consumerId: ack.id })
+        return null
+      }
+      await new Promise<void>((resolve) =>
+        socket.emit('voice:resumeConsumer', { channelId, consumerId: ack.id }, () => resolve()),
+      )
+      if (receiver.kind === 'native') {
+        // The native side sends its own PLI when the track starts; this is a
+        // server-side backstop in case that one is lost.
+        setTimeout(() => socket.emit('voice:requestKeyFrame', { consumerId: ack.id }), 500)
+      }
+      vlog('video', `receiving ${source} of ${peerId} via ${receiver.kind} | consumer=${ack.id}`)
+      return { consumerId: ack.id, video }
+    },
+    [],
+  )
+
+  /** The single shared screenshare element for a remote video. */
+  const createScreenElement = useCallback((video: PeerVideo) => {
+    if (video.kind === 'native') {
+      const canvas = document.createElement('canvas')
+      canvas.style.width = '100%'
+      canvas.style.height = '100%'
+      screenCanvasDetachRef.current = attachNativeCanvas(canvas, video.streamId)
+      return canvas
+    }
+    const videoEl = document.createElement('video')
+    videoEl.autoplay = true
+    videoEl.playsInline = true
+    videoEl.muted = true
+    videoEl.srcObject = video.stream
+    videoEl.style.width = '100%'
+    videoEl.style.height = '100%'
+    videoEl.play().catch((err) => {
+      console.error('Failed to play screen share video:', err)
+    })
+    return videoEl
+  }, [])
+
+  const stopScreenConsume = useCallback(() => {
+    const screen = screenVideoRef.current
+    screenVideoRef.current = null
+    if (screen) {
+      screen.receiver.detach(screen.consumerId)
+      socketRef.current?.emit('voice:closeConsumer', { consumerId: screen.consumerId })
+    }
+    releaseScreenElement()
+    clearScreenSharePeer()
+  }, [clearScreenSharePeer, releaseScreenElement, socketRef])
 
   const consumeScreenShare = useCallback(
     async (
       socket: Socket,
-      device: Device,
-      recvTransport: Transport,
+      receiver: VideoReceiver,
       sharerPeerId: string,
       channelId: string,
       username: string,
     ) => {
+      if (screenVideoRef.current?.peerId === sharerPeerId) return
+      if (pendingScreenRef.current === sharerPeerId) return
+      pendingScreenRef.current = sharerPeerId
       try {
-        const params: Record<string, unknown> = await new Promise((resolve) =>
-          socket.emit(
-            'voice:consume',
-            {
-              channelId,
-              peerId: sharerPeerId,
-              kind: 'video',
-              source: 'screen',
-              rtpCapabilities: device.rtpCapabilities,
-            },
-            resolve,
-          ),
-        )
-        if (!params?.id) {
-          console.warn('Failed to consume screen share from', sharerPeerId)
+        const got = await consumeVideo(socket, receiver, sharerPeerId, channelId, 'screen')
+        if (!got) return
+        // The call ended or switched receivers while this was in flight.
+        if (videoReceiverRef.current !== receiver) {
+          receiver.detach(got.consumerId)
           return
         }
-
-        const consumer = await recvTransport.consume(
-          params as Parameters<typeof recvTransport.consume>[0],
-        )
-        videoConsumerRef.current = consumer
-
-        await new Promise<void>((resolve) =>
-          socket.emit('voice:resumeConsumer', { channelId, consumerId: consumer.id }, () =>
-            resolve(),
-          ),
-        )
-        await consumer.resume()
-
-        const videoEl = document.createElement('video')
-        videoEl.autoplay = true
-        videoEl.playsInline = true
-        videoEl.muted = true
-        videoEl.srcObject = new MediaStream([consumer.track])
-        videoEl.style.width = '100%'
-        videoEl.style.height = '100%'
-        await videoEl.play().catch((err) => {
-          console.error('Failed to play screen share video:', err)
-        })
-        videoElRef.current = videoEl
-
+        if (screenVideoRef.current) stopScreenConsume()
+        screenVideoRef.current = { peerId: sharerPeerId, consumerId: got.consumerId, receiver }
+        releaseScreenElement()
+        videoElRef.current = createScreenElement(got.video)
         setScreenSharePeer(sharerPeerId, username)
       } catch (err) {
         console.error('Failed to consume screen share:', err)
+      } finally {
+        if (pendingScreenRef.current === sharerPeerId) pendingScreenRef.current = null
       }
     },
-    [setScreenSharePeer],
+    [
+      consumeVideo,
+      createScreenElement,
+      releaseScreenElement,
+      setScreenSharePeer,
+      stopScreenConsume,
+    ],
   )
 
-  const stopScreenConsume = useCallback(() => {
-    videoConsumerRef.current?.close()
-    videoConsumerRef.current = null
-    if (videoElRef.current) {
-      videoElRef.current.pause()
-      videoElRef.current.srcObject = null
-      videoElRef.current = null
-    }
-    clearScreenSharePeer()
-  }, [clearScreenSharePeer])
-
   const consumeCamera = useCallback(
-    async (
-      socket: Socket,
-      device: Device,
-      recvTransport: Transport,
-      peerId: string,
-      channelId: string,
-    ) => {
-      if (cameraConsumersRef.current.has(peerId)) return
+    async (socket: Socket, receiver: VideoReceiver, peerId: string, channelId: string) => {
+      if (cameraVideosRef.current.has(peerId) || pendingCamerasRef.current.has(peerId)) return
+      pendingCamerasRef.current.add(peerId)
       try {
-        const params: Record<string, unknown> = await new Promise((resolve) =>
-          socket.emit(
-            'voice:consume',
-            {
-              channelId,
-              peerId,
-              kind: 'video',
-              source: 'camera',
-              rtpCapabilities: device.rtpCapabilities,
-            },
-            resolve,
-          ),
-        )
-        if (!params?.id) {
-          console.warn('Failed to consume camera from', peerId)
+        const got = await consumeVideo(socket, receiver, peerId, channelId, 'camera')
+        if (!got) return
+        if (videoReceiverRef.current !== receiver || !pendingCamerasRef.current.has(peerId)) {
+          // Call ended, or the camera stopped while we were subscribing.
+          receiver.detach(got.consumerId)
+          socket.emit('voice:closeConsumer', { consumerId: got.consumerId })
           return
         }
-
-        const consumer = await recvTransport.consume(
-          params as Parameters<typeof recvTransport.consume>[0],
-        )
-        cameraConsumersRef.current.set(peerId, consumer)
-
-        await new Promise<void>((resolve) =>
-          socket.emit('voice:resumeConsumer', { channelId, consumerId: consumer.id }, () =>
-            resolve(),
-          ),
-        )
-        await consumer.resume()
-
-        setPeerCameraStream(peerId, new MediaStream([consumer.track]))
+        cameraVideosRef.current.set(peerId, { consumerId: got.consumerId, receiver })
+        setPeerCameraVideo(peerId, got.video)
       } catch (err) {
         console.error('Failed to consume camera:', err)
+      } finally {
+        pendingCamerasRef.current.delete(peerId)
       }
     },
-    [setPeerCameraStream],
+    [consumeVideo, setPeerCameraVideo],
   )
 
   const stopCameraConsume = useCallback(
     (peerId: string) => {
-      const consumer = cameraConsumersRef.current.get(peerId)
-      if (consumer) {
-        consumer.close()
-        cameraConsumersRef.current.delete(peerId)
+      pendingCamerasRef.current.delete(peerId)
+      const entry = cameraVideosRef.current.get(peerId)
+      if (entry) {
+        entry.receiver.detach(entry.consumerId)
+        socketRef.current?.emit('voice:closeConsumer', { consumerId: entry.consumerId })
+        cameraVideosRef.current.delete(peerId)
       }
-      removePeerCameraStream(peerId)
+      removePeerCameraVideo(peerId)
     },
-    [removePeerCameraStream],
+    [removePeerCameraVideo, socketRef],
   )
 
+  /** `voice:consumerClosed`: the producer behind one of our consumers went away. */
+  const onVideoConsumerClosed = useCallback(
+    (consumerId: string) => {
+      if (screenVideoRef.current?.consumerId === consumerId) {
+        stopScreenConsume()
+        return
+      }
+      for (const [peerId, entry] of cameraVideosRef.current) {
+        if (entry.consumerId === consumerId) {
+          stopCameraConsume(peerId)
+          return
+        }
+      }
+    },
+    [stopScreenConsume, stopCameraConsume],
+  )
   const nativeVoiceUnlistenRef = useRef<(() => void) | null>(null)
   const nativeSpeakingUnlistenRef = useRef<(() => void) | null>(null)
   const nativeInitializedRef = useRef(false)
-  const nativePeerHandlersRef = useRef<boolean>(false)
 
   /**
    * The single source of truth for whether the mic is transmitting. Mute and
@@ -957,10 +1135,18 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
       const { invoke } = await import('@tauri-apps/api/core')
 
-      // Set up chat socket peer event handlers
-      if (socket && !nativePeerHandlersRef.current) {
-        nativePeerHandlersRef.current = true
-        socket.on(
+      // Set up chat socket peer event handlers. cleanupVoice() above already
+      // detached the previous call's handlers, so a rejoin registers exactly
+      // one of each.
+      detachVoiceListeners()
+      // Who is sending video, as far as this call knows.
+      const videoState: {
+        screen: { peerId: string; username: string } | null
+        cameras: Set<string>
+      } = { screen: null, cameras: new Set() }
+      if (socket) {
+        onVoice(
+          socket,
           'voice:newPeer',
           async (peer: { peerId: string; userId: string; username: string }) => {
             vlog('nativePeer', `voice:newPeer peerId=${peer.peerId}`)
@@ -1012,22 +1198,27 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
             }
           },
         )
-        socket.on('voice:peerLeft', ({ peerId }: { peerId: string }) => {
+        onVoice(socket, 'voice:peerLeft', ({ peerId }: { peerId: string }) => {
           removeVoicePeer(peerId)
+          stopCameraConsume(peerId)
+          videoState.cameras.delete(peerId)
+          if (videoState.screen?.peerId === peerId) videoState.screen = null
           invoke('voice_remove_peer', { peerId }).catch((err) => {
             console.error('Failed to remove voice peer (socket handler):', err)
           })
         })
-        socket.on(
+        onVoice(
+          socket,
           'voice:peerSpeaking',
           ({ peerId, speaking }: { peerId: string; speaking: boolean }) => {
             updateVoicePeer(peerId, { speaking })
           },
         )
-        socket.on('voice:mute', ({ peerId, muted }: { peerId: string; muted: boolean }) => {
+        onVoice(socket, 'voice:mute', ({ peerId, muted }: { peerId: string; muted: boolean }) => {
           updateVoicePeer(peerId, { muted })
         })
-        socket.on(
+        onVoice(
+          socket,
           'server:voiceBitrateChanged',
           ({ voiceBitrateKbps: newKbps }: { voiceBitrateKbps: number }) => {
             vlog('bitrate', `server:voiceBitrateChanged -> ${newKbps} kbps`)
@@ -1040,6 +1231,39 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
             )
           },
         )
+
+        // Remote video. Events are recorded in videoState even before the
+        // receiver exists (it is created once audio is up), so a share that
+        // starts mid-join is still picked up.
+        onVoice(
+          socket,
+          'screen:peerStarted',
+          (data: { peerId: string; username: string; producerId?: string }) => {
+            videoState.screen = { peerId: data.peerId, username: data.username }
+            const receiver = videoReceiverRef.current
+            if (receiver) {
+              consumeScreenShare(socket, receiver, data.peerId, channelId, data.username)
+            }
+          },
+        )
+        onVoice(socket, 'screen:peerStopped', ({ peerId }: { peerId: string }) => {
+          if (videoState.screen?.peerId === peerId) videoState.screen = null
+          if (!screenVideoRef.current || screenVideoRef.current.peerId === peerId) {
+            stopScreenConsume()
+          }
+        })
+        onVoice(socket, 'camera:peerStarted', (data: { peerId: string }) => {
+          videoState.cameras.add(data.peerId)
+          const receiver = videoReceiverRef.current
+          if (receiver) consumeCamera(socket, receiver, data.peerId, channelId)
+        })
+        onVoice(socket, 'camera:peerStopped', ({ peerId }: { peerId: string }) => {
+          videoState.cameras.delete(peerId)
+          stopCameraConsume(peerId)
+        })
+        onVoice(socket, 'voice:consumerClosed', ({ consumerId }: { consumerId: string }) => {
+          onVideoConsumerClosed(consumerId)
+        })
       }
 
       try {
@@ -1062,34 +1286,70 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         // Enable Socket.IO RTP forwarding as fallback for broken recv DTLS.
         // Framing 2 prefixes each payload with the RTP sequence number and
         // timestamp, which the native jitter buffer needs to reorder packets,
-        // drive Opus inband FEC, and tell a DTX pause from real loss. Servers
-        // that predate it never ack, so fall back to bare payloads.
-        const framing = await new Promise<number>((resolve) => {
-          const timer = setTimeout(() => resolve(1), 2000)
-          socket!.emit('voice:enableSocketRtp', { framing: 2 }, (res?: { framing?: number }) => {
-            clearTimeout(timer)
-            resolve(res?.framing === 2 ? 2 : 1)
-          })
-        })
-        vlog('joinVoiceNative', `enabled socket RTP forwarding (framing=${framing})`)
-        if (framing < 2) {
-          vlog('joinVoiceNative', 'server predates RTP seq forwarding — FEC/reordering disabled')
-        }
+        // drive Opus inband FEC, and tell a DTX pause from real loss.
+        //
+        // The framing is whatever the server's ack says, never a guess: the
+        // old code assumed framing 1 after a 2s timeout while the server had
+        // already switched to 2, and fed headers to the decoder as audio.
+        // Packets that arrive before the ack are dropped. A missing ack is
+        // retried once; only a server that ignores both requests (one that
+        // predates framing entirely, and so only ever sends bare payloads) is
+        // taken to be framing 1. A late ack still wins whenever it lands.
+        const rtp: { framing: number | null } = { framing: null }
 
         // Hoisted out of the packet handler: this fires ~50x/sec per peer, and
         // the payload goes over IPC as a raw body rather than a JSON number array.
         const { invoke: injectInvoke } = await import('@tauri-apps/api/core')
-        const injectHeaders: Record<string, Record<string, string>> = {}
-        socket?.on('voice:socketRtp', (payload: ArrayBuffer, peerId: string) => {
-          let headers = injectHeaders[peerId]
+        const injectHeaders = new Map<string, Record<string, string>>()
+        onVoice(socket!, 'voice:socketRtp', (payload: ArrayBuffer, peerId: string) => {
+          const framing = rtp.framing
+          if (framing === null) return
+          const key = `${framing}:${peerId}`
+          let headers = injectHeaders.get(key)
           if (!headers) {
             headers = { 'x-peer-id': peerId, 'x-framing': String(framing) }
-            injectHeaders[peerId] = headers
+            injectHeaders.set(key, headers)
           }
           injectInvoke('voice_inject_opus', payload, { headers }).catch((err) => {
             console.error('Failed to inject opus data:', err)
           })
         })
+
+        const framing = await new Promise<number>((resolve) => {
+          const ACK_TIMEOUT_MS = 2500
+          let attempts = 0
+          let timer: ReturnType<typeof setTimeout> | null = null
+          const onAck = (res?: { framing?: number }) => {
+            if (timer) clearTimeout(timer)
+            timer = null
+            const acked = res?.framing === 2 ? 2 : 1
+            if (rtp.framing !== null && rtp.framing !== acked) {
+              vlog('joinVoiceNative', `late socket RTP ack: switching to framing ${acked}`)
+            }
+            rtp.framing = acked
+            resolve(acked)
+          }
+          const request = () => {
+            attempts++
+            socket!.emit('voice:enableSocketRtp', { framing: 2, supported: [1, 2] }, onAck)
+            timer = setTimeout(() => {
+              if (rtp.framing !== null) return
+              if (attempts < 2) {
+                vlog('joinVoiceNative', 'socket RTP ack timed out, retrying once')
+                request()
+              } else {
+                vlog('joinVoiceNative', 'server never acked socket RTP — assuming bare payloads')
+                rtp.framing = 1
+                resolve(1)
+              }
+            }, ACK_TIMEOUT_MS)
+          }
+          request()
+        })
+        vlog('joinVoiceNative', `enabled socket RTP forwarding (framing=${framing})`)
+        if (framing < 2) {
+          vlog('joinVoiceNative', 'server predates RTP seq forwarding — FEC/reordering disabled')
+        }
 
         const iceServers = joinResult.iceServers || []
         const voiceBitrateKbps = joinResult.voiceBitrateKbps ?? 64
@@ -1098,9 +1358,15 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
         useVoiceStore.getState().setIceServers(iceServers)
 
-        // Step 2: create send transport via chat socket
+        // Step 2: create send transport via chat socket. On Linux it carries
+        // the natively encoded screen and camera video too; elsewhere video is
+        // sent from the webview on its own transport, so this one is audio only.
         const sendParams: TransportResult = await new Promise((resolve) =>
-          socket!.emit('voice:createTransport', { channelId, direction: 'send' }, resolve),
+          socket!.emit(
+            'voice:createTransport',
+            { channelId, direction: 'send', purpose: isLinuxDesktop() ? 'av' : 'audio' },
+            resolve,
+          ),
         )
         if (sendParams?.error) throw new Error(`send transport create: ${sendParams.error}`)
         vlog('joinVoiceNative', 'send transport created', { id: sendParams?.id })
@@ -1114,26 +1380,22 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
         // Step 4: create WebRTC send transport in Rust (recv uses DirectTransport, no Rust PC needed)
         vlog('joinVoiceNative', 'calling voice_begin')
-        const [sendDtls, _recvDtls, audioRtpParams, videoRtpParams] = (await invoke('voice_begin', {
+        const joinParams = (await invoke('voice_begin', {
           channelId,
           iceServers,
           sendParams,
           recvParams,
           voiceBitrateKbps,
-        })) as [
-          Record<string, unknown>,
-          Record<string, unknown>,
-          Record<string, unknown>,
-          Record<string, unknown>,
-        ]
-        vlog('joinVoiceNative', 'voice_begin OK')
+        })) as NativeJoinParams
+        const { sendDtls, audio: audioRtpParams } = joinParams
+        vlog('joinVoiceNative', 'voice_begin OK', { dtlsRole: sendDtls?.role })
 
-        // The video track exists on the Rust send transport from here on; the
-        // screenshare hook produces it on the server the first time it is used.
+        // The video tracks exist on the Rust send transport from here on; the
+        // screenshare and camera hooks produce them on the server when used.
         nativeVideoRef.current = {
           transportId: sendParams.id as string,
-          rtpParameters: videoRtpParams,
-          producerId: null,
+          screen: { rtpParameters: joinParams.screen, producerId: null },
+          camera: { rtpParameters: joinParams.camera, producerId: null },
         }
 
         // Step 5: connect send transport
@@ -1173,7 +1435,14 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         // RNNoise runs at full strength (a dry/wet blend would comb-filter the
         // voice — see voice/rnnoise.rs). suppressionStrength only affects the
         // legacy spectral suppressor, which the desktop path no longer selects.
+        // Capture starts inside voice_finish_join, so the mute state has to go
+        // in with it: applying it afterwards (armInputMode, below) let the
+        // first moments of open mic reach the channel even when muted or on
+        // push-to-talk.
+        const { isMuted: joinMuted, voiceInputMode: joinMode } = useVoiceStore.getState()
+        const startMuted = joinMuted || joinMode === 'push-to-talk'
         await invoke('voice_finish_join', {
+          muted: startMuted,
           voiceBitrateKbps,
           gateEnabled: noiseGateEnabled,
           gateThresholdDb: gateDb,
@@ -1236,6 +1505,46 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         // the key does nothing here and the mic stays open.
         await armInputMode()
 
+        // Remote video comes up after audio and on its own transport, so a
+        // receiver that fails costs the call its video, never its voice.
+        if (!videoState.screen && joinResult.screenSharePeer) {
+          videoState.screen = {
+            peerId: joinResult.screenSharePeer.peerId,
+            username: joinResult.screenSharePeer.username,
+          }
+        }
+        for (const peer of joinResult.peers ?? []) {
+          if (peer.hasCamera) videoState.cameras.add(peer.id)
+        }
+        const recvKind = chooseVideoReceiver()
+        try {
+          const receiver =
+            recvKind === 'webview'
+              ? await createWebviewVideoReceiver({
+                  socket: socket!,
+                  channelId,
+                  routerRtpCapabilities: joinResult.routerRtpCapabilities!,
+                  iceServers,
+                })
+              : await createNativeVideoReceiver({ socket: socket!, channelId, iceServers })
+          if (channelIdRef.current !== channelId) {
+            // Left or switched channel while the receiver was coming up.
+            receiver.close()
+          } else {
+            videoReceiverRef.current = receiver
+            vlog('joinVoiceNative', `video receiver ready (${receiver.kind})`)
+            if (videoState.screen) {
+              const { peerId, username } = videoState.screen
+              void consumeScreenShare(socket!, receiver, peerId, channelId, username)
+            }
+            for (const peerId of videoState.cameras) {
+              void consumeCamera(socket!, receiver, peerId, channelId)
+            }
+          }
+        } catch (e) {
+          verr('joinVoiceNative', `video receiver (${recvKind}) unavailable — no remote video`, e)
+        }
+
         return null
       } catch (e: unknown) {
         const err = (e as { toString?: () => string })?.toString?.() || 'Failed to join voice'
@@ -1275,10 +1584,22 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       inputVolume,
       armInputMode,
       applyOutputVolumes,
+      onVoice,
+      detachVoiceListeners,
+      consumeScreenShare,
+      consumeCamera,
+      stopScreenConsume,
+      stopCameraConsume,
+      onVideoConsumerClosed,
     ],
   )
 
   const leaveVoiceNative = useCallback(async () => {
+    // Stop handling this call's socket events (including forwarded RTP) before
+    // the native side is torn down.
+    detachVoiceListeners()
+    teardownVideo()
+    nativeVideoRef.current = null
     try {
       const { invoke } = await import('@tauri-apps/api/core')
       await invoke('voice_leave')
@@ -1288,15 +1609,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     const socket = socketRef.current
     if (socket) {
       socket.emit('voice:leave', { channelId: channelIdRef.current })
-    }
-    // Clean up chat socket peer handlers
-    if (socket && nativePeerHandlersRef.current) {
-      socket.off('voice:newPeer')
-      socket.off('voice:peerLeft')
-      socket.off('voice:peerSpeaking')
-      socket.off('voice:mute')
-      socket.off('voice:socketRtp')
-      nativePeerHandlersRef.current = false
     }
     nativeVoiceUnlistenRef.current?.()
     nativeVoiceUnlistenRef.current = null
@@ -1308,7 +1620,15 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setLocalConnectionQuality(null)
     setLiveAudioLevel(0)
     clearScreenSharePeer()
-  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, clearScreenSharePeer, socketRef])
+  }, [
+    setVoicePeers,
+    setIsSpeaking,
+    setLocalConnectionQuality,
+    clearScreenSharePeer,
+    socketRef,
+    detachVoiceListeners,
+    teardownVideo,
+  ])
 
   const joinVoiceInternal = useCallback(
     async (channelId: string): Promise<string | null> => {
@@ -1328,7 +1648,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         return err
       }
 
+      // cleanupVoice also detaches the previous call's socket handlers, so an
+      // auto-rejoin does not stack a second copy of each.
       cleanupVoice()
+      detachVoiceListeners()
       channelIdRef.current = channelId
       setVoiceError(null)
 
@@ -1464,6 +1787,9 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         iceServers: iceServers.length > 0 ? iceServers : undefined,
       } as Parameters<typeof device.createRecvTransport>[0])
       recvTransportRef.current = recvTransport
+      // The browser receives video on its one recv transport, alongside audio.
+      const receiver = wrapWebviewReceiver(device, recvTransport, false)
+      videoReceiverRef.current = receiver
 
       recvTransport.on('connect', ({ dtlsParameters }, cb) => {
         vlog('transport', 'recv connect event')
@@ -1499,7 +1825,8 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         setVoiceError(iceWarning)
       }, 12000)
 
-      socket.on(
+      onVoice(
+        socket,
         'voice:newPeer',
         async (peer: { peerId: string; userId: string; username: string }) => {
           vlog('peer', `voice:newPeer peerId=${peer.peerId} userId=${peer.userId}`)
@@ -1521,7 +1848,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         },
       )
 
-      socket.on('voice:peerLeft', ({ peerId }: { peerId: string }) => {
+      onVoice(socket, 'voice:peerLeft', ({ peerId }: { peerId: string }) => {
         vlog('peer', `voice:peerLeft peerId=${peerId}`)
 
         consumersRef.current.get(peerId)?.close()
@@ -1532,6 +1859,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
           leavingEl.srcObject = null
         }
         audioElemsRef.current.delete(peerId)
+        releaseTrackSink(peerId)
         peerGainNodesRef.current.get(peerId)?.disconnect()
         peerGainNodesRef.current.delete(peerId)
         remoteSpeakingCleanupsRef.current.get(peerId)?.()
@@ -1543,50 +1871,46 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         removeVoicePeer(peerId)
       })
 
-      socket.on(
+      onVoice(
+        socket,
         'voice:peerSpeaking',
         ({ peerId, speaking }: { peerId: string; speaking: boolean }) => {
           updateVoicePeer(peerId, { speaking })
         },
       )
 
-      socket.on('voice:mute', ({ peerId, muted }: { peerId: string; muted: boolean }) => {
+      onVoice(socket, 'voice:mute', ({ peerId, muted }: { peerId: string; muted: boolean }) => {
         updateVoicePeer(peerId, { muted })
       })
 
-      socket.on(
+      onVoice(
+        socket,
         'screen:peerStarted',
         async (data: { peerId: string; userId: string; username: string }) => {
-          await consumeScreenShare(
-            socket,
-            device,
-            recvTransport,
-            data.peerId,
-            channelId,
-            data.username,
-          )
+          await consumeScreenShare(socket, receiver, data.peerId, channelId, data.username)
         },
       )
 
-      socket.on('screen:peerStopped', () => {
-        stopScreenConsume()
+      onVoice(socket, 'screen:peerStopped', ({ peerId }: { peerId: string }) => {
+        if (!screenVideoRef.current || screenVideoRef.current.peerId === peerId) {
+          stopScreenConsume()
+        }
       })
 
-      socket.on(
+      onVoice(
+        socket,
         'camera:peerStarted',
         async (data: { peerId: string; userId: string; username: string }) => {
-          await consumeCamera(socket, device, recvTransport, data.peerId, channelId)
+          await consumeCamera(socket, receiver, data.peerId, channelId)
         },
       )
 
-      socket.on('camera:peerStopped', ({ peerId }: { peerId: string }) => {
+      onVoice(socket, 'camera:peerStopped', ({ peerId }: { peerId: string }) => {
         stopCameraConsume(peerId)
       })
 
-      socket.on('voice:consumerClosed', ({ consumerId }: { consumerId: string }) => {
-        if (videoConsumerRef.current?.id === consumerId) {
-          stopScreenConsume()
-        }
+      onVoice(socket, 'voice:consumerClosed', ({ consumerId }: { consumerId: string }) => {
+        onVideoConsumerClosed(consumerId)
       })
 
       // Pin to 48kHz to match the Opus/RTP pipeline. Without this the context
@@ -1613,12 +1937,12 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
 
       if (joinResult.screenSharePeer) {
         const { peerId, username } = joinResult.screenSharePeer
-        await consumeScreenShare(socket, device, recvTransport, peerId, channelId, username)
+        await consumeScreenShare(socket, receiver, peerId, channelId, username)
       }
 
       for (const peer of joinResult.peers || []) {
         if (peer.hasCamera) {
-          await consumeCamera(socket, device, recvTransport, peer.id, channelId)
+          await consumeCamera(socket, receiver, peer.id, channelId)
         }
       }
 
@@ -1626,7 +1950,8 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       serverBitrateRef.current = voiceBitrateKbps
       setServerVoiceBitrateKbps(voiceBitrateKbps)
 
-      socket.on(
+      onVoice(
+        socket,
         'server:voiceBitrateChanged',
         ({ voiceBitrateKbps: newKbps }: { voiceBitrateKbps: number }) => {
           vlog('bitrate', `server:voiceBitrateChanged -> ${newKbps} kbps`)
@@ -1723,6 +2048,9 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       noiseGateThreshold,
       noiseSuppressionStrength,
       inputVolume,
+      onVoice,
+      detachVoiceListeners,
+      releaseTrackSink,
     ],
   )
 
@@ -1958,17 +2286,11 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       return
     }
     const socket = socketRef.current
+    // Removes exactly the handlers this call registered (cleanupVoice does it
+    // too; explicit here because leaving must never keep them).
+    detachVoiceListeners()
     cleanupVoice()
     if (socket) {
-      socket.off('voice:newPeer')
-      socket.off('voice:peerLeft')
-      socket.off('voice:peerSpeaking')
-      socket.off('voice:mute')
-      socket.off('screen:peerStarted')
-      socket.off('screen:peerStopped')
-      socket.off('camera:peerStarted')
-      socket.off('camera:peerStopped')
-      socket.off('voice:consumerClosed')
       stopScreenConsume()
       if (channelId?.startsWith('dm:')) {
         socket.emit('dm:call:end', { dmChannelId: channelId.slice(3) })
@@ -1991,6 +2313,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     clearDMCall,
     setVoiceReconnecting,
     setVoiceConnectingChannelId,
+    detachVoiceListeners,
   ])
 
   /**
@@ -2162,9 +2485,9 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     if (!channelIdRef.current) return
     const deviceId = useVoiceStore.getState().audioOutputDeviceId
     if (isTauri() && !isMobileTauri()) {
-      if (!deviceId) return
+      // An empty id means "system default"; the native side re-opens on it.
       const { invoke } = await import('@tauri-apps/api/core')
-      await invoke('voice_set_output_device', { deviceId }).catch((err) =>
+      await invoke('voice_set_output_device', { deviceId: deviceId ?? '' }).catch((err) =>
         verr('settings', 'voice_set_output_device failed', err),
       )
       return

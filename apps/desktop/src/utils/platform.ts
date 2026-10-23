@@ -23,6 +23,13 @@ export function isMobileTauri(): boolean {
 }
 
 /**
+ * Android's WebView has no getDisplayMedia and the native capture commands
+ * are desktop-only, so the mobile app can watch a screenshare but not send one.
+ */
+export const MOBILE_SCREENSHARE_UNSUPPORTED =
+  "Screen sharing isn't available in the mobile app. You can still watch someone else's share."
+
+/**
  * Desktop Linux runs in a WebKitGTK webview, which has no WebRTC stack of its
  * own — screensharing there is captured, encoded and sent by Rust instead.
  */

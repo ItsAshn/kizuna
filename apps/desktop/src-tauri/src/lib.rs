@@ -231,23 +231,69 @@ fn voice_init(
     Ok(())
 }
 
+/// Run blocking voice work off both the main thread and the async workers.
+///
+/// Tauri v2 runs synchronous commands on the main thread, so the old sync
+/// voice commands froze the UI while transports were negotiated, devices
+/// opened and threads joined. The work itself is blocking (std mutexes held
+/// across it, process spawns, thread joins), which is exactly what the
+/// blocking pool is for.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn run_blocking<T, F>(name: &'static str, f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("{name} task failed: {e}"))?
+}
+
+/// Swap the call's audio output, dropping the previous one outside the lock:
+/// its drop joins the output thread and reaps paplay, which must not stall
+/// `voice_inject_opus` calls waiting on the same mutex.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn replace_audio_output(next: Option<AudioOutput>) -> Result<(), String> {
+    let prev = {
+        let mut guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
+        std::mem::replace(&mut *guard, next)
+    };
+    drop(prev);
+    Ok(())
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn voice_begin(
+async fn voice_begin(
     channel_id: String,
     ice_servers: Vec<serde_json::Value>,
     send_params: serde_json::Value,
     recv_params: serde_json::Value,
     voice_bitrate_kbps: u64,
-) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), String> {
-    let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
-    let controller = guard.as_mut().ok_or("Voice not initialized")?;
-    tauri::async_runtime::block_on(controller.begin_join(&channel_id, ice_servers, send_params, recv_params, voice_bitrate_kbps))
+) -> Result<voice::JoinTransportParams, String> {
+    run_blocking("voice_begin", move || {
+        let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+        let controller = guard.as_mut().ok_or("Voice not initialized")?;
+        tauri::async_runtime::block_on(controller.begin_join(
+            &channel_id,
+            ice_servers,
+            send_params,
+            recv_params,
+            voice_bitrate_kbps,
+        ))
+    })
+    .await
 }
 
+/// `muted` is whether the microphone should start silenced (muted, or on
+/// push-to-talk with the key up). Capture begins inside this call, so the
+/// processor has to be muted from its first frame; applying it afterwards from
+/// JS let a burst of open mic out on every join. Optional so an older frontend
+/// still works.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn voice_finish_join(
+#[allow(clippy::too_many_arguments)]
+async fn voice_finish_join(
     voice_bitrate_kbps: u64,
     gate_enabled: bool,
     gate_threshold_db: f32,
@@ -256,36 +302,40 @@ fn voice_finish_join(
     auto_gain_enabled: bool,
     device_name: Option<String>,
     output_device_id: Option<String>,
+    muted: Option<bool>,
 ) -> Result<(), String> {
-    let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
-    let controller = guard.as_mut().ok_or("Voice not initialized")?;
-    tauri::async_runtime::block_on(controller.finish_join(
-        voice_bitrate_kbps,
-        gate_enabled,
-        gate_threshold_db,
-        suppression_enabled,
-        suppression_strength,
-        auto_gain_enabled,
-        device_name,
-    ))?;
-
-    // Initialize native audio output
-    let mut out_guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if out_guard.is_some() {
-        let prev = out_guard.take();
-        drop(prev);
-    }
-    match AudioOutput::new(output_device_id, 1.0) {
-        Ok(ao) => {
-            eprintln!("[Voice] AudioOutput initialized");
-            *out_guard = Some(ao);
+    run_blocking("voice_finish_join", move || {
+        {
+            let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+            let controller = guard.as_mut().ok_or("Voice not initialized")?;
+            tauri::async_runtime::block_on(controller.finish_join(
+                voice_bitrate_kbps,
+                gate_enabled,
+                gate_threshold_db,
+                suppression_enabled,
+                suppression_strength,
+                auto_gain_enabled,
+                device_name,
+                muted.unwrap_or(false),
+            ))?;
         }
-        Err(e) => {
-            eprintln!("[Voice] AudioOutput init failed (non-fatal): {e}");
-        }
-    }
 
-    Ok(())
+        // Close any previous output before opening the new one, so the two
+        // never hold the device at once.
+        replace_audio_output(None)?;
+        match AudioOutput::new(output_device_id, 1.0) {
+            Ok(ao) => {
+                eprintln!("[Voice] AudioOutput initialized");
+                replace_audio_output(Some(ao))?;
+            }
+            Err(e) => {
+                eprintln!("[Voice] AudioOutput init failed (non-fatal): {e}");
+            }
+        }
+
+        Ok(())
+    })
+    .await
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -426,9 +476,14 @@ fn voice_flush_peers() -> Result<(), String> {
 /// Framing (`x-framing` header):
 ///   2 — `[seq: u16 BE][timestamp: u32 BE][opus...]`
 ///   1 — bare Opus payload, from a server that predates sequence forwarding
+///
+/// Async so it runs on the runtime rather than the main thread: at ~50 calls a
+/// second per peer, a sync command here competed with the UI for the main
+/// thread. The work is a short mutex hold and a map insert, so it does not
+/// need the blocking pool; decoding happens later on the output thread.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn voice_inject_opus(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+async fn voice_inject_opus(request: tauri::ipc::Request<'_>) -> Result<(), String> {
     let header = |name: &str| {
         request
             .headers()
@@ -484,25 +539,141 @@ fn voice_add_peer(peer_id: String, ssrc: u32) -> Result<(), String> {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn voice_leave() -> Result<(), String> {
-    // A screenshare cannot outlive the call it was being sent on: leaving with
-    // one running would otherwise leave the capture thread (and the portal's
-    // "screen is being shared" indicator) alive with nowhere to send frames.
-    if let Ok(mut capture) = CAPTURE_SESSION.lock() {
-        if let Some(mut session) = capture.take() {
-            session.stop();
+async fn voice_leave() -> Result<(), String> {
+    run_blocking("voice_leave", || {
+        // A screenshare cannot outlive the call it was being sent on: leaving
+        // with one running would otherwise leave the capture thread (and the
+        // portal's "screen is being shared" indicator) alive with nowhere to
+        // send frames.
+        if let Ok(mut capture) = CAPTURE_SESSION.lock() {
+            if let Some(mut session) = capture.take() {
+                session.stop();
+            }
+        }
+
+        // Likewise the camera: on Linux it is encoded onto this call.
+        close_camera_session();
+
+        // Remote video goes with the call (its transport is closed on the
+        // server when we leave).
+        #[cfg(target_os = "linux")]
+        tauri::async_runtime::block_on(close_video_recv());
+
+        {
+            let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+            if let Some(ref mut controller) = *guard {
+                // Stops the send session, which releases the microphone (kills
+                // and reaps parec on Linux).
+                controller.leave();
+            }
+        }
+
+        // Closes the output device / reaps paplay.
+        replace_audio_output(None)
+    })
+    .await
+}
+
+/// The call's native video receiver (Linux; see voice/video_recv.rs). Behind a
+/// tokio mutex because every operation on it awaits SDP negotiation.
+#[cfg(target_os = "linux")]
+static VIDEO_RECV: tokio::sync::Mutex<Option<voice::video_recv::VideoRecvController>> =
+    tokio::sync::Mutex::const_new(None);
+
+#[cfg(target_os = "linux")]
+async fn close_video_recv() {
+    let prev = VIDEO_RECV.lock().await.take();
+    if let Some(mut rx) = prev {
+        rx.close().await;
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+const NO_NATIVE_VIDEO_RECV: &str =
+    "Native video receive is only built on Linux; this webview receives video itself";
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+struct VideoRecvAdded {
+    stream_id: u32,
+    dtls: Option<serde_json::Value>,
+}
+
+/// Open the native video receiver for this call. Decoded frames go to
+/// `on_frame` as raw bytes: a 12-byte header (`u32` stream id, `u16` width,
+/// `u16` height, `u32` reserved, little endian) followed by a JPEG.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn video_recv_open(
+    ice_servers: Vec<serde_json::Value>,
+    transport_params: serde_json::Value,
+    on_frame: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
+) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        close_video_recv().await;
+        let sink: voice::video_recv::FrameSink = std::sync::Arc::new(move |msg: Vec<u8>| {
+            let _ = on_frame.send(tauri::ipc::InvokeResponseBody::Raw(msg));
+        });
+        let rx = voice::video_recv::VideoRecvController::new(&ice_servers, &transport_params, sink);
+        *VIDEO_RECV.lock().await = Some(rx);
+        Ok(())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (ice_servers, transport_params, on_frame);
+        Err(NO_NATIVE_VIDEO_RECV.into())
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn video_recv_add(
+    consumer_id: String,
+    ssrc: u32,
+    payload_type: u8,
+    cname: Option<String>,
+) -> Result<VideoRecvAdded, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let mut guard = VIDEO_RECV.lock().await;
+        let rx = guard.as_mut().ok_or("Video receiver is not open")?;
+        let (stream_id, dtls) = rx
+            .add_consumer(&consumer_id, ssrc, payload_type, cname.as_deref().unwrap_or(""))
+            .await?;
+        Ok(VideoRecvAdded { stream_id, dtls })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (consumer_id, ssrc, payload_type, cname);
+        Err(NO_NATIVE_VIDEO_RECV.into())
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn video_recv_remove(consumer_id: String) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let mut guard = VIDEO_RECV.lock().await;
+        match guard.as_mut() {
+            Some(rx) => rx.remove_consumer(&consumer_id).await,
+            None => Ok(()),
         }
     }
-
-    let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if let Some(ref mut controller) = *guard {
-        controller.leave();
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = consumer_id;
+        Ok(())
     }
+}
 
-    // Drop audio output
-    let mut out_guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
-    let _ = out_guard.take();
-
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn video_recv_close() -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    close_video_recv().await;
     Ok(())
 }
 
@@ -584,43 +755,115 @@ fn camera_list_devices() -> Result<Vec<capture::camera::CameraDevice>, String> {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[tauri::command]
-fn camera_start(
+fn open_camera_session(
     app: tauri::AppHandle,
     camera_index: usize,
     width: u32,
     height: u32,
     fps: u32,
 ) -> Result<(), String> {
-    let mut session_guard =
-        CAMERA_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if session_guard.is_some() {
+    {
+        let guard = CAMERA_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+        if guard.is_some() {
+            return Err("A camera session is already active".into());
+        }
+    }
+    // Opening blocks until the device streams (or fails), so the lock is not
+    // held across it.
+    let session = capture::camera::start_camera(app, camera_index, width, height, fps)?;
+    let mut guard = CAMERA_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
+    if guard.is_some() {
         return Err("A camera session is already active".into());
     }
-
-    let session = capture::camera::start_camera(
-        app,
-        camera_index,
-        width,
-        height,
-        fps,
-    )?;
-
-    *session_guard = Some(session);
+    *guard = Some(session);
     Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[tauri::command]
-fn camera_stop() -> Result<(), String> {
-    let mut session_guard =
-        CAMERA_SESSION.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if let Some(mut session) = session_guard.take() {
-        session.stop();
-        Ok(())
-    } else {
-        Err("No active camera session".into())
+fn close_camera_session() -> bool {
+    let session = CAMERA_SESSION.lock().ok().and_then(|mut g| g.take());
+    match session {
+        Some(mut session) => {
+            session.stop();
+            true
+        }
+        None => false,
     }
+}
+
+/// Webview camera path (Windows/macOS): frames are emitted as `camera:frame`
+/// JPEGs for the page to send. Async so opening the device (which waits for
+/// it to stream) stays off the main thread.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn camera_start(
+    app: tauri::AppHandle,
+    camera_index: usize,
+    width: u32,
+    height: u32,
+    fps: u32,
+) -> Result<(), String> {
+    run_blocking("camera_start", move || {
+        open_camera_session(app, camera_index, width, height, fps)
+    })
+    .await
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn camera_stop() -> Result<(), String> {
+    run_blocking("camera_stop", || {
+        if close_camera_session() {
+            Ok(())
+        } else {
+            Err("No active camera session".into())
+        }
+    })
+    .await
+}
+
+/// Native camera path (Linux): the camera is VP8-encoded here and sent on the
+/// call's camera track, which the caller must already have produced. A
+/// reduced-rate `camera:frame` JPEG preview still goes to the page for the
+/// self-view.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn voice_camera_start(
+    app: tauri::AppHandle,
+    camera_index: usize,
+    width: u32,
+    height: u32,
+    fps: u32,
+) -> Result<(), String> {
+    run_blocking("voice_camera_start", move || {
+        #[cfg(target_os = "linux")]
+        {
+            let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+            let controller = guard.as_mut().ok_or("Voice is not connected")?;
+            controller.start_video(capture::VideoSource::Camera, fps.max(1), None)?;
+        }
+        // The encoder is attached first so the first frames are not wasted on
+        // the JPEG path.
+        let opened = open_camera_session(app, camera_index, width, height, fps);
+        if opened.is_err() {
+            #[cfg(target_os = "linux")]
+            stop_native_video(capture::VideoSource::Camera);
+        }
+        opened
+    })
+    .await
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+async fn voice_camera_stop() -> Result<(), String> {
+    run_blocking("voice_camera_stop", || {
+        #[cfg(target_os = "linux")]
+        stop_native_video(capture::VideoSource::Camera);
+        close_camera_session();
+        Ok(())
+    })
+    .await
 }
 
 /// Starts screensharing over the native WebRTC send transport.
@@ -646,12 +889,9 @@ async fn voice_screen_share_start(
 
     #[cfg(target_os = "linux")]
     {
-        let bitrate_bps = bitrate_kbps
-            .map(|kbps| kbps * 1000)
-            .unwrap_or(voice::SCREEN_SHARE_BITRATE_BPS);
         let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
         let controller = guard.as_mut().ok_or("Voice is not connected")?;
-        controller.start_screen_share(fps.max(1), bitrate_bps)?;
+        controller.start_screen_share(fps.max(1), bitrate_kbps.map(|kbps| kbps * 1000))?;
     }
 
     let session = match get_session_type() {
@@ -696,12 +936,17 @@ fn voice_screen_share_stop() -> Result<(), String> {
 }
 
 #[cfg(target_os = "linux")]
-fn stop_native_screen_encode() {
+fn stop_native_video(source: capture::VideoSource) {
     if let Ok(mut guard) = VOICE_CONTROLLER.lock() {
         if let Some(controller) = guard.as_mut() {
-            controller.stop_screen_share();
+            controller.stop_video(source);
         }
     }
+}
+
+#[cfg(target_os = "linux")]
+fn stop_native_screen_encode() {
+    stop_native_video(capture::VideoSource::Screen);
 }
 
 /// Bring the main window back after close-to-tray hid it.
@@ -734,6 +979,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_call_service::init())
         .invoke_handler({
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
@@ -750,6 +996,8 @@ pub fn run() {
                     camera_list_devices,
                     camera_start,
                     camera_stop,
+                    voice_camera_start,
+                    voice_camera_stop,
                     list_audio_input_devices,
                     list_audio_output_devices,
                     start_audio_capture,
@@ -779,6 +1027,10 @@ pub fn run() {
                     voice_remove_peer,
                     voice_screen_share_start,
                     voice_screen_share_stop,
+                    video_recv_open,
+                    video_recv_add,
+                    video_recv_remove,
+                    video_recv_close,
                     set_background_enabled,
                 ]
             }

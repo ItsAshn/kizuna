@@ -20,10 +20,13 @@ import { useMobileNavigation } from '../../hooks/useMobileNavigation'
 import { useMobileNavStore } from '../../store/mobileNavStore'
 import { useSwipeBack } from '../../hooks/useSwipeBack'
 import { useKeyboard } from '../../hooks/useKeyboard'
+import { closeTopOverlay } from '../../lib/overlayStack'
 import './MobileShell.css'
 
 interface MobileShellProps {
   session: { url: string; serverId: string; user: User }
+  /** The server's channel list etc. is still being fetched. */
+  initialLoading?: boolean
   servers: SavedServer[]
   sessions: Record<string, { serverId: string; url: string; token: string }>
   dmChannels: DMChannelData[]
@@ -48,7 +51,7 @@ interface MobileShellProps {
   stopScreenshare: () => void
   isCameraOn: boolean
   cameraStreamRef: MutableRefObject<MediaStream | null>
-  videoElRef: MutableRefObject<HTMLVideoElement | null>
+  videoElRef: MutableRefObject<HTMLVideoElement | HTMLCanvasElement | null>
   startDMCall: (dmChannelId: string, otherUserId: string, otherUsername: string) => void
   endDMCall: () => void
   onOpenSettings: () => void
@@ -63,6 +66,7 @@ interface MobileShellProps {
 
 export default function MobileShell({
   session,
+  initialLoading,
   servers,
   sessions,
   dmChannels,
@@ -175,7 +179,10 @@ export default function MobileShell({
    * through refs instead.
    *
    * Falling through without re-pushing is deliberate: at a tab root there is
-   * nothing left to pop, so the next back should exit the app. */
+   * nothing left to pop, so the next back should exit the app.
+   *
+   * An open overlay (modal, sheet, picker, lightbox, context menu) is in front
+   * of the navigation, so back dismisses the topmost one before popping. */
   const goBackRef = useRef(goBack)
   goBackRef.current = goBack
   const showMembersRef = useRef(showMembers)
@@ -183,6 +190,10 @@ export default function MobileShell({
 
   useEffect(() => {
     const onPopState = () => {
+      if (closeTopOverlay()) {
+        window.history.pushState(null, '', window.location.href)
+        return
+      }
       const canGoBack =
         useChatStore.getState().threadPanelVisible ||
         showMembersRef.current ||
@@ -249,6 +260,7 @@ export default function MobileShell({
           joinVoice={joinVoice}
           leaveVoice={leaveVoice}
           socketRef={socketRef}
+          loading={initialLoading}
           onOpenMenu={onOpenMenu}
           onBackToServers={popView}
           onOpenVoiceStage={(channelId) => pushView({ type: 'voice', channelId })}
@@ -316,6 +328,7 @@ export default function MobileShell({
         </div>
 
         <VoiceOverlay
+          joinVoice={joinVoice}
           leaveVoice={leaveVoice}
           toggleMute={toggleMute}
           socketRef={socketRef}
@@ -343,7 +356,7 @@ export default function MobileShell({
           toggleCamera={toggleCamera}
           channelId={activeVoiceChannelId}
         />
-        {activeChannelId && <ThreadPanel channelId={activeChannelId} />}
+        {activeChannelId && <ThreadPanel channelId={activeChannelId} socketRef={socketRef} />}
         <NotificationContainer />
       </div>
     </>

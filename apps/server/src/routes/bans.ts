@@ -50,7 +50,7 @@ banRoutes.get('/', authMiddleware, adminMiddleware, (c) => {
   return c.json({ bans })
 })
 
-banRoutes.post('/:userId', authMiddleware, (c) => {
+banRoutes.post('/:userId', authMiddleware, async (c) => {
   const user = getAuth(c)
   const targetUserId = c.req.param('userId') || ''
   const db = getDb()
@@ -76,11 +76,23 @@ banRoutes.post('/:userId', authMiddleware, (c) => {
     | undefined
   if (existing) return c.json({ error: 'User is already banned' }, 400)
 
-  let reason = null
-  try {
-    const body = c.req.json() as unknown as Record<string, unknown>
-    reason = body?.reason || null
-  } catch {}
+  // The body is optional (a ban needs no reason), but if one is sent it must be
+  // valid JSON with a string reason.
+  let reason: string | null = null
+  const raw = await c.req.text()
+  if (raw.trim()) {
+    let body: unknown
+    try {
+      body = JSON.parse(raw)
+    } catch {
+      return c.json({ error: 'Invalid body' }, 400)
+    }
+    const r = (body as { reason?: unknown } | null)?.reason
+    if (r !== undefined && r !== null && typeof r !== 'string') {
+      return c.json({ error: 'Reason must be a string' }, 400)
+    }
+    reason = typeof r === 'string' && r.trim() ? r.trim().slice(0, 512) : null
+  }
 
   const id = uuidv4()
   db.transaction(() => {

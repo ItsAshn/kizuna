@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { Socket } from 'socket.io-client'
 import { createPortal } from 'react-dom'
 import { useServerStore } from '../store/serverStore'
@@ -9,6 +9,7 @@ import { useMobile } from '../hooks/useMobile'
 import { useHaptics } from '../hooks/useHaptics'
 import { useLongPressItems } from '../hooks/useLongPressItems'
 import { isTauri } from '../utils/platform'
+import { showErrorToast } from '../utils/showNotification'
 import { useNavigate } from 'react-router-dom'
 import {
   createChannel,
@@ -20,11 +21,12 @@ import {
 import type { Channel } from '@kizuna/shared'
 import { BellOff, ChevronLeft, Ellipsis, Bell, Settings } from 'lucide-react'
 import UserStatusPicker from './UserStatusPicker'
-import { Avatar } from './ui'
+import { Avatar, IconButton } from './ui'
 import ContextMenu from './ContextMenu'
 import ChannelSettingsModal from './ChannelSettingsModal'
 import ChannelAccessModal from './ChannelAccessModal'
 import CreateGroupDMModal from './CreateGroupDMModal'
+import Skeleton from './Skeleton'
 import './Sidebar.css'
 
 interface SidebarProps {
@@ -37,7 +39,11 @@ interface SidebarProps {
   onOpenVoiceStage?: (channelId: string) => void
   /** Rendered just above the sidebar footer (the voice-connected panel). */
   voicePanel?: React.ReactNode
+  /** The server's data is still loading — show placeholders, not "empty". */
+  loading?: boolean
 }
+
+const NO_MUTES: Record<string, number | null> = {}
 
 export default function Sidebar({
   joinVoice,
@@ -48,6 +54,7 @@ export default function Sidebar({
   onOpenChat,
   onOpenVoiceStage,
   voicePanel,
+  loading = false,
 }: SidebarProps) {
   const navigate = useNavigate()
   const isMobile = useMobile()
@@ -64,14 +71,23 @@ export default function Sidebar({
   const activeGroupDMChannelId = useChatStore((s) => s.activeGroupDMChannelId)
   const unreadCounts = useChatStore((s) => s.unreadCounts)
   const mentionCounts = useChatStore((s) => s.mentionCounts)
-  const channelMutes = useChatStore((s) => s.channelMutes)
+  const channelMutes = useChatStore(
+    (s) => (session ? s.channelMutes[session.serverId] : undefined) ?? NO_MUTES,
+  )
   const members = useChatStore((s) => s.members)
   const setActiveChannel = useChatStore((s) => s.setActiveChannel)
   const setActiveDMChannel = useChatStore((s) => s.setActiveDMChannel)
   const setActiveGroupDMChannel = useChatStore((s) => s.setActiveGroupDMChannel)
   const setViewedVoiceChannel = useChatStore((s) => s.setViewedVoiceChannel)
   const setChannels = useChatStore((s) => s.setChannels)
-  const { activeVoiceChannelId, voiceChannelUsers, userActivities } = useVoiceStore()
+  // Narrow slices: the voice store also carries speaking flags, peer stats and
+  // every user's activity, and a whole-store subscription rerendered the whole
+  // channel list on each of those updates.
+  const activeVoiceChannelId = useVoiceStore((s) => s.activeVoiceChannelId)
+  const voiceChannelUsers = useVoiceStore((s) => s.voiceChannelUsers)
+  const myActivity = useVoiceStore((s) =>
+    session?.user?.id ? s.userActivities[session.user.id] : undefined,
+  )
   const shareMediaActivity = useSettingsStore((s) => s.shareMediaActivity)
   const shareAppActivity = useSettingsStore((s) => s.shareAppActivity)
   const channelNotifLevels = useSettingsStore((s) => s.channelNotificationLevels)
@@ -86,6 +102,9 @@ export default function Sidebar({
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
   const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null)
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
+  // A voice join is a multi-step negotiation; a second click while one is in
+  // flight used to start a parallel join that tore down the first halfway.
+  const joiningVoiceRef = useRef(false)
   const [drag, setDrag] = useState<{ channelId: string; type: 'text' | 'voice' } | null>(null)
   const [dragOver, setDragOver] = useState<{
     channelId: string
@@ -151,11 +170,16 @@ export default function Sidebar({
     const allOrdered =
       drag.type === 'text' ? [...reordered, ...otherType] : [...otherType, ...reordered]
 
+    const previous = channels
     setChannels(allOrdered)
     setDrag(null)
     setDragOver(null)
     reorderChannels(session.url, order).catch((err) => {
       console.error('Failed to reorder channels:', err)
+      // Roll back the optimistic order, unless something else (a socket
+      // update) has replaced the list since.
+      if (useChatStore.getState().channels === allOrdered) setChannels(previous)
+      showErrorToast('reorder channels')
     })
   }
 
@@ -188,6 +212,9 @@ export default function Sidebar({
     try {
       await createChannel(session.url, newChannelName.trim(), newChannelType)
       setNewChannelName('')
+    } catch (err) {
+      console.error('Failed to create channel:', err)
+      showErrorToast(`create #${newChannelName.trim()}`)
     } finally {
       setCreating(false)
     }
@@ -240,6 +267,7 @@ export default function Sidebar({
                 if (session)
                   deleteChannel(session.url, ch.id).catch((err) => {
                     console.error('Failed to delete channel:', err)
+                    showErrorToast(`delete #${ch.name}`)
                   })
               }
             },
@@ -257,6 +285,7 @@ export default function Sidebar({
               if (session)
                 deleteChannelMute(session.url, channelId).catch((err) => {
                   console.error('Failed to unmute channel:', err)
+                  showErrorToast('unmute the channel')
                 })
             },
           },
@@ -272,6 +301,7 @@ export default function Sidebar({
               if (session)
                 setChannelMute(session.url, channelId, now + 15 * 60 * 1000).catch((err) => {
                   console.error('Failed to mute channel:', err)
+                  showErrorToast('mute the channel')
                 })
             },
           },
@@ -281,6 +311,7 @@ export default function Sidebar({
               if (session)
                 setChannelMute(session.url, channelId, now + 60 * 60 * 1000).catch((err) => {
                   console.error('Failed to mute channel:', err)
+                  showErrorToast('mute the channel')
                 })
             },
           },
@@ -290,6 +321,7 @@ export default function Sidebar({
               if (session)
                 setChannelMute(session.url, channelId, now + 3 * 60 * 60 * 1000).catch((err) => {
                   console.error('Failed to mute channel:', err)
+                  showErrorToast('mute the channel')
                 })
             },
           },
@@ -299,6 +331,7 @@ export default function Sidebar({
               if (session)
                 setChannelMute(session.url, channelId, now + 8 * 60 * 60 * 1000).catch((err) => {
                   console.error('Failed to mute channel:', err)
+                  showErrorToast('mute the channel')
                 })
             },
           },
@@ -308,6 +341,7 @@ export default function Sidebar({
               if (session)
                 setChannelMute(session.url, channelId, now + 24 * 60 * 60 * 1000).catch((err) => {
                   console.error('Failed to mute channel:', err)
+                  showErrorToast('mute the channel')
                 })
             },
           },
@@ -317,6 +351,7 @@ export default function Sidebar({
               if (session)
                 setChannelMute(session.url, channelId, null).catch((err) => {
                   console.error('Failed to mute channel:', err)
+                  showErrorToast('mute the channel')
                 })
             },
           },
@@ -393,11 +428,24 @@ export default function Sidebar({
             } else {
               setViewedVoiceChannel(ch.id)
               onOpenVoiceStage?.(ch.id)
-              if (activeVoiceChannelId !== ch.id) {
+              if (activeVoiceChannelId !== ch.id && !joiningVoiceRef.current) {
+                joiningVoiceRef.current = true
                 ;(async () => {
-                  if (activeVoiceChannelId) await leaveVoice()
-                  joinVoice(ch.id)
-                  haptics.success()
+                  try {
+                    if (activeVoiceChannelId) await leaveVoice()
+                    const error = await joinVoice(ch.id)
+                    if (error) {
+                      haptics.error()
+                      showErrorToast(`join #${ch.name}`)
+                    } else {
+                      haptics.success()
+                    }
+                  } catch (err) {
+                    console.error('Failed to join voice:', err)
+                    showErrorToast(`join #${ch.name}`)
+                  } finally {
+                    joiningVoiceRef.current = false
+                  }
                 })()
               }
             }
@@ -445,6 +493,7 @@ export default function Sidebar({
             }}
             className={`sidebar__settings-btn ${ch.locked || ch.hidden ? 'sidebar__settings-btn--active' : ''}`}
             title="Channel access settings"
+            aria-label={`Access settings for #${ch.name}`}
           >
             <Settings size={12} />
           </button>
@@ -501,7 +550,7 @@ export default function Sidebar({
     isTauri() &&
     (shareMediaActivity || shareAppActivity) &&
     session?.user?.id &&
-    userActivities[session.user.id]
+    myActivity
   const showStatusLine = hasOwnStatus || hasActivity
 
   return (
@@ -561,43 +610,43 @@ export default function Sidebar({
                   )}
                   {hasActivity && (
                     <>
-                      {userActivities[session.user.id].type === 'game'
+                      {myActivity!.type === 'game'
                         ? '\u{1F3AE}'
-                        : userActivities[session.user.id].type === 'music'
+                        : myActivity!.type === 'music'
                           ? '\u{1F3B5}'
-                          : userActivities[session.user.id].type === 'video'
+                          : myActivity!.type === 'video'
                             ? '\u25B6'
-                            : userActivities[session.user.id].type === 'app'
+                            : myActivity!.type === 'app'
                               ? '\u{1F4BB}'
                               : '\u25B6'}{' '}
-                      {userActivities[session.user.id].name}
+                      {myActivity!.name}
                     </>
                   )}
                 </p>
               )}
             </div>
-            <button
+            <IconButton
               onClick={onOpenMenu}
-              className="sidebar__channel-icon"
-              style={{
-                marginLeft: 'auto',
-                fontSize: '14px',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: 'var(--text-muted)',
-                padding: '4px',
-              }}
-              title="Server Menu"
+              size="sm"
+              className="sidebar__menu-btn"
+              label="Server menu"
               data-tooltip="Server Menu"
-            >
-              <Ellipsis size={18} />
-            </button>
+              icon={<Ellipsis size={18} />}
+            />
           </div>
         </div>
       )}
 
-      <div className="sidebar__content">
+      <div className="sidebar__content" aria-busy={loading || undefined}>
+        {loading && channels.length === 0 && (
+          <div className="sidebar__section" role="status" aria-label="Loading channels">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="sidebar__channel-skeleton">
+                <Skeleton variant="text" width={`${70 - i * 8}%`} />
+              </div>
+            ))}
+          </div>
+        )}
         {/* Render categories with their channels */}
         {categories
           .sort((a, b) => a.position - b.position)
@@ -618,9 +667,11 @@ export default function Sidebar({
                     })
                   }
                   title={isCollapsed ? 'Expand' : 'Collapse'}
+                  aria-expanded={!isCollapsed}
                 >
                   <span
                     className={`sidebar__category-arrow${isCollapsed ? ' sidebar__category-arrow--collapsed' : ''}`}
+                    aria-hidden="true"
                   >
                     ▾
                   </span>
@@ -711,6 +762,7 @@ export default function Sidebar({
               onClick={() => setShowCreateGroupDM(true)}
               className="sidebar__section-add-btn"
               title="New Group DM"
+              aria-label="New group DM"
             >
               +
             </button>
@@ -759,7 +811,12 @@ export default function Sidebar({
         </div>
 
         {isAdmin && (
-          <button onClick={() => setShowCreateForm((v) => !v)} className="sidebar__create-toggle">
+          <button
+            onClick={() => setShowCreateForm((v) => !v)}
+            className="sidebar__create-toggle"
+            aria-label={showCreateForm ? 'Close create channel form' : 'Create channel'}
+            aria-expanded={showCreateForm}
+          >
             {showCreateForm ? '—' : '+'}
           </button>
         )}

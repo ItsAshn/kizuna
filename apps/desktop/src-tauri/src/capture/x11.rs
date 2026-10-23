@@ -106,9 +106,9 @@ pub fn start_capture(
                         consecutive_errors
                     );
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
-                        eprintln!(
-                            "[ScreenCapture] X11: too many consecutive errors ({}), stopping",
-                            MAX_CONSECUTIVE_ERRORS
+                        super::emit_capture_error(
+                            &app,
+                            format!("Screen capture stopped after repeated errors: {e}"),
                         );
                         break;
                     }

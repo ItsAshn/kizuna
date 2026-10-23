@@ -67,6 +67,12 @@ impl NoiseGate {
         self.hold_counter = 0;
     }
 
+    /// Whether the gate is currently letting speech through (open, or holding
+    /// open after the signal dipped below threshold).
+    pub fn is_open(&self) -> bool {
+        self.hold_counter > 0 || self.envelope > 0.5
+    }
+
     /// Process a single sample through the soft noise gate.
     /// Returns the gated sample.
     pub fn process_sample(&mut self, sample: f32) -> f32 {
@@ -400,7 +406,18 @@ impl AutoGain {
     /// gain pumping when the noise gate closes. The RMS measurement is
     /// smoothed with an exponential moving average and gated below a
     /// threshold to prevent gain drift during silence.
-    pub fn process_frame(&mut self, frame: &mut [f32], external_rms: Option<f32>) {
+    ///
+    /// `gain_ceiling` caps the gain for this frame (so input trim × AGC stays
+    /// bounded), and `may_raise` is false while the noise gate is closed: the
+    /// leveler may still pull a loud signal down, but it must never boost the
+    /// room noise the gate is there to keep out.
+    pub fn process_frame(
+        &mut self,
+        frame: &mut [f32],
+        external_rms: Option<f32>,
+        gain_ceiling: f32,
+        may_raise: bool,
+    ) {
         if !self.enabled || frame.is_empty() {
             return;
         }
@@ -418,11 +435,18 @@ impl AutoGain {
             self.current_rms = self.current_rms * rms_coeff + frame_rms * (1.0 - rms_coeff);
         }
 
-        let desired_gain = if self.current_rms < 1e-10 {
+        let max_gain = self.max_gain.min(gain_ceiling).max(self.max_attenuation);
+        let mut desired_gain = if self.current_rms < 1e-10 {
             self.current_gain // Hold current gain when no signal
         } else {
-            (self.target_rms / self.current_rms).clamp(self.max_attenuation, self.max_gain)
+            (self.target_rms / self.current_rms).clamp(self.max_attenuation, max_gain)
         };
+        if !may_raise {
+            desired_gain = desired_gain.min(self.current_gain);
+        }
+        // A lowered ceiling (input trim raised) applies immediately.
+        desired_gain = desired_gain.min(max_gain);
+        self.current_gain = self.current_gain.min(max_gain);
 
         let coeff = if desired_gain > self.current_gain {
             self.attack_coeff
@@ -443,35 +467,42 @@ impl AutoGain {
 
 // ─── Peak Limiter ─────────────────────────────────────────────────────────
 // Prevents digital clipping from hot microphone signals (like SM7B + high
-// gain interface) by smoothly attenuating samples above the threshold.
+// gain interface) by smoothly attenuating samples above the ceiling.
 // Always-on, no frontend toggle needed.
+//
+// Per-sample smoothed-envelope design with 1ms look-ahead: the gain target is
+// derived from the loudest sample that will leave the delay line within the
+// next millisecond, and the gain glides toward it (fast attack, slow release),
+// so reduction is already in place when a transient reaches the output. The
+// previous version took one peak per 20ms frame and applied a single target
+// to the whole frame, so a transient late in a frame pulled the gain down
+// early, and its gain floor (-12dB) let anything hotter than that clip anyway.
+
+/// -1 dBFS.
+const LIMITER_CEILING: f32 = 0.891_250_9;
 
 pub struct PeakLimiter {
-    threshold: f32,
+    ceiling: f32,
     attack_coeff: f32,
     release_coeff: f32,
     current_gain: f32,
-    max_reduction: f32,
-    lookahead_samples: usize,
     lookahead_buf: Vec<f32>,
     lookahead_pos: usize,
-    sample_rate: u32,
 }
 
 impl PeakLimiter {
     pub fn new(sample_rate: u32) -> Self {
         let sr = sample_rate as f32;
-        let lookahead = (sample_rate as usize) / 1000; // 1ms look-ahead
+        let lookahead = ((sample_rate as usize) / 1000).max(1); // 1ms look-ahead
         Self {
-            threshold: 10.0_f32.powf(-3.0 / 20.0), // -3dBFS
-            attack_coeff: (-1.0 / (0.0005 * sr)).exp(),     // 0.5ms
-            release_coeff: (-1.0 / (0.080 * sr)).exp(),     // 80ms
+            ceiling: LIMITER_CEILING,
+            // A 0.2ms time constant settles (>99%) within the 1ms look-ahead,
+            // i.e. a ~1ms attack that is complete before the peak arrives.
+            attack_coeff: (-1.0 / (0.0002 * sr)).exp(),
+            release_coeff: (-1.0 / (0.080 * sr)).exp(), // 80ms
             current_gain: 1.0,
-            max_reduction: 10.0_f32.powf(-12.0 / 20.0),     // -12dB
-            lookahead_samples: lookahead,
             lookahead_buf: vec![0.0f32; lookahead],
             lookahead_pos: 0,
-            sample_rate,
         }
     }
 
@@ -481,58 +512,42 @@ impl PeakLimiter {
         self.lookahead_pos = 0;
     }
 
-    /// Process a frame through the peak limiter with 1ms look-ahead.
-    /// The look-ahead buffer allows detecting peaks before they reach
-    /// the output, enabling smoother gain reduction.
+    /// Process a frame in place. Output is delayed by the 1ms look-ahead and
+    /// never exceeds the -1 dBFS ceiling.
     pub fn process_frame(&mut self, frame: &mut [f32]) {
-        if frame.is_empty() {
-            return;
-        }
-
-        // Pre-scan the incoming frame plus look-ahead buffer for peaks
-        let mut lookahead_peak = 0.0f32;
-        for &s in self.lookahead_buf.iter() {
-            let a = s.abs();
-            if a > lookahead_peak { lookahead_peak = a; }
-        }
-        for &s in frame.iter() {
-            let a = s.abs();
-            if a > lookahead_peak { lookahead_peak = a; }
-        }
-
-        // Determine target gain reduction from the look-ahead peak
-        let target_gain = if lookahead_peak > self.threshold {
-            (self.threshold / lookahead_peak).max(self.max_reduction)
-        } else {
-            1.0
-        };
-
-        let coeff = if target_gain < self.current_gain {
-            self.attack_coeff
-        } else {
-            self.release_coeff
-        };
-
-        // Process samples through the look-ahead delay line, gliding the gain
-        // per sample. attack/release_coeff are per-sample time constants — used
-        // once per 20ms frame they gave a 480ms attack (too slow to catch any
-        // transient) and a 77s release (one loud peak ducked the whole call for
-        // over a minute). Per sample, the 0.5ms attack settles inside the 1ms
-        // look-ahead, which is exactly what the delay line is there for.
+        let n = self.lookahead_buf.len();
         for sample in frame.iter_mut() {
-            self.current_gain = self.current_gain * coeff + target_gain * (1.0 - coeff);
-
-            // Swap: send look-ahead buffer sample to output, store new sample
+            // Oldest sample leaves the delay line; the new one takes its slot.
             let delayed = self.lookahead_buf[self.lookahead_pos];
             self.lookahead_buf[self.lookahead_pos] = *sample;
-
-            // Apply gain to the delayed sample
-            *sample = delayed * self.current_gain;
-
             self.lookahead_pos += 1;
-            if self.lookahead_pos >= self.lookahead_samples {
+            if self.lookahead_pos >= n {
                 self.lookahead_pos = 0;
             }
+
+            // Peak over everything still in the delay line, plus the sample
+            // leaving it now: the window the gain must already cover.
+            let peak = self
+                .lookahead_buf
+                .iter()
+                .fold(delayed.abs(), |m, s| m.max(s.abs()));
+            let target = if peak > self.ceiling {
+                self.ceiling / peak
+            } else {
+                1.0
+            };
+            let coeff = if target < self.current_gain {
+                self.attack_coeff
+            } else {
+                self.release_coeff
+            };
+            self.current_gain = self.current_gain * coeff + target * (1.0 - coeff);
+
+            // The smoothed gain is within a hair of the target by the time a
+            // peak reaches the output; the clamp only absorbs that residue
+            // (and NaN-free garbage from a broken device), it is not the
+            // limiting itself.
+            *sample = (delayed * self.current_gain).clamp(-self.ceiling, self.ceiling);
         }
     }
 }
@@ -540,6 +555,9 @@ impl PeakLimiter {
 // ─── Combined DSP Pipeline ────────────────────────────────────────────────
 
 use super::rnnoise::{NoiseSuppressionMode, RnnoiseSuppressor};
+
+/// Largest total gain (input trim × AGC) the chain may apply: +12dB.
+const MAX_COMBINED_GAIN: f32 = 3.981_071_8;
 
 pub struct AudioProcessor {
     pub noise_gate: NoiseGate,
@@ -558,6 +576,10 @@ pub struct AudioProcessor {
     input_gain: f32,
     sample_rate: u32,
     dc_state: f32,
+    /// Feed capture through the process-wide AEC3. Off only in unit tests,
+    /// which run in parallel and would otherwise share its filter state.
+    #[cfg_attr(any(target_os = "android", target_os = "ios"), allow(dead_code))]
+    use_aec: bool,
 }
 
 impl AudioProcessor {
@@ -576,6 +598,7 @@ impl AudioProcessor {
             input_gain: 1.0,
             sample_rate,
             dc_state: 0.0,
+            use_aec: true,
         }
     }
 
@@ -675,7 +698,7 @@ impl AudioProcessor {
         // voice. It runs while muted too: AEC3 stays converged on the room that
         // way, so unmuting doesn't leak a second of echo while it re-adapts.
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        if let Some(aec) = super::aec::global() {
+        if let Some(aec) = super::aec::global().filter(|_| self.use_aec) {
             aec.process_capture(frame);
         }
 
@@ -705,8 +728,148 @@ impl AudioProcessor {
             self.noise_gate.process_frame(frame);
         }
         if self.agc_enabled {
-            self.auto_gain.process_frame(frame, pre_gate_rms);
+            // Input trim and AGC multiply. Bound the product so a maxed input
+            // slider plus a quiet speaker can't stack into +18dB of hiss.
+            let ceiling = MAX_COMBINED_GAIN / self.input_gain.max(1e-3);
+            let gate_open = !self.gate_enabled || self.noise_gate.is_open();
+            self.auto_gain
+                .process_frame(frame, pre_gate_rms, ceiling, gate_open);
         }
         self.peak_limiter.process_frame(frame);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SR: u32 = 48_000;
+    const FRAME: usize = 960;
+
+    fn sine_frames(amplitude: f32, freq: f32, frames: usize) -> Vec<Vec<f32>> {
+        let mut phase = 0.0f32;
+        let step = 2.0 * PI * freq / SR as f32;
+        (0..frames)
+            .map(|_| {
+                (0..FRAME)
+                    .map(|_| {
+                        let s = phase.sin() * amplitude;
+                        phase += step;
+                        s
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn processor() -> AudioProcessor {
+        let mut p = AudioProcessor::new(SR);
+        p.use_aec = false;
+        p
+    }
+
+    fn rms(x: &[f32]) -> f32 {
+        (x.iter().map(|s| s * s).sum::<f32>() / x.len() as f32).sqrt()
+    }
+
+    #[test]
+    fn limiter_holds_a_full_scale_sine_under_the_ceiling() {
+        let mut lim = PeakLimiter::new(SR);
+        for mut frame in sine_frames(1.5, 997.0, 50) {
+            lim.process_frame(&mut frame);
+            let peak = frame.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+            assert!(peak <= LIMITER_CEILING + 1e-6, "peak {peak} over the ceiling");
+        }
+    }
+
+    #[test]
+    fn limiter_leaves_quiet_audio_alone() {
+        let mut lim = PeakLimiter::new(SR);
+        let frames = sine_frames(0.25, 440.0, 10);
+        let mut out = Vec::new();
+        for f in &frames {
+            let mut f = f.clone();
+            lim.process_frame(&mut f);
+            out.extend(f);
+        }
+        let input: Vec<f32> = frames.concat();
+        let delay = SR as usize / 1000;
+        // Same signal, just 1ms later.
+        for (o, i) in out[delay..].iter().zip(&input) {
+            assert!((o - i).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn loud_input_with_agc_and_full_input_gain_never_exceeds_0_9() {
+        let mut p = processor();
+        p.set_agc_enabled(true);
+        p.set_input_gain(2.0);
+        let mut max_peak = 0.0f32;
+        for mut frame in sine_frames(1.0, 440.0, 150) {
+            p.process_frame(&mut frame);
+            max_peak = frame.iter().fold(max_peak, |m, s| m.max(s.abs()));
+        }
+        assert!(max_peak <= 0.9, "output peaked at {max_peak}");
+    }
+
+    #[test]
+    fn agc_does_not_amplify_noise_while_the_gate_is_closed() {
+        let mut p = processor();
+        p.set_agc_enabled(true);
+        p.set_gate_enabled(true);
+        p.set_gate_threshold_db(-40.0);
+
+        // Low-level hiss, well under the gate threshold (-40dBFS = 0.01).
+        let mut seed = 1u32;
+        let mut noise = || {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            ((seed >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0) * 0.003
+        };
+
+        let mut in_rms = 0.0;
+        let mut out_rms = 0.0;
+        for i in 0..200 {
+            let input: Vec<f32> = (0..FRAME).map(|_| noise()).collect();
+            let mut frame = input.clone();
+            p.process_frame(&mut frame);
+            if i >= 100 {
+                in_rms += rms(&input);
+                out_rms += rms(&frame);
+            }
+        }
+        assert!(
+            p.auto_gain.current_gain <= 1.0 + 1e-4,
+            "AGC raised gain to {} on gated noise",
+            p.auto_gain.current_gain
+        );
+        assert!(out_rms < in_rms, "gated noise came out louder ({out_rms} vs {in_rms})");
+    }
+
+    #[test]
+    fn agc_still_levels_up_quiet_speech_when_the_gate_is_open() {
+        let mut p = processor();
+        p.set_agc_enabled(true);
+        p.set_gate_enabled(true);
+        p.set_gate_threshold_db(-40.0);
+        // -26dBFS speech-level tone: above the gate, below the AGC target.
+        for mut frame in sine_frames(0.07, 300.0, 150) {
+            p.process_frame(&mut frame);
+        }
+        assert!(p.auto_gain.current_gain > 1.5, "gain {}", p.auto_gain.current_gain);
+        assert!(p.auto_gain.current_gain <= MAX_COMBINED_GAIN + 1e-3);
+    }
+
+    #[test]
+    fn combined_input_and_agc_gain_is_capped() {
+        let mut p = processor();
+        p.set_agc_enabled(true);
+        p.set_gate_enabled(false);
+        p.set_input_gain(2.0);
+        for mut frame in sine_frames(0.01, 300.0, 300) {
+            p.process_frame(&mut frame);
+        }
+        let combined = p.input_gain * p.auto_gain.current_gain;
+        assert!(combined <= MAX_COMBINED_GAIN + 1e-3, "combined gain {combined}");
     }
 }

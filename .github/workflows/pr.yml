@@ -3,10 +3,16 @@ name: PR Checks
 on:
   pull_request:
     branches: [master, main]
+  # Also run on main itself, so a merge that breaks something (or a direct
+  # push) shows up red before anyone tags a release from it.
+  push:
+    branches: [master, main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded PR pushes are cancelled; runs on main always finish so every
+  # merge commit gets a result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
@@ -153,8 +159,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run tests
+      - name: Run tests (shared)
         run: pnpm test
+
+      - name: Run tests (server)
+        run: pnpm --filter @kizuna/server test
 
   audit:
     name: Security Audit

@@ -4,11 +4,31 @@ import type { Socket } from 'socket.io-client'
 import { useServerStore } from '../store/serverStore'
 import { useChatStore } from '../store/chatStore'
 import { useSettingsStore } from '../store/settingsStore'
-import type { Message, Channel } from '@kizuna/shared'
+import type { Message } from '@kizuna/shared'
 import { showNotification, ensureNotificationPermission } from '../utils/showNotification'
 import { tryDecryptSocketDM, tryDecryptGroupDM } from '../utils/decryptSocketMessage'
 import { isTauri, isMobileTauri } from '../utils/platform'
 
+function truncate(text: string | null | undefined): string {
+  if (!text) return ''
+  return text.length > 100 ? text.slice(0, 100) + '...' : text
+}
+
+function bumpUnread(channelId: string) {
+  const store = useChatStore.getState()
+  store.setUnreadCounts({
+    ...store.unreadCounts,
+    [channelId]: (store.unreadCounts[channelId] || 0) + 1,
+  })
+}
+
+/**
+ * Keeps one notification-only socket open for every server the user is signed
+ * in to *except* the active one. The active server already has the full socket
+ * from useSocket, and a second socket there used to double-deliver messages and
+ * channel events. Each socket only raises notifications and unread badges; it
+ * never touches the active server's channel list or message cache.
+ */
 export function useBackgroundNotifications(): void {
   const servers = useServerStore((s) => s.servers)
   const sessions = useServerStore((s) => s.sessions)
@@ -24,17 +44,23 @@ export function useBackgroundNotifications(): void {
   }, [runInBackground])
 
   useEffect(() => {
-    const newSockets = new Map<string, Socket>()
+    const next = new Map<string, Socket>()
 
     for (const server of servers) {
       const session = sessions[server.id]
-      if (!session) continue
+      if (!session || server.id === activeServerId) continue
 
       const existing = socketsRef.current.get(server.id)
       if (existing) {
-        newSockets.set(server.id, existing)
+        next.set(server.id, existing)
         continue
       }
+
+      const serverId = server.id
+      // Guards against a stale socket still delivering after this server
+      // became the active one (useSocket owns it from then on).
+      const isActive = () => useServerStore.getState().activeServerId === serverId
+      const currentUserId = () => useServerStore.getState().sessions[serverId]?.user.id
 
       const socket = io(session.url, {
         withCredentials: true,
@@ -48,133 +74,99 @@ export function useBackgroundNotifications(): void {
       })
 
       socket.on('message:new', (message: Message) => {
-        const store = useChatStore.getState()
-        const currentUserId = useServerStore.getState().sessions[server.id]?.user.id
-        if (message.user_id === currentUserId) return
-        if (activeServerId === server.id) {
-          store.addMessage(message.channel_id, message)
-        }
-        if (activeServerId !== server.id || message.channel_id !== store.activeChannelId) {
-          if (activeServerId === server.id) return
-          const sender = message.display_name || message.username || 'Someone'
-          const body =
-            message.content.length > 100 ? message.content.slice(0, 100) + '...' : message.content
-          showNotification({ type: 'message', title: sender, body, channelId: message.channel_id })
-          store.setUnreadCounts({
-            ...store.unreadCounts,
-            [message.channel_id]: (store.unreadCounts[message.channel_id] || 0) + 1,
-          })
-        }
+        if (isActive() || message.user_id === currentUserId()) return
+        showNotification({
+          type: 'message',
+          title: message.display_name || message.username || 'Someone',
+          body: truncate(message.content),
+          channelId: message.channel_id,
+          serverId,
+        })
+        bumpUnread(message.channel_id)
       })
 
       socket.on(
         'message:mention',
         (mention: { channel_id: string; author_username?: string; content?: string | null }) => {
-          if (activeServerId === server.id) return
+          if (isActive()) return
           const store = useChatStore.getState()
           store.setMentionCounts({
             ...store.mentionCounts,
             [mention.channel_id]: (store.mentionCounts[mention.channel_id] || 0) + 1,
           })
+          store.incrementServerMentionCount(serverId)
           showNotification({
             type: 'mention',
             title: mention.author_username || 'Someone',
-            body: mention.content
-              ? mention.content.length > 100
-                ? mention.content.slice(0, 100) + '...'
-                : mention.content
-              : '',
+            body: truncate(mention.content),
             channelId: mention.channel_id,
+            serverId,
           })
         },
       )
 
       socket.on('dm:received', (message: Message) => {
-        const currentUserId = useServerStore.getState().sessions[server.id]?.user.id
-        if (message.user_id === currentUserId) return
-        if (activeServerId === server.id) return // useSocket.ts already handles the active server
+        if (isActive() || message.user_id === currentUserId()) return
         const decrypted = tryDecryptSocketDM(message)
-        const store = useChatStore.getState()
-        const sender = decrypted.display_name || decrypted.username || 'Someone'
-        const body =
-          decrypted.content.length > 100
-            ? decrypted.content.slice(0, 100) + '...'
-            : decrypted.content
-        showNotification({ type: 'message', title: sender, body, channelId: message.channel_id })
-        store.setUnreadCounts({
-          ...store.unreadCounts,
-          [message.channel_id]: (store.unreadCounts[message.channel_id] || 0) + 1,
+        showNotification({
+          type: 'message',
+          title: decrypted.display_name || decrypted.username || 'Someone',
+          body: truncate(decrypted.content),
+          channelId: message.channel_id,
+          serverId,
         })
+        bumpUnread(message.channel_id)
       })
 
       socket.on('group-dm:received', (message: Message) => {
-        const currentUserId = useServerStore.getState().sessions[server.id]?.user.id
-        if (message.user_id === currentUserId) return
-        if (activeServerId === server.id) return // useSocket.ts already handles the active server
+        if (isActive() || message.user_id === currentUserId()) return
         const decrypted = tryDecryptGroupDM(message)
-        const store = useChatStore.getState()
-        const sender = decrypted.display_name || decrypted.username || 'Someone'
-        const body =
-          decrypted.content.length > 100
-            ? decrypted.content.slice(0, 100) + '...'
-            : decrypted.content
-        showNotification({ type: 'message', title: sender, body, channelId: message.channel_id })
-        store.setUnreadCounts({
-          ...store.unreadCounts,
-          [message.channel_id]: (store.unreadCounts[message.channel_id] || 0) + 1,
+        showNotification({
+          type: 'message',
+          title: decrypted.display_name || decrypted.username || 'Someone',
+          body: truncate(decrypted.content),
+          channelId: message.channel_id,
+          serverId,
         })
+        bumpUnread(message.channel_id)
       })
 
       socket.on('server:announce', ({ title, body }: { title: string; body: string }) => {
-        showNotification({ type: 'announce', title, body })
+        if (isActive()) return
+        showNotification({ type: 'announce', title, body, serverId })
       })
 
       socket.on(
         'channel:mute',
         ({ channel_id, muted_until }: { channel_id: string; muted_until: number | null }) => {
-          useChatStore.getState().upsertChannelMute(channel_id, muted_until)
+          useChatStore.getState().upsertChannelMute(serverId, channel_id, muted_until)
         },
       )
 
       socket.on('channel:unmute', ({ channel_id }: { channel_id: string }) => {
-        useChatStore.getState().removeChannelMute(channel_id)
+        useChatStore.getState().removeChannelMute(serverId, channel_id)
       })
 
       socket.on('channel:mute:sync', (mutes: Record<string, number | null>) => {
-        useChatStore.getState().setChannelMutes(mutes)
+        useChatStore.getState().setChannelMutes(serverId, mutes)
       })
 
-      socket.on('channel:created', (channel: Channel) => {
-        const store = useChatStore.getState()
-        if (activeServerId === server.id) {
-          store.setChannels([...store.channels, channel])
-        }
-      })
-
-      socket.on('channel:deleted', ({ id }: { id: string }) => {
-        const store = useChatStore.getState()
-        if (activeServerId === server.id) {
-          store.setChannels(store.channels.filter((c) => c.id !== id))
-        }
-      })
-
-      newSockets.set(server.id, socket)
+      next.set(serverId, socket)
     }
 
+    // Close sockets for servers that were removed, signed out of, or have just
+    // become the active server.
     for (const [id, socket] of socketsRef.current) {
-      if (!newSockets.has(id)) {
-        socket.disconnect()
-      }
+      if (!next.has(id)) socket.disconnect()
     }
-
-    socketsRef.current = newSockets
-
-    return () => {
-      const current = socketsRef.current
-      for (const [, socket] of current) {
-        socket.disconnect()
-      }
-      current.clear()
-    }
+    socketsRef.current = next
   }, [servers, sessions, activeServerId])
+
+  useEffect(() => {
+    const sockets = socketsRef
+    return () => {
+      for (const [, socket] of sockets.current) socket.disconnect()
+      sockets.current.clear()
+    }
+  }, [])
 }

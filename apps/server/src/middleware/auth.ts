@@ -299,6 +299,36 @@ export function canWriteToChannel(userId: string, channelId: string): boolean {
   return isUserAdmin(userId)
 }
 
+// The role ids a hidden channel is hidden from, or null when the channel is
+// visible to everyone (not hidden, no list, or an unparseable list).
+function hiddenRoleIdsOf(
+  channel: { hidden: number; hidden_role_ids: string | null } | undefined,
+): string[] | null {
+  if (!channel || !channel.hidden || !channel.hidden_role_ids) return null
+  let ids: unknown
+  try {
+    ids = JSON.parse(channel.hidden_role_ids)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(ids)) return null
+  const roleIds = ids.filter((id): id is string => typeof id === 'string')
+  return roleIds.length > 0 ? roleIds : null
+}
+
+// Every role a user holds: member_roles plus the legacy custom_role_id.
+function getUserRoleIds(userId: string): Set<string> {
+  const db = getDb()
+  const rows = db
+    .prepare(
+      `SELECT role_id FROM member_roles WHERE user_id = ?
+       UNION
+       SELECT custom_role_id FROM server_members WHERE user_id = ? AND custom_role_id IS NOT NULL`,
+    )
+    .all(userId, userId) as { role_id: string }[]
+  return new Set(rows.map((r) => r.role_id))
+}
+
 export function canViewChannel(userId: string, channelId: string): boolean {
   const db = getDb()
   const channel = db
@@ -307,36 +337,51 @@ export function canViewChannel(userId: string, channelId: string): boolean {
   if (!channel || !channel.hidden) return true
   if (isUserAdmin(userId)) return true
 
-  if (!channel.hidden_role_ids) return true
+  const hiddenRoleIds = hiddenRoleIdsOf(channel)
+  if (!hiddenRoleIds) return true
 
-  let hiddenRoleIds: string[] = []
-  try {
-    hiddenRoleIds = JSON.parse(channel.hidden_role_ids)
-  } catch {
-    return true
-  }
-
-  if (!Array.isArray(hiddenRoleIds) || hiddenRoleIds.length === 0) return true
-
-  const userRoles = db
-    .prepare('SELECT role_id FROM member_roles WHERE user_id = ?')
-    .all(userId) as { role_id: string }[]
-  const userRoleIds = new Set(userRoles.map((r) => r.role_id))
-
-  const member = db
-    .prepare(
-      'SELECT custom_role_id FROM server_members WHERE user_id = ? AND custom_role_id IS NOT NULL',
-    )
-    .get(userId) as { custom_role_id: string } | undefined
-  if (member?.custom_role_id) userRoleIds.add(member.custom_role_id)
-
+  const userRoleIds = getUserRoleIds(userId)
   return !hiddenRoleIds.some((roleId) => userRoleIds.has(roleId))
+}
+
+// Batched canViewChannel over every channel, for one user: the ids of the
+// channels the user can see. Same rules, one roles lookup instead of one per
+// channel.
+export function getViewableChannelIds(userId: string): Set<string> {
+  const db = getDb()
+  const channels = db.prepare('SELECT id, hidden, hidden_role_ids FROM channels').all() as {
+    id: string
+    hidden: number
+    hidden_role_ids: string | null
+  }[]
+  const visible = new Set<string>()
+  let admin: boolean | null = null
+  let roles: Set<string> | null = null
+  for (const ch of channels) {
+    const hiddenRoleIds = hiddenRoleIdsOf(ch)
+    if (!hiddenRoleIds) {
+      visible.add(ch.id)
+      continue
+    }
+    if (admin === null) admin = isUserAdmin(userId)
+    if (admin) {
+      visible.add(ch.id)
+      continue
+    }
+    if (roles === null) roles = getUserRoleIds(userId)
+    const userRoles = roles
+    if (!hiddenRoleIds.some((roleId) => userRoles.has(roleId))) visible.add(ch.id)
+  }
+  return visible
 }
 
 // Members who should receive a background/off-channel notification for an event
 // in this channel: everyone except the actor, muted users, and anyone who can't
 // view the channel. Used to fan out to per-user rooms instead of broadcasting to
 // every connected socket regardless of membership/visibility.
+//
+// Runs on every message, so it resolves visibility for all members in a fixed
+// number of queries rather than canViewChannel's several queries per member.
 export function getEligibleNotifyUserIds(channelId: string, excludeUserId: string): string[] {
   const db = getDb()
   const members = db
@@ -355,9 +400,45 @@ export function getEligibleNotifyUserIds(channelId: string, excludeUserId: strin
     ).map((r) => r.user_id),
   )
 
-  return members
-    .map((m) => m.user_id)
-    .filter((userId) => !muted.has(userId) && canViewChannel(userId, channelId))
+  const unmuted = members.map((m) => m.user_id).filter((userId) => !muted.has(userId))
+
+  const channel = db
+    .prepare('SELECT hidden, hidden_role_ids FROM channels WHERE id = ?')
+    .get(channelId) as { hidden: number; hidden_role_ids: string | null } | undefined
+  const hiddenRoleIds = hiddenRoleIdsOf(channel)
+  if (!hiddenRoleIds) return unmuted
+
+  // Admins see every channel. Mirrors isUserAdmin: an admin role held either
+  // through member_roles or the legacy custom_role_id.
+  const admins = new Set(
+    (
+      db
+        .prepare(
+          `SELECT mr.user_id FROM member_roles mr
+           JOIN roles r ON mr.role_id = r.id
+           WHERE r.is_admin = 1
+           UNION
+           SELECT sm.user_id FROM server_members sm
+           JOIN roles r ON sm.custom_role_id = r.id
+           WHERE r.is_admin = 1`,
+        )
+        .all() as { user_id: string }[]
+    ).map((r) => r.user_id),
+  )
+
+  // Members holding any role the channel is hidden from.
+  const hiddenFrom = new Set<string>()
+  const placeholders = hiddenRoleIds.map(() => '?').join(',')
+  const holders = db
+    .prepare(
+      `SELECT user_id FROM member_roles WHERE role_id IN (${placeholders})
+       UNION
+       SELECT user_id FROM server_members WHERE custom_role_id IN (${placeholders})`,
+    )
+    .all(...hiddenRoleIds, ...hiddenRoleIds) as { user_id: string }[]
+  for (const h of holders) hiddenFrom.add(h.user_id)
+
+  return unmuted.filter((userId) => admins.has(userId) || !hiddenFrom.has(userId))
 }
 
 export function getUserChannelPermissions(

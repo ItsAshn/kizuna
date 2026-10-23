@@ -119,6 +119,7 @@ export interface MessageRow {
   edited_at: number | null
   display_name: string | null
   avatar: string | null
+  thread_id?: string | null
 }
 
 export type UserStatus = 'online' | 'idle' | 'busy' | 'offline' | 'invisible'

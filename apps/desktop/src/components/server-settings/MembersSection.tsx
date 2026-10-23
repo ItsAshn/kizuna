@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MoreHorizontal } from 'lucide-react'
+import { MoreHorizontal, X } from 'lucide-react'
 import {
   fetchMembers,
   fetchRoles,
@@ -13,15 +13,17 @@ import type { Member, CustomRole, UserStatus } from '@kizuna/shared'
 import { useServerStore } from '../../store/serverStore'
 import { useChatStore } from '../../store/chatStore'
 import { useVoiceStore } from '../../store/voiceStore'
-import { hexToRgba } from '../../utils/color'
+import { showErrorToast } from '../../utils/showNotification'
+import IconButton from '../ui/IconButton'
 import { handleApiErr, useMountedRef } from './common'
 import './MembersSection.css'
 
 export function MembersSection({ serverUrl }: { serverUrl: string | undefined }) {
   const mountedRef = useMountedRef()
   const session = useServerStore((s) => s.activeSession)
-  const { members, setMembers } = useChatStore()
-  const { userStatuses } = useVoiceStore()
+  const members = useChatStore((s) => s.members)
+  const setMembers = useChatStore((s) => s.setMembers)
+  const userStatuses = useVoiceStore((s) => s.userStatuses)
 
   const [membersLoading, setMembersLoading] = useState(false)
   const [memberMsg, setMemberMsg] = useState<Record<string, string>>({})
@@ -35,6 +37,8 @@ export function MembersSection({ serverUrl }: { serverUrl: string | undefined })
   const [openOverflowMember, setOpenOverflowMember] = useState<string | null>(null)
   const [kickConfirmMember, setKickConfirmMember] = useState<string | null>(null)
   const [selfDemoteConfirm, setSelfDemoteConfirm] = useState(false)
+  const [bulkKickConfirm, setBulkKickConfirm] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
   const [roles, setRoles] = useState<CustomRole[]>([])
   const [assigningRole, setAssigningRole] = useState<Record<string, boolean>>({})
   const overflowRef = useRef<HTMLDivElement | null>(null)
@@ -79,7 +83,10 @@ export function MembersSection({ serverUrl }: { serverUrl: string | undefined })
     })
   }
 
-  const clearSelection = () => setSelectedMembers(new Set())
+  const clearSelection = () => {
+    setSelectedMembers(new Set())
+    setBulkKickConfirm(false)
+  }
 
   const handleToggleRole = async (m: Member) => {
     if (!serverUrl) return
@@ -174,9 +181,14 @@ export function MembersSection({ serverUrl }: { serverUrl: string | undefined })
     clearSelection()
   }
 
+  const bulkKickTargets = members.filter(
+    (m) => selectedMembers.has(m.id) && m.id !== session?.user?.id && !m.is_host,
+  )
+
   const handleBulkKick = async () => {
-    if (!serverUrl) return
-    const targets = members.filter((m) => selectedMembers.has(m.id) && m.id !== session?.user?.id)
+    if (!serverUrl || bulkBusy) return
+    const targets = bulkKickTargets
+    setBulkBusy(true)
     const kickedIds = new Set<string>()
     for (const m of targets) {
       try {
@@ -186,10 +198,21 @@ export function MembersSection({ serverUrl }: { serverUrl: string | undefined })
         console.error('Bulk kick failed for member:', m.id, err)
       }
     }
+    if (!mountedRef.current) return
+    setBulkBusy(false)
+    setBulkKickConfirm(false)
     if (kickedIds.size > 0) {
-      setMembers(members.filter((m) => !kickedIds.has(m.id)))
+      const current = useChatStore.getState().members
+      setMembers(current.filter((m) => !kickedIds.has(m.id)))
     }
-    clearSelection()
+    const failed = targets.length - kickedIds.size
+    if (failed > 0) {
+      // Keep the members that could not be kicked selected so a retry is one click.
+      setSelectedMembers(new Set(targets.filter((m) => !kickedIds.has(m.id)).map((m) => m.id)))
+      showErrorToast(`kick ${failed} of ${targets.length} member${targets.length === 1 ? '' : 's'}`)
+    } else {
+      clearSelection()
+    }
   }
 
   const handleBulkAddRole = async (roleId: string) => {
@@ -252,7 +275,8 @@ export function MembersSection({ serverUrl }: { serverUrl: string | undefined })
               remove admin
             </button>
             <button
-              onClick={handleBulkKick}
+              onClick={() => setBulkKickConfirm(true)}
+              disabled={bulkBusy || bulkKickTargets.length === 0}
               className="server-menu__bulk-bar-btn server-menu__bulk-bar-btn--danger"
             >
               kick
@@ -289,6 +313,31 @@ export function MembersSection({ serverUrl }: { serverUrl: string | undefined })
           >
             clear
           </button>
+        </div>
+      )}
+      {bulkKickConfirm && bulkKickTargets.length > 0 && (
+        <div className="server-menu__confirm-panel" role="alertdialog" aria-live="polite">
+          <p className="server-menu__confirm-text">
+            Kick {bulkKickTargets.length} member{bulkKickTargets.length === 1 ? '' : 's'}? They can
+            rejoin via invite.
+          </p>
+          <div className="server-menu__confirm-actions">
+            <button
+              onClick={handleBulkKick}
+              disabled={bulkBusy}
+              aria-busy={bulkBusy || undefined}
+              className="server-menu__confirm-btn"
+            >
+              {bulkBusy ? 'kicking…' : 'kick'}
+            </button>
+            <button
+              onClick={() => setBulkKickConfirm(false)}
+              disabled={bulkBusy}
+              className="server-menu__confirm-cancel"
+            >
+              cancel
+            </button>
+          </div>
         </div>
       )}
       {selfDemoteConfirm &&
@@ -363,15 +412,7 @@ export function MembersSection({ serverUrl }: { serverUrl: string | undefined })
                     {m.display_name || m.username}
                     {isSelf && <span className="server-menu__member-self">(you)</span>}
                     {m.is_host && (
-                      <span
-                        className="server-menu__member-badge"
-                        style={{
-                          color: '#fab005',
-                          borderColor: hexToRgba('#fab005', 0.4),
-                          backgroundColor: hexToRgba('#fab005', 34 / 255),
-                          marginLeft: '4px',
-                        }}
-                      >
+                      <span className="server-menu__member-badge server-menu__member-badge--host">
                         host
                       </span>
                     )}
@@ -383,22 +424,24 @@ export function MembersSection({ serverUrl }: { serverUrl: string | undefined })
                       <span
                         key={r.id}
                         className="server-menu__member-badge"
-                        style={{
-                          color: r.color || '#4c6ef5',
-                          borderColor: hexToRgba(r.color || '#4c6ef5', 0.4),
-                          backgroundColor: hexToRgba(r.color || '#4c6ef5', 34 / 255),
-                        }}
+                        // A role's colour is user data, not theme; roles
+                        // without one fall back to the badge's token colour.
+                        style={
+                          r.color
+                            ? ({ '--badge-color': r.color } as React.CSSProperties)
+                            : undefined
+                        }
                       >
                         {r.name}
                         {!(m.is_host && r.id === 'admin-role') && (
-                          <button
+                          <IconButton
                             onClick={() => handleRemoveRole(m.id, r.id)}
                             disabled={assigningRole[m.id + r.id]}
                             className="server-menu__role-remove-btn"
+                            label={`Remove ${r.name} role`}
                             title={`Remove ${r.name} role`}
-                          >
-                            x
-                          </button>
+                            icon={<X size={10} aria-hidden />}
+                          />
                         )}
                       </span>
                     ))}
@@ -408,14 +451,7 @@ export function MembersSection({ serverUrl }: { serverUrl: string | undefined })
                   <span className="server-menu__member-msg">{memberMsg[m.id]}</span>
                 )}
                 {m.reset_requested_at && (
-                  <span
-                    className="server-menu__member-badge"
-                    style={{
-                      color: '#fbbf24',
-                      borderColor: hexToRgba('#fbbf24', 0.4),
-                      backgroundColor: hexToRgba('#fbbf24', 34 / 255),
-                    }}
-                  >
+                  <span className="server-menu__member-badge server-menu__member-badge--reset">
                     reset
                   </span>
                 )}
@@ -423,20 +459,22 @@ export function MembersSection({ serverUrl }: { serverUrl: string | undefined })
                   className="server-menu__member-overflow-wrap"
                   ref={openOverflowMember === m.id ? overflowRef : undefined}
                 >
-                  <button
+                  <IconButton
                     onClick={() => {
-                      if (openOverflowMember === m.id) {
-                        setOpenOverflowMember(null)
-                        setSelfDemoteConfirm(false)
-                      } else {
-                        setOpenOverflowMember(m.id)
-                        setSelfDemoteConfirm(false)
-                      }
+                      setOpenOverflowMember(openOverflowMember === m.id ? null : m.id)
+                      setSelfDemoteConfirm(false)
                     }}
-                    className={`server-menu__member-overflow-btn${openOverflowMember === m.id ? ' server-menu__member-overflow-btn--active' : ''}`}
-                  >
-                    <MoreHorizontal size={14} />
-                  </button>
+                    size="sm"
+                    label={`Actions for ${m.display_name || m.username}`}
+                    aria-haspopup="menu"
+                    aria-expanded={openOverflowMember === m.id}
+                    className={
+                      openOverflowMember === m.id
+                        ? 'server-menu__member-overflow-btn--active'
+                        : undefined
+                    }
+                    icon={<MoreHorizontal size={14} />}
+                  />
                   {openOverflowMember === m.id && (
                     <div className="server-menu__overflow-menu">
                       {!m.is_host &&

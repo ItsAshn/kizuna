@@ -38,11 +38,24 @@
 }
 
 .server-menu__member-badge {
+  /* Roles set --badge-color inline from their own colour. */
+  --badge-color: var(--brand);
   font-size: 9px;
   padding: 1px 6px;
   border-radius: var(--radius-full);
-  border: 1px solid;
+  border: 1px solid color-mix(in srgb, var(--badge-color) 40%, transparent);
+  background: color-mix(in srgb, var(--badge-color) 13%, transparent);
+  color: var(--badge-color);
   font-family: var(--font-mono);
+}
+
+.server-menu__member-badge--host {
+  --badge-color: var(--badge-host);
+  margin-left: 4px;
+}
+
+.server-menu__member-badge--reset {
+  --badge-color: var(--warning);
 }
 
 .server-menu__member-self {
@@ -58,21 +71,23 @@
   flex-shrink: 0;
 }
 
-.server-menu__role-remove-btn {
+.icon-btn.server-menu__role-remove-btn {
+  width: auto;
+  height: auto;
   margin-left: 3px;
-  font-size: 8px;
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  opacity: 0.6;
   padding: 0 2px;
+  color: inherit;
+  opacity: 0.6;
   line-height: 1;
+  border-radius: var(--radius-xs);
   transition: opacity 0.15s ease;
 }
 
-.server-menu__role-remove-btn:hover {
+.icon-btn.server-menu__role-remove-btn:hover:not(:disabled) {
   opacity: 1;
+  color: inherit;
+  background: none;
+  transform: none;
 }
 
 /* ─── Member search bar ───────────────────────────────── */
@@ -254,29 +269,8 @@
   flex-shrink: 0;
 }
 
-.server-menu__member-overflow-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: 4px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  line-height: 1;
-}
-
-.server-menu__member-overflow-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--border-color);
-  background: var(--bg-hover);
-}
-
-.server-menu__member-overflow-btn--active {
+.icon-btn.server-menu__member-overflow-btn--active {
   color: var(--brand);
-  border-color: var(--brand);
   background: var(--brand-dim);
 }
 

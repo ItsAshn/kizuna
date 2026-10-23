@@ -11,6 +11,7 @@ import {
 import type { HonoEnv } from '../types'
 import { emitIo, emitChannelMeta } from '../utils/io'
 import { dispatchOutgoing } from '../services/outgoingWebhooks'
+import { deleteChannelRows, unlinkAttachmentFiles } from '../services/messageDeletion'
 
 const channelRoutes = new Hono<HonoEnv>()
 
@@ -189,10 +190,11 @@ channelRoutes.delete('/:id', authMiddleware, requirePermission('manage_channels'
     | undefined
   if (!channel) return c.json({ error: 'Channel not found' }, 404)
   const channelName = channel.name
-  db.prepare('DELETE FROM messages WHERE channel_id = ?').run(id)
-  db.prepare('DELETE FROM mentions WHERE channel_id = ?').run(id)
-  db.prepare('DELETE FROM channel_reads WHERE channel_id = ?').run(id)
-  db.prepare('DELETE FROM channels WHERE id = ?').run(id)
+  // One transaction, dependents first: the old sequence deleted messages while
+  // pins, edits and threads still referenced them, so any channel with a pin
+  // or a thread failed the FK check and could never be deleted.
+  const attachmentUrls = deleteChannelRows(id!)
+  unlinkAttachmentFiles(attachmentUrls)
 
   emitIo(c, 'channel:deleted', { id })
   // Only server-wide hooks see this: an outgoing webhook scoped to this channel

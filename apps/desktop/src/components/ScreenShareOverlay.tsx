@@ -6,7 +6,7 @@ import IconButton from './ui/IconButton'
 import './ScreenShareOverlay.css'
 
 interface ScreenShareOverlayProps {
-  videoElRef: React.MutableRefObject<HTMLVideoElement | null>
+  videoElRef: React.MutableRefObject<HTMLVideoElement | HTMLCanvasElement | null>
   stopScreenshare: () => void
 }
 

@@ -3,6 +3,7 @@ import type { Socket } from 'socket.io-client'
 import { useChatStore } from '../store/chatStore'
 import { useVoiceStore } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { ConnectionQuality } from '@kizuna/shared'
 import {
   Mic,
@@ -18,10 +19,13 @@ import {
 import MonitorPicker from './MonitorPicker'
 import Slider from './ui/Slider'
 import { useMobile } from '../hooks/useMobile'
+import { isTauri, isMobileTauri, MOBILE_SCREENSHARE_UNSUPPORTED } from '../utils/platform'
 import { getVoiceLogLines } from '../hooks/useVoice'
 import './VoiceOverlay.css'
 
 interface VoiceOverlayProps {
+  /** Used by the error panel's retry to rejoin the channel that failed. */
+  joinVoice?: (channelId: string) => Promise<string | null>
   leaveVoice: () => void
   toggleMute: () => void
   socketRef: React.MutableRefObject<Socket | null>
@@ -72,7 +76,20 @@ function PeerRow({
       <div
         className={`voice-row__main${interactive ? ' voice-row__main--interactive' : ''}`}
         onClick={interactive ? () => setExpanded((v) => !v) : undefined}
+        onKeyDown={
+          interactive
+            ? (e) => {
+                // role=button has to honour the keys a real button does.
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setExpanded((v) => !v)
+                }
+              }
+            : undefined
+        }
         role={interactive ? 'button' : undefined}
+        aria-expanded={interactive ? expanded : undefined}
+        aria-label={interactive ? `${name}, adjust volume` : undefined}
         tabIndex={interactive ? 0 : undefined}
         title={interactive ? `${name} — click to adjust volume` : name}
       >
@@ -123,6 +140,7 @@ function PeerRow({
 }
 
 export default function VoiceOverlay({
+  joinVoice,
   leaveVoice,
   toggleMute,
   startScreenshare,
@@ -131,7 +149,7 @@ export default function VoiceOverlay({
   toggleCamera,
   isCameraOn,
 }: VoiceOverlayProps) {
-  const { channels } = useChatStore()
+  const channels = useChatStore((s) => s.channels)
   const {
     activeVoiceChannelId,
     voicePeers,
@@ -144,9 +162,32 @@ export default function VoiceOverlay({
     setPeerVolume,
     voiceConnectingChannelId,
     voiceReconnecting,
-  } = useVoiceStore()
-  const { isScreenSharing, screenSharePeerId, screenShareUsername } = useCallStore()
+  } = useVoiceStore(
+    // Only what the panel renders — not the rest of the voice store (other
+    // channels' rosters, activities, device settings, stats).
+    useShallow((s) => ({
+      activeVoiceChannelId: s.activeVoiceChannelId,
+      voicePeers: s.voicePeers,
+      isMuted: s.isMuted,
+      isSpeaking: s.isSpeaking,
+      localConnectionQuality: s.localConnectionQuality,
+      voiceError: s.voiceError,
+      setVoiceError: s.setVoiceError,
+      peerVolumes: s.peerVolumes,
+      setPeerVolume: s.setPeerVolume,
+      voiceConnectingChannelId: s.voiceConnectingChannelId,
+      voiceReconnecting: s.voiceReconnecting,
+    })),
+  )
+  const { isScreenSharing, screenSharePeerId, screenShareUsername } = useCallStore(
+    useShallow((s) => ({
+      isScreenSharing: s.isScreenSharing,
+      screenSharePeerId: s.screenSharePeerId,
+      screenShareUsername: s.screenShareUsername,
+    })),
+  )
   const [closing, setClosing] = useState(false)
+  const [retrying, setRetrying] = useState(false)
   const [showMonitorPicker, setShowMonitorPicker] = useState(false)
   const [screenShareError, setScreenShareError] = useState<string | null>(null)
   const isMobile = useMobile()
@@ -200,7 +241,10 @@ export default function VoiceOverlay({
   // Negotiation continues well past the server accepting the join, so the
   // header must not claim the call is live until audio can actually flow.
   const connecting = !!voiceConnectingChannelId
-  const canScreenShare = !isMobile && '__TAURI_INTERNALS__' in window
+  // Shown on Android at any width so it can say why it does nothing there,
+  // rather than vanishing or failing with a missing-command error.
+  const screenShareUnsupported = isMobileTauri()
+  const canScreenShare = screenShareUnsupported || (!isMobile && isTauri())
   const someoneElseSharing = !!screenSharePeerId && !isScreenSharing
   const statusLabel = voiceReconnecting
     ? 'Reconnecting…'
@@ -210,8 +254,17 @@ export default function VoiceOverlay({
         ? 'In Call'
         : 'Voice Connected'
 
-  const handleRetry = () => {
+  const handleRetry = async () => {
+    if (retrying) return
+    const target = useVoiceStore.getState().lastVoiceJoinChannelId
     setVoiceError(null)
+    if (!target || !joinVoice) return
+    setRetrying(true)
+    try {
+      await joinVoice(target)
+    } finally {
+      setRetrying(false)
+    }
   }
 
   return (
@@ -228,7 +281,11 @@ export default function VoiceOverlay({
             <pre className="voice-error__debug-log">{getVoiceLogLines().join('\n')}</pre>
           </details>
           <div className="voice-error__actions">
-            <button onClick={handleRetry} className="voice-error__btn voice-error__btn--retry">
+            <button
+              onClick={handleRetry}
+              disabled={retrying}
+              className="voice-error__btn voice-error__btn--retry"
+            >
               retry
             </button>
             <button onClick={handleLeave} className="voice-error__btn voice-error__btn--leave">
@@ -306,7 +363,9 @@ export default function VoiceOverlay({
             {canScreenShare && (
               <button
                 onClick={() => {
-                  if (isScreenSharing) {
+                  if (screenShareUnsupported) {
+                    setScreenShareError(MOBILE_SCREENSHARE_UNSUPPORTED)
+                  } else if (isScreenSharing) {
                     stopScreenshare()
                     setScreenShareError(null)
                   } else if (someoneElseSharing) {
@@ -319,16 +378,27 @@ export default function VoiceOverlay({
                 }}
                 className={`voice-ctrl ${isScreenSharing ? 'voice-ctrl--brand-active' : ''}`}
                 title={
-                  isScreenSharing
-                    ? 'Stop sharing'
-                    : someoneElseSharing
-                      ? `${screenShareUsername || 'Someone else'} is sharing`
-                      : 'Share screen'
+                  screenShareUnsupported
+                    ? 'Screen sharing is not available on mobile'
+                    : isScreenSharing
+                      ? 'Stop sharing'
+                      : someoneElseSharing
+                        ? `${screenShareUsername || 'Someone else'} is sharing`
+                        : 'Share screen'
                 }
                 /* Deliberately not `disabled`: a disabled button explains
                    nothing. It stays clickable so the click can say who has the
                    floor. */
-                aria-disabled={someoneElseSharing}
+                aria-disabled={someoneElseSharing || screenShareUnsupported}
+                aria-label={
+                  screenShareUnsupported
+                    ? 'Screen sharing is not available on mobile'
+                    : isScreenSharing
+                      ? 'Stop sharing your screen'
+                      : someoneElseSharing
+                        ? `${screenShareUsername || 'Someone else'} is sharing their screen`
+                        : 'Share your screen'
+                }
               >
                 {isScreenSharing ? (
                   <MonitorOff className="icon-xs" />

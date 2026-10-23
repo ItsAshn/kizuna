@@ -18,6 +18,8 @@ tauri-plugin-shell = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
+# Local: the Android foreground service that keeps calls alive in the background.
+tauri-plugin-call-service = { path = "plugins/call-service" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -39,10 +41,21 @@ webkit2gtk = { version = "2.0", features = ["v2_38"] }
 # runtime dependency users don't already have.
 gstreamer = "0.25"
 gstreamer-app = "0.25"
+# Upstream force-key-unit events, so a viewer's PLI gets a keyframe out of the
+# encoder at once.
+gstreamer-video = "0.25"
+# nokhwa compiles no capture backend unless one is selected, and then fails
+# every Camera::new with "Platform requirements not satisfied". Each OS names
+# its own backend here; the base dependency is declared below.
+nokhwa = { version = "0.10", features = ["input-v4l"] }
+# Same version nokhwa's V4L backend uses; capture/camera.rs uses it to move a
+# camera off a pixel format nokhwa cannot read before opening it.
+v4l = "0.14"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", features = [
   "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
   "Win32_Graphics_Direct3D11",
   "Win32_Graphics_Direct3D",
   "Win32_Graphics_Gdi",
@@ -51,6 +64,10 @@ windows = { version = "0.62", features = [
   "Win32_System_ProcessStatus",
   "Win32_UI_WindowsAndMessaging",
 ] }
+nokhwa = { version = "0.10", features = ["input-msmf"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nokhwa = { version = "0.10", features = ["input-avfoundation"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 x-win = "5"

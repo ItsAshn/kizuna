@@ -5,8 +5,6 @@ import fs from 'node:fs/promises'
 import { getDb } from '../db'
 import {
   authMiddleware,
-  getUserPermissions,
-  hasPermission,
   canWriteToChannel,
   canViewChannel,
   isUserAdmin,
@@ -73,6 +71,7 @@ function mapMessage(row: Record<string, unknown>) {
     reply_to_username: (row.reply_to_username as string) || null,
     reply_to_content: (row.reply_to_content as string) || null,
     webhook_id: (row.webhook_id as string) || null,
+    thread_id: (row.thread_id as string) || null,
   }
 }
 
@@ -147,18 +146,26 @@ messageRoutes.get('/:channelId', authMiddleware, (c) => {
 
   let rows: Record<string, unknown>[]
   if (before) {
-    const anchor = db.prepare('SELECT created_at FROM messages WHERE id = ?').get(before) as
-      | { created_at: number }
-      | undefined
+    // Keyset on (created_at, rowid): created_at has one-second resolution, so
+    // comparing it alone skipped every message sharing the anchor's second.
+    const anchor = db
+      .prepare('SELECT created_at, rowid FROM messages WHERE id = ? AND channel_id = ?')
+      .get(before, channelId) as { created_at: number; rowid: number } | undefined
     rows = anchor
       ? (db
-          .prepare(`${SELECT} AND m.created_at < ? ORDER BY m.created_at DESC LIMIT ?`)
-          .all(channelId, anchor.created_at, limit) as Record<string, unknown>[])
+          .prepare(
+            `${SELECT} AND (m.created_at < ? OR (m.created_at = ? AND m.rowid < ?))
+             ORDER BY m.created_at DESC, m.rowid DESC LIMIT ?`,
+          )
+          .all(channelId, anchor.created_at, anchor.created_at, anchor.rowid, limit) as Record<
+          string,
+          unknown
+        >[])
       : []
     rows = rows.reverse()
   } else {
     rows = db
-      .prepare(`${SELECT} ORDER BY m.created_at DESC LIMIT ?`)
+      .prepare(`${SELECT} ORDER BY m.created_at DESC, m.rowid DESC LIMIT ?`)
       .all(channelId, limit) as Record<string, unknown>[]
     rows = rows.reverse()
   }
@@ -303,7 +310,6 @@ messageRoutes.post('/:channelId', authMiddleware, async (c) => {
 // DELETE /messages/:messageId — delete message
 messageRoutes.delete('/:messageId', authMiddleware, async (c) => {
   const user = getAuth(c)
-  const userPerms = getUserPermissions(user.userId)
   const messageId = c.req.param('messageId')
   const db = getDb()
 
@@ -312,13 +318,17 @@ messageRoutes.delete('/:messageId', authMiddleware, async (c) => {
     | undefined
   if (!message) return c.json({ error: 'Message not found' }, 404)
 
-  if (message.author_id !== user.userId) {
-    if (!userPerms || !hasPermission(userPerms, 'delete_messages')) {
-      return c.json({ error: 'Forbidden' }, 403)
-    }
+  // Per-channel resolution so role overrides apply, matching the socket path.
+  if (
+    message.author_id !== user.userId &&
+    !getUserChannelPermission(user.userId, message.channel_id as string, 'delete_messages')
+  ) {
+    return c.json({ error: 'Forbidden' }, 403)
   }
 
+  // Also decrements the thread's message_count when this was a thread reply.
   const attachmentUrls = deleteMessageRows(messageId!)
+  const threadId = (message.thread_id as string | null) ?? null
 
   const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads')
   await Promise.all(
@@ -336,8 +346,9 @@ messageRoutes.delete('/:messageId', authMiddleware, async (c) => {
     c,
     message.channel_id as string,
     'message:delete',
-    { id: messageId, channel_id: message.channel_id as string },
+    { id: messageId, channel_id: message.channel_id as string, thread_id: threadId },
     user.userId,
+    threadId ? [threadId] : [],
   )
   dispatchOutgoing(
     'message.deleted',
@@ -398,7 +409,15 @@ messageRoutes.patch('/:messageId', authMiddleware, async (c) => {
   const result = mapMessage(row)
   result.reactions = fetchReactionsForMessages(db, [messageId])[messageId] || []
 
-  emitToChannel(c, message.channel_id as string, 'message:edit', result, user.userId)
+  const threadId = (message.thread_id as string | null) ?? null
+  emitToChannel(
+    c,
+    message.channel_id as string,
+    'message:edit',
+    result,
+    user.userId,
+    threadId ? [threadId] : [],
+  )
   dispatchOutgoing(
     'message.updated',
     {

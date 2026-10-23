@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useChatStore } from '../store/chatStore'
-import { useVoiceStore } from '../store/voiceStore'
+import { useVoiceStore, type PeerVideo } from '../store/voiceStore'
 import { useCallStore } from '../store/callStore'
 import { useServerStore } from '../store/serverStore'
 import { Mic, MicOff, PhoneOff, Monitor, MonitorOff, Video, VideoOff, Volume2 } from 'lucide-react'
 import MonitorPicker from './MonitorPicker'
+import NativeVideoCanvas from './NativeVideoCanvas'
+import { LOCAL_CAMERA_STREAM_ID } from '../hooks/videoReceiver'
+import { isLinuxDesktop } from '../utils/platform'
 import { useMobile } from '../hooks/useMobile'
+import { isTauri, isMobileTauri, MOBILE_SCREENSHARE_UNSUPPORTED } from '../utils/platform'
 import './VoiceChannelView.css'
 
 interface VoiceChannelViewProps {
@@ -18,7 +22,7 @@ interface VoiceChannelViewProps {
   stopScreenshare: () => void
   isCameraOn: boolean
   cameraStreamRef: React.MutableRefObject<MediaStream | null>
-  videoElRef: React.MutableRefObject<HTMLVideoElement | null>
+  videoElRef: React.MutableRefObject<HTMLVideoElement | HTMLCanvasElement | null>
 }
 
 /** Attaches a live MediaStream to a muted, autoplaying <video>. */
@@ -38,14 +42,16 @@ interface TileProps {
   name: string
   speaking?: boolean
   muted?: boolean
-  stream?: MediaStream | null
+  video?: PeerVideo | null
 }
 
-function Tile({ name, speaking, muted, stream }: TileProps) {
+function Tile({ name, speaking, muted, video }: TileProps) {
   return (
     <div className={`vcv-tile${speaking && !muted ? ' vcv-tile--speaking' : ''}`}>
-      {stream ? (
-        <TileVideo stream={stream} />
+      {video?.kind === 'stream' ? (
+        <TileVideo stream={video.stream} />
+      ) : video?.kind === 'native' ? (
+        <NativeVideoCanvas streamId={video.streamId} className="vcv-tile__video" />
       ) : (
         <div className="vcv-tile__avatar">
           <span>{name?.[0]?.toUpperCase() || '?'}</span>
@@ -76,7 +82,7 @@ export default function VoiceChannelView({
   const voicePeers = useVoiceStore((s) => s.voicePeers)
   const isMuted = useVoiceStore((s) => s.isMuted)
   const isSpeaking = useVoiceStore((s) => s.isSpeaking)
-  const peerCameraStreams = useVoiceStore((s) => s.peerCameraStreams)
+  const peerCameraVideos = useVoiceStore((s) => s.peerCameraVideos)
   const voiceChannelUsers = useVoiceStore((s) => s.voiceChannelUsers)
   const voiceConnectingChannelId = useVoiceStore((s) => s.voiceConnectingChannelId)
   const voiceReconnecting = useVoiceStore((s) => s.voiceReconnecting)
@@ -94,7 +100,10 @@ export default function VoiceChannelView({
   const isConnectedHere = activeVoiceChannelId === channelId
   const connectingHere = voiceConnectingChannelId === channelId
   const isScreenActive = !!(screenSharePeerId || isScreenSharing)
-  const canScreenShare = !isMobile && '__TAURI_INTERNALS__' in window
+  // Shown on Android at any width so it can say why it does nothing there,
+  // rather than vanishing or failing with a missing-command error.
+  const screenShareUnsupported = isMobileTauri()
+  const canScreenShare = screenShareUnsupported || (!isMobile && isTauri())
   const someoneElseSharing = !!screenSharePeerId && !isScreenSharing
 
   // Adopt the single shared screenshare <video> element into this stage while
@@ -181,7 +190,15 @@ export default function VoiceChannelView({
           name={session?.user.username || 'You'}
           speaking={isSpeaking}
           muted={isMuted}
-          stream={isCameraOn ? cameraStreamRef.current : null}
+          video={
+            !isCameraOn
+              ? null
+              : cameraStreamRef.current
+                ? { kind: 'stream', stream: cameraStreamRef.current }
+                : isLinuxDesktop()
+                  ? { kind: 'native', streamId: LOCAL_CAMERA_STREAM_ID }
+                  : null
+          }
         />
         {voicePeers.map((peer) => (
           <Tile
@@ -189,7 +206,7 @@ export default function VoiceChannelView({
             name={peer.username}
             speaking={peer.speaking}
             muted={peer.muted}
-            stream={peerCameraStreams[peer.id] || null}
+            video={peerCameraVideos[peer.id] || null}
           />
         ))}
       </div>
@@ -214,7 +231,9 @@ export default function VoiceChannelView({
         {canScreenShare && (
           <button
             onClick={() => {
-              if (isScreenSharing) {
+              if (screenShareUnsupported) {
+                setScreenShareError(MOBILE_SCREENSHARE_UNSUPPORTED)
+              } else if (isScreenSharing) {
                 stopScreenshare()
                 setScreenShareError(null)
               } else if (someoneElseSharing) {
@@ -227,15 +246,17 @@ export default function VoiceChannelView({
             }}
             className={`vcv__ctrl ${isScreenSharing ? 'vcv__ctrl--active' : ''}`}
             title={
-              isScreenSharing
-                ? 'Stop sharing'
-                : someoneElseSharing
-                  ? `${screenShareUsername || 'Someone else'} is sharing`
-                  : 'Share screen'
+              screenShareUnsupported
+                ? 'Screen sharing is not available on mobile'
+                : isScreenSharing
+                  ? 'Stop sharing'
+                  : someoneElseSharing
+                    ? `${screenShareUsername || 'Someone else'} is sharing`
+                    : 'Share screen'
             }
             /* Left clickable on purpose — the click is what explains why it
                won't start. */
-            aria-disabled={someoneElseSharing}
+            aria-disabled={someoneElseSharing || screenShareUnsupported}
           >
             {isScreenSharing ? <MonitorOff className="icon-sm" /> : <Monitor className="icon-sm" />}
           </button>

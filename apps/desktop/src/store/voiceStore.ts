@@ -5,6 +5,15 @@ import type { VoicePeer, ConnectionQuality, UserStatus, UserActivity } from '@ki
 
 export type VoiceInputMode = 'voice-activity' | 'push-to-talk'
 
+/**
+ * A remote video as the UI shows it: a MediaStream from the webview's WebRTC
+ * stack, or a stream of natively decoded frames painted on a canvas (Linux,
+ * see hooks/videoReceiver.ts).
+ */
+export type PeerVideo =
+  | { kind: 'stream'; stream: MediaStream }
+  | { kind: 'native'; streamId: number }
+
 // High-level audio-processing preset. 'off' = raw mic, 'standard' = RNNoise
 // noise suppression with a gentle leveler (recommended), 'custom' = the user
 // drives the individual gate/suppression/AGC toggles directly.
@@ -14,6 +23,9 @@ interface VoiceState {
   activeVoiceChannelId: string | null
   /** Channel a join is in flight for. Set before the transports are usable. */
   voiceConnectingChannelId: string | null
+  /** The channel the most recent join was attempted for, kept after a failed
+   * join clears the connecting state so the error panel can retry it. */
+  lastVoiceJoinChannelId: string | null
   /** True while an established call is being re-established after a socket drop. */
   voiceReconnecting: boolean
   voicePeers: VoicePeer[]
@@ -42,8 +54,8 @@ interface VoiceState {
   screenShareFps: number
   voiceChannelUsers: Record<string, { userId: string; username: string }[]>
   peerVolumes: Record<string, number>
-  /** Live remote webcam streams, keyed by peerId. Presence implies that peer's camera is on. */
-  peerCameraStreams: Record<string, MediaStream>
+  /** Live remote webcams, keyed by peerId. Presence implies that peer's camera is on. */
+  peerCameraVideos: Record<string, PeerVideo>
   routerRtpCapabilities: RtpCapabilities | null
   iceServers: { urls: string; username?: string; credential?: string }[]
 
@@ -69,9 +81,9 @@ interface VoiceState {
   addVoiceChannelUser: (channelId: string, user: { userId: string; username: string }) => void
   removeVoiceChannelUser: (channelId: string, userId: string) => void
   setPeerVolume: (peerId: string, volume: number) => void
-  setPeerCameraStream: (peerId: string, stream: MediaStream) => void
-  removePeerCameraStream: (peerId: string) => void
-  clearPeerCameraStreams: () => void
+  setPeerCameraVideo: (peerId: string, video: PeerVideo) => void
+  removePeerCameraVideo: (peerId: string) => void
+  clearPeerCameraVideos: () => void
   setRouterRtpCapabilities: (caps: RtpCapabilities) => void
   setIceServers: (servers: { urls: string; username?: string; credential?: string }[]) => void
   setVoiceInputMode: (mode: VoiceInputMode) => void
@@ -94,6 +106,7 @@ export const useVoiceStore = create<VoiceState>()(
     (set) => ({
       activeVoiceChannelId: null,
       voiceConnectingChannelId: null,
+      lastVoiceJoinChannelId: null,
       voiceReconnecting: false,
       voicePeers: [],
       isMuted: false,
@@ -120,12 +133,17 @@ export const useVoiceStore = create<VoiceState>()(
       screenShareFps: 30,
       voiceChannelUsers: {},
       peerVolumes: {},
-      peerCameraStreams: {},
+      peerCameraVideos: {},
       routerRtpCapabilities: null,
       iceServers: [],
 
       setActiveVoiceChannel: (activeVoiceChannelId) => set({ activeVoiceChannelId }),
-      setVoiceConnectingChannelId: (voiceConnectingChannelId) => set({ voiceConnectingChannelId }),
+      setVoiceConnectingChannelId: (voiceConnectingChannelId) =>
+        set(
+          voiceConnectingChannelId
+            ? { voiceConnectingChannelId, lastVoiceJoinChannelId: voiceConnectingChannelId }
+            : { voiceConnectingChannelId },
+        ),
       setVoiceReconnecting: (voiceReconnecting) => set({ voiceReconnecting }),
       setVoicePeers: (voicePeers) => set({ voicePeers }),
       addVoicePeer: (peer) =>
@@ -180,16 +198,16 @@ export const useVoiceStore = create<VoiceState>()(
         }),
       setPeerVolume: (peerId, volume) =>
         set((s) => ({ peerVolumes: { ...s.peerVolumes, [peerId]: volume } })),
-      setPeerCameraStream: (peerId, stream) =>
-        set((s) => ({ peerCameraStreams: { ...s.peerCameraStreams, [peerId]: stream } })),
-      removePeerCameraStream: (peerId) =>
+      setPeerCameraVideo: (peerId, video) =>
+        set((s) => ({ peerCameraVideos: { ...s.peerCameraVideos, [peerId]: video } })),
+      removePeerCameraVideo: (peerId) =>
         set((s) => {
-          if (!s.peerCameraStreams[peerId]) return s
-          const next = { ...s.peerCameraStreams }
+          if (!s.peerCameraVideos[peerId]) return s
+          const next = { ...s.peerCameraVideos }
           delete next[peerId]
-          return { peerCameraStreams: next }
+          return { peerCameraVideos: next }
         }),
-      clearPeerCameraStreams: () => set({ peerCameraStreams: {} }),
+      clearPeerCameraVideos: () => set({ peerCameraVideos: {} }),
       setRouterRtpCapabilities: (routerRtpCapabilities) => set({ routerRtpCapabilities }),
       setIceServers: (iceServers) => set({ iceServers }),
       setVoiceInputMode: (voiceInputMode) => set({ voiceInputMode }),
