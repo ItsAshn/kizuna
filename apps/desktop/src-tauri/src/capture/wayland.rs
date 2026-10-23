@@ -399,10 +399,9 @@ fn run_single_pipewire_loop(
         .into_result()
         .map_err(|e| format!("Failed to arm capture shutdown timer: {e}"))?;
 
-    stream
-        .set_active(true)
-        .map_err(|e| format!("Failed to activate stream: {e}"))?;
-
+    // No `set_active(true)` here: before `connect` the stream has no node and
+    // PipeWire answers -EIO. Connecting without `StreamFlags::INACTIVE` makes
+    // the stream active anyway.
     let format_bytes = format_params(fps)?;
     let format_pod = spa::pod::Pod::from_bytes(&format_bytes)
         .ok_or("Failed to read back PipeWire format params")?;
