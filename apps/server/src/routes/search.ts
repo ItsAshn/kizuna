@@ -1,10 +1,23 @@
 import { Hono } from 'hono'
 import { getDb } from '../db'
-import { authMiddleware, canViewChannel } from '../middleware/auth'
+import { authMiddleware, getViewableChannelIds } from '../middleware/auth'
 import { searchSchema } from '../utils/schemas'
 import type { AuthUser } from '../middleware/auth'
 
 const searchRoutes = new Hono()
+
+interface SearchRow {
+  source: 'channel' | 'dm' | 'group_dm'
+  id: string
+  channel_id: string
+  author_id: string
+  author_username: string
+  content: string
+  created_at: number
+  display_name: string | null
+  avatar: string | null
+  channel_name: string | null
+}
 
 searchRoutes.get('/', authMiddleware, (c) => {
   const auth = c.get('auth' as never) as AuthUser
@@ -17,134 +30,120 @@ searchRoutes.get('/', authMiddleware, (c) => {
   const limit = Math.min(rawLimit ?? 20, 50)
   const db = getDb()
 
+  // Quote each word so FTS5 operators in user input are taken literally.
   const ftsQuery = q
-    .replace(/[^\w\s]/g, '')
+    .replace(/[^\p{L}\p{N}\s_]/gu, '')
     .split(/\s+/)
     .filter(Boolean)
     .map((w) => `"${w}"`)
     .join(' ')
+  if (!ftsQuery) return c.json({ results: [], hasMore: false })
 
   try {
-    let beforeRowId: number | null = null
+    // Keyset cursor on (created_at, id) across all three message tables.
+    let cursor: { created_at: number; id: string } | undefined
     if (before) {
-      const cursor = db
-        .prepare('SELECT rowid FROM messages_fts WHERE message_id = ?')
-        .get(before) as { rowid: number } | undefined
-      if (cursor) beforeRowId = cursor.rowid
+      cursor = db
+        .prepare(
+          `SELECT created_at, id FROM messages WHERE id = ?
+           UNION ALL SELECT created_at, id FROM direct_messages WHERE id = ?
+           UNION ALL SELECT created_at, id FROM group_dm_messages WHERE id = ?
+           LIMIT 1`,
+        )
+        .get(before, before, before) as { created_at: number; id: string } | undefined
+      if (!cursor) return c.json({ results: [], hasMore: false })
     }
 
-    const params: (string | number)[] = [ftsQuery]
+    // Visibility is applied in SQL so a page is never padded out with rows the
+    // caller can't see, which keeps LIMIT (and therefore hasMore) honest.
+    const viewable = JSON.stringify([...getViewableChannelIds(auth.userId)])
+    const channelFilter = (col: string) => (channelId ? `AND ${col} = ?` : '')
+    const channelParam = channelId ? [channelId] : []
 
-    params.push(auth.userId) // permission: dm from
-    params.push(auth.userId) // permission: dm to
-    params.push(auth.userId) // permission: group_dm member
-
-    let channelFilter = ''
-    if (channelId) {
-      channelFilter = `AND ((f.source = 'channel' AND m.channel_id = ?) OR (f.source = 'dm' AND dm.channel_id = ?) OR (f.source = 'group_dm' AND gdm.channel_id = ?))`
-      params.push(channelId, channelId, channelId)
-    }
-
-    let beforeFilter = ''
-    if (beforeRowId !== null) {
-      beforeFilter = 'AND f.rowid < ?'
-      params.push(beforeRowId)
-    }
-
-    params.push(limit + 1)
+    const params: (string | number | null)[] = [
+      ftsQuery,
+      viewable,
+      ...channelParam,
+      ftsQuery,
+      auth.userId,
+      auth.userId,
+      ...channelParam,
+      ftsQuery,
+      auth.userId,
+      ...channelParam,
+      cursor ? cursor.created_at : null,
+      cursor ? cursor.created_at : null,
+      cursor ? cursor.created_at : null,
+      cursor ? cursor.id : null,
+      limit + 1,
+    ]
 
     const rows = db
       .prepare(
         `
-      SELECT
-        f.source,
-        f.message_id,
-        f.rowid as fts_rowid,
-        COALESCE(m.id, dm.id, gdm.id) as id,
-        COALESCE(m.channel_id, dm.channel_id, gdm.channel_id) as channel_id,
-        COALESCE(m.author_id, dm.from_id, gdm.from_id) as author_id,
-        COALESCE(m.author_username, dm.from_username, gdm.from_username) as author_username,
-        COALESCE(m.content, dm.content, gdm.content) as content,
-        COALESCE(m.created_at, dm.created_at, gdm.created_at) as created_at,
-        u.display_name,
-        u.avatar,
-        COALESCE(c.name, gdc.name) as channel_name
-      FROM messages_fts f
-      LEFT JOIN messages m ON f.message_id = m.id AND f.source = 'channel'
-      LEFT JOIN direct_messages dm ON f.message_id = dm.id AND f.source = 'dm'
-      LEFT JOIN group_dm_messages gdm ON f.message_id = gdm.id AND f.source = 'group_dm'
-      LEFT JOIN users u ON
-        (f.source = 'channel' AND m.author_id = u.id) OR
-        (f.source = 'dm' AND dm.from_id = u.id) OR
-        (f.source = 'group_dm' AND gdm.from_id = u.id)
-      LEFT JOIN channels c ON f.source = 'channel' AND m.channel_id = c.id
-      LEFT JOIN group_dm_channels gdc ON f.source = 'group_dm' AND gdm.channel_id = gdc.id
-      WHERE messages_fts MATCH ?
-        AND (
-          f.source != 'dm' OR dm.from_id = ? OR dm.to_id = ?
-        )
-        AND (
-          f.source != 'group_dm' OR EXISTS (SELECT 1 FROM group_dm_members gdm_m WHERE gdm_m.channel_id = gdm.channel_id AND gdm_m.user_id = ?)
-        )
-      ${beforeFilter}
-      ${channelFilter}
-      ORDER BY f.rowid DESC
+      SELECT * FROM (
+        SELECT 'channel' AS source, m.id, m.channel_id, m.author_id, m.author_username,
+               m.content, m.created_at, u.display_name, u.avatar, c.name AS channel_name
+        FROM messages_fts
+        JOIN messages m ON m.rowid = messages_fts.rowid
+        LEFT JOIN users u ON u.id = m.author_id
+        LEFT JOIN channels c ON c.id = m.channel_id
+        WHERE messages_fts MATCH ?
+          AND m.channel_id IN (SELECT value FROM json_each(?))
+          ${channelFilter('m.channel_id')}
+
+        UNION ALL
+
+        SELECT 'dm', dm.id, dm.channel_id, dm.from_id, dm.from_username,
+               dm.content, dm.created_at, u.display_name, u.avatar, NULL
+        FROM dm_messages_fts
+        JOIN direct_messages dm ON dm.rowid = dm_messages_fts.rowid
+        LEFT JOIN users u ON u.id = dm.from_id
+        WHERE dm_messages_fts MATCH ?
+          AND (dm.from_id = ? OR dm.to_id = ?)
+          ${channelFilter('dm.channel_id')}
+
+        UNION ALL
+
+        SELECT 'group_dm', gdm.id, gdm.channel_id, gdm.from_id, gdm.from_username,
+               gdm.content, gdm.created_at, u.display_name, u.avatar, gdc.name
+        FROM group_dm_messages_fts
+        JOIN group_dm_messages gdm ON gdm.rowid = group_dm_messages_fts.rowid
+        LEFT JOIN users u ON u.id = gdm.from_id
+        LEFT JOIN group_dm_channels gdc ON gdc.id = gdm.channel_id
+        WHERE group_dm_messages_fts MATCH ?
+          AND EXISTS (SELECT 1 FROM group_dm_members gm
+                      WHERE gm.channel_id = gdm.channel_id AND gm.user_id = ?)
+          ${channelFilter('gdm.channel_id')}
+      )
+      WHERE (? IS NULL OR created_at < ? OR (created_at = ? AND id < ?))
+      ORDER BY created_at DESC, id DESC
       LIMIT ?
     `,
       )
-      .all(...params) as {
-      source: string
-      message_id: string
-      fts_rowid: number
-      id: string
-      channel_id: string
-      author_id: string
-      author_username: string
-      content: string
-      created_at: number
-      display_name: string | null
-      avatar: string | null
-      channel_name: string | null
-    }[]
+      .all(...params) as SearchRow[]
 
-    const hasMorePre = rows.length > limit
-    if (hasMorePre) rows.pop()
+    // One extra row was fetched purely to learn whether another page exists.
+    const hasMore = rows.length > limit
+    const page = hasMore ? rows.slice(0, limit) : rows
 
-    const visibleRows = rows.filter(
-      (r) => r.source !== 'channel' || canViewChannel(auth.userId, r.channel_id),
-    )
-    const hasMore = visibleRows.length > limit
-    const finalResults = hasMore ? visibleRows.slice(0, limit) : visibleRows
-
-    const results = finalResults.map(
-      (r: {
-        source: string
-        id: string
-        channel_id: string
-        author_id: string
-        author_username: string
-        display_name: string | null
-        avatar: string | null
-        content: string
-        created_at: number
-        channel_name: string | null
-      }) => ({
-        message: {
-          id: r.id,
-          channel_id: r.channel_id,
-          user_id: r.author_id,
-          username: r.author_username,
-          display_name: r.display_name || r.author_username,
-          avatar: r.avatar || undefined,
-          content: r.content,
-          created_at: r.created_at * 1000,
-        },
-        channelName: r.channel_name || (r.source === 'group_dm' ? 'Group DM' : 'DM'),
-      }),
-    )
+    const results = page.map((r) => ({
+      message: {
+        id: r.id,
+        channel_id: r.channel_id,
+        user_id: r.author_id,
+        username: r.author_username,
+        display_name: r.display_name || r.author_username,
+        avatar: r.avatar || undefined,
+        content: r.content,
+        created_at: r.created_at * 1000,
+      },
+      channelName: r.channel_name || (r.source === 'group_dm' ? 'Group DM' : 'DM'),
+    }))
 
     return c.json({ results, hasMore })
-  } catch {
+  } catch (err) {
+    console.error('[search] query failed:', err instanceof Error ? err.message : err)
     return c.json({ results: [], hasMore: false })
   }
 })

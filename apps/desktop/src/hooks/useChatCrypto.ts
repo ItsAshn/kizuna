@@ -80,10 +80,21 @@ export function useChatCrypto(session: ServerSession | null) {
 
   // Encrypts outgoing content for the active DM / group DM; plaintext fallback when keys are unavailable.
   const encryptOutgoing = useCallback(
-    async (plain: string): Promise<{ content: string; encrypted: boolean }> => {
+    async (
+      plain: string,
+      /** Encrypt for this conversation instead of the active one, for sends
+       * that complete after the user has switched away (uploads, voice notes). */
+      target?: { id: string; type: 'channel' | 'dm' | 'group-dm' },
+    ): Promise<{ content: string; encrypted: boolean }> => {
       const secKey = getSecretKey()
-      if (activeDMChannelId && secKey) {
-        const dm = dmChannels.find((d) => d.id === activeDMChannelId)
+      const dmId = target ? (target.type === 'dm' ? target.id : null) : activeDMChannelId
+      const groupId = target
+        ? target.type === 'group-dm'
+          ? target.id
+          : null
+        : activeGroupDMChannelId
+      if (dmId && secKey) {
+        const dm = dmChannels.find((d) => d.id === dmId)
         const otherPubKey = await resolveRecipientPublicKey(dm)
         if (otherPubKey) {
           return {
@@ -91,8 +102,8 @@ export function useChatCrypto(session: ServerSession | null) {
             encrypted: true,
           }
         }
-      } else if (activeGroupDMChannelId && secKey) {
-        const channel = groupDMChannels.find((c) => c.id === activeGroupDMChannelId)
+      } else if (groupId && secKey) {
+        const channel = groupDMChannels.find((c) => c.id === groupId)
         const memberKeys = new Map<string, string>()
         for (const member of channel?.members || []) {
           if (member.public_key) memberKeys.set(member.user_id, member.public_key)

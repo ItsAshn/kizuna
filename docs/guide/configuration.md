@@ -30,8 +30,8 @@ All environment variables for the Kizuna server. Set these in `.env` before runn
 | Variable              | Default           | Description                                                                                |
 | --------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
 | `PUBLIC_ADDRESS`      | _(auto via STUN)_ | Public IP or hostname announced as WebRTC ICE candidate. Set this if auto-detection fails. |
-| `RTC_MIN_PORT`        | `40000`           | Start of UDP port range for voice. Each participant uses ~2 ports.                         |
-| `RTC_MAX_PORT`        | `40099`           | End of UDP port range. Increase if you expect 50+ concurrent voice users.                  |
+| `RTC_MIN_PORT`        | `40000`           | Start of the media port range (UDP, with TCP as fallback). Each participant uses ~2 ports. |
+| `RTC_MAX_PORT`        | `40099`           | End of the media port range. Increase if you expect 50+ concurrent voice users.            |
 | `MEDIASOUP_LISTEN_IP` | `0.0.0.0`         | mediasoup listen address. Don't change this unless you know what you're doing.             |
 | `MEDIASOUP_LOG_LEVEL` | `warn`            | mediasoup verbosity: `debug`, `warn`, `error`, `none`.                                     |
 
@@ -49,6 +49,14 @@ All environment variables for the Kizuna server. Set these in `.env` before runn
 | `IS_PUBLIC`    | `false`                         | List this server on the public server browser. Sends heartbeats every 60s. |
 | `ANNOUNCE_URL` | `https://server.use-kizuna.com` | Registry URL. Only used when `IS_PUBLIC=true`.                             |
 | `IS_REGISTRY`  | `false`                         | Enable registry endpoints. Only for running your own server browser.       |
+
+## Deployment
+
+| Variable      | Default              | Description                                                                                                                                                                                                                                                                 |
+| ------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `KIZUNA_TAG`  | `latest`             | Image tag `docker-compose.yml` runs, e.g. `v0.2.0`. `latest` only ever points at a stable release. `./scripts/update.sh --pin <tag>` sets this for you. Compose only; the server itself does not read it.                                                                   |
+| `TRUST_PROXY` | `true` (compose)     | Trust `X-Forwarded-For` to find the client IP for rate limiting. On by default in the compose file because Caddy sits in front and overwrites the header. Set `false` if you expose the server directly, or clients can spoof their IP. Server default when unset: `false`. |
+| `NODE_ENV`    | `production` (image) | Set by the Docker image. Session cookies are always marked `Secure` in production, so serve the server over HTTPS (Caddy does this).                                                                                                                                        |
 
 ## Advanced
 

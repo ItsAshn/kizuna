@@ -22,6 +22,8 @@ import { getVoiceLogLines } from '../hooks/useVoice'
 import './VoiceOverlay.css'
 
 interface VoiceOverlayProps {
+  /** Used by the error panel's retry to rejoin the channel that failed. */
+  joinVoice?: (channelId: string) => Promise<string | null>
   leaveVoice: () => void
   toggleMute: () => void
   socketRef: React.MutableRefObject<Socket | null>
@@ -123,6 +125,7 @@ function PeerRow({
 }
 
 export default function VoiceOverlay({
+  joinVoice,
   leaveVoice,
   toggleMute,
   startScreenshare,
@@ -147,6 +150,7 @@ export default function VoiceOverlay({
   } = useVoiceStore()
   const { isScreenSharing, screenSharePeerId, screenShareUsername } = useCallStore()
   const [closing, setClosing] = useState(false)
+  const [retrying, setRetrying] = useState(false)
   const [showMonitorPicker, setShowMonitorPicker] = useState(false)
   const [screenShareError, setScreenShareError] = useState<string | null>(null)
   const isMobile = useMobile()
@@ -210,8 +214,17 @@ export default function VoiceOverlay({
         ? 'In Call'
         : 'Voice Connected'
 
-  const handleRetry = () => {
+  const handleRetry = async () => {
+    if (retrying) return
+    const target = useVoiceStore.getState().lastVoiceJoinChannelId
     setVoiceError(null)
+    if (!target || !joinVoice) return
+    setRetrying(true)
+    try {
+      await joinVoice(target)
+    } finally {
+      setRetrying(false)
+    }
   }
 
   return (
@@ -228,7 +241,11 @@ export default function VoiceOverlay({
             <pre className="voice-error__debug-log">{getVoiceLogLines().join('\n')}</pre>
           </details>
           <div className="voice-error__actions">
-            <button onClick={handleRetry} className="voice-error__btn voice-error__btn--retry">
+            <button
+              onClick={handleRetry}
+              disabled={retrying}
+              className="voice-error__btn voice-error__btn--retry"
+            >
               retry
             </button>
             <button onClick={handleLeave} className="voice-error__btn voice-error__btn--leave">

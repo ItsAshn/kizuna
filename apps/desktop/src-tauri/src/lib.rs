@@ -231,23 +231,69 @@ fn voice_init(
     Ok(())
 }
 
+/// Run blocking voice work off both the main thread and the async workers.
+///
+/// Tauri v2 runs synchronous commands on the main thread, so the old sync
+/// voice commands froze the UI while transports were negotiated, devices
+/// opened and threads joined. The work itself is blocking (std mutexes held
+/// across it, process spawns, thread joins), which is exactly what the
+/// blocking pool is for.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn run_blocking<T, F>(name: &'static str, f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("{name} task failed: {e}"))?
+}
+
+/// Swap the call's audio output, dropping the previous one outside the lock:
+/// its drop joins the output thread and reaps paplay, which must not stall
+/// `voice_inject_opus` calls waiting on the same mutex.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn replace_audio_output(next: Option<AudioOutput>) -> Result<(), String> {
+    let prev = {
+        let mut guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
+        std::mem::replace(&mut *guard, next)
+    };
+    drop(prev);
+    Ok(())
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn voice_begin(
+async fn voice_begin(
     channel_id: String,
     ice_servers: Vec<serde_json::Value>,
     send_params: serde_json::Value,
     recv_params: serde_json::Value,
     voice_bitrate_kbps: u64,
 ) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), String> {
-    let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
-    let controller = guard.as_mut().ok_or("Voice not initialized")?;
-    tauri::async_runtime::block_on(controller.begin_join(&channel_id, ice_servers, send_params, recv_params, voice_bitrate_kbps))
+    run_blocking("voice_begin", move || {
+        let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+        let controller = guard.as_mut().ok_or("Voice not initialized")?;
+        tauri::async_runtime::block_on(controller.begin_join(
+            &channel_id,
+            ice_servers,
+            send_params,
+            recv_params,
+            voice_bitrate_kbps,
+        ))
+    })
+    .await
 }
 
+/// `muted` is whether the microphone should start silenced (muted, or on
+/// push-to-talk with the key up). Capture begins inside this call, so the
+/// processor has to be muted from its first frame; applying it afterwards from
+/// JS let a burst of open mic out on every join. Optional so an older frontend
+/// still works.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn voice_finish_join(
+#[allow(clippy::too_many_arguments)]
+async fn voice_finish_join(
     voice_bitrate_kbps: u64,
     gate_enabled: bool,
     gate_threshold_db: f32,
@@ -256,36 +302,40 @@ fn voice_finish_join(
     auto_gain_enabled: bool,
     device_name: Option<String>,
     output_device_id: Option<String>,
+    muted: Option<bool>,
 ) -> Result<(), String> {
-    let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
-    let controller = guard.as_mut().ok_or("Voice not initialized")?;
-    tauri::async_runtime::block_on(controller.finish_join(
-        voice_bitrate_kbps,
-        gate_enabled,
-        gate_threshold_db,
-        suppression_enabled,
-        suppression_strength,
-        auto_gain_enabled,
-        device_name,
-    ))?;
-
-    // Initialize native audio output
-    let mut out_guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if out_guard.is_some() {
-        let prev = out_guard.take();
-        drop(prev);
-    }
-    match AudioOutput::new(output_device_id, 1.0) {
-        Ok(ao) => {
-            eprintln!("[Voice] AudioOutput initialized");
-            *out_guard = Some(ao);
+    run_blocking("voice_finish_join", move || {
+        {
+            let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+            let controller = guard.as_mut().ok_or("Voice not initialized")?;
+            tauri::async_runtime::block_on(controller.finish_join(
+                voice_bitrate_kbps,
+                gate_enabled,
+                gate_threshold_db,
+                suppression_enabled,
+                suppression_strength,
+                auto_gain_enabled,
+                device_name,
+                muted.unwrap_or(false),
+            ))?;
         }
-        Err(e) => {
-            eprintln!("[Voice] AudioOutput init failed (non-fatal): {e}");
-        }
-    }
 
-    Ok(())
+        // Close any previous output before opening the new one, so the two
+        // never hold the device at once.
+        replace_audio_output(None)?;
+        match AudioOutput::new(output_device_id, 1.0) {
+            Ok(ao) => {
+                eprintln!("[Voice] AudioOutput initialized");
+                replace_audio_output(Some(ao))?;
+            }
+            Err(e) => {
+                eprintln!("[Voice] AudioOutput init failed (non-fatal): {e}");
+            }
+        }
+
+        Ok(())
+    })
+    .await
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -426,9 +476,14 @@ fn voice_flush_peers() -> Result<(), String> {
 /// Framing (`x-framing` header):
 ///   2 — `[seq: u16 BE][timestamp: u32 BE][opus...]`
 ///   1 — bare Opus payload, from a server that predates sequence forwarding
+///
+/// Async so it runs on the runtime rather than the main thread: at ~50 calls a
+/// second per peer, a sync command here competed with the UI for the main
+/// thread. The work is a short mutex hold and a map insert, so it does not
+/// need the blocking pool; decoding happens later on the output thread.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn voice_inject_opus(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+async fn voice_inject_opus(request: tauri::ipc::Request<'_>) -> Result<(), String> {
     let header = |name: &str| {
         request
             .headers()
@@ -484,26 +539,31 @@ fn voice_add_peer(peer_id: String, ssrc: u32) -> Result<(), String> {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn voice_leave() -> Result<(), String> {
-    // A screenshare cannot outlive the call it was being sent on: leaving with
-    // one running would otherwise leave the capture thread (and the portal's
-    // "screen is being shared" indicator) alive with nowhere to send frames.
-    if let Ok(mut capture) = CAPTURE_SESSION.lock() {
-        if let Some(mut session) = capture.take() {
-            session.stop();
+async fn voice_leave() -> Result<(), String> {
+    run_blocking("voice_leave", || {
+        // A screenshare cannot outlive the call it was being sent on: leaving
+        // with one running would otherwise leave the capture thread (and the
+        // portal's "screen is being shared" indicator) alive with nowhere to
+        // send frames.
+        if let Ok(mut capture) = CAPTURE_SESSION.lock() {
+            if let Some(mut session) = capture.take() {
+                session.stop();
+            }
         }
-    }
 
-    let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
-    if let Some(ref mut controller) = *guard {
-        controller.leave();
-    }
+        {
+            let mut guard = VOICE_CONTROLLER.lock().map_err(|e| format!("Lock error: {e}"))?;
+            if let Some(ref mut controller) = *guard {
+                // Stops the send session, which releases the microphone (kills
+                // and reaps parec on Linux).
+                controller.leave();
+            }
+        }
 
-    // Drop audio output
-    let mut out_guard = AUDIO_OUTPUT.lock().map_err(|e| format!("Lock error: {e}"))?;
-    let _ = out_guard.take();
-
-    Ok(())
+        // Closes the output device / reaps paplay.
+        replace_audio_output(None)
+    })
+    .await
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

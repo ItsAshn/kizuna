@@ -36,7 +36,9 @@ interface ChatState {
   mentionCounts: Record<string, number>
   serverMentionCounts: Record<string, number>
   typingUsers: Record<string, string[]>
-  channelMutes: Record<string, number | null>
+  /** serverId -> channelId -> muted-until (ms) or null for "until unmuted".
+   * Keyed per server because background servers sync their mutes too. */
+  channelMutes: Record<string, Record<string, number | null>>
   channelLastReadAt: Record<string, number>
   hasMoreMessages: Record<string, boolean>
   loadingMoreMessages: Record<string, boolean>
@@ -67,6 +69,10 @@ interface ChatState {
   removeThread: (channelId: string, threadId: string) => void
   setThreadMessages: (threadId: string, messages: Message[]) => void
   addThreadMessage: (threadId: string, message: Message) => void
+  /** Thread messages share ids with the messages table, so an edit/delete
+   * event (which carries no thread id on delete) is applied by message id. */
+  updateThreadMessage: (messageId: string, message: Message) => void
+  removeThreadMessage: (messageId: string) => void
   setActiveThreadId: (threadId: string | null) => void
   setThreadPanelVisible: (visible: boolean) => void
   setMembers: (members: Member[]) => void
@@ -80,9 +86,9 @@ interface ChatState {
   clearServerMentionCount: (serverId: string) => void
   removeMessage: (channelId: string, messageId: string) => void
   setTypingUsers: (channelId: string, users: string[]) => void
-  setChannelMutes: (mutes: Record<string, number | null>) => void
-  upsertChannelMute: (channelId: string, mutedUntil: number | null) => void
-  removeChannelMute: (channelId: string) => void
+  setChannelMutes: (serverId: string, mutes: Record<string, number | null>) => void
+  upsertChannelMute: (serverId: string, channelId: string, mutedUntil: number | null) => void
+  removeChannelMute: (serverId: string, channelId: string) => void
   setChannelLastReadAt: (channelId: string, timestamp: number) => void
   setHasMoreMessages: (channelId: string, hasMore: boolean) => void
   setLoadingMoreMessages: (channelId: string, loading: boolean) => void
@@ -96,6 +102,29 @@ interface ChatState {
   clearServerData: () => void
   setPendingMention: (username: string | null) => void
   setChannelDraft: (channelId: string, draft: string) => void
+}
+
+/** Soft cap on a channel's cached messages. Live appends trim the oldest end
+ * back to this, but never below what the user has deliberately paged back
+ * through: older history loaded by scrolling up is kept until the channel's
+ * cache is replaced, so the page just fetched can't be thrown away again. */
+export const MAX_MESSAGES = 500
+
+/** Trim `list` from the oldest end. `floor` is the length the cache already
+ * had, so a paginated history is never shrunk below what was on screen. */
+function trimOldest(list: Message[], floor: number): { list: Message[]; trimmed: boolean } {
+  const cap = Math.max(MAX_MESSAGES, floor)
+  if (list.length <= cap) return { list, trimmed: false }
+  return { list: list.slice(-cap), trimmed: true }
+}
+
+/** Per-conversation view state that must reset whenever the active
+ * conversation actually changes (a thread belongs to one channel). */
+function conversationSwitchReset(s: ChatState, next: string | null): Partial<ChatState> {
+  const current =
+    s.activeChannelId || s.activeDMChannelId || s.activeGroupDMChannelId || s.viewedVoiceChannelId
+  if (current === next) return {}
+  return { activeThreadId: null, threadPanelVisible: false }
 }
 
 export const useChatStore = create<ChatState>()(
@@ -162,22 +191,27 @@ export const useChatStore = create<ChatState>()(
           const byId = new Map(existing.map((m) => [m.id, m]))
           for (const m of messages) byId.set(m.id, m)
           const merged = [...byId.values()].sort((a, b) => a.created_at - b.created_at)
-          const MAX_MESSAGES = 500
-          const trimmed = merged.length > MAX_MESSAGES ? merged.slice(-MAX_MESSAGES) : merged
-          return { messages: { ...state.messages, [channelId]: trimmed } }
+          const { list, trimmed } = trimOldest(merged, existing.length)
+          return {
+            messages: { ...state.messages, [channelId]: list },
+            ...(trimmed
+              ? { hasMoreMessages: { ...state.hasMoreMessages, [channelId]: true } }
+              : {}),
+          }
         }),
       addMessage: (channelId, message) =>
         set((state) => {
           const existing = state.messages[channelId] || []
           if (existing.some((m) => m.id === message.id)) return state
-          const MAX_MESSAGES = 500
-          const appended = [...existing, message]
-          const trimmed = appended.length > MAX_MESSAGES ? appended.slice(-MAX_MESSAGES) : appended
+          const { list, trimmed } = trimOldest([...existing, message], existing.length)
           return {
             messages: {
               ...state.messages,
-              [channelId]: trimmed,
+              [channelId]: list,
             },
+            ...(trimmed
+              ? { hasMoreMessages: { ...state.hasMoreMessages, [channelId]: true } }
+              : {}),
           }
         }),
       addPoll: (channelId, poll) =>
@@ -302,38 +336,72 @@ export const useChatStore = create<ChatState>()(
             },
           }
         }),
+      updateThreadMessage: (messageId, message) =>
+        set((state) => {
+          let changed = false
+          const next: Record<string, Message[]> = {}
+          for (const [threadId, msgs] of Object.entries(state.threadMessages)) {
+            if (msgs.some((m) => m.id === messageId)) {
+              changed = true
+              next[threadId] = msgs.map((m) => (m.id === messageId ? { ...m, ...message } : m))
+            } else {
+              next[threadId] = msgs
+            }
+          }
+          return changed ? { threadMessages: next } : state
+        }),
+      removeThreadMessage: (messageId) =>
+        set((state) => {
+          let changed = false
+          const next: Record<string, Message[]> = {}
+          for (const [threadId, msgs] of Object.entries(state.threadMessages)) {
+            const filtered = msgs.filter((m) => m.id !== messageId)
+            if (filtered.length !== msgs.length) changed = true
+            next[threadId] = filtered
+          }
+          return changed ? { threadMessages: next } : state
+        }),
       setActiveThreadId: (activeThreadId) =>
-        set({ activeThreadId, threadPanelVisible: activeThreadId !== null ? true : undefined }),
+        // Going back to the thread list (null) keeps the panel open.
+        set(
+          activeThreadId !== null
+            ? { activeThreadId, threadPanelVisible: true }
+            : { activeThreadId },
+        ),
       setThreadPanelVisible: (threadPanelVisible) => set({ threadPanelVisible }),
       setMembers: (members) => set({ members }),
       setActiveChannel: (activeChannelId) =>
-        set({
+        set((s) => ({
+          ...conversationSwitchReset(s, activeChannelId),
           activeChannelId,
           activeDMChannelId: null,
           activeGroupDMChannelId: null,
           viewedVoiceChannelId: null,
-        }),
+        })),
       setActiveDMChannel: (activeDMChannelId) =>
-        set({
+        set((s) => ({
+          ...conversationSwitchReset(s, activeDMChannelId),
           activeDMChannelId,
           activeChannelId: null,
           activeGroupDMChannelId: null,
           viewedVoiceChannelId: null,
-        }),
+        })),
       setActiveGroupDMChannel: (activeGroupDMChannelId) =>
-        set({
+        set((s) => ({
+          ...conversationSwitchReset(s, activeGroupDMChannelId),
           activeGroupDMChannelId,
           activeChannelId: null,
           activeDMChannelId: null,
           viewedVoiceChannelId: null,
-        }),
+        })),
       setViewedVoiceChannel: (viewedVoiceChannelId) =>
-        set({
+        set((s) => ({
+          ...conversationSwitchReset(s, viewedVoiceChannelId),
           viewedVoiceChannelId,
           activeChannelId: null,
           activeDMChannelId: null,
           activeGroupDMChannelId: null,
-        }),
+        })),
       setUnreadCounts: (unreadCounts) => set({ unreadCounts }),
       setMentionCounts: (mentionCounts) => set({ mentionCounts }),
       incrementServerMentionCount: (serverId) =>
@@ -360,14 +428,20 @@ export const useChatStore = create<ChatState>()(
         set((s) => ({
           typingUsers: { ...s.typingUsers, [channelId]: users },
         })),
-      setChannelMutes: (channelMutes) => set({ channelMutes }),
-      upsertChannelMute: (channelId, mutedUntil) =>
-        set((s) => ({ channelMutes: { ...s.channelMutes, [channelId]: mutedUntil } })),
-      removeChannelMute: (channelId) =>
+      setChannelMutes: (serverId, mutes) =>
+        set((s) => ({ channelMutes: { ...s.channelMutes, [serverId]: mutes } })),
+      upsertChannelMute: (serverId, channelId, mutedUntil) =>
+        set((s) => ({
+          channelMutes: {
+            ...s.channelMutes,
+            [serverId]: { ...s.channelMutes[serverId], [channelId]: mutedUntil },
+          },
+        })),
+      removeChannelMute: (serverId, channelId) =>
         set((s) => {
-          const next = { ...s.channelMutes }
+          const next = { ...s.channelMutes[serverId] }
           delete next[channelId]
-          return { channelMutes: next }
+          return { channelMutes: { ...s.channelMutes, [serverId]: next } }
         }),
       setChannelLastReadAt: (channelId, timestamp) =>
         set((s) => ({
@@ -391,16 +465,13 @@ export const useChatStore = create<ChatState>()(
           const existingIds = new Set(existing.map((m) => m.id))
           const deduped = messages.filter((m) => !existingIds.has(m.id))
           if (deduped.length === 0) return s
-          const MAX_MESSAGES = 500
+          // Never trim on prepend: the reader is looking at the oldest end,
+          // which is exactly the page just fetched. Trimming the newest end
+          // instead would need "load newer" pagination, which nothing has.
+          // Growth is bounded by how far back the user actually scrolls, and
+          // the cache is replaced when the channel is re-entered after a gap.
           const merged = [...deduped, ...existing]
-          const trimmed = merged.length > MAX_MESSAGES ? merged.slice(-MAX_MESSAGES) : merged
-          return {
-            messages: { ...s.messages, [channelId]: trimmed },
-            hasMoreMessages: {
-              ...s.hasMoreMessages,
-              [channelId]: merged.length > MAX_MESSAGES ? true : s.hasMoreMessages[channelId],
-            },
-          }
+          return { messages: { ...s.messages, [channelId]: merged } }
         }),
       updateMessageReactions: (channelId, messageId, reactions) =>
         set((state) => ({
@@ -428,7 +499,8 @@ export const useChatStore = create<ChatState>()(
           activeGroupDMChannelId: null,
           viewedVoiceChannelId: null,
           typingUsers: {},
-          channelMutes: {},
+          // channelMutes is keyed per server and also fed by background
+          // servers, so it survives a server switch.
           hasMoreMessages: {},
           loadingMoreMessages: {},
           loadMoreErrors: {},

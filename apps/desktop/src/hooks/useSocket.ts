@@ -24,6 +24,50 @@ import { refreshToken } from '@kizuna/shared'
 import { showNotification, ensureNotificationPermission } from '../utils/showNotification'
 import { tryDecryptSocketDM, tryDecryptGroupDM } from '../utils/decryptSocketMessage'
 
+function truncate(text: string | null | undefined): string {
+  if (!text) return ''
+  return text.length > 100 ? text.slice(0, 100) + '...' : text
+}
+
+/** Whether a message will also arrive as a message:mention for this user. */
+function mentionsUser(content: string | null | undefined, username: string | undefined): boolean {
+  if (!content) return false
+  if (/(^|\s)@(everyone|here)\b/.test(content)) return true
+  if (!username) return false
+  return content.toLowerCase().includes(`@${username.toLowerCase()}`)
+}
+
+/** Ask the server for unread and mention counts. Sent on every (re)connect,
+ * since anything that arrived while the socket was down was never counted. */
+function requestUnreadState(socket: Socket) {
+  socket.emit('channel:unread', (counts: Record<string, number> | null) => {
+    if (!counts || typeof counts !== 'object') return
+    useChatStore.setState((state) => {
+      // The server only reports server text channels. DM/group-DM counts are
+      // kept, and every server channel not in the reply is read.
+      const serverChannelIds = new Set(state.channels.map((c) => c.id))
+      const next: Record<string, number> = {}
+      for (const [id, n] of Object.entries(state.unreadCounts)) {
+        if (!serverChannelIds.has(id) && !(id in counts)) next[id] = n
+      }
+      for (const [id, n] of Object.entries(counts)) {
+        if (id !== state.activeChannelId) next[id] = n
+      }
+      return { unreadCounts: next }
+    })
+  })
+  socket.emit('mentions:unread', (rows: { channel_id: string; count: number }[] | null) => {
+    if (!Array.isArray(rows)) return
+    useChatStore.setState((state) => {
+      const next: Record<string, number> = {}
+      for (const r of rows) {
+        if (r.channel_id !== state.activeChannelId && r.count > 0) next[r.channel_id] = r.count
+      }
+      return { mentionCounts: next }
+    })
+  })
+}
+
 export function useSocket(): MutableRefObject<Socket | null> {
   const socketRef = useRef<Socket | null>(null)
   const session = useServerStore((s) => s.activeSession)
@@ -42,6 +86,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socketRef.current = socket
+    let hasConnected = false
 
     socket.on('connect', () => {
       useSettingsStore.getState().setSocketConnected(true)
@@ -56,6 +101,14 @@ export function useSocket(): MutableRefObject<Socket | null> {
           }
         },
       )
+      requestUnreadState(socket)
+      if (hasConnected) {
+        // A reconnect is a new server-side socket with no room memberships.
+        // Views that hold rooms (the open conversation, the open thread)
+        // rejoin and refetch what they missed off this nonce.
+        useSettingsStore.getState().bumpSocketReconnectNonce()
+      }
+      hasConnected = true
       ensureNotificationPermission()
     })
 
@@ -73,6 +126,8 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('connect_error', (err) => {
+      // Only marks the socket down; the retry state (reconnecting + attempt
+      // count) is left for reconnect_attempt to advance.
       useSettingsStore.getState().setSocketConnected(false)
       const msg = err.message || ''
       if (
@@ -103,43 +158,51 @@ export function useSocket(): MutableRefObject<Socket | null> {
     })
 
     socket.on('message:new', (message: Message) => {
-      useChatStore.setState((state) => {
-        const existing = state.messages[message.channel_id] || []
-        if (existing.some((m) => m.id === message.id)) return {}
+      const before = useChatStore.getState()
+      if ((before.messages[message.channel_id] || []).some((m) => m.id === message.id)) return
+      before.addMessage(message.channel_id, message)
 
-        const serverId = useServerStore.getState().activeSession?.serverId
-        const notif = serverId
-          ? useSettingsStore.getState().notificationSettings[serverId]
-          : undefined
-        const skipUnread = notif?.level === 'none' || notif?.level === 'mentions'
+      const currentUser = useServerStore.getState().activeSession?.user
+      if (message.channel_id === before.activeChannelId || message.user_id === currentUser?.id) {
+        return
+      }
 
-        const newState: Record<string, unknown> = {
-          messages: {
-            ...state.messages,
-            [message.channel_id]: [...existing, message],
-          },
-        }
-        const currentUserId = useServerStore.getState().activeSession?.user.id
-        if (
-          message.channel_id !== state.activeChannelId &&
-          !skipUnread &&
-          message.user_id !== currentUserId
-        ) {
-          newState.unreadCounts = {
+      const serverId = useServerStore.getState().activeSession?.serverId
+      const notif = serverId
+        ? useSettingsStore.getState().notificationSettings[serverId]
+        : undefined
+      const skipUnread = notif?.level === 'none' || notif?.level === 'mentions'
+      if (!skipUnread) {
+        useChatStore.setState((state) => ({
+          unreadCounts: {
             ...state.unreadCounts,
             [message.channel_id]: (state.unreadCounts[message.channel_id] || 0) + 1,
-          }
-        }
-        return newState
-      })
+          },
+        }))
+      }
+
+      // "All messages" notifies for other channels on this server too, not
+      // only for background servers. showNotification applies the level,
+      // per-channel overrides and mutes. A message that mentions us is left
+      // to the message:mention handler so it doesn't notify twice.
+      if (!mentionsUser(message.content, currentUser?.username)) {
+        showNotification({
+          type: 'message',
+          title: message.display_name || message.username || 'Someone',
+          body: truncate(message.content),
+          channelId: message.channel_id,
+        })
+      }
     })
 
     socket.on('message:edit', (message: Message) => {
       useChatStore.getState().updateMessage(message.channel_id, message.id, message)
+      if (message.thread_id) useChatStore.getState().updateThreadMessage(message.id, message)
     })
 
     socket.on('message:delete', ({ id, channel_id }: { id: string; channel_id: string }) => {
       useChatStore.getState().removeMessage(channel_id, id)
+      useChatStore.getState().removeThreadMessage(id)
     })
 
     socket.on('dm:received', (message: Message) => {
@@ -300,7 +363,10 @@ export function useSocket(): MutableRefObject<Socket | null> {
         const isEveryone = mention.mention_type === 'everyone' || mention.mention_type === 'here'
         const suppress = notif?.suppressEveryone && isEveryone
 
-        if (!suppress) {
+        // The open channel is being read right now; badging it would leave a
+        // count that only clears on the next visit.
+        const isActiveChannel = mention.channel_id === useChatStore.getState().activeChannelId
+        if (!suppress && !isActiveChannel) {
           useChatStore.setState((state) => ({
             mentionCounts: {
               ...state.mentionCounts,
@@ -312,7 +378,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
             },
           }))
         }
-        if (mention.channel_id !== useChatStore.getState().activeChannelId) {
+        if (!isActiveChannel) {
           showNotification({
             type: 'mention',
             title: mention.author_username || 'Someone',
@@ -329,6 +395,7 @@ export function useSocket(): MutableRefObject<Socket | null> {
 
     socket.on('channel:created', (channel: Channel) => {
       const store = useChatStore.getState()
+      if (store.channels.some((c) => c.id === channel.id)) return
       store.setChannels([...store.channels, channel])
     })
 
@@ -374,16 +441,16 @@ export function useSocket(): MutableRefObject<Socket | null> {
     socket.on(
       'channel:mute',
       ({ channel_id, muted_until }: { channel_id: string; muted_until: number | null }) => {
-        useChatStore.getState().upsertChannelMute(channel_id, muted_until)
+        useChatStore.getState().upsertChannelMute(session.serverId, channel_id, muted_until)
       },
     )
 
     socket.on('channel:unmute', ({ channel_id }: { channel_id: string }) => {
-      useChatStore.getState().removeChannelMute(channel_id)
+      useChatStore.getState().removeChannelMute(session.serverId, channel_id)
     })
 
     socket.on('channel:mute:sync', (mutes: Record<string, number | null>) => {
-      useChatStore.getState().setChannelMutes(mutes)
+      useChatStore.getState().setChannelMutes(session.serverId, mutes)
     })
 
     socket.on(
@@ -422,16 +489,23 @@ export function useSocket(): MutableRefObject<Socket | null> {
         const msgIdx = msgs.findIndex((m) => m.id === messageId)
         if (msgIdx === -1) return
         const msg = msgs[msgIdx]
+        // Build new objects rather than mutating the stored reaction: the old
+        // in-place count++ changed state React had already rendered, and a
+        // duplicate event (our own optimistic add + the broadcast, or a
+        // reconnect replay) counted the same user twice.
         const currentReactions = [...(msg.reactions || [])]
-        const existing = currentReactions.find(
+        const idx = currentReactions.findIndex(
           (r) =>
             r.reaction_key === reaction.reaction_key && r.reaction_type === reaction.reaction_type,
         )
-        if (existing) {
-          existing.count++
-          if (!existing.users.some((u) => u.user_id === reaction.userId)) {
-            existing.users.push({ user_id: reaction.userId, username: reaction.username })
-          }
+        if (idx !== -1) {
+          const existing = currentReactions[idx]
+          if (existing.users.some((u) => u.user_id === reaction.userId)) return
+          const users = [
+            ...existing.users,
+            { user_id: reaction.userId, username: reaction.username },
+          ]
+          currentReactions[idx] = { ...existing, users, count: users.length }
         } else {
           currentReactions.push({
             reaction_key: reaction.reaction_key,
@@ -487,17 +561,15 @@ export function useSocket(): MutableRefObject<Socket | null> {
       },
     )
 
-    socket.on('camera:peerStarted', ({ peerId }: { peerId: string }) => {
-      useCallStore.getState().addCameraPeerId(peerId)
-    })
-
-    socket.on('camera:peerStopped', ({ peerId }: { peerId: string }) => {
-      useCallStore.getState().removeCameraPeerId(peerId)
-    })
-
     socket.on('thread:created', (thread: Thread) => {
-      useChatStore.getState().addThread(thread.channel_id, thread)
-      useChatStore.getState().setActiveThreadId(thread.id)
+      const store = useChatStore.getState()
+      store.addThread(thread.channel_id, thread)
+      // Everyone in the channel receives this; only the creator should have
+      // the new thread pop open (and only if they're still in that channel).
+      const me = useServerStore.getState().activeSession?.user.id
+      if (thread.creator_id === me && store.activeChannelId === thread.channel_id) {
+        store.setActiveThreadId(thread.id)
+      }
     })
 
     socket.on('thread:message:new', (message: Message) => {
@@ -702,53 +774,6 @@ export function useSocket(): MutableRefObject<Socket | null> {
         store.setDMCallShouldCleanup(true)
       } else {
         store.clearDMCall()
-      }
-    })
-
-    socket.on(
-      'group-dm:call:incoming',
-      ({
-        channelId,
-        callerUserId,
-        callerUsername,
-      }: {
-        channelId: string
-        callerUserId: string
-        callerUsername: string
-      }) => {
-        useCallStore.getState().setGroupDMIncomingCall({ channelId, callerUserId, callerUsername })
-        showNotification({
-          type: 'dmcall',
-          title: `${callerUsername} started a group call`,
-          body: 'Click to join',
-        })
-      },
-    )
-
-    socket.on('group-dm:call:accepted', ({ channelId }: { channelId: string }) => {
-      const store = useCallStore.getState()
-      if (
-        store.groupDMCallStatus === 'ringing-outgoing' &&
-        store.groupDMCallChannelId === channelId
-      ) {
-        store.setGroupDMCallStatus('active')
-      }
-    })
-
-    socket.on('group-dm:call:rejected', () => {
-      useCallStore.getState().clearGroupDMCall()
-    })
-
-    socket.on('group-dm:call:ended', () => {
-      const store = useCallStore.getState()
-      if (
-        store.groupDMCallStatus === 'active' ||
-        store.groupDMCallStatus === 'ringing-outgoing' ||
-        store.groupDMCallStatus === 'ringing-incoming'
-      ) {
-        store.setGroupDMCallShouldCleanup(true)
-      } else {
-        store.clearGroupDMCall()
       }
     })
 

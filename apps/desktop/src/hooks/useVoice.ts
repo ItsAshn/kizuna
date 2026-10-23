@@ -321,6 +321,17 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const producerRef = useRef<Producer | null>(null)
   const consumersRef = useRef<Map<string, Consumer>>(new Map())
   const audioElemsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
+  // Muted elements that consume each remote track directly. Chromium (and the
+  // Android WebView) only pulls a remote WebRTC track's audio into WebAudio
+  // while a media element is also playing that track; without one the
+  // per-peer GainNode graph below receives silence.
+  const trackSinkElemsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
+  // Every socket handler a join registers, so the next join, a rejoin and a
+  // leave can remove exactly those — not every handler for the event, and not
+  // leave stale ones stacked up after an auto-rejoin.
+  const voiceListenersRef = useRef<
+    { socket: Socket; event: string; handler: (...args: unknown[]) => void }[]
+  >([])
   // Per-peer playback gain on the browser path. HTMLMediaElement.volume is
   // capped at 1.0 by spec, so the master and per-peer sliders (which go to
   // 200%) can only be honoured through WebAudio.
@@ -389,8 +400,40 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const clearDMCall = useCallStore((s) => s.clearDMCall)
   const dmCallChannelId = useCallStore((s) => s.dmCallChannelId)
 
+  /** Register a socket handler that belongs to the current call. */
+  const onVoice = useCallback(
+    <A extends unknown[]>(socket: Socket, event: string, handler: (...args: A) => void) => {
+      socket.on(event, handler)
+      voiceListenersRef.current.push({
+        socket,
+        event,
+        handler: handler as unknown as (...args: unknown[]) => void,
+      })
+    },
+    [],
+  )
+
+  /** Remove every handler registered through `onVoice`. Idempotent. */
+  const detachVoiceListeners = useCallback(() => {
+    for (const { socket, event, handler } of voiceListenersRef.current) {
+      socket.off(event, handler)
+    }
+    voiceListenersRef.current = []
+  }, [])
+
+  /** Stop and forget a peer's track-sink element, if it has one. */
+  const releaseTrackSink = useCallback((peerId: string) => {
+    const el = trackSinkElemsRef.current.get(peerId)
+    if (el) {
+      el.pause()
+      el.srcObject = null
+    }
+    trackSinkElemsRef.current.delete(peerId)
+  }, [])
+
   const cleanupVoice = useCallback(() => {
     vlog('cleanup', 'starting')
+    detachVoiceListeners()
     pttCleanupRef.current?.()
     pttCleanupRef.current = null
     pttPressedRef.current = false
@@ -433,6 +476,11 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       el.srcObject = null
     })
     audioElemsRef.current.clear()
+    trackSinkElemsRef.current.forEach((el) => {
+      el.pause()
+      el.srcObject = null
+    })
+    trackSinkElemsRef.current.clear()
     peerGainNodesRef.current.forEach((node) => node.disconnect())
     peerGainNodesRef.current.clear()
     sendTransportRef.current?.close()
@@ -464,6 +512,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setLocalConnectionQuality,
     clearScreenSharePeer,
     clearPeerCameraStreams,
+    detachVoiceListeners,
   ])
 
   /**
@@ -560,6 +609,17 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       }
       if (!routed) {
         audioEl.srcObject = new MediaStream([consumer.track])
+      } else {
+        // Chromium/Android WebView feed a remote track into WebAudio only while
+        // a media element is consuming it too, so the GainNode graph above
+        // would otherwise play silence. A muted element is enough to keep the
+        // track flowing; audible output still comes from `audioEl`.
+        releaseTrackSink(peerId)
+        const sinkEl = new Audio()
+        sinkEl.muted = true
+        sinkEl.srcObject = new MediaStream([consumer.track])
+        trackSinkElemsRef.current.set(peerId, sinkEl)
+        sinkEl.play().catch((e) => vlog('consume', `track sink play() failed: ${String(e)}`))
       }
       audioElemsRef.current.set(peerId, audioEl)
       applyOutputVolumes()
@@ -603,7 +663,7 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       const peerQInt = setInterval(pollPeerQuality, QUALITY_POLL_MS)
       peerQualityIntervalsRef.current.set(peerId, peerQInt)
     },
-    [audioOutputDeviceId, updateVoicePeer, applyOutputVolumes],
+    [audioOutputDeviceId, updateVoicePeer, applyOutputVolumes, releaseTrackSink],
   )
 
   const consumeScreenShare = useCallback(
@@ -740,7 +800,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
   const nativeVoiceUnlistenRef = useRef<(() => void) | null>(null)
   const nativeSpeakingUnlistenRef = useRef<(() => void) | null>(null)
   const nativeInitializedRef = useRef(false)
-  const nativePeerHandlersRef = useRef<boolean>(false)
 
   /**
    * The single source of truth for whether the mic is transmitting. Mute and
@@ -957,10 +1016,13 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
 
       const { invoke } = await import('@tauri-apps/api/core')
 
-      // Set up chat socket peer event handlers
-      if (socket && !nativePeerHandlersRef.current) {
-        nativePeerHandlersRef.current = true
-        socket.on(
+      // Set up chat socket peer event handlers. cleanupVoice() above already
+      // detached the previous call's handlers, so a rejoin registers exactly
+      // one of each.
+      detachVoiceListeners()
+      if (socket) {
+        onVoice(
+          socket,
           'voice:newPeer',
           async (peer: { peerId: string; userId: string; username: string }) => {
             vlog('nativePeer', `voice:newPeer peerId=${peer.peerId}`)
@@ -1012,22 +1074,24 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
             }
           },
         )
-        socket.on('voice:peerLeft', ({ peerId }: { peerId: string }) => {
+        onVoice(socket, 'voice:peerLeft', ({ peerId }: { peerId: string }) => {
           removeVoicePeer(peerId)
           invoke('voice_remove_peer', { peerId }).catch((err) => {
             console.error('Failed to remove voice peer (socket handler):', err)
           })
         })
-        socket.on(
+        onVoice(
+          socket,
           'voice:peerSpeaking',
           ({ peerId, speaking }: { peerId: string; speaking: boolean }) => {
             updateVoicePeer(peerId, { speaking })
           },
         )
-        socket.on('voice:mute', ({ peerId, muted }: { peerId: string; muted: boolean }) => {
+        onVoice(socket, 'voice:mute', ({ peerId, muted }: { peerId: string; muted: boolean }) => {
           updateVoicePeer(peerId, { muted })
         })
-        socket.on(
+        onVoice(
+          socket,
           'server:voiceBitrateChanged',
           ({ voiceBitrateKbps: newKbps }: { voiceBitrateKbps: number }) => {
             vlog('bitrate', `server:voiceBitrateChanged -> ${newKbps} kbps`)
@@ -1062,34 +1126,70 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         // Enable Socket.IO RTP forwarding as fallback for broken recv DTLS.
         // Framing 2 prefixes each payload with the RTP sequence number and
         // timestamp, which the native jitter buffer needs to reorder packets,
-        // drive Opus inband FEC, and tell a DTX pause from real loss. Servers
-        // that predate it never ack, so fall back to bare payloads.
-        const framing = await new Promise<number>((resolve) => {
-          const timer = setTimeout(() => resolve(1), 2000)
-          socket!.emit('voice:enableSocketRtp', { framing: 2 }, (res?: { framing?: number }) => {
-            clearTimeout(timer)
-            resolve(res?.framing === 2 ? 2 : 1)
-          })
-        })
-        vlog('joinVoiceNative', `enabled socket RTP forwarding (framing=${framing})`)
-        if (framing < 2) {
-          vlog('joinVoiceNative', 'server predates RTP seq forwarding — FEC/reordering disabled')
-        }
+        // drive Opus inband FEC, and tell a DTX pause from real loss.
+        //
+        // The framing is whatever the server's ack says, never a guess: the
+        // old code assumed framing 1 after a 2s timeout while the server had
+        // already switched to 2, and fed headers to the decoder as audio.
+        // Packets that arrive before the ack are dropped. A missing ack is
+        // retried once; only a server that ignores both requests (one that
+        // predates framing entirely, and so only ever sends bare payloads) is
+        // taken to be framing 1. A late ack still wins whenever it lands.
+        const rtp: { framing: number | null } = { framing: null }
 
         // Hoisted out of the packet handler: this fires ~50x/sec per peer, and
         // the payload goes over IPC as a raw body rather than a JSON number array.
         const { invoke: injectInvoke } = await import('@tauri-apps/api/core')
-        const injectHeaders: Record<string, Record<string, string>> = {}
-        socket?.on('voice:socketRtp', (payload: ArrayBuffer, peerId: string) => {
-          let headers = injectHeaders[peerId]
+        const injectHeaders = new Map<string, Record<string, string>>()
+        onVoice(socket!, 'voice:socketRtp', (payload: ArrayBuffer, peerId: string) => {
+          const framing = rtp.framing
+          if (framing === null) return
+          const key = `${framing}:${peerId}`
+          let headers = injectHeaders.get(key)
           if (!headers) {
             headers = { 'x-peer-id': peerId, 'x-framing': String(framing) }
-            injectHeaders[peerId] = headers
+            injectHeaders.set(key, headers)
           }
           injectInvoke('voice_inject_opus', payload, { headers }).catch((err) => {
             console.error('Failed to inject opus data:', err)
           })
         })
+
+        const framing = await new Promise<number>((resolve) => {
+          const ACK_TIMEOUT_MS = 2500
+          let attempts = 0
+          let timer: ReturnType<typeof setTimeout> | null = null
+          const onAck = (res?: { framing?: number }) => {
+            if (timer) clearTimeout(timer)
+            timer = null
+            const acked = res?.framing === 2 ? 2 : 1
+            if (rtp.framing !== null && rtp.framing !== acked) {
+              vlog('joinVoiceNative', `late socket RTP ack: switching to framing ${acked}`)
+            }
+            rtp.framing = acked
+            resolve(acked)
+          }
+          const request = () => {
+            attempts++
+            socket!.emit('voice:enableSocketRtp', { framing: 2, supported: [1, 2] }, onAck)
+            timer = setTimeout(() => {
+              if (rtp.framing !== null) return
+              if (attempts < 2) {
+                vlog('joinVoiceNative', 'socket RTP ack timed out, retrying once')
+                request()
+              } else {
+                vlog('joinVoiceNative', 'server never acked socket RTP — assuming bare payloads')
+                rtp.framing = 1
+                resolve(1)
+              }
+            }, ACK_TIMEOUT_MS)
+          }
+          request()
+        })
+        vlog('joinVoiceNative', `enabled socket RTP forwarding (framing=${framing})`)
+        if (framing < 2) {
+          vlog('joinVoiceNative', 'server predates RTP seq forwarding — FEC/reordering disabled')
+        }
 
         const iceServers = joinResult.iceServers || []
         const voiceBitrateKbps = joinResult.voiceBitrateKbps ?? 64
@@ -1173,7 +1273,14 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         // RNNoise runs at full strength (a dry/wet blend would comb-filter the
         // voice — see voice/rnnoise.rs). suppressionStrength only affects the
         // legacy spectral suppressor, which the desktop path no longer selects.
+        // Capture starts inside voice_finish_join, so the mute state has to go
+        // in with it: applying it afterwards (armInputMode, below) let the
+        // first moments of open mic reach the channel even when muted or on
+        // push-to-talk.
+        const { isMuted: joinMuted, voiceInputMode: joinMode } = useVoiceStore.getState()
+        const startMuted = joinMuted || joinMode === 'push-to-talk'
         await invoke('voice_finish_join', {
+          muted: startMuted,
           voiceBitrateKbps,
           gateEnabled: noiseGateEnabled,
           gateThresholdDb: gateDb,
@@ -1275,10 +1382,15 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
       inputVolume,
       armInputMode,
       applyOutputVolumes,
+      onVoice,
+      detachVoiceListeners,
     ],
   )
 
   const leaveVoiceNative = useCallback(async () => {
+    // Stop handling this call's socket events (including forwarded RTP) before
+    // the native side is torn down.
+    detachVoiceListeners()
     try {
       const { invoke } = await import('@tauri-apps/api/core')
       await invoke('voice_leave')
@@ -1288,15 +1400,6 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     const socket = socketRef.current
     if (socket) {
       socket.emit('voice:leave', { channelId: channelIdRef.current })
-    }
-    // Clean up chat socket peer handlers
-    if (socket && nativePeerHandlersRef.current) {
-      socket.off('voice:newPeer')
-      socket.off('voice:peerLeft')
-      socket.off('voice:peerSpeaking')
-      socket.off('voice:mute')
-      socket.off('voice:socketRtp')
-      nativePeerHandlersRef.current = false
     }
     nativeVoiceUnlistenRef.current?.()
     nativeVoiceUnlistenRef.current = null
@@ -1308,7 +1411,14 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
     setLocalConnectionQuality(null)
     setLiveAudioLevel(0)
     clearScreenSharePeer()
-  }, [setVoicePeers, setIsSpeaking, setLocalConnectionQuality, clearScreenSharePeer, socketRef])
+  }, [
+    setVoicePeers,
+    setIsSpeaking,
+    setLocalConnectionQuality,
+    clearScreenSharePeer,
+    socketRef,
+    detachVoiceListeners,
+  ])
 
   const joinVoiceInternal = useCallback(
     async (channelId: string): Promise<string | null> => {
@@ -1328,7 +1438,10 @@ export function useVoice(socketRef: React.MutableRefObject<Socket | null>) {
         return err
       }
 
+      // cleanupVoice also detaches the previous call's socket handlers, so an
+      // auto-rejoin does not stack a second copy of each.
       cleanupVoice()
+      detachVoiceListeners()
       channelIdRef.current = channelId
       setVoiceError(null)
 
@@ -1499,7 +1612,8 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         setVoiceError(iceWarning)
       }, 12000)
 
-      socket.on(
+      onVoice(
+        socket,
         'voice:newPeer',
         async (peer: { peerId: string; userId: string; username: string }) => {
           vlog('peer', `voice:newPeer peerId=${peer.peerId} userId=${peer.userId}`)
@@ -1521,7 +1635,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         },
       )
 
-      socket.on('voice:peerLeft', ({ peerId }: { peerId: string }) => {
+      onVoice(socket, 'voice:peerLeft', ({ peerId }: { peerId: string }) => {
         vlog('peer', `voice:peerLeft peerId=${peerId}`)
 
         consumersRef.current.get(peerId)?.close()
@@ -1532,6 +1646,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
           leavingEl.srcObject = null
         }
         audioElemsRef.current.delete(peerId)
+        releaseTrackSink(peerId)
         peerGainNodesRef.current.get(peerId)?.disconnect()
         peerGainNodesRef.current.delete(peerId)
         remoteSpeakingCleanupsRef.current.get(peerId)?.()
@@ -1543,18 +1658,20 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         removeVoicePeer(peerId)
       })
 
-      socket.on(
+      onVoice(
+        socket,
         'voice:peerSpeaking',
         ({ peerId, speaking }: { peerId: string; speaking: boolean }) => {
           updateVoicePeer(peerId, { speaking })
         },
       )
 
-      socket.on('voice:mute', ({ peerId, muted }: { peerId: string; muted: boolean }) => {
+      onVoice(socket, 'voice:mute', ({ peerId, muted }: { peerId: string; muted: boolean }) => {
         updateVoicePeer(peerId, { muted })
       })
 
-      socket.on(
+      onVoice(
+        socket,
         'screen:peerStarted',
         async (data: { peerId: string; userId: string; username: string }) => {
           await consumeScreenShare(
@@ -1568,22 +1685,23 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
         },
       )
 
-      socket.on('screen:peerStopped', () => {
+      onVoice(socket, 'screen:peerStopped', () => {
         stopScreenConsume()
       })
 
-      socket.on(
+      onVoice(
+        socket,
         'camera:peerStarted',
         async (data: { peerId: string; userId: string; username: string }) => {
           await consumeCamera(socket, device, recvTransport, data.peerId, channelId)
         },
       )
 
-      socket.on('camera:peerStopped', ({ peerId }: { peerId: string }) => {
+      onVoice(socket, 'camera:peerStopped', ({ peerId }: { peerId: string }) => {
         stopCameraConsume(peerId)
       })
 
-      socket.on('voice:consumerClosed', ({ consumerId }: { consumerId: string }) => {
+      onVoice(socket, 'voice:consumerClosed', ({ consumerId }: { consumerId: string }) => {
         if (videoConsumerRef.current?.id === consumerId) {
           stopScreenConsume()
         }
@@ -1626,7 +1744,8 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       serverBitrateRef.current = voiceBitrateKbps
       setServerVoiceBitrateKbps(voiceBitrateKbps)
 
-      socket.on(
+      onVoice(
+        socket,
         'server:voiceBitrateChanged',
         ({ voiceBitrateKbps: newKbps }: { voiceBitrateKbps: number }) => {
           vlog('bitrate', `server:voiceBitrateChanged -> ${newKbps} kbps`)
@@ -1723,6 +1842,9 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       noiseGateThreshold,
       noiseSuppressionStrength,
       inputVolume,
+      onVoice,
+      detachVoiceListeners,
+      releaseTrackSink,
     ],
   )
 
@@ -1958,17 +2080,11 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
       return
     }
     const socket = socketRef.current
+    // Removes exactly the handlers this call registered (cleanupVoice does it
+    // too; explicit here because leaving must never keep them).
+    detachVoiceListeners()
     cleanupVoice()
     if (socket) {
-      socket.off('voice:newPeer')
-      socket.off('voice:peerLeft')
-      socket.off('voice:peerSpeaking')
-      socket.off('voice:mute')
-      socket.off('screen:peerStarted')
-      socket.off('screen:peerStopped')
-      socket.off('camera:peerStarted')
-      socket.off('camera:peerStopped')
-      socket.off('voice:consumerClosed')
       stopScreenConsume()
       if (channelId?.startsWith('dm:')) {
         socket.emit('dm:call:end', { dmChannelId: channelId.slice(3) })
@@ -1991,6 +2107,7 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     clearDMCall,
     setVoiceReconnecting,
     setVoiceConnectingChannelId,
+    detachVoiceListeners,
   ])
 
   /**
@@ -2162,9 +2279,9 @@ Ensure PUBLIC_ADDRESS in the server .env is set to the server's actual public IP
     if (!channelIdRef.current) return
     const deviceId = useVoiceStore.getState().audioOutputDeviceId
     if (isTauri() && !isMobileTauri()) {
-      if (!deviceId) return
+      // An empty id means "system default"; the native side re-opens on it.
       const { invoke } = await import('@tauri-apps/api/core')
-      await invoke('voice_set_output_device', { deviceId }).catch((err) =>
+      await invoke('voice_set_output_device', { deviceId: deviceId ?? '' }).catch((err) =>
         verr('settings', 'voice_set_output_device failed', err),
       )
       return

@@ -10,6 +10,10 @@ interface ShowNotificationOptions {
   title: string
   body: string
   channelId?: string
+  /** Server the event came from. Defaults to the active server; background
+   * sockets pass their own so mutes and notification levels are looked up
+   * against the right server. */
+  serverId?: string
 }
 
 let audioCtx: AudioContext | null = null
@@ -81,8 +85,10 @@ function sendOSNotification(title: string, body: string, tag: string) {
 
 export function showNotification(opts: ShowNotificationOptions) {
   if (opts.channelId && opts.type !== 'announce' && opts.type !== 'dmcall') {
-    const mutes = useChatStore.getState().channelMutes
-    const mute = mutes[opts.channelId]
+    const serverId = opts.serverId ?? useServerStore.getState().activeSession?.serverId
+    const mute = serverId
+      ? useChatStore.getState().channelMutes[serverId]?.[opts.channelId]
+      : undefined
     if (mute !== undefined) {
       if (mute === null) return
       if (typeof mute === 'number' && mute > Date.now()) return
@@ -92,7 +98,6 @@ export function showNotification(opts: ShowNotificationOptions) {
     const override = overrides[opts.channelId]
     if (override === 'none') return
 
-    const serverId = useServerStore.getState().activeSession?.serverId
     if (serverId) {
       const notif = useSettingsStore.getState().notificationSettings[serverId]
       const effectiveLevel = (override ?? notif?.level ?? 'all') as NotificationLevel

@@ -45,7 +45,7 @@ export async function processImage(
   }
 
   if (ext === GIF_EXT) {
-    const pipeline = sharp(buffer, { animated: true }).gif({ colours: 512 })
+    const pipeline = sharp(buffer, { animated: true }).gif({ colours: 256 })
     const output = Buffer.from(await pipeline.toBuffer())
 
     let width = 0

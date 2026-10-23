@@ -61,3 +61,4 @@ ZIP memory-exhaustion advisory directly reachable.
 - Use a firewall to restrict access to the mediasoup port range
 - Back up your `data/` and `uploads/` directories regularly
 - Run the server behind a reverse proxy (Caddy is pre-configured)
+- Set `TRUST_PROXY=true` only when such a proxy sits in front and overwrites `X-Forwarded-For` (the compose file does this for Caddy). If the server is reachable directly, leave it `false`, or clients can spoof their IP to get around rate limits

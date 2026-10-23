@@ -58,9 +58,9 @@ Screen capture requires the app to be granted screen recording permission in Sys
 
 ## Server Requirements
 
-| Resource | Minimum                               |
-| -------- | ------------------------------------- |
-| CPU      | 2 cores                               |
-| RAM      | 512 MB                                |
-| Storage  | 1 GB (grows with uploaded files)      |
-| Network  | UDP ports 40000-40099 open for WebRTC |
+| Resource | Minimum                                                    |
+| -------- | ---------------------------------------------------------- |
+| CPU      | 2 cores                                                    |
+| RAM      | 512 MB                                                     |
+| Storage  | 1 GB (grows with uploaded files)                           |
+| Network  | Ports 40000-40099 open for WebRTC (UDP, plus TCP fallback) |

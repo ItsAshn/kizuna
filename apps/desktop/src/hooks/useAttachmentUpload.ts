@@ -5,16 +5,24 @@ import { uploadAttachment } from '@kizuna/shared'
 import type { Message } from '@kizuna/shared'
 import { useChatStore } from '../store/chatStore'
 import { useNotificationStore } from '../store/notificationStore'
+import { showErrorToast } from '../utils/showNotification'
 import type { ServerSession } from '../store/serverStore'
+
+/** A conversation a message is addressed to, bound when the action starts. */
+export interface ConversationTarget {
+  id: string
+  type: 'channel' | 'dm' | 'group-dm'
+}
 
 interface UseAttachmentUploadOptions {
   session: ServerSession | null
-  activeAnyChannelId: string | null
   atBottom: boolean
   input: string
   setInput: (value: string) => void
   setSendError: (err: string | null) => void
-  sendToActiveChannel: (
+  activeConversation: ConversationTarget | null
+  sendToConversation: (
+    target: ConversationTarget,
     plain: string,
     attIds?: string[],
     replyToId?: string,
@@ -29,12 +37,12 @@ interface UseAttachmentUploadOptions {
 // upload progress/cancel, and voice-recording uploads.
 export function useAttachmentUpload({
   session,
-  activeAnyChannelId,
   atBottom,
   input,
   setInput,
   setSendError,
-  sendToActiveChannel,
+  activeConversation,
+  sendToConversation,
   addMessage,
   virtuosoRef,
   lastCountAtBottom,
@@ -91,11 +99,15 @@ export function useAttachmentUpload({
     setPendingAttachmentId(null)
   }
 
-  const handleUpload = async () => {
-    if (!pendingFile || !session) return
+  /** Uploads the pending file and sends it. Resolves true once the message
+   * was sent, so the caller can clear UI tied to it (the reply bar). */
+  const handleUpload = async (replyToId?: string): Promise<boolean> => {
+    if (!pendingFile || !session) return false
 
-    const targetChannelId = activeAnyChannelId
-    if (!targetChannelId) return
+    const target = activeConversation
+    if (!target) return false
+    const targetChannelId = target.id
+    let sent = false
 
     setUploading(true)
     setUploadProgress(0)
@@ -117,11 +129,12 @@ export function useAttachmentUpload({
       const text = input.trim()
       const finalText = text ? text + '\n' + attachmentText : attachmentText
 
-      const message = await sendToActiveChannel(finalText, [result.id])
+      const message = await sendToConversation(target, finalText, [result.id], replyToId)
       if (!message) {
         setUploading(false)
-        return
+        return false
       }
+      sent = true
       addMessage(message.channel_id || targetChannelId, message)
       setInput('')
       if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
@@ -159,12 +172,15 @@ export function useAttachmentUpload({
     }
     uploadAbortRef.current = null
     setUploading(false)
+    return sent
   }
 
+  /** `target` is the conversation the recording was started in, bound by the
+   * caller at record start. */
   const handleVoiceRecordingComplete = useCallback(
-    async (file: File) => {
-      const targetChannelId = activeAnyChannelId
-      if (!targetChannelId || !session) return
+    async (file: File, target: ConversationTarget) => {
+      const targetChannelId = target.id
+      if (!session) return
       setPendingFile(file)
       setUploading(true)
       setUploadProgress(0)
@@ -178,27 +194,33 @@ export function useAttachmentUpload({
           (pct) => setUploadProgress(pct),
           abortController.signal,
         )
-        // Read the composer at stop time, not at record-start time.
-        const msgText = (inputRef.current?.value ?? '').trim()
+        // Read the composer at stop time, not at record-start time — but only
+        // if it still belongs to the recording's conversation.
+        const st = useChatStore.getState()
+        const stillHere =
+          (st.activeChannelId || st.activeDMChannelId || st.activeGroupDMChannelId) ===
+          targetChannelId
+        const msgText = stillHere ? (inputRef.current?.value ?? '').trim() : ''
         const attachmentText = msgText
           ? `${msgText}\n![voice-message.webm](${result.url})`
           : `![voice-message.webm](${result.url})`
 
-        const message = await sendToActiveChannel(attachmentText, [result.id])
+        const message = await sendToConversation(target, attachmentText, [result.id])
         if (message) {
           addMessage(targetChannelId, message)
-          setInput('')
+          if (stillHere && msgText) setInput('')
         }
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           console.error('Failed to send voice message:', err)
+          showErrorToast('send the voice message')
         }
       }
       uploadAbortRef.current = null
       setUploading(false)
       setPendingFile(null)
     },
-    [activeAnyChannelId, session, sendToActiveChannel, addMessage],
+    [session, sendToConversation, addMessage, inputRef, setInput],
   )
 
   const handleDragOver = (e: React.DragEvent) => {

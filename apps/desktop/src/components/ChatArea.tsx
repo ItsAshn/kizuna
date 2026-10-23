@@ -57,6 +57,7 @@ import { useVoiceRecorder } from '../hooks/useVoiceRecorder'
 import { useChatCrypto } from '../hooks/useChatCrypto'
 import { useChannelMessages } from '../hooks/useChannelMessages'
 import { useAttachmentUpload } from '../hooks/useAttachmentUpload'
+import type { ConversationTarget } from '../hooks/useAttachmentUpload'
 import { useFormattingToolbar } from '../hooks/useFormattingToolbar'
 import { useNotificationStore } from '../store/notificationStore'
 import MessageBubble from './MessageBubble'
@@ -154,6 +155,56 @@ function formatDateSeparator(date: Date): string {
 
 const EMPTY_MSGS: Message[] = []
 
+/** Live list state handed to Virtuoso's Header/Footer through `context`. The
+ * components themselves are module-level so their identity is stable: inline
+ * arrow components were new types on every render, so Virtuoso remounted the
+ * header and footer (and re-measured the list) on each keystroke. */
+interface MessageListContext {
+  hasMore: boolean
+  loadingMore: boolean
+  loadError: string | null
+  onRetryLoadMore: () => void
+  typingText: string
+}
+
+function MessageListHeader({ context }: { context: MessageListContext }) {
+  const { hasMore, loadingMore, loadError, onRetryLoadMore } = context
+  if (!hasMore && !loadingMore && !loadError) return null
+  return (
+    <div className="chat-area__load-more">
+      <div
+        className={`chat-area__load-more-spinner${loadingMore ? ' chat-area__load-more-spinner--active' : ''}`}
+      >
+        <span className="chat-area__load-more-spinner-icon" />
+        <span>Loading older messages...</span>
+      </div>
+      <button
+        className={`chat-area__load-more-retry${loadError ? ' chat-area__load-more-retry--visible' : ''}`}
+        onClick={onRetryLoadMore}
+        tabIndex={loadError ? 0 : -1}
+      >
+        {loadError || ' '}
+      </button>
+    </div>
+  )
+}
+
+function MessageListFooter({ context }: { context: MessageListContext }) {
+  if (!context.typingText) return null
+  return (
+    <div className="chat-area__typing">
+      {context.typingText}
+      <span className="chat-area__typing-dots">
+        <span className="chat-area__typing-dot" />
+        <span className="chat-area__typing-dot" />
+        <span className="chat-area__typing-dot" />
+      </span>
+    </div>
+  )
+}
+
+const VIRTUOSO_COMPONENTS = { Header: MessageListHeader, Footer: MessageListFooter }
+
 export default function ChatArea({
   socketRef,
   onStartDMCall,
@@ -244,6 +295,10 @@ export default function ChatArea({
   const [atBottom, setAtBottom] = useState(true)
   const lastCountAtBottom = useRef(0)
   const prevChannelKeyRef = useRef<string | null>(null)
+  // Mirrors of the voice recorder's state for the channel-switch effect, which
+  // runs above the hook that owns them.
+  const recordingRef = useRef(false)
+  const stopRecordingRef = useRef<(send: boolean) => void>(() => {})
   const [lightboxImages, setLightboxImages] = useState<{ url: string; filename: string }[] | null>(
     null,
   )
@@ -258,37 +313,40 @@ export default function ChatArea({
   const haptics = useHaptics()
   const { tryDecryptDM, tryDecryptGroupDM, encryptOutgoing } = useChatCrypto(session)
 
-  const sendToActiveChannel = useCallback(
-    async (plain: string, attIds?: string[], replyToId?: string): Promise<Message | null> => {
+  const activeConversation = useMemo<ConversationTarget | null>(
+    () =>
+      activeChannelId
+        ? { id: activeChannelId, type: 'channel' }
+        : activeDMChannelId
+          ? { id: activeDMChannelId, type: 'dm' }
+          : activeGroupDMChannelId
+            ? { id: activeGroupDMChannelId, type: 'group-dm' }
+            : null,
+    [activeChannelId, activeDMChannelId, activeGroupDMChannelId],
+  )
+
+  /* Sends to an explicit conversation rather than "whatever is active now", so
+   * a slow upload or a voice note finishing after a channel switch still lands
+   * where it was started. */
+  const sendToConversation = useCallback(
+    async (
+      target: ConversationTarget,
+      plain: string,
+      attIds?: string[],
+      replyToId?: string,
+    ): Promise<Message | null> => {
       if (!session) return null
-      if (activeChannelId) {
-        return sendMessage(session.url, activeChannelId, plain, attIds, replyToId)
+      if (target.type === 'channel') {
+        return sendMessage(session.url, target.id, plain, attIds, replyToId)
       }
-      if (activeDMChannelId) {
-        const { content, encrypted } = await encryptOutgoing(plain)
-        const message = await sendDMMessage(
-          session.url,
-          activeDMChannelId,
-          content,
-          encrypted,
-          attIds,
-        )
-        return encrypted ? { ...message, content: plain } : message
-      }
-      if (activeGroupDMChannelId) {
-        const { content, encrypted } = await encryptOutgoing(plain)
-        const message = await sendGroupDMMessage(
-          session.url,
-          activeGroupDMChannelId,
-          content,
-          encrypted,
-          attIds,
-        )
-        return encrypted ? { ...message, content: plain } : message
-      }
-      return null
+      const { content, encrypted } = await encryptOutgoing(plain, target)
+      const message =
+        target.type === 'dm'
+          ? await sendDMMessage(session.url, target.id, content, encrypted, attIds)
+          : await sendGroupDMMessage(session.url, target.id, content, encrypted, attIds)
+      return encrypted ? { ...message, content: plain } : message
     },
-    [session, activeChannelId, activeDMChannelId, activeGroupDMChannelId, encryptOutgoing],
+    [session, encryptOutgoing],
   )
 
   const {
@@ -321,12 +379,12 @@ export default function ChatArea({
     handleDrop,
   } = useAttachmentUpload({
     session,
-    activeAnyChannelId,
     atBottom,
     input,
     setInput,
     setSendError,
-    sendToActiveChannel,
+    activeConversation,
+    sendToConversation,
     addMessage,
     virtuosoRef,
     lastCountAtBottom,
@@ -392,6 +450,9 @@ export default function ChatArea({
       setReplyTo(null)
       setSelectedMessages(new Set())
       clearPendingFile()
+      // A voice note belongs to the conversation it was started in; leaving
+      // discards it rather than sending it somewhere the user isn't looking.
+      if (recordingRef.current) stopRecordingRef.current(false)
       if (prevKey !== null) {
         const currentInput = inputRef.current?.value ?? ''
         useChatStore.getState().setChannelDraft(prevKey, currentInput)
@@ -498,7 +559,8 @@ export default function ChatArea({
     if ((!input.trim() && !pendingFile) || !session) return
 
     if (pendingFile) {
-      await handleUpload()
+      const sent = await handleUpload(replyTo?.messageId)
+      if (sent) setReplyTo(null)
       return
     }
 
@@ -584,8 +646,10 @@ export default function ChatArea({
     setSendError(null)
     if (inputRef.current) inputRef.current.style.height = 'auto'
 
+    const target = activeConversation
+    if (!target) return
     try {
-      const message = await sendToActiveChannel(outgoing, attIds, replyToId)
+      const message = await sendToConversation(target, outgoing, attIds, replyToId)
       if (!message) return
       setPendingAttachmentId(null)
       addMessage(message.channel_id || channelId, message)
@@ -603,7 +667,15 @@ export default function ChatArea({
         lastCountAtBottom.current = msgs.length
       })
     } catch (err: unknown) {
-      // Restore the message so a failed send doesn't lose it.
+      // Restore the message so a failed send doesn't lose it — but only into
+      // the conversation it was written for. If the user has moved on, park it
+      // as that conversation's draft instead of dropping it into another one.
+      const s = useChatStore.getState()
+      const nowActive = s.activeChannelId || s.activeDMChannelId || s.activeGroupDMChannelId
+      if (nowActive !== channelId) {
+        if (!s.channelDrafts[channelId]) s.setChannelDraft(channelId, rawInput)
+        return
+      }
       setInput(rawInput)
       requestAnimationFrame(() => {
         if (inputRef.current) {
@@ -684,9 +756,24 @@ export default function ChatArea({
     })
   }, [])
 
+  // The conversation a voice note is recorded for, captured when recording
+  // starts. The recorder's stop event is async, so reading "the active
+  // channel" at completion could send it somewhere else.
+  const recordingTargetRef = useRef<ConversationTarget | null>(null)
   const { recording, recordingTime, startRecording, stopRecording } = useVoiceRecorder(
-    handleVoiceRecordingComplete,
+    (file: File) => {
+      const target = recordingTargetRef.current
+      recordingTargetRef.current = null
+      if (target) handleVoiceRecordingComplete(file, target)
+    },
   )
+  const beginRecording = useCallback(() => {
+    if (!activeConversation) return
+    recordingTargetRef.current = activeConversation
+    startRecording()
+  }, [activeConversation, startRecording])
+  recordingRef.current = recording
+  stopRecordingRef.current = stopRecording
 
   const handleEditMessage = useCallback(
     async (messageId: string, content: string) => {
@@ -860,6 +947,24 @@ export default function ChatArea({
       : typingList.length > 1
         ? `${typingList.length} people are typing...`
         : ''
+  const listChId = activeAnyChannelId || ''
+  const listContext = useMemo<MessageListContext>(
+    () => ({
+      hasMore: !!hasMoreMessages[listChId],
+      loadingMore: !!loadingMoreMessages[listChId],
+      loadError: loadMoreErrors[listChId] ?? null,
+      onRetryLoadMore: retryLoadMoreMessages,
+      typingText,
+    }),
+    [
+      listChId,
+      hasMoreMessages,
+      loadingMoreMessages,
+      loadMoreErrors,
+      retryLoadMoreMessages,
+      typingText,
+    ],
+  )
   const dmHasKey = activeDMChannelId ? !!(activeDM?.other_public_key && getSecretKey()) : false
   const composerTarget = activeDMChannelId
     ? `@${activeDM?.other_display_name ?? 'user'}`
@@ -1030,6 +1135,9 @@ export default function ChatArea({
       canDeleteAny,
       activeChannelId,
       activeDMChannelId,
+      selectedMessages,
+      toggleMessageSelection,
+      newMessagesRef,
       setReplyTo,
       handleDeleteMessage,
       handleEditMessage,
@@ -1292,7 +1400,7 @@ export default function ChatArea({
             <p className="chat-area__loading">No messages yet. Be the first to send one!</p>
           )}
           {!loading && displayMessages.length > 0 && (
-            <Virtuoso
+            <Virtuoso<Message, MessageListContext>
               key={activeAnyChannelId}
               ref={virtuosoRef}
               data={displayMessages}
@@ -1320,43 +1428,8 @@ export default function ChatArea({
                * header, matching how every other chat client behaves. */
               alignToBottom
               style={{ flex: 1 }}
-              components={{
-                Header: () => {
-                  const chId = activeAnyChannelId || ''
-                  const loadingMore = loadingMoreMessages[chId]
-                  const loadError = loadMoreErrors[chId]
-                  const hasMore = hasMoreMessages[chId]
-                  if (!hasMore && !loadingMore && !loadError) return null
-                  return (
-                    <div className="chat-area__load-more">
-                      <div
-                        className={`chat-area__load-more-spinner${loadingMore ? ' chat-area__load-more-spinner--active' : ''}`}
-                      >
-                        <span className="chat-area__load-more-spinner-icon" />
-                        <span>Loading older messages...</span>
-                      </div>
-                      <button
-                        className={`chat-area__load-more-retry${loadError ? ' chat-area__load-more-retry--visible' : ''}`}
-                        onClick={retryLoadMoreMessages}
-                        tabIndex={loadError ? 0 : -1}
-                      >
-                        {loadError || ' '}
-                      </button>
-                    </div>
-                  )
-                },
-                Footer: () =>
-                  typingText ? (
-                    <div className="chat-area__typing">
-                      {typingText}
-                      <span className="chat-area__typing-dots">
-                        <span className="chat-area__typing-dot" />
-                        <span className="chat-area__typing-dot" />
-                        <span className="chat-area__typing-dot" />
-                      </span>
-                    </div>
-                  ) : null,
-              }}
+              context={listContext}
+              components={VIRTUOSO_COMPONENTS}
             />
           )}
         </div>
@@ -1568,7 +1641,7 @@ export default function ChatArea({
             <>
               <button
                 className={`chat-area__mic-btn${recording ? ' chat-area__mic-btn--recording' : ''}`}
-                onClick={() => (recording ? stopRecording(true) : startRecording())}
+                onClick={() => (recording ? stopRecording(true) : beginRecording())}
                 title={recording ? 'Stop and send' : 'Record voice message'}
                 aria-label={recording ? 'Stop and send voice message' : 'Record voice message'}
                 disabled={cantWrite}

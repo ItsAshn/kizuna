@@ -31,6 +31,8 @@ RUN pnpm --filter @kizuna/server deploy /prod
 
 FROM base AS runtime
 
+ENV NODE_ENV=production
+
 WORKDIR /app
 
 COPY --from=builder /prod /app

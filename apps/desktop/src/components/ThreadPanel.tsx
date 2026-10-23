@@ -1,13 +1,25 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import type { MutableRefObject } from 'react'
+import type { Socket } from 'socket.io-client'
 import { Hash, ArrowLeft, MessageSquare, Inbox, Send, Trash2 } from 'lucide-react'
 import { useChatStore } from '../store/chatStore'
 import { useServerStore } from '../store/serverStore'
-import { fetchThreadMessages, sendThreadMessage, fetchThreads, deleteThread } from '@kizuna/shared'
+import { useSettingsStore } from '../store/settingsStore'
+import {
+  fetchThreadMessages,
+  sendThreadMessage,
+  fetchThreads,
+  deleteThread,
+  editMessage,
+  deleteMessage,
+} from '@kizuna/shared'
+import { showErrorToast } from '../utils/showNotification'
 import MessageBubble from './MessageBubble'
 import './ThreadPanel.css'
 
 interface Props {
   channelId: string
+  socketRef: MutableRefObject<Socket | null>
 }
 
 function formatRelativeTime(ms: number): string {
@@ -33,13 +45,20 @@ function ThreadListView({
   const threads = useChatStore((s) => s.threads[channelId] || [])
   const setThreads = useChatStore((s) => s.setThreads)
   const setThreadPanelVisible = useChatStore((s) => s.setThreadPanelVisible)
+  const reconnectNonce = useSettingsStore((s) => s.socketReconnectNonce)
 
   useEffect(() => {
     if (!session) return
+    let cancelled = false
     fetchThreads(session.url, channelId)
-      .then((ts) => setThreads(channelId, ts))
+      .then((ts) => {
+        if (!cancelled) setThreads(channelId, ts)
+      })
       .catch(console.error)
-  }, [channelId, session, setThreads])
+    return () => {
+      cancelled = true
+    }
+  }, [channelId, session, setThreads, reconnectNonce])
 
   return (
     <div className="thread-panel__list">
@@ -86,7 +105,13 @@ function ThreadListView({
   )
 }
 
-function ThreadDetailView({ channelId }: { channelId: string }) {
+function ThreadDetailView({
+  channelId,
+  socketRef,
+}: {
+  channelId: string
+  socketRef: MutableRefObject<Socket | null>
+}) {
   const session = useServerStore((s) => s.activeSession)
   const activeThreadId = useChatStore((s) => s.activeThreadId)
   const threads = useChatStore((s) => s.threads[channelId] || [])
@@ -103,18 +128,35 @@ function ThreadDetailView({ channelId }: { channelId: string }) {
   const [loading, setLoading] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [sending, setSending] = useState(false)
+  const sendingRef = useRef(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const reconnectNonce = useSettingsStore((s) => s.socketReconnectNonce)
 
   const activeThread = threads.find((t) => t.id === activeThreadId)
 
+  /* Replies are broadcast to the thread's own socket room, so the panel has to
+   * be in it to see anyone else's messages live. Re-runs after a reconnect,
+   * which starts a fresh socket with no rooms, and refetches what was missed. */
   useEffect(() => {
     if (!activeThreadId || !session) return
+    let cancelled = false
+    const socket = socketRef.current
+    socket?.emit('thread:join', activeThreadId)
     setLoading(true)
     fetchThreadMessages(session.url, channelId, activeThreadId)
-      .then(({ messages }) => setThreadMessages(activeThreadId, messages))
+      .then(({ messages }) => {
+        if (!cancelled) setThreadMessages(activeThreadId, messages)
+      })
       .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [activeThreadId, session, channelId, setThreadMessages])
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+      socket?.emit('thread:leave', activeThreadId)
+    }
+  }, [activeThreadId, session, channelId, setThreadMessages, socketRef, reconnectNonce])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -122,14 +164,52 @@ function ThreadDetailView({ channelId }: { channelId: string }) {
 
   const handleSend = useCallback(async () => {
     if (!session || !activeThreadId || !input.trim()) return
+    // Enter repeats faster than a request round-trips; without a lock the
+    // same reply was posted several times.
+    if (sendingRef.current) return
+    sendingRef.current = true
+    setSending(true)
+    const content = input.trim()
     try {
-      const msg = await sendThreadMessage(session.url, channelId, activeThreadId, input.trim())
+      const msg = await sendThreadMessage(session.url, channelId, activeThreadId, content)
       addThreadMessage(activeThreadId, msg)
-      setInput('')
+      setInput((current) => (current.trim() === content ? '' : current))
     } catch (err) {
       console.error('Failed to send thread message:', err)
+      showErrorToast('send the reply')
+    } finally {
+      sendingRef.current = false
+      setSending(false)
     }
   }, [session, activeThreadId, channelId, input, addThreadMessage])
+
+  const handleEditReply = useCallback(
+    async (messageId: string, content: string) => {
+      if (!session) return
+      try {
+        const updated = await editMessage(session.url, messageId, content)
+        useChatStore.getState().updateThreadMessage(messageId, updated)
+      } catch (err) {
+        console.error('Failed to edit thread message:', err)
+        showErrorToast('edit the reply')
+      }
+    },
+    [session],
+  )
+
+  const handleDeleteReply = useCallback(
+    async (messageId: string) => {
+      if (!session) return
+      try {
+        await deleteMessage(session.url, messageId)
+        useChatStore.getState().removeThreadMessage(messageId)
+      } catch (err) {
+        console.error('Failed to delete thread message:', err)
+        showErrorToast('delete the reply')
+      }
+    },
+    [session],
+  )
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -245,9 +325,9 @@ function ThreadDetailView({ channelId }: { channelId: string }) {
             isGrouped={false}
             currentUsername={session?.user.username}
             canDelete={msg.user_id === session?.user.id}
-            onDelete={() => {}}
+            onDelete={handleDeleteReply}
             canEdit={msg.user_id === session?.user.id}
-            onEdit={() => {}}
+            onEdit={handleEditReply}
             serverUrl={session?.url}
           />
         ))}
@@ -267,7 +347,7 @@ function ThreadDetailView({ channelId }: { channelId: string }) {
         <button
           className="thread-panel__send"
           onClick={handleSend}
-          disabled={!input.trim()}
+          disabled={!input.trim() || sending}
           aria-label="Send"
         >
           <Send size={16} />
@@ -277,7 +357,7 @@ function ThreadDetailView({ channelId }: { channelId: string }) {
   )
 }
 
-export default function ThreadPanel({ channelId }: Props) {
+export default function ThreadPanel({ channelId, socketRef }: Props) {
   const activeThreadId = useChatStore((s) => s.activeThreadId)
   const threadPanelVisible = useChatStore((s) => s.threadPanelVisible)
   const setActiveThreadId = useChatStore((s) => s.setActiveThreadId)
@@ -289,7 +369,7 @@ export default function ThreadPanel({ channelId }: Props) {
   return (
     <div className="thread-panel">
       {activeThreadId ? (
-        <ThreadDetailView channelId={channelId} />
+        <ThreadDetailView channelId={channelId} socketRef={socketRef} />
       ) : (
         <ThreadListView channelId={channelId} onSelect={setActiveThreadId} />
       )}

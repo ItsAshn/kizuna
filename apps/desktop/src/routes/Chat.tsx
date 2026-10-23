@@ -187,8 +187,10 @@ export default function Chat() {
         channelNavList,
         activeChannelId,
         activeDMChannelId,
+        activeGroupDMChannelId,
         setActiveChannel,
         setActiveDMChannel,
+        setActiveGroupDMChannel,
         setShowMembers,
       ],
     ),
@@ -203,9 +205,16 @@ export default function Chat() {
     restoreFromSession(session.url)
     useChatStore.getState().clearServerData()
 
+    // Switching servers quickly leaves earlier loads in flight. Their results
+    // belong to the previous server, so drop them instead of letting the
+    // slowest response overwrite the channel list of the server now shown.
+    let stale = false
+    const serverId = session.serverId
+
     async function load() {
       try {
         await refreshSessionUser()
+        if (stale) return
 
         const results = await Promise.allSettled([
           fetchChannels(session!.url),
@@ -216,6 +225,8 @@ export default function Chat() {
           fetchCategories(session!.url),
           fetchGroupDMChannels(session!.url),
         ])
+
+        if (stale) return
 
         const [
           channelsResult,
@@ -270,7 +281,7 @@ export default function Chat() {
           for (const m of mutesResult.value) {
             mutesMap[m.channel_id] = m.muted_until
           }
-          setChannelMutes(mutesMap)
+          setChannelMutes(serverId, mutesMap)
         } else {
           console.error('[Chat] Failed to fetch channel mutes:', mutesResult.reason)
         }
@@ -283,6 +294,7 @@ export default function Chat() {
 
         setInitialLoading(false)
       } catch (err) {
+        if (stale) return
         console.error('[Chat] Failed to load server data:', err)
         setChannels([])
         setCategories([])
@@ -292,6 +304,9 @@ export default function Chat() {
       }
     }
     load()
+    return () => {
+      stale = true
+    }
   }, [session?.serverId])
 
   useEffect(() => {
@@ -452,6 +467,7 @@ export default function Chat() {
               onOpenMenu={() => setSettingsScope('server')}
               voicePanel={
                 <VoiceOverlay
+                  joinVoice={joinVoice}
                   leaveVoice={leaveVoice}
                   toggleMute={toggleMute}
                   socketRef={socketRef}
@@ -531,7 +547,7 @@ export default function Chat() {
         {!stageOwnsScreenshare && (
           <ScreenShareOverlay videoElRef={videoElRef} stopScreenshare={stopScreenshare} />
         )}
-        <ThreadPanel channelId={activeChannelId!} />
+        {activeChannelId && <ThreadPanel channelId={activeChannelId} socketRef={socketRef} />}
         <NotificationContainer />
       </div>
       {showExport && <ExportModal onClose={() => setShowExport(false)} />}

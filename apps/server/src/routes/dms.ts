@@ -130,18 +130,24 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
 
   let rows: Record<string, unknown>[]
   if (before) {
-    const anchor = db.prepare('SELECT created_at FROM direct_messages WHERE id = ?').get(before) as
-      | { created_at: number }
-      | undefined
+    // Keyset on (created_at, rowid): created_at has one-second resolution, so
+    // comparing it alone skipped every message sharing the anchor's second.
+    const anchor = db
+      .prepare('SELECT created_at, rowid FROM direct_messages WHERE id = ? AND channel_id = ?')
+      .get(before, channelId) as { created_at: number; rowid: number } | undefined
     rows = anchor
       ? (db
           .prepare(
             `SELECT dm.*, u.display_name, u.avatar FROM direct_messages dm
            LEFT JOIN users u ON dm.from_id = u.id
-           WHERE dm.channel_id = ? AND dm.created_at < ?
-           ORDER BY dm.created_at DESC LIMIT ?`,
+           WHERE dm.channel_id = ?
+             AND (dm.created_at < ? OR (dm.created_at = ? AND dm.rowid < ?))
+           ORDER BY dm.created_at DESC, dm.rowid DESC LIMIT ?`,
           )
-          .all(channelId, anchor.created_at, limit) as Record<string, unknown>[])
+          .all(channelId, anchor.created_at, anchor.created_at, anchor.rowid, limit) as Record<
+          string,
+          unknown
+        >[])
       : []
     rows = rows.reverse()
   } else {
@@ -150,7 +156,7 @@ dmRoutes.get('/channel/:channelId/messages', authMiddleware, (c) => {
         `SELECT dm.*, u.display_name, u.avatar FROM direct_messages dm
        LEFT JOIN users u ON dm.from_id = u.id
        WHERE dm.channel_id = ?
-       ORDER BY dm.created_at DESC LIMIT ?`,
+       ORDER BY dm.created_at DESC, dm.rowid DESC LIMIT ?`,
       )
       .all(channelId, limit) as Record<string, unknown>[]
     rows = rows.reverse()

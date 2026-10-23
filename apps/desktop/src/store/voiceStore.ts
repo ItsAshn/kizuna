@@ -14,6 +14,9 @@ interface VoiceState {
   activeVoiceChannelId: string | null
   /** Channel a join is in flight for. Set before the transports are usable. */
   voiceConnectingChannelId: string | null
+  /** The channel the most recent join was attempted for, kept after a failed
+   * join clears the connecting state so the error panel can retry it. */
+  lastVoiceJoinChannelId: string | null
   /** True while an established call is being re-established after a socket drop. */
   voiceReconnecting: boolean
   voicePeers: VoicePeer[]
@@ -94,6 +97,7 @@ export const useVoiceStore = create<VoiceState>()(
     (set) => ({
       activeVoiceChannelId: null,
       voiceConnectingChannelId: null,
+      lastVoiceJoinChannelId: null,
       voiceReconnecting: false,
       voicePeers: [],
       isMuted: false,
@@ -125,7 +129,12 @@ export const useVoiceStore = create<VoiceState>()(
       iceServers: [],
 
       setActiveVoiceChannel: (activeVoiceChannelId) => set({ activeVoiceChannelId }),
-      setVoiceConnectingChannelId: (voiceConnectingChannelId) => set({ voiceConnectingChannelId }),
+      setVoiceConnectingChannelId: (voiceConnectingChannelId) =>
+        set(
+          voiceConnectingChannelId
+            ? { voiceConnectingChannelId, lastVoiceJoinChannelId: voiceConnectingChannelId }
+            : { voiceConnectingChannelId },
+        ),
       setVoiceReconnecting: (voiceReconnecting) => set({ voiceReconnecting }),
       setVoicePeers: (voicePeers) => set({ voicePeers }),
       addVoicePeer: (peer) =>
