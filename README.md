@@ -172,6 +172,26 @@ pnpm build:desktop
 
 The CI-built AppImage and `.deb` bundle the patched webkit2gtk automatically — voice works out of the box for end users.
 
+### Android releases
+
+`.github/workflows/release-android.yml` runs on every `v*` tag (and by hand). It
+builds a signed AAB and uploads it to Google Play closed testing (`alpha`) as a
+draft; manual runs choose the track, or `none` to only build. Roll the draft out,
+and later promote it to production, in Play Console. Tauri derives the
+`versionCode` from the tag (major × 1,000,000 + minor × 1,000 + patch), so every
+upload needs a new tag. The sideloadable APK is still attached to the GitHub
+release by `release.yml`.
+
+Repository settings it reads: the secrets `ANDROID_KEYSTORE_BASE64`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (the Play
+upload key) and `PLAY_SERVICE_ACCOUNT_JSON` (a service account with release rights
+for Kizuna in Play Console).
+
+Closed testing testers are the members of a Google Group set as the track's tester
+list. Set `VITE_ANDROID_TESTERS_GROUP` to the group's join page
+(`https://groups.google.com/g/…`) in the Vercel project and the landing page offers
+"Test the Android app": join the group, then opt in on Google Play.
+
 ## License
 
 GNU Affero General Public License v3.0 (AGPLv3). You may use, modify, and distribute this software freely, including for commercial purposes. If you modify the software and make it available as a network service, you must provide the complete source code of your modified version under the same license.

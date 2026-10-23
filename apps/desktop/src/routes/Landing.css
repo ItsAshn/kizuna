@@ -547,6 +547,55 @@
   color: var(--brand);
 }
 
+.landing-android__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 14px 18px;
+  color: var(--text-primary);
+}
+
+.landing-android__title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.landing-android__desc {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.landing-android__step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.landing-android__step:hover {
+  background: var(--bg-hover);
+  color: var(--brand);
+}
+
+.landing-android__label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.landing-android__hint {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 /* ── Self-host ────────────────────────────────────────────── */
 
 .landing-selfhost {

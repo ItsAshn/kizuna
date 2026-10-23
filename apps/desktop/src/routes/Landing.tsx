@@ -13,7 +13,7 @@ import {
   GitBranch,
   BookOpen,
 } from 'lucide-react'
-import { FaLinux, FaApple, FaWindows } from 'react-icons/fa'
+import { FaLinux, FaApple, FaWindows, FaAndroid } from 'react-icons/fa'
 import { SiBluesky } from 'react-icons/si'
 import ServerBrowser from '../components/ServerBrowser'
 import './Landing.css'
@@ -34,6 +34,12 @@ cd kizuna
 cp apps/server/.env.example apps/server/.env
 # edit apps/server/.env with your settings
 docker compose up -d`
+
+// Join page of the Google Group that is the Play test's tester list, e.g.
+// https://groups.google.com/g/kizuna-testers. Unset: no Android testing offer.
+const ANDROID_TESTERS_GROUP = import.meta.env.VITE_ANDROID_TESTERS_GROUP as string | undefined
+// Google Play's opt-in page for the Android test (package com.kizuna.desktop).
+const ANDROID_TESTING_URL = 'https://play.google.com/apps/testing/com.kizuna.desktop'
 
 const FEATURES = [
   {
@@ -246,6 +252,47 @@ export default function Landing({ onConnect, onEnterApp }: LandingProps) {
             </p>
           )}
         </div>
+        {ANDROID_TESTERS_GROUP && (
+          <div className="landing-download__card landing-android">
+            <div className="landing-android__head">
+              <FaAndroid size={16} />
+              <div>
+                <p className="landing-android__title">Test the Android app</p>
+                <p className="landing-android__desc">
+                  The Android app is in testing. Try it early and tell us what breaks.
+                </p>
+              </div>
+            </div>
+            <a
+              href={ANDROID_TESTERS_GROUP}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="landing-android__step"
+            >
+              <span>
+                <span className="landing-android__label">1. Join the testers' group</span>
+                <span className="landing-android__hint">
+                  With the Google account you use on your phone.
+                </span>
+              </span>
+              <ExternalLink size={14} />
+            </a>
+            <a
+              href={ANDROID_TESTING_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="landing-android__step"
+            >
+              <span>
+                <span className="landing-android__label">2. Become a tester on Google Play</span>
+                <span className="landing-android__hint">
+                  Then install Kizuna from the Play Store. Updates arrive like any other app.
+                </span>
+              </span>
+              <ExternalLink size={14} />
+            </a>
+          </div>
+        )}
         <div className="landing-download__more">
           <a
             href="https://github.com/ItsAshn/kizuna/releases/latest"
