@@ -123,6 +123,46 @@ pub fn start_camera(
     }
 }
 
+/// nokhwa reads the device's current format before applying the requested one
+/// and gives up ("Could not get device property FrameFormat: unsupported") when
+/// that format is a pixel format it does not know, such as the UYVY an Elgato
+/// Facecam starts in after boot. Switching such a device to MJPEG (or YUYV)
+/// first lets nokhwa open it and then negotiate as usual.
+#[cfg(target_os = "linux")]
+fn ensure_known_v4l_format(camera_index: u32) {
+    use v4l::video::Capture;
+    use v4l::FourCC;
+
+    const KNOWN: [&[u8; 4]; 5] = [b"YUYV", b"MJPG", b"GRAY", b"RGB3", b"NV12"];
+
+    let Ok(device) = v4l::Device::new(camera_index as usize) else {
+        return;
+    };
+    let Ok(mut format) = device.format() else {
+        return;
+    };
+    if KNOWN.iter().any(|k| FourCC::new(k) == format.fourcc) {
+        return;
+    }
+    let offered: Vec<FourCC> = device
+        .enum_formats()
+        .map(|formats| formats.into_iter().map(|f| f.fourcc).collect())
+        .unwrap_or_default();
+    let Some(target) = [b"MJPG", b"YUYV"]
+        .into_iter()
+        .map(FourCC::new)
+        .find(|f| offered.contains(f))
+    else {
+        return;
+    };
+    let previous = format.fourcc;
+    format.fourcc = target;
+    match device.set_format(&format) {
+        Ok(_) => eprintln!("[Camera] switched camera {camera_index} from {previous} to {target}"),
+        Err(e) => eprintln!("[Camera] could not switch camera {camera_index} to {target}: {e}"),
+    }
+}
+
 fn emit_error(app: &AppHandle, message: String) {
     eprintln!("[Camera] {message}");
     let _ = app.emit("camera:error", CameraErrorPayload { message });
@@ -141,6 +181,9 @@ fn camera_loop(
         emit_error(&app, message.clone());
         let _ = opened.send(Err(message));
     };
+
+    #[cfg(target_os = "linux")]
+    ensure_known_v4l_format(camera_index);
 
     let requested = nokhwa::utils::RequestedFormat::new::<nokhwa::pixel_format::RgbFormat>(
         nokhwa::utils::RequestedFormatType::AbsoluteHighestFrameRate,

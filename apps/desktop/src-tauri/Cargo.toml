@@ -42,6 +42,13 @@ gstreamer-app = "0.25"
 # Upstream force-key-unit events, so a viewer's PLI gets a keyframe out of the
 # encoder at once.
 gstreamer-video = "0.25"
+# nokhwa compiles no capture backend unless one is selected, and then fails
+# every Camera::new with "Platform requirements not satisfied". Each OS names
+# its own backend here; the base dependency is declared below.
+nokhwa = { version = "0.10", features = ["input-v4l"] }
+# Same version nokhwa's V4L backend uses; capture/camera.rs uses it to move a
+# camera off a pixel format nokhwa cannot read before opening it.
+v4l = "0.14"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", features = [
@@ -55,6 +62,10 @@ windows = { version = "0.62", features = [
   "Win32_System_ProcessStatus",
   "Win32_UI_WindowsAndMessaging",
 ] }
+nokhwa = { version = "0.10", features = ["input-msmf"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nokhwa = { version = "0.10", features = ["input-avfoundation"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 x-win = "5"
